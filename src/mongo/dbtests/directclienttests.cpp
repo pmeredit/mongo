@@ -54,8 +54,7 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/rpc/get_status_from_command_result.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -97,8 +96,7 @@ public:
         DBDirectClient client(&opCtx);
 
         BSONObj result;
-        BSONObj cmdObj = BSON("count"
-                              << "");
+        BSONObj cmdObj = BSON("count" << "");
         ASSERT(!client.runCommand(
             DatabaseName::createDatabaseName_forTest(boost::none, ""), cmdObj, result))
             << result;

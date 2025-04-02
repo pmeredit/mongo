@@ -40,11 +40,6 @@
 #include "mongo/bson/json.h"
 #include "mongo/bson/oid.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
-#include "mongo/logv2/log_tag.h"
-#include "mongo/logv2/log_truncation.h"
 #include "mongo/util/ctype.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kControl
@@ -107,7 +102,7 @@ uint64_t Hex::fromHex(StringData s) {
 
 void logBacktraceObject(const BSONObj& bt, StackTraceSink* sink, bool withHumanReadable) {
     if (sink) {
-        *sink << fmt::format(FMT_STRING("BACKTRACE: {}\n"), tojson(bt, ExtendedRelaxedV2_0_0));
+        *sink << fmt::format("BACKTRACE: {}\n", tojson(bt, ExtendedRelaxedV2_0_0));
     } else {
         LOGV2_OPTIONS(
             31380,
@@ -141,9 +136,8 @@ void mongo::StackTrace::log(bool withHumanReadable) const {
 }
 
 void mongo::StackTrace::sink(StackTraceSink* sink, bool withHumanReadable) const {
-    using namespace fmt::literals;
     if (hasError()) {
-        *sink << fmt::format(FMT_STRING("Error collecting stack trace: {}"), _error);
+        *sink << fmt::format("Error collecting stack trace: {}", _error);
     }
 
     stack_trace_detail::logBacktraceObject(_stacktrace, sink, withHumanReadable);

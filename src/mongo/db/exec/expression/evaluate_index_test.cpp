@@ -39,16 +39,14 @@
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace expression_evaluation_test {
 
 TEST(ExpressionToHashedIndexKeyTest, StringInputSucceeds) {
     auto expCtx = ExpressionContextForTest{};
-    const BSONObj obj = BSON("$toHashedIndexKey"
-                             << "hashThisStringLiteral"_sd);
+    const BSONObj obj = BSON("$toHashedIndexKey" << "hashThisStringLiteral"_sd);
     auto expression = Expression::parseExpression(&expCtx, obj, expCtx.variablesParseState);
     Value result = expression->evaluate({}, &expCtx.variables);
     ASSERT_VALUE_EQ(result, Value::createIntOrLong(-5776344739422278694));
@@ -88,8 +86,7 @@ TEST(ExpressionToHashedIndexKeyTest, DateInputSucceeds) {
 
 TEST(ExpressionToHashedIndexKeyTest, MissingInputValueSucceeds) {
     auto expCtx = ExpressionContextForTest{};
-    const BSONObj obj = BSON("$toHashedIndexKey"
-                             << "$missingField");
+    const BSONObj obj = BSON("$toHashedIndexKey" << "$missingField");
     auto expression = Expression::parseExpression(&expCtx, obj, expCtx.variablesParseState);
     Value result = expression->evaluate({}, &expCtx.variables);
     ASSERT_VALUE_EQ(result, Value::createIntOrLong(2338878944348059895));

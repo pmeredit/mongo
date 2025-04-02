@@ -42,37 +42,46 @@
 ########################################################################################################
 
 tests:
+  # The current suggested method for raising these values is to run the
+  # benchmark a few times in patches, and comparing to the recent history.
+  # From the benchmark's history page, obtain a "stable region mean"
+  # and "CV of stable region". These are available in the "Trend Charts" tab on
+  # Evergreen for the `benchmarks_sep` task.
+  #
+  # The deviations of these metrics are extremely tight.
+  # We can easily accept 2 standard deviations up from the stable mean.
+  #
+  #     threshold = mean * (1 + 2 * (100 * cv))
+  #
+  # 2025-02-16:
+  #     Router/1:  mean=20077, cv=.0228 => threshold=20993
+  #     Router/32: mean=20111, cv=.0227 => threshold=21024
+  #     Shard/1:   mean=21619, cv=.0008 => threshold=25078
+  #     Shard/32:  mean=21695, cv=.0006 => threshold=24298
+  # 2025-03-19:
+  #     Shard/1:   mean=20914, cv=.00073 => threshold=23968
+  #     Shard/32:  mean=20979, cv=.00075 => threshold=24125
   ServiceEntryPointRouterRoleBenchmarkFixture/BM_SEP_PING:
     al2023-arm64-sep-benchmark:
-      # The current suggested method for raising these values is to run the benchmark a few times in patches, get the
-      # means of these metrics in them, and then multiply them by 1.002 (+ .2%). Please make sure the new values
-      # are above the maximum values reported in those patches to prevent any future flakiness.
-      #
-      # The below thresholds are based on commit 98588e7.
       - thread_level: 1
         metrics:
           - name: instructions_per_iteration_mean
-            value: 20301
+            value: 20993
             bound_direction: upper
       - thread_level: 32
         metrics:
           - name: instructions_per_iteration_mean
-            value: 20323
+            value: 21024
             bound_direction: upper
   ServiceEntryPointShardRoleBenchmarkFixture/BM_SEP_PING:
     al2023-arm64-sep-benchmark:
-      # The current suggested method for raising these values is to run the benchmark a few times in patches, get the
-      # means of these metrics in them, and then multiply them by 1.002 (+ .2%). Please make sure the new values
-      # are above the maximum values reported in those patches to prevent any future flakiness.
-      #
-      # The below thresholds are based on commit 98588e7.
       - thread_level: 1
         metrics:
           - name: instructions_per_iteration_mean
-            value: 22613
+            value: 23968
             bound_direction: upper
       - thread_level: 32
         metrics:
           - name: instructions_per_iteration_mean
-            value: 22646
+            value: 24125
             bound_direction: upper

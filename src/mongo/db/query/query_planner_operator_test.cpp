@@ -42,8 +42,7 @@
 #include "mongo/db/query/query_planner_params.h"
 #include "mongo/db/query/query_planner_test_fixture.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -140,7 +139,7 @@ TEST_F(QueryPlannerTest, CoveredWhenMultikeyIndexComponentIsNotRequiredByQuery) 
     assertSolutionExists(
         "{proj: {spec: {a: 1, _id: 0}, node: "
         "{sort: {pattern: {b: 1}, limit: 0, type:'default', node: "
-        "{ixscan: {pattern: {a: 1, b: 1, c: 1}}}}}}}}}");
+        "{ixscan: {pattern: {a: 1, b: 1, c: 1}}}}}}}");
 }
 
 TEST_F(QueryPlannerTest, CoveredWhenQueryOnNonMultikeyDottedPath) {
@@ -227,16 +226,14 @@ TEST_F(QueryPlannerTest, CanProduceCoveredSortPlanWhenSortOrderDifferentThanInde
 // $eq can use a hashed index because it looks for values of type regex;
 // it doesn't evaluate the regex itself.
 TEST_F(QueryPlannerTest, EqCanUseHashedIndexWithRegex) {
-    addIndex(BSON("a"
-                  << "hashed"));
+    addIndex(BSON("a" << "hashed"));
     runQuery(fromjson("{a: {$eq: /abc/}}"));
     ASSERT_EQUALS(getNumSolutions(), 2U);
 }
 
 TEST_F(QueryPlannerTest, ExprEqCanUseHashedIndex) {
     params.mainCollectionInfo.options &= ~QueryPlannerParams::INCLUDE_COLLSCAN;
-    addIndex(BSON("a"
-                  << "hashed"));
+    addIndex(BSON("a" << "hashed"));
     runQuery(fromjson("{$expr: {$eq: ['$a', 1]}}"));
     ASSERT_EQUALS(getNumSolutions(), 1U);
     assertSolutionExists(
@@ -246,8 +243,7 @@ TEST_F(QueryPlannerTest, ExprEqCanUseHashedIndex) {
 
 TEST_F(QueryPlannerTest, ExprEqCanUseHashedIndexWithRegex) {
     params.mainCollectionInfo.options &= ~QueryPlannerParams::INCLUDE_COLLSCAN;
-    addIndex(BSON("a"
-                  << "hashed"));
+    addIndex(BSON("a" << "hashed"));
     runQuery(fromjson("{$expr: {$eq: ['$a', /abc/]}}"));
     ASSERT_EQUALS(getNumSolutions(), 1U);
     assertSolutionExists(
@@ -426,7 +422,7 @@ TEST_F(QueryPlannerTest, NotEqualsNullInElemMatchObjectSparseMultiKeyBelowElemMa
     auto keyPattern = BSON("a.b.c.d" << 1);
     IndexEntry ind(keyPattern,
                    IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-                   IndexDescriptor::kLatestIndexVersion,
+                   IndexConfig::kLatestIndexVersion,
                    true,
                    {},
                    {},
@@ -680,19 +676,17 @@ TEST_F(QueryPlannerTest, BasicSort) {
 }
 
 TEST_F(QueryPlannerTest, CantUseHashedIndexToProvideSort) {
-    addIndex(BSON("x"
-                  << "hashed"));
+    addIndex(BSON("x" << "hashed"));
     runQuerySortProj(BSONObj(), BSON("x" << 1), BSONObj());
 
     ASSERT_EQUALS(getNumSolutions(), 1U);
     assertSolutionExists(
         "{sort: {pattern: {x: 1}, limit: 0, type: 'simple', node:"
-        "{cscan: {dir: 1, filter: {}}}}}}}");
+        "{cscan: {dir: 1, filter: {}}}}}");
 }
 
 TEST_F(QueryPlannerTest, CantUseHashedIndexToProvideSortWithIndexablePred) {
-    addIndex(BSON("x"
-                  << "hashed"));
+    addIndex(BSON("x" << "hashed"));
     runQuerySortProj(BSON("x" << BSON("$in" << BSON_ARRAY(0 << 1))), BSON("x" << 1), BSONObj());
 
     ASSERT_EQUALS(getNumSolutions(), 2U);
@@ -729,7 +723,7 @@ TEST_F(QueryPlannerTest, BasicSortWithIndexablePred) {
     assertSolutionExists(
         "{sort: {pattern: {b: 1}, limit: 0, type: 'simple', node: "
         "{fetch: {filter: null, node: "
-        "{ixscan: {filter: null, pattern: {a: 1}}}}}}}}}");
+        "{ixscan: {filter: null, pattern: {a: 1}}}}}}}");
     assertSolutionExists(
         "{fetch: {filter: {a: 5}, node: {ixscan: "
         "{filter: null, pattern: {b: 1}}}}}");
@@ -771,7 +765,7 @@ TEST_F(QueryPlannerTest, SortLimit) {
     assertNumSolutions(1U);
     assertSolutionExists(
         "{sort: {pattern: {a: 1}, limit: 3, type: 'simple', node:"
-        "{cscan: {dir: 1}}}}}}");
+        "{cscan: {dir: 1}}}}");
 }
 
 TEST_F(QueryPlannerTest, SortSkip) {
@@ -781,7 +775,7 @@ TEST_F(QueryPlannerTest, SortSkip) {
     assertSolutionExists(
         "{skip: {n: 2, node: "
         "{sort: {pattern: {a: 1}, limit: 0, type: 'simple', node: "
-        "{cscan: {dir: 1}}}}}}}}");
+        "{cscan: {dir: 1}}}}}}");
 }
 
 TEST_F(QueryPlannerTest, SortSkipLimit) {
@@ -791,7 +785,7 @@ TEST_F(QueryPlannerTest, SortSkipLimit) {
     assertSolutionExists(
         "{skip: {n: 2, node: "
         "{sort: {pattern: {a: 1}, limit: 5, type: 'simple', node: "
-        "{cscan: {dir: 1}}}}}}}}");
+        "{cscan: {dir: 1}}}}}}");
 }
 
 // Push project behind sort even when there is a skip between them.
@@ -808,7 +802,7 @@ TEST_F(QueryPlannerTest, PushProjectBehindSortWithSkipBetween) {
         "{skip: {n: 2, node: "
         "{sort: {pattern: {a: 1}, limit: 0, type: 'simple', node: "
         "{proj: {spec: {_id: 0, a: 1}, node: "
-        "{cscan: {dir: 1}}}}}}}}}");
+        "{cscan: {dir: 1}}}}}}}}");
 }
 
 //
@@ -823,7 +817,7 @@ TEST_F(QueryPlannerTest, BasicSortElim) {
     ASSERT_EQUALS(getNumSolutions(), 2U);
     assertSolutionExists(
         "{sort: {pattern: {x: 1}, limit: 0, type: 'simple', node:"
-        "{cscan: {dir: 1, filter: {x: {$gt: 1}}}}}}}");
+        "{cscan: {dir: 1, filter: {x: {$gt: 1}}}}}}");
     assertSolutionExists(
         "{fetch: {filter: null, node: {ixscan: {filter: null, pattern: {x: 1}}}}}");
 }
@@ -1418,7 +1412,7 @@ TEST_F(QueryPlannerTest, NENullWithSort) {
     assertNumSolutions(2U);
     assertSolutionExists(
         "{sort: {pattern: {a: 1}, limit: 0, type: 'simple', node: "
-        "{cscan: {filter: {a: {$ne: null}}, dir: 1}}}}}");
+        "{cscan: {filter: {a: {$ne: null}}, dir: 1}}}}");
     assertSolutionExists(
         "{fetch: {filter: null, node: {ixscan: {pattern: {a:1}, "
         "bounds: {a: [['MinKey',null,true,false],"
@@ -1544,7 +1538,7 @@ TEST_F(QueryPlannerTest, InclusionProjectionCannotSwapBeneathSortIfItExcludesSor
     assertSolutionExists(
         "{proj: {spec: {_id: 0, a: 1}, node:"
         "{sort: {pattern: {a: 1, b: 1}, limit: 0, type: 'simple', node: "
-        "{cscan: {dir: 1}}}}}}}}");
+        "{cscan: {dir: 1}}}}}}");
 }
 
 TEST_F(QueryPlannerTest, ExclusionProjectionCannotSwapBeneathSortIfItExcludesSortedOnField) {
@@ -1554,7 +1548,7 @@ TEST_F(QueryPlannerTest, ExclusionProjectionCannotSwapBeneathSortIfItExcludesSor
     assertSolutionExists(
         "{proj: {spec: {b: 0}, node:"
         "{sort: {pattern: {a: 1, b: 1}, limit: 0, type: 'simple', node: "
-        "{cscan: {dir: 1}}}}}}}}");
+        "{cscan: {dir: 1}}}}}}");
 }
 
 TEST_F(QueryPlannerTest, ProjectionDoesNotSwapBeforeSortWithLimit) {

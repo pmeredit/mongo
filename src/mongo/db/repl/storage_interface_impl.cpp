@@ -46,6 +46,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/admission/execution_admission_context.h"
+#include "mongo/db/catalog/catalog_control.h"
 #include "mongo/db/catalog/clustered_collection_options_gen.h"
 #include "mongo/db/catalog/collection_catalog_helper.h"
 #include "mongo/db/catalog/database.h"
@@ -70,11 +71,13 @@
 #include "mongo/db/index_builds/index_builds_coordinator.h"
 #include "mongo/db/keypattern.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/periodic_runner_cache_pressure_rollback.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/get_executor.h"
 #include "mongo/db/query/internal_plans.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/plan_yield_policy.h"
+#include "mongo/db/query/query_utils.h"
 #include "mongo/db/query/record_id_bound.h"
 #include "mongo/db/query/write_ops/delete_request_gen.h"
 #include "mongo/db/query/write_ops/parsed_delete.h"
@@ -102,9 +105,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/admission_context.h"
@@ -414,8 +414,7 @@ Status StorageInterfaceImpl::insertDocuments(OperationContext* opCtx,
 Status StorageInterfaceImpl::dropReplicatedDatabases(OperationContext* opCtx) {
     Lock::GlobalWrite globalWriteLock(opCtx);
 
-    std::vector<DatabaseName> dbNames =
-        opCtx->getServiceContext()->getStorageEngine()->listDatabases();
+    std::vector<DatabaseName> dbNames = catalog::listDatabases();
     invariant(!dbNames.empty());
     LOGV2(21754,
           "dropReplicatedDatabases - dropping databases",
@@ -567,8 +566,7 @@ Status StorageInterfaceImpl::dropCollectionsWithPrefix(OperationContext* opCtx,
         NamespaceString::createNamespaceString_forTest(dbName, collectionNamePrefix),
         [&] {
             AutoGetDb autoDB(opCtx, dbName, MODE_X);
-            StorageEngine* storageEngine = opCtx->getServiceContext()->getStorageEngine();
-            return storageEngine->dropCollectionsWithPrefix(opCtx, dbName, collectionNamePrefix);
+            return catalog::dropCollectionsWithPrefix(opCtx, dbName, collectionNamePrefix);
         });
 }
 
@@ -711,13 +709,12 @@ StatusWith<std::vector<BSONObj>> _findOrDeleteDocuments(
         using Result = StatusWith<std::vector<BSONObj>>;
 
         auto collectionAccessMode = isFind ? MODE_IS : MODE_IX;
-        const auto collection = acquireCollection(
+        auto request = CollectionAcquisitionRequest::fromOpCtx(
             opCtx,
-            CollectionAcquisitionRequest::fromOpCtx(opCtx,
-                                                    nsOrUUID,
-                                                    isFind ? AcquisitionPrerequisites::kRead
-                                                           : AcquisitionPrerequisites::kWrite),
-            collectionAccessMode);
+            nsOrUUID,
+            isFind ? AcquisitionPrerequisites::kRead : AcquisitionPrerequisites::kWrite);
+        const auto collection = isFind ? acquireCollectionMaybeLockFree(opCtx, request)
+                                       : acquireCollection(opCtx, request, collectionAccessMode);
         if (!collection.exists()) {
             return Status{ErrorCodes::NamespaceNotFound,
                           str::stream()
@@ -998,7 +995,7 @@ StatusWith<BSONObj> makeUpsertQuery(const BSONElement& idKey) {
 
     // With the ID hack, only simple _id queries are allowed. Otherwise, UpdateStage will fail with
     // a fatal assertion.
-    if (!CanonicalQuery::isSimpleIdQuery(query)) {
+    if (!isSimpleIdQuery(query)) {
         return {ErrorCodes::InvalidIdField,
                 str::stream() << "Unable to update document with a non-simple _id query: "
                               << query};
@@ -1489,6 +1486,8 @@ Timestamp StorageInterfaceImpl::recoverToStableTimestamp(OperationContext* opCtx
     Status reason = Status(ErrorCodes::InterruptedDueToReplStateChange, "Rollback in progress.");
     StorageControl::stopStorageControls(serviceContext, reason, /*forRestart=*/true);
 
+    serviceContext->getStorageEngine()->stopTimestampMonitor();
+    auto state = catalog::closeCatalog(opCtx);
     auto swStableTimestamp = serviceContext->getStorageEngine()->recoverToStableTimestamp(opCtx);
     if (!swStableTimestamp.isOK()) {
         // Dump storage engine contents (including transaction information) before fatally
@@ -1496,6 +1495,8 @@ Timestamp StorageInterfaceImpl::recoverToStableTimestamp(OperationContext* opCtx
         serviceContext->getStorageEngine()->dump();
     }
     fassert(31049, swStableTimestamp);
+    catalog::openCatalog(opCtx, state, swStableTimestamp.getValue());
+    serviceContext->getStorageEngine()->restartTimestampMonitor();
 
     StorageControl::startStorageControls(serviceContext);
 

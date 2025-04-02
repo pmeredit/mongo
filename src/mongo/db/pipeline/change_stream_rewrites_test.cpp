@@ -49,9 +49,7 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/query/bson/bson_helper.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 
@@ -61,6 +59,10 @@ using namespace std::string_literals;
 
 class ChangeStreamRewriteTest : public AggregationContextFixture {
 public:
+    ChangeStreamRewriteTest()
+        : AggregationContextFixture(NamespaceString::createNamespaceString_forTest(
+              boost::none, "unittests", "pipeline_test")) {}
+
     std::string getNsDbRegexMatchExpr(const std::string& field, const std::string& regex) {
         return str::stream()
             << "{$expr: {$let: {vars: {oplogField: {$cond: [{ $eq: [{ $type: ['" << field
@@ -435,8 +437,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteEqPredicateOnOperationTypeWithInvalidO
 }
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteEqPredicateOnOperationTypeWithUnknownOpType) {
-    auto query = BSON("operationType"
-                      << "nonExisting");
+    auto query = BSON("operationType" << "nonExisting");
     auto statusWithMatchExpression = MatchExpressionParser::parse(query, getExpCtx());
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -593,9 +594,8 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteEqNullPredicateOnOperationTypeSubField
 }
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteInPredicateOnOperationType) {
-    auto expr = BSON("operationType" << BSON("$in" << BSON_ARRAY("drop"
-                                                                 << "create"
-                                                                 << "insert")));
+    auto expr = BSON("operationType" << BSON("$in" << BSON_ARRAY("drop" << "create"
+                                                                        << "insert")));
     auto statusWithMatchExpression = MatchExpressionParser::parse(expr, getExpCtx());
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -665,8 +665,7 @@ TEST_F(ChangeStreamRewriteTest,
 }
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteInPredicateOnOperationTypeWithUnknownOpType) {
-    auto expr = BSON("operationType" << BSON("$in" << BSON_ARRAY("unknown"
-                                                                 << "insert")));
+    auto expr = BSON("operationType" << BSON("$in" << BSON_ARRAY("unknown" << "insert")));
     auto statusWithMatchExpression = MatchExpressionParser::parse(expr, getExpCtx());
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -695,8 +694,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteEmptyInPredicateOnOperationType) {
 }
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteNinPredicateOnOperationType) {
-    auto expr = BSON("operationType" << BSON("$nin" << BSON_ARRAY("drop"
-                                                                  << "insert")));
+    auto expr = BSON("operationType" << BSON("$nin" << BSON_ARRAY("drop" << "insert")));
     auto statusWithMatchExpression = MatchExpressionParser::parse(expr, getExpCtx());
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -748,12 +746,12 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteExprWithOperationType) {
                         {case: {$eq: ['$op', {$const: 'd'}]}, then: {$const: 'delete'}},
                         {case: {$ne: ['$op', {$const: 'c'}]}, then: '$$REMOVE'},
                         {case: {$ne: ['$o.drop', '$$REMOVE']}, then: {$const: 'drop'}},
+                        {case: {$ne: ['$o.create', '$$REMOVE']}, then: {$const: 'create'}},
                         {
                             case: {$ne: ['$o.dropDatabase', '$$REMOVE']},
                             then: {$const: 'dropDatabase'}
                         },
                         {case: {$ne: ['$o.renameCollection', '$$REMOVE']}, then: {$const: 'rename'}},
-                        {case: {$ne: ['$o.create', '$$REMOVE']}, then: {$const: 'create'}},
                         {
                             case: {$ne: ['$o.createIndexes', '$$REMOVE']},
                             then: {$const: 'createIndexes'}
@@ -786,6 +784,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteExprWithOperationType) {
         ]
     }
 })";
+
     ASSERT_BSONOBJ_EQ(rewrittenPredicate, fromjson(expectedRewrite));
 }
 
@@ -1819,8 +1818,7 @@ TEST_F(ChangeStreamRewriteTest, CannotRewriteNamespaceWithInvalidCollectionField
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithExtraDbFieldPath) {
     auto expCtx = getExpCtx();
-    auto query = BSON("ns.db.subField"
-                      << "subDb");
+    auto query = BSON("ns.db.subField" << "subDb");
     auto statusWithMatchExpression = MatchExpressionParser::parse(query, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -1849,8 +1847,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithExtraDbFieldPath) {
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithExtraCollectionFieldPath) {
     auto expCtx = getExpCtx();
-    auto query = BSON("ns.coll.subField"
-                      << "subColl");
+    auto query = BSON("ns.coll.subField" << "subColl");
     auto statusWithMatchExpression = MatchExpressionParser::parse(query, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -1879,8 +1876,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithExtraCollectionFieldPath)
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithInvalidFieldPath) {
     auto expCtx = getExpCtx();
-    auto query = BSON("ns.unknown"
-                      << "test");
+    auto query = BSON("ns.unknown" << "test");
     auto statusWithMatchExpression = MatchExpressionParser::parse(query, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -1958,8 +1954,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithInExpressionOnDb) {
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithNinExpressionOnDb) {
     auto expCtx = getExpCtx();
-    auto expr = BSON("ns.db" << BSON("$nin" << BSON_ARRAY("test"
-                                                          << "news")));
+    auto expr = BSON("ns.db" << BSON("$nin" << BSON_ARRAY("test" << "news")));
     auto statusWithMatchExpression = MatchExpressionParser::parse(expr, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -2032,38 +2027,22 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithInExpressionOnCollection)
                     fromjson("{op: {$eq: 'c'}}"),
                     BSON(OR(BSON(OR(BSON("o.renameCollection" << BSON("$regex" << firstRegexNs)),
                                     BSON("o.renameCollection" << BSON("$regex" << secondRegexNs)))),
-                            BSON(OR(BSON("o.drop" << BSON("$eq"
-                                                          << "news")),
-                                    BSON("o.drop" << BSON("$eq"
-                                                          << "test")))),
-                            BSON(OR(BSON("o.create" << BSON("$eq"
-                                                            << "news")),
-                                    BSON("o.create" << BSON("$eq"
-                                                            << "test")))),
-                            BSON(OR(BSON("o.createIndexes" << BSON("$eq"
-                                                                   << "news")),
-                                    BSON("o.createIndexes" << BSON("$eq"
-                                                                   << "test")))),
-                            BSON(OR(BSON("o.commitIndexBuild" << BSON("$eq"
-                                                                      << "news")),
-                                    BSON("o.commitIndexBuild" << BSON("$eq"
-                                                                      << "test")))),
-                            BSON(OR(BSON("o.startIndexBuild" << BSON("$eq"
-                                                                     << "news")),
-                                    BSON("o.startIndexBuild" << BSON("$eq"
-                                                                     << "test")))),
-                            BSON(OR(BSON("o.abortIndexBuild" << BSON("$eq"
-                                                                     << "news")),
-                                    BSON("o.abortIndexBuild" << BSON("$eq"
-                                                                     << "test")))),
-                            BSON(OR(BSON("o.dropIndexes" << BSON("$eq"
-                                                                 << "news")),
-                                    BSON("o.dropIndexes" << BSON("$eq"
-                                                                 << "test")))),
-                            BSON(OR(BSON("o.collMod" << BSON("$eq"
-                                                             << "news")),
-                                    BSON("o.collMod" << BSON("$eq"
-                                                             << "test")))),
+                            BSON(OR(BSON("o.drop" << BSON("$eq" << "news")),
+                                    BSON("o.drop" << BSON("$eq" << "test")))),
+                            BSON(OR(BSON("o.create" << BSON("$eq" << "news")),
+                                    BSON("o.create" << BSON("$eq" << "test")))),
+                            BSON(OR(BSON("o.createIndexes" << BSON("$eq" << "news")),
+                                    BSON("o.createIndexes" << BSON("$eq" << "test")))),
+                            BSON(OR(BSON("o.commitIndexBuild" << BSON("$eq" << "news")),
+                                    BSON("o.commitIndexBuild" << BSON("$eq" << "test")))),
+                            BSON(OR(BSON("o.startIndexBuild" << BSON("$eq" << "news")),
+                                    BSON("o.startIndexBuild" << BSON("$eq" << "test")))),
+                            BSON(OR(BSON("o.abortIndexBuild" << BSON("$eq" << "news")),
+                                    BSON("o.abortIndexBuild" << BSON("$eq" << "test")))),
+                            BSON(OR(BSON("o.dropIndexes" << BSON("$eq" << "news")),
+                                    BSON("o.dropIndexes" << BSON("$eq" << "test")))),
+                            BSON(OR(BSON("o.collMod" << BSON("$eq" << "news")),
+                                    BSON("o.collMod" << BSON("$eq" << "test")))),
                             BSON(AND(BSON(OR(fromjson("{$alwaysFalse: 1}"),
                                              fromjson("{$alwaysFalse: 1}"))),
                                      fromjson("{'o.dropDatabase': {$eq: 1}}"))))))))));
@@ -2071,8 +2050,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithInExpressionOnCollection)
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithNinExpressionOnCollection) {
     auto expCtx = getExpCtx();
-    auto expr = BSON("ns.coll" << BSON("$nin" << BSON_ARRAY("test"
-                                                            << "news")));
+    auto expr = BSON("ns.coll" << BSON("$nin" << BSON_ARRAY("test" << "news")));
     auto statusWithMatchExpression = MatchExpressionParser::parse(expr, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -2096,38 +2074,22 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithNinExpressionOnCollection
             BSON(AND(fromjson("{op: {$eq: 'c'}}"),
                      BSON(OR(BSON(OR(BSON("o.renameCollection" << BSON("$regex" << secondRegexNs)),
                                      BSON("o.renameCollection" << BSON("$regex" << firstRegexNs)))),
-                             BSON(OR(BSON("o.drop" << BSON("$eq"
-                                                           << "news")),
-                                     BSON("o.drop" << BSON("$eq"
-                                                           << "test")))),
-                             BSON(OR(BSON("o.create" << BSON("$eq"
-                                                             << "news")),
-                                     BSON("o.create" << BSON("$eq"
-                                                             << "test")))),
-                             BSON(OR(BSON("o.createIndexes" << BSON("$eq"
-                                                                    << "news")),
-                                     BSON("o.createIndexes" << BSON("$eq"
-                                                                    << "test")))),
-                             BSON(OR(BSON("o.commitIndexBuild" << BSON("$eq"
-                                                                       << "news")),
-                                     BSON("o.commitIndexBuild" << BSON("$eq"
-                                                                       << "test")))),
-                             BSON(OR(BSON("o.startIndexBuild" << BSON("$eq"
-                                                                      << "news")),
-                                     BSON("o.startIndexBuild" << BSON("$eq"
-                                                                      << "test")))),
-                             BSON(OR(BSON("o.abortIndexBuild" << BSON("$eq"
-                                                                      << "news")),
-                                     BSON("o.abortIndexBuild" << BSON("$eq"
-                                                                      << "test")))),
-                             BSON(OR(BSON("o.dropIndexes" << BSON("$eq"
-                                                                  << "news")),
-                                     BSON("o.dropIndexes" << BSON("$eq"
-                                                                  << "test")))),
-                             BSON(OR(BSON("o.collMod" << BSON("$eq"
-                                                              << "news")),
-                                     BSON("o.collMod" << BSON("$eq"
-                                                              << "test")))),
+                             BSON(OR(BSON("o.drop" << BSON("$eq" << "news")),
+                                     BSON("o.drop" << BSON("$eq" << "test")))),
+                             BSON(OR(BSON("o.create" << BSON("$eq" << "news")),
+                                     BSON("o.create" << BSON("$eq" << "test")))),
+                             BSON(OR(BSON("o.createIndexes" << BSON("$eq" << "news")),
+                                     BSON("o.createIndexes" << BSON("$eq" << "test")))),
+                             BSON(OR(BSON("o.commitIndexBuild" << BSON("$eq" << "news")),
+                                     BSON("o.commitIndexBuild" << BSON("$eq" << "test")))),
+                             BSON(OR(BSON("o.startIndexBuild" << BSON("$eq" << "news")),
+                                     BSON("o.startIndexBuild" << BSON("$eq" << "test")))),
+                             BSON(OR(BSON("o.abortIndexBuild" << BSON("$eq" << "news")),
+                                     BSON("o.abortIndexBuild" << BSON("$eq" << "test")))),
+                             BSON(OR(BSON("o.dropIndexes" << BSON("$eq" << "news")),
+                                     BSON("o.dropIndexes" << BSON("$eq" << "test")))),
+                             BSON(OR(BSON("o.collMod" << BSON("$eq" << "news")),
+                                     BSON("o.collMod" << BSON("$eq" << "test")))),
                              BSON(AND(BSON(OR(fromjson("{$alwaysFalse: 1}"),
                                               fromjson("{$alwaysFalse: 1}"))),
                                       fromjson("{'o.dropDatabase': {$eq: 1}}"))))))))))));
@@ -2440,47 +2402,37 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNamespaceWithInExpressionOnCollectionW
     auto rewrittenPredicate = rewrittenMatchExpression->serialize();
     ASSERT_BSONOBJ_EQ(
         rewrittenPredicate,
-        BSON(
-            OR(BSON(AND(fromjson("{op: {$not: {$eq: 'c'}}}"),
-                        BSON(OR(BSON("ns" << BSON("$regex" << secondRegexNs)),
-                                fromjson(getNsCollRegexMatchExpr("$ns", R"(^test.*$)")))))),
-               BSON(AND(
-                   fromjson("{op: {$eq: 'c'}}"),
-                   BSON(OR(
-                       BSON(OR(BSON("o.renameCollection" << BSON("$regex" << secondRegexNs)),
-                               fromjson(
-                                   getNsCollRegexMatchExpr("$o.renameCollection", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.drop" << BSON("$eq"
-                                                     << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.drop", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.create" << BSON("$eq"
-                                                       << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.create", R"(^test.*$)")))),
-                       BSON(OR(
-                           BSON("o.createIndexes" << BSON("$eq"
-                                                          << "news")),
-                           fromjson(getNsCollRegexMatchExpr("$o.createIndexes", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.commitIndexBuild" << BSON("$eq"
-                                                                 << "news")),
-                               fromjson(
-                                   getNsCollRegexMatchExpr("$o.commitIndexBuild", R"(^test.*$)")))),
-                       BSON(OR(
-                           BSON("o.startIndexBuild" << BSON("$eq"
-                                                            << "news")),
+        BSON(OR(
+            BSON(AND(fromjson("{op: {$not: {$eq: 'c'}}}"),
+                     BSON(OR(BSON("ns" << BSON("$regex" << secondRegexNs)),
+                             fromjson(getNsCollRegexMatchExpr("$ns", R"(^test.*$)")))))),
+            BSON(AND(
+                fromjson("{op: {$eq: 'c'}}"),
+                BSON(OR(
+                    BSON(OR(
+                        BSON("o.renameCollection" << BSON("$regex" << secondRegexNs)),
+                        fromjson(getNsCollRegexMatchExpr("$o.renameCollection", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.drop" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.drop", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.create" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.create", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.createIndexes" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.createIndexes", R"(^test.*$)")))),
+                    BSON(OR(
+                        BSON("o.commitIndexBuild" << BSON("$eq" << "news")),
+                        fromjson(getNsCollRegexMatchExpr("$o.commitIndexBuild", R"(^test.*$)")))),
+                    BSON(
+                        OR(BSON("o.startIndexBuild" << BSON("$eq" << "news")),
                            fromjson(getNsCollRegexMatchExpr("$o.startIndexBuild", R"(^test.*$)")))),
-                       BSON(OR(
-                           BSON("o.abortIndexBuild" << BSON("$eq"
-                                                            << "news")),
+                    BSON(
+                        OR(BSON("o.abortIndexBuild" << BSON("$eq" << "news")),
                            fromjson(getNsCollRegexMatchExpr("$o.abortIndexBuild", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.dropIndexes" << BSON("$eq"
-                                                            << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.dropIndexes", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.collMod" << BSON("$eq"
-                                                        << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.collMod", R"(^test.*$)")))),
-                       BSON(AND(
-                           BSON(OR(fromjson("{$alwaysFalse: 1}"), fromjson("{$alwaysFalse: 1}"))),
-                           fromjson("{'o.dropDatabase': {$eq: 1}}"))))))))));
+                    BSON(OR(BSON("o.dropIndexes" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.dropIndexes", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.collMod" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.collMod", R"(^test.*$)")))),
+                    BSON(AND(BSON(OR(fromjson("{$alwaysFalse: 1}"), fromjson("{$alwaysFalse: 1}"))),
+                             fromjson("{'o.dropDatabase': {$eq: 1}}"))))))))));
 }
 
 TEST_F(ChangeStreamRewriteTest,
@@ -2502,47 +2454,37 @@ TEST_F(ChangeStreamRewriteTest,
     auto rewrittenPredicate = rewrittenMatchExpression->serialize();
     ASSERT_BSONOBJ_EQ(
         rewrittenPredicate,
-        BSON(NOR(BSON(
-            OR(BSON(AND(fromjson("{op: {$not: {$eq: 'c'}}}"),
-                        BSON(OR(BSON("ns" << BSON("$regex" << secondRegexNs)),
-                                fromjson(getNsCollRegexMatchExpr("$ns", R"(^test.*$)")))))),
-               BSON(AND(
-                   fromjson("{op: {$eq: 'c'}}"),
-                   BSON(OR(
-                       BSON(OR(BSON("o.renameCollection" << BSON("$regex" << secondRegexNs)),
-                               fromjson(
-                                   getNsCollRegexMatchExpr("$o.renameCollection", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.drop" << BSON("$eq"
-                                                     << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.drop", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.create" << BSON("$eq"
-                                                       << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.create", R"(^test.*$)")))),
-                       BSON(OR(
-                           BSON("o.createIndexes" << BSON("$eq"
-                                                          << "news")),
-                           fromjson(getNsCollRegexMatchExpr("$o.createIndexes", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.commitIndexBuild" << BSON("$eq"
-                                                                 << "news")),
-                               fromjson(
-                                   getNsCollRegexMatchExpr("$o.commitIndexBuild", R"(^test.*$)")))),
-                       BSON(OR(
-                           BSON("o.startIndexBuild" << BSON("$eq"
-                                                            << "news")),
+        BSON(NOR(BSON(OR(
+            BSON(AND(fromjson("{op: {$not: {$eq: 'c'}}}"),
+                     BSON(OR(BSON("ns" << BSON("$regex" << secondRegexNs)),
+                             fromjson(getNsCollRegexMatchExpr("$ns", R"(^test.*$)")))))),
+            BSON(AND(
+                fromjson("{op: {$eq: 'c'}}"),
+                BSON(OR(
+                    BSON(OR(
+                        BSON("o.renameCollection" << BSON("$regex" << secondRegexNs)),
+                        fromjson(getNsCollRegexMatchExpr("$o.renameCollection", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.drop" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.drop", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.create" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.create", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.createIndexes" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.createIndexes", R"(^test.*$)")))),
+                    BSON(OR(
+                        BSON("o.commitIndexBuild" << BSON("$eq" << "news")),
+                        fromjson(getNsCollRegexMatchExpr("$o.commitIndexBuild", R"(^test.*$)")))),
+                    BSON(
+                        OR(BSON("o.startIndexBuild" << BSON("$eq" << "news")),
                            fromjson(getNsCollRegexMatchExpr("$o.startIndexBuild", R"(^test.*$)")))),
-                       BSON(OR(
-                           BSON("o.abortIndexBuild" << BSON("$eq"
-                                                            << "news")),
+                    BSON(
+                        OR(BSON("o.abortIndexBuild" << BSON("$eq" << "news")),
                            fromjson(getNsCollRegexMatchExpr("$o.abortIndexBuild", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.dropIndexes" << BSON("$eq"
-                                                            << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.dropIndexes", R"(^test.*$)")))),
-                       BSON(OR(BSON("o.collMod" << BSON("$eq"
-                                                        << "news")),
-                               fromjson(getNsCollRegexMatchExpr("$o.collMod", R"(^test.*$)")))),
-                       BSON(AND(
-                           BSON(OR(fromjson("{$alwaysFalse: 1}"), fromjson("{$alwaysFalse: 1}"))),
-                           fromjson("{'o.dropDatabase': {$eq: 1}}"))))))))))));
+                    BSON(OR(BSON("o.dropIndexes" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.dropIndexes", R"(^test.*$)")))),
+                    BSON(OR(BSON("o.collMod" << BSON("$eq" << "news")),
+                            fromjson(getNsCollRegexMatchExpr("$o.collMod", R"(^test.*$)")))),
+                    BSON(AND(BSON(OR(fromjson("{$alwaysFalse: 1}"), fromjson("{$alwaysFalse: 1}"))),
+                             fromjson("{'o.dropDatabase': {$eq: 1}}"))))))))))));
 }
 
 TEST_F(ChangeStreamRewriteTest, CannotRewriteNamespaceWithInExpressionOnInvalidDb) {
@@ -2670,12 +2612,12 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNsWithExprOnFullObject) {
         "{$substrBytes: ['$ns', {$add: [{$strLenBytes: ['$$dbName']}, {$const: 1}]}, {$const: "
         "-1}]}}"s;
     auto caseNotCmd = "{case: { $ne: ['$op', {$const: 'c'}]}, then: '$$REMOVE'}";
-    auto caseDrop = "{case: {$ne: ['$o.drop', '$$REMOVE']}, then: '$o.drop'}";
     auto caseDropDatabase = "{case: {$ne: ['$o.dropDatabase', '$$REMOVE']}, then: '$$REMOVE'}";
     auto caseRenameCollection =
         "{case: {$ne: ['$o.renameCollection', '$$REMOVE']}, then: {$substrBytes: "
         "['$o.renameCollection', {$add: [{$strLenBytes: ['$$dbName']}, {$const: 1}]}, {$const: "
         "-1}]}}";
+    auto caseDrop = "{case: {$ne: ['$o.drop', '$$REMOVE']}, then: '$o.drop'}";
     auto caseCreate = "{case: {$ne: ['$o.create', '$$REMOVE']}, then: '$o.create'}";
     auto caseCreateIndexes =
         "{case: {$ne: ['$o.createIndexes', '$$REMOVE']}, then: '$o.createIndexes'}";
@@ -2690,9 +2632,9 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNsWithExprOnFullObject) {
 
     const auto cases = boost::algorithm::join(std::vector<std::string>{caseCRUD,
                                                                        caseNotCmd,
-                                                                       caseDrop,
                                                                        caseDropDatabase,
                                                                        caseRenameCollection,
+                                                                       caseDrop,
                                                                        caseCreate,
                                                                        caseCreateIndexes,
                                                                        caseCommitIndexBuild,
@@ -2743,12 +2685,12 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNsWithExprOnFullObjectWithOnlyDb) {
         "{$substrBytes: ['$ns', {$add: [{$strLenBytes: ['$$dbName']}, {$const: 1}]}, {$const: "
         "-1}]}}"s;
     auto caseNotCmd = "{case: { $ne: ['$op', {$const: 'c'}]}, then: '$$REMOVE'}";
-    auto caseDrop = "{case: {$ne: ['$o.drop', '$$REMOVE']}, then: '$o.drop'}";
     auto caseDropDatabase = "{case: {$ne: ['$o.dropDatabase', '$$REMOVE']}, then: '$$REMOVE'}";
     auto caseRenameCollection =
         "{case: {$ne: ['$o.renameCollection', '$$REMOVE']}, then: {$substrBytes: "
         "['$o.renameCollection', {$add: [{$strLenBytes: ['$$dbName']}, {$const: 1}]}, {$const: "
         "-1}]}}";
+    auto caseDrop = "{case: {$ne: ['$o.drop', '$$REMOVE']}, then: '$o.drop'}";
     auto caseCreate = "{case: {$ne: ['$o.create', '$$REMOVE']}, then: '$o.create'}";
     auto caseCreateIndexes =
         "{case: {$ne: ['$o.createIndexes', '$$REMOVE']}, then: '$o.createIndexes'}";
@@ -2763,9 +2705,9 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNsWithExprOnFullObjectWithOnlyDb) {
 
     const auto cases = boost::algorithm::join(std::vector<std::string>{caseCRUD,
                                                                        caseNotCmd,
-                                                                       caseDrop,
                                                                        caseDropDatabase,
                                                                        caseRenameCollection,
+                                                                       caseDrop,
                                                                        caseCreate,
                                                                        caseCreateIndexes,
                                                                        caseCommitIndexBuild,
@@ -2846,12 +2788,12 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNsWithExprOnCollFieldPath) {
         "{$substrBytes: ['$ns', {$add: [{$strLenBytes: ['$$dbName']}, {$const: 1}]}, {$const: "
         "-1}]}}"s;
     auto caseNotCmd = "{case: { $ne: ['$op', {$const: 'c'}]}, then: '$$REMOVE'}";
-    auto caseDrop = "{case: {$ne: ['$o.drop', '$$REMOVE']}, then: '$o.drop'}";
     auto caseDropDatabase = "{case: {$ne: ['$o.dropDatabase', '$$REMOVE']}, then: '$$REMOVE'}";
     auto caseRenameCollection =
         "{case: {$ne: ['$o.renameCollection', '$$REMOVE']}, then: {$substrBytes: "
         "['$o.renameCollection', {$add: [{$strLenBytes: ['$$dbName']}, {$const: 1}]}, {$const: "
         "-1}]}}";
+    auto caseDrop = "{case: {$ne: ['$o.drop', '$$REMOVE']}, then: '$o.drop'}";
     auto caseCreate = "{case: {$ne: ['$o.create', '$$REMOVE']}, then: '$o.create'}";
     auto caseCreateIndexes =
         "{case: {$ne: ['$o.createIndexes', '$$REMOVE']}, then: '$o.createIndexes'}";
@@ -2866,9 +2808,9 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteNsWithExprOnCollFieldPath) {
 
     const auto cases = boost::algorithm::join(std::vector<std::string>{caseCRUD,
                                                                        caseNotCmd,
-                                                                       caseDrop,
                                                                        caseDropDatabase,
                                                                        caseRenameCollection,
+                                                                       caseDrop,
                                                                        caseCreate,
                                                                        caseCreateIndexes,
                                                                        caseCommitIndexBuild,
@@ -3138,8 +3080,7 @@ TEST_F(ChangeStreamRewriteTest, CannotRewriteToWithInvalidCollectionFieldPath) {
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteToWithExtraDbFieldPath) {
     auto expCtx = getExpCtx();
-    auto query = BSON("to.to.subField"
-                      << "subDb");
+    auto query = BSON("to.to.subField" << "subDb");
     auto statusWithMatchExpression = MatchExpressionParser::parse(query, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -3155,8 +3096,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteToWithExtraDbFieldPath) {
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteToWithExtraCollectionFieldPath) {
     auto expCtx = getExpCtx();
-    auto query = BSON("to.coll.subField"
-                      << "subColl");
+    auto query = BSON("to.coll.subField" << "subColl");
     auto statusWithMatchExpression = MatchExpressionParser::parse(query, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -3172,8 +3112,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteToWithExtraCollectionFieldPath) {
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteToWithInvalidFieldPath) {
     auto expCtx = getExpCtx();
-    auto query = BSON("to.unknown"
-                      << "test");
+    auto query = BSON("to.unknown" << "test");
     auto statusWithMatchExpression = MatchExpressionParser::parse(query, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -3212,8 +3151,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteToWithInExpressionOnDb) {
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteToWithNinExpressionOnDb) {
     auto expCtx = getExpCtx();
-    auto expr = BSON("to.db" << BSON("$nin" << BSON_ARRAY("test"
-                                                          << "news")));
+    auto expr = BSON("to.db" << BSON("$nin" << BSON_ARRAY("test" << "news")));
     auto statusWithMatchExpression = MatchExpressionParser::parse(expr, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 
@@ -3260,8 +3198,7 @@ TEST_F(ChangeStreamRewriteTest, CanRewriteToWithInExpressionOnCollection) {
 
 TEST_F(ChangeStreamRewriteTest, CanRewriteToWithNinExpressionOnCollection) {
     auto expCtx = getExpCtx();
-    auto expr = BSON("to.coll" << BSON("$nin" << BSON_ARRAY("test"
-                                                            << "news")));
+    auto expr = BSON("to.coll" << BSON("$nin" << BSON_ARRAY("test" << "news")));
     auto statusWithMatchExpression = MatchExpressionParser::parse(expr, expCtx);
     ASSERT_OK(statusWithMatchExpression.getStatus());
 

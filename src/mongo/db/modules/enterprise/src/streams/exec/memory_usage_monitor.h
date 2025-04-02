@@ -5,7 +5,7 @@
 #pragma once
 
 #include "mongo/platform/atomic_word.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 
 namespace streams {
 

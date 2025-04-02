@@ -109,7 +109,7 @@ void prepareSlotBasedExecutableTree(OperationContext* opCtx,
                                     RemoteCursorMap* remoteCursors = nullptr);
 
 std::pair<SbStage, PlanStageData> buildSearchMetadataExecutorSBE(OperationContext* opCtx,
-                                                                 const CanonicalQuery& cq,
+                                                                 const ExpressionContext& expCtx,
                                                                  size_t remoteCursorId,
                                                                  RemoteCursorMap* remoteCursors,
                                                                  PlanYieldPolicySBE* yieldPolicy);
@@ -236,8 +236,6 @@ public:
     PlanStageSlots(const PlanStageSlots& other) : _data(cloneData(other._data)) {}
 
     PlanStageSlots(PlanStageSlots&& other) noexcept : _data(std::move(other._data)) {}
-
-    ~PlanStageSlots() noexcept = default;
 
     PlanStageSlots& operator=(const PlanStageSlots& other) {
         if (this != &other) {
@@ -566,8 +564,6 @@ public:
     PlanStageReqs(const PlanStageReqs& other) : _data(cloneData(other._data)) {}
 
     PlanStageReqs(PlanStageReqs&& other) noexcept : _data(std::move(other._data)) {}
-
-    ~PlanStageReqs() noexcept = default;
 
     PlanStageReqs& operator=(const PlanStageReqs& other) {
         if (this != &other) {
@@ -1086,6 +1082,19 @@ private:
         const PlanStageReqs& reqs,
         PlanStageSlots childOutputs,
         const GroupNode* groupNode);
+
+    std::tuple<SbStage, std::vector<std::string>, SbSlotVector, PlanStageSlots> buildGroupImplBlock(
+        SbStage stage,
+        const PlanStageReqs& reqs,
+        const PlanStageSlots& childOutputs,
+        const GroupNode* groupNode,
+        bool& blockSucceeded);
+
+    std::tuple<SbStage, std::vector<std::string>, SbSlotVector, PlanStageSlots>
+    buildGroupImplScalar(SbStage stage,
+                         const PlanStageReqs& reqs,
+                         PlanStageSlots& childOutputs,
+                         const GroupNode* groupNode);
 
     std::pair<SbStage, PlanStageSlots> buildEqLookup(const QuerySolutionNode* root,
                                                      const PlanStageReqs& reqs);

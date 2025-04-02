@@ -62,9 +62,6 @@
 #include "mongo/db/traffic_recorder.h"
 #include "mongo/executor/split_timer.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/logv2/log_severity_suppressor.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
@@ -309,6 +306,10 @@ boost::optional<Message> makeExhaustMessage(Message requestMsg, DbResponse& resp
     if (!OpMsgRequest::isFlagSet(requestMsg, OpMsg::kExhaustSupported) ||
         !response.shouldRunAgainForExhaust)
         return {};
+
+    int32_t responseOp = response.response.operation();
+    invariant(responseOp == dbMsg,
+              fmt::format("Exhaust response must use OP_MSG opcode, instead used {}", responseOp));
 
     const bool checksumPresent = OpMsg::isFlagSet(requestMsg, OpMsg::kChecksumPresent);
     Message exhaustMessage;

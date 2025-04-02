@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/sample_data_source_operator.h"
+
 #include "mongo/db/basic_types.h"
 #include "streams/exec/context.h"
 

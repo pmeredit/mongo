@@ -161,7 +161,6 @@ const kNonFailoverTolerantCommands = new Set([
     "planCacheSetFilter",
     "profile",       // Not replicated, so can't tolerate failovers.
     "setParameter",  // Not replicated, so can't tolerate failovers.
-    "stageDebug",
     "startSession",  // Sessions are flushed to disk asynchronously.
 ]);
 
@@ -285,13 +284,14 @@ const maxOpsInTransaction = 10;
 const kLogPrefix = "=-=-=-=";
 
 function logErrorFull(msg, cmdName, cmdObj, res) {
-    print(`${kLogPrefix} ${msg} :: ${cmdName}, CommandID: ${currentCommandID},` +
-          ` error: ${tojsononeline(res)}, command: ${tojsononeline(cmdObj)}`);
+    jsTest.log.info(`${kLogPrefix} ${msg} :: ${cmdName}, CommandID: ${currentCommandID}`,
+                    {error: res, command: cmdObj});
     assert.eq(nestingLevel, currentCommandID.length);
 }
 
 function logMsgFull(msgHeader, msgFooter) {
-    print(`${kLogPrefix} ${msgHeader} :: CommandID: ${currentCommandID}, msg: ${msgFooter}`);
+    jsTest.log.info(
+        `${kLogPrefix} ${msgHeader} :: CommandID: ${currentCommandID}, msg: ${msgFooter}`);
     assert.eq(nestingLevel, currentCommandID.length);
 }
 
@@ -351,7 +351,7 @@ function validateCmdNetworkErrorCompatibility(cmdName, cmdObj) {
         }
 
         const hasExplain = cmdObj.hasOwnProperty("explain");
-        if (hasExplain) {
+        if (hasExplain && cmdObj.explain) {
             throw new Error(
                 "Refusing to run a test that issues an aggregation command with explain" +
                 " because it may return incomplete results if interrupted by a stepdown." +
@@ -731,12 +731,21 @@ function shouldRetryWithNetworkErrorOverride(
         // If an explain is interrupted by a stepdown, and it returns before its connection is
         // closed, it will return incomplete results. To prevent failing the test, force retries
         // of interrupted explains.
-        if (res.hasOwnProperty("executionStats") && !res.executionStats.executionSuccess &&
-            (RetryableWritesUtil.isRetryableCode(res.executionStats.errorCode) ||
-             isRetryableExecutorCodeAndMessage(res.executionStats.errorCode,
-                                               res.executionStats.errorMessage))) {
-            logError("Forcing retry of interrupted explain");
-            return kContinue;
+        if (res.hasOwnProperty("executionStats")) {
+            const shouldRetryExplain = function(executionStats) {
+                return !executionStats.executionSuccess &&
+                    (RetryableWritesUtil.isRetryableCode(executionStats.errorCode) ||
+                     isRetryableExecutorCodeAndMessage(executionStats.errorCode,
+                                                       executionStats.errorMessage));
+            };
+            const executionStats = res.executionStats.executionStages.hasOwnProperty("shards")
+                ? res.executionStats.executionStages.shards
+                : [res.executionStats];
+
+            if (executionStats.some(shouldRetryExplain)) {
+                logError("Forcing retry of interrupted explain");
+                return kContinue;
+            }
         }
 
         // An explain command can fail if its child command cannot be run on the current server.
@@ -1215,8 +1224,9 @@ if (configuredForNetworkRetry()) {
                     retVal = connectOriginal.apply(this, arguments);
                     return true;
                 } catch (e) {
-                    print(kLogPrefix + " Retrying connection to: " + url +
-                          ", attempts: " + connectionAttempts + ", failed with: " + tojson(e));
+                    jsTest.log.info(kLogPrefix + " Retrying connection to: " + url +
+                                        " failed, attempts: " + connectionAttempts,
+                                    {error: e});
                 }
             },
             "Failed connecting to url: " + tojson(url),
@@ -1245,7 +1255,7 @@ if (configuredForTxnOverride()) {
     };
 }
 
-print(`${kLogPrefix} network_error_and_txn_override.js :: configuredForNetworkRetry:${
+jsTest.log.info(`${kLogPrefix} network_error_and_txn_override.js :: configuredForNetworkRetry:${
     Boolean(configuredForNetworkRetry())}, configuredForTxnOverride:${
     Boolean(configuredForTxnOverride())}`);
 

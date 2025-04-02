@@ -82,9 +82,33 @@ BSONObj extractEncryptionInformationSchemas(const NamespaceString ns,
     return schemaSpec;
 }
 
+/**
+ * extractSchemaMap is called in both single schema and multi schema scenarios to extract either
+ * FLE1 or FLE2 encryption schemas. The parameter 'assertNsInMap' is used to indicate whether or not
+ * we should verify that the provided namespace had a schema in the schema map.
+ *
+ * 1) In commands which only reference a single collection (i.e Find, etc.), we must assert we were
+ *    provided with a schema for the command's namespace for the referenced schema.
+ *
+ * 2) In commands that may reference multiple collections (i.e Aggregate), we have two scenarios:
+ *   A) All the referenced collections have the same encryption schema type (i.e FLE1/FLE2):
+ *      - In this case, the schemas for all the referenced collections are contained in a single
+ *        schema map, so we can check if the namespace exists in the map during extraction.
+ *      - Note, if a pipeline references collections with a CSFLE encryption schemas, and
+ *        unencrypted collections, it falls under this case A. This is because all referenced
+ *        unencrypted collections are expected to have an entry in csfleEncryptionSchemas where the
+ *        jsonSchema is either the collection's schema validator (wo/ encryption properties) or an
+ *        empty object when no validation schema exists for the collection.
+ *
+ *   B) The pipeline references FLE2 encryption schemas and unencrypted collections:
+ *      - In this case, we call extractSchemaMap twice, once for FLE2 schemas and once for
+ *        csfleEncryptionSchemas (only unencrypted schemas allowed). Since the command's namespace
+ *        could be present in either of the maps, we skip the assertion and defer to later.
+ */
 template <typename T>
 std::map<NamespaceString, T> extractSchemaMap(const NamespaceString& ns,
                                               const BSONObj& schemas,
+                                              bool assertNsInMap,
                                               std::function<T(const BSONObj&)> func) {
     std::map<NamespaceString, T> schemaMap;
     for (const auto& elem : schemas) {
@@ -98,12 +122,32 @@ std::map<NamespaceString, T> extractSchemaMap(const NamespaceString& ns,
     uassert(9686712,
             "Namespace in encryption schemas: does not match namespace given in command: '" +
                 ns.toStringForErrorMsg() + '\'',
-            schemaMap.count(ns));
+            !assertNsInMap || schemaMap.count(ns));
     return schemaMap;
 }
 
 EncryptionSchemaType isRemoteSchemaToEncryptionSchemaType(bool isRemoteSchema) {
     return isRemoteSchema ? EncryptionSchemaType::kRemote : EncryptionSchemaType::kLocal;
+}
+
+std::map<NamespaceString, QueryAnalysisParams::FLE1Params> extractSchemaMapCsFle(
+    const NamespaceString& ns, const BSONObj& schemas, bool assertNsInMap) {
+    return extractSchemaMap<QueryAnalysisParams::FLE1Params>(
+        ns, schemas, assertNsInMap, [](const BSONObj& obj) {
+            // EncryptionSchemaCSFLE::jsonSchema is already an owned BSONObj.
+            auto schemaSpec =
+                EncryptionSchemaCSFLE::parse(IDLParserContext("EncryptionSchemaCSFLE"), obj);
+            return QueryAnalysisParams::FLE1Params{
+                schemaSpec.getJsonSchema(),
+                isRemoteSchemaToEncryptionSchemaType(schemaSpec.getIsRemoteSchema())};
+        });
+}
+
+std::map<NamespaceString, BSONObj> extractSchemaMapFle2(const NamespaceString& ns,
+                                                        const BSONObj& schemas,
+                                                        bool assertNsInMap) {
+    return extractSchemaMap<BSONObj>(
+        ns, schemas, assertNsInMap, [](const BSONObj& obj) { return obj.getOwned(); });
 }
 
 }  // namespace
@@ -112,10 +156,9 @@ QueryAnalysisParams::QueryAnalysisParams(const NamespaceString& ns,
                                          const BSONObj& jsonSchema,
                                          bool isRemoteSchema,
                                          BSONObj strippedObj)
-    : schema(FLE1SchemaMap()), strippedObj(std::move(strippedObj)) {
+    : strippedObj(std::move(strippedObj)), _fleVersion(FleVersion::kFle1) {
     uassert(9686704, "NamespaceString containing tenant id is not supported", !ns.tenantId());
-    auto& schemaMap = std::get<FLE1SchemaMap>(schema);
-    schemaMap.emplace(
+    fle1SchemaMap.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(ns),
         std::forward_as_tuple(jsonSchema, isRemoteSchemaToEncryptionSchemaType(isRemoteSchema)));
@@ -126,16 +169,10 @@ QueryAnalysisParams::QueryAnalysisParams(const NamespaceString& ns,
                                          BSONObj strippedObj,
                                          FleVersion fleVersion,
                                          bool isMultiSchema)
-    : schema(), strippedObj(std::move(strippedObj)) {
+    : strippedObj(std::move(strippedObj)), _fleVersion(fleVersion) {
     uassert(9686700, "NamespaceString containing tenant id is not supported", !ns.tenantId());
     if (fleVersion == FleVersion::kFle1) {
-        schema = extractSchemaMap<FLE1Params>(ns, schemas, [](const BSONObj& obj) {
-            // EncryptionSchemaCSFLE::jsonSchema is already an owned BSONObj.
-            auto schemaSpec =
-                EncryptionSchemaCSFLE::parse(IDLParserContext("EncryptionSchemaCSFLE"), obj);
-            return FLE1Params{schemaSpec.getJsonSchema(),
-                              isRemoteSchemaToEncryptionSchemaType(schemaSpec.getIsRemoteSchema())};
-        });
+        fle1SchemaMap = extractSchemaMapCsFle(ns, schemas, true);
     } else {
         // We were parsing a single schema command, assert we have a single schema.
         if (!isMultiSchema) {
@@ -156,9 +193,20 @@ QueryAnalysisParams::QueryAnalysisParams(const NamespaceString& ns,
                         ns.serializeWithoutTenantPrefix_UNSAFE());
         }
         // EncryptionInformation::schemas is already an owned BSONObj.
-        schema = extractSchemaMap<BSONObj>(
-            ns, schemas, [](const BSONObj& obj) { return obj.getOwned(); });
+        fle2SchemaMap = extractSchemaMapFle2(ns, schemas, true);
     }
+}
+
+QueryAnalysisParams::QueryAnalysisParams(const NamespaceString& ns,
+                                         const BSONObj& encryptionInformationSchemas,
+                                         const BSONObj& csfleEncryptionSchemas,
+                                         BSONObj strippedObj)
+    : strippedObj(std::move(strippedObj)), _fleVersion(FleVersion::kFle2) {
+    uassert(10026000, "NamespaceString containing tenant id is not supported", !ns.tenantId());
+    // csfleEncryptionSchemas is already an owned BSONObj.
+    fle1SchemaMap = extractSchemaMapCsFle(ns, csfleEncryptionSchemas, false);
+    // EncryptionInformation::schemas is already an owned BSONObj.
+    fle2SchemaMap = extractSchemaMapFle2(ns, encryptionInformationSchemas, false);
 }
 
 /**
@@ -235,15 +283,25 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj,
                 "encryptionInformation/csfleEncryptionSchemas",
                 !isRemoteSchema);
 
-        uassert(9686710,
-                "Cannot specify both encryptionInformation and csfleEncryptionSchemas",
-                (csfleEncryptionSchemas && !encryptionInformationSchemas) ||
-                    (!csfleEncryptionSchemas && encryptionInformationSchemas));
+        // It's possible that we have QE encryption schemas, but we have been provided with
+        // validator JSON schemas (which may be empty) for other referenced collections in the
+        // pipeline which do not use CSFLE.
+        // If we have both QE schemas, and a csfleEncryptionSchemas, the encryption schema type can
+        // only be QE (i.e FLE2) and the schemas inside csfleEncryptionSchemas must all be
+        // unencrypted. We never allow mixing both FLE1 and FLE2 encryption.
+        if (csfleEncryptionSchemas && encryptionInformationSchemas) {
+            return QueryAnalysisParams(
+                ns, *encryptionInformationSchemas, *csfleEncryptionSchemas, stripped.obj());
+        }
+
         return csfleEncryptionSchemas
             ? QueryAnalysisParams(
-                  ns, *csfleEncryptionSchemas, stripped.obj(), fleVersion, parseMultiSchema)
-            : QueryAnalysisParams(
-                  ns, *encryptionInformationSchemas, stripped.obj(), fleVersion, parseMultiSchema);
+                  ns, *csfleEncryptionSchemas, stripped.obj(), FleVersion::kFle1, parseMultiSchema)
+            : QueryAnalysisParams(ns,
+                                  *encryptionInformationSchemas,
+                                  stripped.obj(),
+                                  FleVersion::kFle2,
+                                  parseMultiSchema);
     }
 
     uassert(51073,
@@ -635,9 +693,9 @@ PlaceHolderResult addPlaceHoldersForAggregate(const boost::intrusive_ptr<Express
     // time by stages such as $lookup and $out.
     expCtx->setNamespaceString(request.getNamespace());
     expCtx->setResolvedNamespaces([&]() {
-        StringMap<ResolvedNamespace> resolvedNamespaces;
+        ResolvedNamespaceMap resolvedNamespaces;
         for (auto&& involvedNs : pipelineInvolvedNamespaces) {
-            resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
+            resolvedNamespaces[involvedNs] = {involvedNs, std::vector<BSONObj>{}};
         }
         return resolvedNamespaces;
     }());
@@ -1139,9 +1197,11 @@ void processQueryCommand(OperationContext* opCtx,
 BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                                     const ResolvedEncryptionInfo& metadata,
                                     BSONElement elem) {
-    auto placeholderType = ctx == EncryptionPlaceholderContext::kComparison
-        ? Fle2PlaceholderType::kFind
-        : Fle2PlaceholderType::kInsert;
+    // There are multiple EncryptionPlaceholderContexts that correspond to kFind, such as
+    // kComparison and kTextPrefixComparison.
+    auto placeholderType = ctx == EncryptionPlaceholderContext::kWrite
+        ? Fle2PlaceholderType::kInsert
+        : Fle2PlaceholderType::kFind;
     auto algorithm = get<Fle2AlgorithmInt>(metadata.algorithm);
     auto ki = metadata.keyId.uuids()[0];
     auto cm = algorithm == Fle2AlgorithmInt::kUnindexed
@@ -1203,30 +1263,98 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
                 FLE2TextSearchInsertSpec spec(elem.String(), caseFold, diacriticFold);
 
                 for (auto& qtc : metadata.fle2SupportedQueries.value()) {
+                    tassert(10113901,
+                            "Encrypted text search query must specify string max query length.",
+                            qtc.getStrMaxQueryLength().has_value());
+                    tassert(
+                        10113902,
+                        "Encrypted text search query type must specify string min query length.",
+                        qtc.getStrMinQueryLength().has_value());
+                    auto lb = qtc.getStrMinQueryLength().value();
+                    auto ub = qtc.getStrMaxQueryLength().value();
+
                     switch (qtc.getQueryType()) {
                         case QueryTypeEnum::SubstringPreview: {
-                            auto mlen = qtc.getStrMaxLength().value();
-                            auto lb = qtc.getStrMinQueryLength().value();
-                            auto ub = qtc.getStrMaxQueryLength().value();
-                            spec.setSubstringSpec(FLE2SubstringInsertSpec(mlen, ub, lb));
+                            if (ctx == EncryptionPlaceholderContext::kWrite ||
+                                ctx == EncryptionPlaceholderContext::kTextSubstringComparison) {
+                                tassert(10113903,
+                                        "Encrypted text substring search query must specify string "
+                                        "max length.",
+                                        qtc.getStrMaxLength().has_value());
+                                auto mlen = qtc.getStrMaxLength().value();
+                                spec.setSubstringSpec(FLE2SubstringInsertSpec(mlen, ub, lb));
+                            }
                             break;
                         }
                         case QueryTypeEnum::SuffixPreview: {
-                            auto lb = qtc.getStrMinQueryLength().value();
-                            auto ub = qtc.getStrMaxQueryLength().value();
-                            spec.setSuffixSpec(FLE2SuffixInsertSpec(ub, lb));
+                            if (ctx == EncryptionPlaceholderContext::kWrite ||
+                                ctx == EncryptionPlaceholderContext::kTextSuffixComparison) {
+                                spec.setSuffixSpec(FLE2SuffixInsertSpec(ub, lb));
+                            }
                             break;
                         }
                         case QueryTypeEnum::PrefixPreview: {
-                            auto lb = qtc.getStrMinQueryLength().value();
-                            auto ub = qtc.getStrMaxQueryLength().value();
-                            spec.setPrefixSpec(FLE2PrefixInsertSpec(ub, lb));
+                            if (ctx == EncryptionPlaceholderContext::kWrite ||
+                                ctx == EncryptionPlaceholderContext::kTextPrefixComparison) {
+                                spec.setPrefixSpec(FLE2PrefixInsertSpec(ub, lb));
+                            }
                             break;
                         }
                         default:
                             MONGO_UNREACHABLE;
                     }
                 }
+
+                // When building a find placeholder for text search indexes, we must assert that we
+                // are returning only single requested spec back to libmongcrypt. This check also
+                // ensure we are requesting a placeholder on metadata which supports the operation.
+                switch (ctx) {
+                    case EncryptionPlaceholderContext::kTextPrefixComparison:
+                        uassert(10248500,
+                                "$encStrStartsWith is not a supported operation on field : " +
+                                    elem.fieldNameStringData(),
+                                spec.getPrefixSpec().has_value());
+                        tassert(10209403,
+                                "Unexpected suffix spec for prefix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSuffixSpec().has_value());
+                        tassert(10209404,
+                                "Unexpected substring spec for prefix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSubstringSpec().has_value());
+                        break;
+                    case EncryptionPlaceholderContext::kTextSuffixComparison:
+                        uassert(10209400,
+                                "$encStrEndsWith is not a supported operation on field : " +
+                                    elem.fieldNameStringData(),
+                                spec.getSuffixSpec().has_value());
+                        tassert(10209401,
+                                "Unexpected prefix spec for suffix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getPrefixSpec().has_value());
+                        tassert(10209402,
+                                "Unexpected substring spec for suffix comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSubstringSpec().has_value());
+                        break;
+                    case EncryptionPlaceholderContext::kTextSubstringComparison:
+                        uassert(10209500,
+                                "$encStrContains is not a supported operation on field : " +
+                                    elem.fieldNameStringData(),
+                                spec.getSubstringSpec().has_value());
+                        tassert(10209501,
+                                "Unexpected prefix spec for substring comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getPrefixSpec().has_value());
+                        tassert(10209502,
+                                "Unexpected suffix spec for substring comparison on field : " +
+                                    elem.fieldNameStringData(),
+                                !spec.getSuffixSpec().has_value());
+                        break;
+                    default:
+                        break;
+                }
+
                 // Ensure that the serialized spec lives until the end of the enclosing scope.
                 backingBSON = BSON("" << spec.toBSON());
                 return FLE2EncryptionPlaceholder(placeholderType,
@@ -1460,8 +1588,7 @@ void processAggregateCommand(OperationContext* opCtx,
                              const BSONObj& cmdObj,
                              BSONObjBuilder* builder,
                              const NamespaceString ns) {
-    // (Ignore FCV check): Query Analysis does not run in the server, so it can't be FCV gated.
-    if (feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabledAndIgnoreFCVUnsafe()) {
+    if (feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabled()) {
         processQueryCommand(
             opCtx, dbName, cmdObj, builder, addPlaceHoldersForAggregate<EncryptionSchemaMap>, ns);
     } else {
@@ -1591,6 +1718,13 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
             default:
                 break;
         }
+    } else if (placeholderContext == EncryptionPlaceholderContext::kTextPrefixComparison ||
+               placeholderContext == EncryptionPlaceholderContext::kTextSuffixComparison ||
+               placeholderContext == EncryptionPlaceholderContext::kTextSubstringComparison) {
+        uassert(10113900, "Cannot use text search with CSFLE.", metadata.isFle2Encrypted());
+        uassert(10113904,
+                "Can only execute encrypted prefix search queries with a text search index.",
+                metadata.algorithmIs(Fle2AlgorithmInt::kTextSearch));
     }
 
     if (metadata.bsonTypeSet) {

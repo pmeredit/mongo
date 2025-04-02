@@ -32,36 +32,29 @@
 #include <boost/container/vector.hpp>
 #include <boost/cstdint.hpp>
 #include <boost/move/utility_core.hpp>
-#include <cstdint>
 
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status_with.h"
 #include "mongo/bson/bsonmisc.h"
-#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
-#include "mongo/db/field_ref.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index_names.h"
 #include "mongo/db/matcher/expression_parser.h"
-#include "mongo/db/matcher/extensions_callback_noop.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/find_command.h"
-#include "mongo/db/query/projection_policies.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_test_fixture.h"
 #include "mongo/db/query/query_planner_test_lib.h"
 #include "mongo/db/query/query_request_helper.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/op_msg.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
@@ -90,7 +83,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern, bool multikey) {
     params.mainCollectionInfo.indexes.push_back(
         {keyPattern,
          IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-         IndexDescriptor::kLatestIndexVersion,
+         IndexConfig::kLatestIndexVersion,
          multikey,
          {},
          {},
@@ -109,7 +102,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern, bool multikey, bool sparse) 
     params.mainCollectionInfo.indexes.push_back(
         {keyPattern,
          IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-         IndexDescriptor::kLatestIndexVersion,
+         IndexConfig::kLatestIndexVersion,
          multikey,
          {},
          {},
@@ -132,7 +125,7 @@ void QueryPlannerTest::addIndex(
     params.mainCollectionInfo.indexes.push_back(
         {keyPattern,
          IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-         IndexDescriptor::kLatestIndexVersion,
+         IndexConfig::kLatestIndexVersion,
          multikey,
          {},
          {},
@@ -149,7 +142,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern, BSONObj infoObj) {
     params.mainCollectionInfo.indexes.push_back(
         {keyPattern,
          IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-         IndexDescriptor::kLatestIndexVersion,
+         IndexConfig::kLatestIndexVersion,
          false,  // multikey
          {},
          {},
@@ -166,7 +159,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern, MatchExpression* filterExpr)
     params.mainCollectionInfo.indexes.push_back(
         {keyPattern,
          IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-         IndexDescriptor::kLatestIndexVersion,
+         IndexConfig::kLatestIndexVersion,
          false,  // multikey
          {},
          {},
@@ -194,7 +187,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern, const MultikeyPaths& multike
     const BSONObj infoObj;
     IndexEntry entry(keyPattern,
                      type,
-                     IndexDescriptor::kLatestIndexVersion,
+                     IndexConfig::kLatestIndexVersion,
                      multikey,
                      {},
                      {},
@@ -219,7 +212,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern, const CollatorInterface* col
     const BSONObj infoObj;
     IndexEntry entry(keyPattern,
                      type,
-                     IndexDescriptor::kLatestIndexVersion,
+                     IndexConfig::kLatestIndexVersion,
                      multikey,
                      {},
                      {},
@@ -246,7 +239,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern,
     const BSONObj infoObj;
     IndexEntry entry(keyPattern,
                      type,
-                     IndexDescriptor::kLatestIndexVersion,
+                     IndexConfig::kLatestIndexVersion,
                      multikey,
                      {},
                      {},
@@ -272,7 +265,7 @@ void QueryPlannerTest::addIndex(BSONObj keyPattern,
     const BSONObj infoObj;
     IndexEntry entry(keyPattern,
                      type,
-                     IndexDescriptor::kLatestIndexVersion,
+                     IndexConfig::kLatestIndexVersion,
                      multikey,
                      {},
                      {},

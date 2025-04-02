@@ -43,6 +43,7 @@
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/curop.h"
+#include "mongo/db/dbdirectclient.h"
 #include "mongo/db/exec/plan_stage.h"
 #include "mongo/db/exec/queued_data_stage.h"
 #include "mongo/db/exec/working_set.h"
@@ -58,12 +59,11 @@
 #include "mongo/db/record_id.h"
 #include "mongo/db/s/collection_metadata.h"
 #include "mongo/db/s/collection_sharding_runtime.h"
+#include "mongo/db/s/shard_catalog_operations.h"
 #include "mongo/db/s/shard_key_index_util.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/grid.h"
@@ -71,6 +71,7 @@
 #include "mongo/s/query/exec/cluster_query_result.h"
 #include "mongo/s/query/planner/cluster_aggregate.h"
 #include "mongo/s/shard_key_pattern.h"
+#include "mongo/s/sharding_state.h"
 #include "mongo/s/stale_shard_version_helpers.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
@@ -271,8 +272,7 @@ bool _collectionMustExistLocallyButDoesnt(OperationContext* opCtx,
     // The DBPrimary shard must always have the collection created locally regardless if it owns
     // chunks or not.
     //
-    // TODO: (SERVER-86949) Check if collection is present on the primary performing DDL operations
-    // for the `config` database.
+    // TODO (SERVER-100309): Remove exclusion for configDB once 9.0 becomes lastLTS.
     if (currentShard == primaryShard && !nss.isConfigDB()) {
         return true;
     }
@@ -335,6 +335,7 @@ std::vector<BSONObj> _runExhaustiveAggregation(OperationContext* opCtx,
                                                              ClusterAggregate::Namespaces{nss, nss},
                                                              aggRequest,
                                                              PrivilegeVector(),
+                                                             boost::none, /*verbosity*/
                                                              &responseBuilder);
                 uassertStatusOKWithContext(
                     status, str::stream() << "Failed to execute aggregation for: " << reason);
@@ -382,6 +383,115 @@ std::vector<BSONObj> _runExhaustiveAggregation(OperationContext* opCtx,
         logMetadataInconsistency(nss, e);
     }
     return results;
+}
+
+std::unique_ptr<DBClientCursor> _getCollectionChunksCursor(DBDirectClient* client,
+                                                           const CollectionType& coll) {
+    // Running the following pipeline against 'config.chunks':
+    //    db.chunks.aggregate([{ $match: { 'uuid': <UUID> }},{ $sort: { 'min': 1 }}])
+    return uassertStatusOK(DBClientCursor::fromAggregationRequest(
+        client,
+        std::invoke([&coll] {
+            AggregateCommandRequest aggRequest{
+                NamespaceString::kConfigsvrChunksNamespace,
+                std::vector<mongo::BSONObj>{
+                    BSON("$match" << BSON(ChunkType::collectionUUID() << coll.getUuid())),
+                    BSON("$sort" << BSON(ChunkType::min() << 1))}};
+            aggRequest.setReadConcern(
+                repl::ReadConcernArgs(repl::ReadConcernLevel::kSnapshotReadConcern));
+            return aggRequest;
+        }),
+        false /* secondaryOK */,
+        false /* useExhaust */));
+}
+
+std::vector<MetadataInconsistencyItem> checkDatabaseMetadataConsistencyInShardCatalogCache(
+    OperationContext* opCtx,
+    const DatabaseName& dbName,
+    const DatabaseVersion& dbVersionInGlobalCatalog,
+    const DatabaseVersion& dbVersionInShardCatalog,
+    const ShardId& primaryShard) {
+    std::vector<MetadataInconsistencyItem> inconsistencies;
+
+    const auto dbVersionInCache = [&]() {
+        const auto scopedDss = DatabaseShardingState::acquireShared(opCtx, dbName);
+        return scopedDss->getDbVersion(opCtx);
+    }();
+
+    if (!dbVersionInCache) {
+        inconsistencies.emplace_back(makeInconsistency(
+            MetadataInconsistencyTypeEnum::kMissingDatabaseMetadataInShardCatalogCache,
+            MissingDatabaseMetadataInShardCatalogCacheDetails{
+                dbName, primaryShard, dbVersionInGlobalCatalog}));
+    } else if (dbVersionInGlobalCatalog != *dbVersionInCache ||
+               dbVersionInShardCatalog != *dbVersionInCache) {
+        inconsistencies.emplace_back(makeInconsistency(
+            MetadataInconsistencyTypeEnum::kInconsistentDatabaseVersionInShardCatalogCache,
+            InconsistentDatabaseVersionInShardCatalogCacheDetails{dbName,
+                                                                  primaryShard,
+                                                                  dbVersionInGlobalCatalog,
+                                                                  dbVersionInShardCatalog,
+                                                                  *dbVersionInCache}));
+    }
+
+    return inconsistencies;
+}
+
+std::vector<MetadataInconsistencyItem> checkDatabaseMetadataConsistencyInShardCatalog(
+    OperationContext* opCtx,
+    const DatabaseName& dbName,
+    const DatabaseVersion& dbVersionInGlobalCatalog,
+    const ShardId& primaryShard) {
+    std::vector<MetadataInconsistencyItem> inconsistencies;
+
+    auto cursor = shard_catalog_operations::readDatabaseMetadata(opCtx, dbName);
+
+    if (!cursor->more()) {
+        inconsistencies.emplace_back(
+            makeInconsistency(MetadataInconsistencyTypeEnum::kMissingDatabaseMetadataInShardCatalog,
+                              MissingDatabaseMetadataInShardCatalogDetails{
+                                  dbName, primaryShard, dbVersionInGlobalCatalog}));
+        return inconsistencies;
+    }
+
+    try {
+        auto dbInShardCatalog =
+            DatabaseType::parse(IDLParserContext("DatabaseType"), cursor->nextSafe().getOwned());
+
+        auto shardInLocalCatalog = dbInShardCatalog.getPrimary();
+        if (shardInLocalCatalog != primaryShard) {
+            inconsistencies.emplace_back(makeInconsistency(
+                MetadataInconsistencyTypeEnum::kMisplacedDatabaseMetadataInShardCatalog,
+                MisplacedDatabaseMetadataInShardCatalogDetails{
+                    dbName, primaryShard, shardInLocalCatalog}));
+        }
+
+        auto dbVersionInShardCatalog = dbInShardCatalog.getVersion();
+        if (dbVersionInGlobalCatalog != dbVersionInShardCatalog) {
+            inconsistencies.emplace_back(makeInconsistency(
+                MetadataInconsistencyTypeEnum::kInconsistentDatabaseVersionInShardCatalog,
+                InconsistentDatabaseVersionInShardCatalogDetails{
+                    dbName, primaryShard, dbVersionInGlobalCatalog, dbVersionInShardCatalog}));
+        }
+
+        auto cacheInconsistencies = checkDatabaseMetadataConsistencyInShardCatalogCache(
+            opCtx, dbName, dbVersionInGlobalCatalog, dbVersionInShardCatalog, primaryShard);
+
+        inconsistencies.insert(inconsistencies.end(),
+                               std::make_move_iterator(cacheInconsistencies.begin()),
+                               std::make_move_iterator(cacheInconsistencies.end()));
+    } catch (const AssertionException&) {
+        inconsistencies.emplace_back(
+            makeInconsistency(MetadataInconsistencyTypeEnum::kMissingDatabaseMetadataInShardCatalog,
+                              MissingDatabaseMetadataInShardCatalogDetails{
+                                  dbName, primaryShard, dbVersionInGlobalCatalog}));
+    }
+
+    tassert(9980501,
+            "Found duplicated database metadata in the shard catalog with the same _id value",
+            !cursor->more());
+
+    return inconsistencies;
 }
 
 }  // namespace
@@ -776,7 +886,7 @@ std::vector<MetadataInconsistencyItem> checkCollectionMetadataConsistencyAcrossS
         // Ignore inconsistencies in the legacy timeseries flags. Due to SERVER-91195, those flags
         // have been deprecated and will be removed. At the same time, they can become inconsistent
         // in various scenarios, such as movePrimary or FCV downgrades.
-        // TODO (SERVER-91231): Remove tsBucketingParametersHaveChanged field once it's removed.
+        // TODO (SERVER-101423): Remove tsBucketingParametersHaveChanged once 9.0 becomes last LTS.
         // TODO (SERVER-96831): Remove tsBucketsMayHaveMixedSchemaData field once it's removed.
         pipeline.emplace_back(fromjson(R"(
             {$project: {
@@ -877,30 +987,26 @@ std::vector<MetadataInconsistencyItem> checkCollectionMetadataConsistencyAcrossS
     return inconsistencies;
 }
 
-std::vector<MetadataInconsistencyItem> checkChunksConsistency(
-    OperationContext* opCtx,
-    const CollectionType& collection,
-    const std::vector<ChunkType>& chunks) {
+std::vector<MetadataInconsistencyItem> checkChunksConsistency(OperationContext* opCtx,
+                                                              const CollectionType& collection) {
+    tassert(9996600,
+            "This method must run on the 'config' server.",
+            ShardingState::get(opCtx)->shardId() == ShardId::kConfigServerId);
+
+    DBDirectClient client{opCtx};
+    const auto chunksCursor = _getCollectionChunksCursor(&client, collection);
+
     const auto& uuid = collection.getUuid();
     const auto& nss = collection.getNss();
     const auto shardKeyPattern = ShardKeyPattern{collection.getKeyPattern()};
-
     std::vector<MetadataInconsistencyItem> inconsistencies;
-    if (collection.getUnsplittable() && chunks.size() > 1) {
-        inconsistencies.emplace_back(makeInconsistency(
-            MetadataInconsistencyTypeEnum::kTrackedUnshardedCollectionHasMultipleChunks,
-            TrackedUnshardedCollectionHasMultipleChunksDetails{
-                nss, collection.getUuid(), int(chunks.size())}));
-    }
+    size_t totalChunks = 0;
+    ChunkType previousChunk, firstChunk;
 
-    auto previousChunk = chunks.begin();
-    for (auto it = chunks.begin(); it != chunks.end(); it++) {
-        const auto& chunk = *it;
-
-        // Skip the first iteration as we need to compare the current chunk with the previous one.
-        if (it == chunks.begin()) {
-            continue;
-        }
+    while (chunksCursor->more()) {
+        const auto chunk = uassertStatusOK(ChunkType::parseFromConfigBSON(
+            chunksCursor->nextSafe(), collection.getEpoch(), collection.getTimestamp()));
+        totalChunks++;
 
         if (!shardKeyPattern.isShardKey(chunk.getMin()) ||
             !shardKeyPattern.isShardKey(chunk.getMax())) {
@@ -910,29 +1016,44 @@ std::vector<MetadataInconsistencyItem> checkChunksConsistency(
                                       nss, uuid, chunk.toConfigBSON(), shardKeyPattern.toBSON()}));
         }
 
-        auto cmp = previousChunk->getMax().woCompare(chunk.getMin());
+        // Skip the first iteration as we need to compare the current chunk with the previous one.
+        if (totalChunks == 1) {
+            firstChunk = chunk;
+            previousChunk = chunk;
+            continue;
+        }
+
+        auto cmp = previousChunk.getMax().woCompare(chunk.getMin());
         if (cmp < 0) {
             inconsistencies.emplace_back(makeInconsistency(
                 MetadataInconsistencyTypeEnum::kRoutingTableRangeGap,
                 RoutingTableRangeGapDetails{
-                    nss, uuid, previousChunk->toConfigBSON(), chunk.toConfigBSON()}));
+                    nss, uuid, previousChunk.toConfigBSON(), chunk.toConfigBSON()}));
         } else if (cmp > 0) {
             inconsistencies.emplace_back(makeInconsistency(
                 MetadataInconsistencyTypeEnum::kRoutingTableRangeOverlap,
                 RoutingTableRangeOverlapDetails{
-                    nss, uuid, previousChunk->toConfigBSON(), chunk.toConfigBSON()}));
+                    nss, uuid, previousChunk.toConfigBSON(), chunk.toConfigBSON()}));
         }
 
-        previousChunk = it;
+        previousChunk = std::move(chunk);
     }
 
+    const ChunkType lastChunk = previousChunk;
+
+    if (collection.getUnsplittable() && totalChunks > 1) {
+        inconsistencies.emplace_back(makeInconsistency(
+            MetadataInconsistencyTypeEnum::kTrackedUnshardedCollectionHasMultipleChunks,
+            TrackedUnshardedCollectionHasMultipleChunksDetails{
+                nss, collection.getUuid(), int(totalChunks)}));
+    }
     // Check if the first and last chunk have MinKey and MaxKey respectively
-    if (chunks.empty()) {
+    if (!totalChunks) {
         inconsistencies.emplace_back(
             makeInconsistency(MetadataInconsistencyTypeEnum::kMissingRoutingTable,
                               MissingRoutingTableDetails{nss, uuid}));
     } else {
-        const BSONObj& minKeyObj = chunks.front().getMin();
+        const BSONObj& minKeyObj = firstChunk.getMin();
         const auto globalMin = shardKeyPattern.getKeyPattern().globalMin();
         if (minKeyObj.woCompare(shardKeyPattern.getKeyPattern().globalMin()) != 0) {
             inconsistencies.emplace_back(makeInconsistency(
@@ -940,7 +1061,7 @@ std::vector<MetadataInconsistencyItem> checkChunksConsistency(
                 RoutingTableMissingMinKeyDetails{nss, uuid, minKeyObj, globalMin}));
         }
 
-        const BSONObj& maxKeyObj = chunks.back().getMax();
+        const BSONObj& maxKeyObj = lastChunk.getMax();
         const auto globalMax = shardKeyPattern.getKeyPattern().globalMax();
         if (maxKeyObj.woCompare(globalMax) != 0) {
             inconsistencies.emplace_back(makeInconsistency(
@@ -1008,5 +1129,18 @@ std::vector<MetadataInconsistencyItem> checkCollectionShardingMetadataConsistenc
     }
     return inconsistencies;
 }
+
+std::vector<MetadataInconsistencyItem> checkDatabaseMetadataConsistency(
+    OperationContext* opCtx, const DatabaseType& dbInGlobalCatalog) {
+    std::vector<MetadataInconsistencyItem> inconsistencies;
+
+    const auto dbName = dbInGlobalCatalog.getDbName();
+    const auto dbVersionInGlobalCatalog = dbInGlobalCatalog.getVersion();
+    const auto primaryShard = dbInGlobalCatalog.getPrimary();
+
+    return checkDatabaseMetadataConsistencyInShardCatalog(
+        opCtx, dbName, dbVersionInGlobalCatalog, primaryShard);
+}
+
 }  // namespace metadata_consistency_util
 }  // namespace mongo

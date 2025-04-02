@@ -45,8 +45,6 @@
 #include "mongo/db/query/sbe_plan_ranker.h"
 #include "mongo/db/query/util/make_data_structure.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -157,6 +155,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
     std::unique_ptr<CanonicalQuery> cq,
     std::unique_ptr<QuerySolution> solution,
     std::pair<std::unique_ptr<sbe::PlanStage>, stage_builder::PlanStageData> root,
+    const MultipleCollectionAccessor& collections,
     size_t plannerOptions,
     NamespaceString nss,
     std::unique_ptr<PlanYieldPolicySBE> yieldPolicy,
@@ -188,7 +187,8 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
                                  cachedPlanHash,
                                  std::move(remoteCursors),
                                  std::move(remoteExplains),
-                                 std::move(classicRuntimePlannerStage)),
+                                 std::move(classicRuntimePlannerStage),
+                                 collections),
              PlanExecutor::Deleter{opCtx}}};
 }
 
@@ -219,7 +219,8 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
                                  cachedPlanHash,
                                  std::move(remoteCursors),
                                  std::move(remoteExplains),
-                                 nullptr /*classicRuntimePlannerStage*/),
+                                 nullptr /*classicRuntimePlannerStage*/,
+                                 collections),
              PlanExecutor::Deleter{opCtx}}};
 }
 

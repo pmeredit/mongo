@@ -35,9 +35,9 @@
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/db/commands/feature_compatibility_version.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/repl/oplog_batch.h"
+#include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/util/interruptible.h"
 #include "mongo/util/time_support.h"
 
@@ -282,8 +282,7 @@ public:
         applierSubBuilder.append("count", _applyBufferCounter.count.get());
         applierSubBuilder.append("sizeBytes", _applyBufferCounter.size.get());
         applierSubBuilder.append("maxSizeBytes", _applyBufferCounter.maxSize.get());
-        if (feature_flags::gReduceMajorityWriteLatency.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        if (feature_flags::gReduceMajorityWriteLatency.isEnabled()) {
             BSONObjBuilder builder;
             BSONObjBuilder writerSubBuilder;
             writerSubBuilder.append("count", _writeBufferCounter.count.get());

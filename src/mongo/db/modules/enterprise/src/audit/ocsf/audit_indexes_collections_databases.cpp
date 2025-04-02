@@ -74,6 +74,7 @@ void AuditOCSF::logCreateIndex(Client* client,
          kEntityManagementActivityCreate,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(builder,
                                                      kEntityField,
                                                      indexSpec,
@@ -96,7 +97,7 @@ void AuditOCSF::logCreateCollection(Client* client, const NamespaceString& nsnam
          kEntityManagementActivityCreate,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityField,
@@ -152,7 +153,7 @@ void AuditOCSF::logImportCollection(Client* client, const NamespaceString& nsnam
          kEntityManagementActivityUpdate,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityField,
@@ -177,7 +178,7 @@ void AuditOCSF::logRenameCollection(Client* client,
          kEntityManagementActivityUpdate,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityField,
@@ -218,7 +219,7 @@ void AuditOCSF::logCreateDatabase(Client* client, const DatabaseName& dbname) co
          kEntityManagementActivityCreate,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityField,
@@ -244,7 +245,7 @@ void AuditOCSF::logDropIndex(Client* client,
          kEntityManagementActivityDelete,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(builder,
                                                      kEntityField,
                                                      nullptr,
@@ -266,7 +267,7 @@ void AuditOCSF::logDropCollection(Client* client, const NamespaceString& nsname)
          kEntityManagementActivityDelete,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityField,
@@ -297,7 +298,7 @@ void AuditOCSF::logDropDatabase(Client* client, const DatabaseName& dbname) cons
          kEntityManagementActivityDelete,
          kEntityManagementSeverityInformational,
          [&](BSONObjBuilder* builder) {
-             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder);
+             AuditOCSF::AuditEventOCSF::_buildNetwork(client, builder, false /* shouldLogDst */);
              AuditOCSF::AuditEventOCSF::_buildEntity(
                  builder,
                  kEntityField,

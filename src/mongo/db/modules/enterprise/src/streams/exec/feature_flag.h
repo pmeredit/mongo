@@ -32,6 +32,8 @@ public:
     const mongo::Value& getValue() const {
         return _value;
     }
+    // Returns true if the flag is a bool and set to true.
+    bool isTrue() const;
 
 private:
     mongo::Value _value;
@@ -54,7 +56,6 @@ public:
     static const FeatureFlagDefinition kSourceBufferMinPageSize;
     static const FeatureFlagDefinition kSourceBufferMaxPageSize;
     static const FeatureFlagDefinition kTestOnlyStringType;
-    static const FeatureFlagDefinition kEnableHttpsOperator;
     static const FeatureFlagDefinition kHttpsRateLimitPerSecond;
     static const FeatureFlagDefinition kKafkaProduceTimeout;
     static const FeatureFlagDefinition kUseWatchToInitClusterChangestream;
@@ -70,6 +71,15 @@ public:
     static const FeatureFlagDefinition kProcessingTimeWindows;
     static const FeatureFlagDefinition kOldStreamMeta;
     static const FeatureFlagDefinition kEnableMetadataRefreshInterval;
+    static const FeatureFlagDefinition kEnableS3Emit;
+    static const FeatureFlagDefinition kChangestreamPredicatePushdown;
+    static const FeatureFlagDefinition kEnableExternalFunctionOperator;
+    static const FeatureFlagDefinition kExternalFunctionRateLimitPerSecond;
+    static const FeatureFlagDefinition kKafkaEmitMessageMaxBytes;
+    static const FeatureFlagDefinition kKafkaEmitMessageTimeoutMillis;
+    static const FeatureFlagDefinition kMaxMergeParallelism;
+    static const FeatureFlagDefinition kEnableInMemoryConstantMessage;
+    static const FeatureFlagDefinition kPerTargetStats;
 };
 
 }  // namespace streams

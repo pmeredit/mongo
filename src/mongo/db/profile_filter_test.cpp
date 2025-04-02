@@ -30,8 +30,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/profile_filter_impl.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -152,8 +151,7 @@ TEST_F(ProfileFilterTest, FilterOnNestedField) {
 }
 
 TEST_F(ProfileFilterTest, FilterOnOptionalField) {
-    auto filterExpr = BSON("replanReason"
-                           << "a good reason");
+    auto filterExpr = BSON("replanReason" << "a good reason");
 
     ProfileFilterImpl profileFilter{filterExpr};
 
@@ -167,8 +165,7 @@ TEST_F(ProfileFilterTest, FilterOnOptionalField) {
 }
 
 TEST_F(ProfileFilterTest, FilterOnUnavailableField) {
-    auto filterExpr = BSON("notAnOpDebugField"
-                           << "some value");
+    auto filterExpr = BSON("notAnOpDebugField" << "some value");
     ASSERT_THROWS_CODE(ProfileFilterImpl{filterExpr}, DBException, 4910200);
 }
 

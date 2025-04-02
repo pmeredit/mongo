@@ -82,11 +82,11 @@ selector:
     - jstests/core/**/profile3.js
     - jstests/core/**/profile_findandmodify.js
     - jstests/core/**/query/top/top.js
-    - jstests/core/views/views_stats.js
+    - jstests/core/catalog/views/views_stats.js
     - jstests/core/**/crud_api.js
     - jstests/core/**/find_and_modify.js
-    - jstests/core/**/find_and_modify2.js
-    - jstests/core/**/find_and_modify_server6865.js
+    - jstests/core/**/find_and_modify_fields.js
+    - jstests/core/**/find_and_modify_positional_new_remove.js
     - jstests/core/**/project_with_collation.js
     - jstests/core/**/currentop.js
     - jstests/core/**/fsync.js
@@ -102,7 +102,7 @@ selector:
     - jstests/core/**/startup_log.js
     - jstests/core/**/shell_connection_strings.js
     - jstests/core/**/geo_s2ordering.js
-    - jstests/core/mixed_version_replica_set.js
+    - jstests/core/testing/mixed_version_replica_set.js
     - jstests/fle2/**/*.js
     - src/mongo/db/modules/*/jstests/fle2/**/*.js
   exclude_with_any_tags:

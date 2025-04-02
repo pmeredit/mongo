@@ -49,6 +49,7 @@
 #include "mongo/db/admission/execution_admission_context.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/catalog/collection_catalog.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/catalog/drop_collection.h"
 #include "mongo/db/catalog/local_oplog_info.h"
@@ -119,13 +120,12 @@
 #include "mongo/db/vector_clock.h"
 #include "mongo/db/vector_clock_metadata_hook.h"
 #include "mongo/db/vector_clock_mutable.h"
+#include "mongo/db/version_context.h"
 #include "mongo/db/write_block_bypass.h"
 #include "mongo/executor/network_connection_hook.h"
 #include "mongo/executor/network_interface_factory.h"
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/metadata/egress_metadata_hook_list.h"
@@ -153,8 +153,6 @@
 #include "mongo/util/time_support.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplication
-
-using namespace fmt::literals;
 
 namespace mongo {
 namespace repl {
@@ -262,8 +260,7 @@ void ReplicationCoordinatorExternalStateImpl::startSteadyStateReplication(
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     invariant(storageEngine);
 
-    const auto useOplogWriter = feature_flags::gReduceMajorityWriteLatency.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+    const auto useOplogWriter = feature_flags::gReduceMajorityWriteLatency.isEnabled();
     const auto applyBufferSize =
         useOplogWriter ? kOplogApplyBufferSize : kOplogApplyBufferSizeLegacy;
 
@@ -701,7 +698,8 @@ OpTime ReplicationCoordinatorExternalStateImpl::onTransitionToPrimary(OperationC
     });
 
     // Create the pre-images collection if it doesn't exist yet in the non-serverless environment.
-    if (!change_stream_serverless_helpers::isChangeCollectionsModeActive()) {
+    if (!change_stream_serverless_helpers::isChangeCollectionsModeActive(
+            VersionContext::getDecoration(opCtx))) {
         ChangeStreamPreImagesCollectionManager::get(opCtx).createPreImagesCollection(
             opCtx, boost::none /* tenantId */);
     }
@@ -725,7 +723,8 @@ StatusWith<BSONObj> ReplicationCoordinatorExternalStateImpl::loadLocalConfigDocu
                         opCtx, NamespaceString::kSystemReplSetNamespace, config)) {
                     return StatusWith<BSONObj>(
                         ErrorCodes::NoMatchingDocument,
-                        "Did not find replica set configuration document in {}"_format(
+                        fmt::format(
+                            "Did not find replica set configuration document in {}",
                             NamespaceString::kSystemReplSetNamespace.toStringForErrorMsg()));
                 }
                 return StatusWith<BSONObj>(config);
@@ -763,9 +762,8 @@ Status ReplicationCoordinatorExternalStateImpl::storeLocalConfigDocument(Operati
                     // committed snapshot is dropped after a force reconfig that changes the config
                     // content or a safe reconfig that changes writeConcernMajorityJournalDefault.
                     WriteUnitOfWork wuow(opCtx);
-                    auto msgObj = BSON("msg"
-                                       << "Reconfig set"
-                                       << "version" << config["version"]);
+                    auto msgObj = BSON("msg" << "Reconfig set"
+                                             << "version" << config["version"]);
                     _service->getOpObserver()->onOpMessage(opCtx, msgObj);
                     wuow.commit();
                 }
@@ -1007,7 +1005,6 @@ void ReplicationCoordinatorExternalStateImpl::_shardingOnStepDownHook() {
             TransactionCoordinatorService::get(_service)->interrupt();
         }
 
-        // TODO SERVER-84243: replace with cache for filtering metadata
         FilteringMetadataCache::get(_service)->onStepDown();
     }
     if (auto validator = LogicalTimeValidator::get(_service)) {
@@ -1107,7 +1104,6 @@ void ReplicationCoordinatorExternalStateImpl::_shardingOnTransitionToPrimaryHook
         PeriodicShardedIndexConsistencyChecker::get(_service).onStepUp(_service);
         TransactionCoordinatorService::get(_service)->initializeIfNeeded(opCtx, term);
 
-        // TODO SERVER-84243: replace with cache for filtering metadata
         FilteringMetadataCache::get(_service)->onStepUp();
 
         ShardingCatalogManager::get(opCtx)->scheduleAsyncUnblockDDLCoordinators(opCtx);
@@ -1229,11 +1225,13 @@ void ReplicationCoordinatorExternalStateImpl::_shardingOnTransitionToPrimaryHook
         const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
         // TODO: SERVER-82965 Remove condition after v8.0 becomes last-lts.
         if (!serverGlobalParams.doAutoBootstrapSharding ||
-            gFeatureFlagAllMongodsAreSharded.isEnabled(fcvSnapshot)) {
+            gFeatureFlagAllMongodsAreSharded.isEnabled(VersionContext::getDecoration(opCtx),
+                                                       fcvSnapshot)) {
             ShardingCatalogManager::get(opCtx)->installConfigShardIdentityDocument(opCtx);
         }
 
-        if (gFeatureFlagAllMongodsAreSharded.isEnabled(fcvSnapshot)) {
+        if (gFeatureFlagAllMongodsAreSharded.isEnabled(VersionContext::getDecoration(opCtx),
+                                                       fcvSnapshot)) {
             ShardingReady::get(opCtx)->scheduleTransitionToConfigShard(opCtx);
         }
     }
@@ -1302,9 +1300,7 @@ void ReplicationCoordinatorExternalStateImpl::_dropAllTempCollections(OperationC
     // lock upgrade when removing the temporary collections.
     Lock::GlobalLock lk(opCtx, MODE_IX);
 
-    StorageEngine* storageEngine = _service->getStorageEngine();
-    std::vector<DatabaseName> dbNames = storageEngine->listDatabases();
-
+    std::vector<DatabaseName> dbNames = catalog::listDatabases();
     for (const auto& dbName : dbNames) {
         // The local db is special because it isn't replicated. It is cleared at startup even on
         // replica set members.

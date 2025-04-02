@@ -55,6 +55,7 @@ mongo_cc_library(
         "//src/mongo/db/matcher:parsed_match_expression_for_test",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
         "//src/mongo/db/modules/enterprise/src/streams/third_party/mongocxx",
+        "//src/mongo/idl:server_parameter_test_util",
         "//src/mongo/unittest",
         "//src/mongo/util/net:mock_http_client",
     ],
@@ -67,7 +68,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -81,7 +82,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -104,9 +105,10 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         "//src/mongo:base",
+        "//src/mongo/db/exec/document_value:document_value_test_util",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
     ],
 )
@@ -118,7 +120,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -129,6 +131,7 @@ mongo_cc_unit_test(
         "//src/mongo/db/exec/document_value",
         "//src/mongo/db/exec/document_value:document_value_test_util",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/pipeline:aggregation_context_fixture",
         "//src/mongo/db/query:query_test_service_context",
     ],
 )
@@ -140,7 +143,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -176,7 +179,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db:service_context",
@@ -186,6 +189,7 @@ mongo_cc_unit_test(
         "//src/mongo/db/exec/document_value",
         "//src/mongo/db/exec/document_value:document_value_test_util",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+        "//src/mongo/db/pipeline:aggregation_context_fixture",
         "//src/mongo/db/query:query_test_service_context",
         "//src/mongo/db/storage:storage_options",
     ],
@@ -198,7 +202,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db:service_context",
@@ -220,7 +224,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -242,7 +246,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -264,7 +268,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -286,7 +290,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -308,7 +312,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -330,7 +334,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -354,7 +358,10 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "mongo_unittest_fifth_group",
+    ],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -376,7 +383,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
@@ -390,7 +397,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -409,7 +416,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -424,7 +431,11 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "compile_requires_large_memory_gcc_fission",
+        "mongo_unittest_third_group",
+    ],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -448,7 +459,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -472,7 +483,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -494,7 +505,10 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "mongo_unittest_eighth_group",
+    ],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -516,7 +530,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -531,7 +545,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -553,7 +567,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -575,7 +589,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -597,7 +611,10 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "mongo_unittest_third_group",
+    ],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -621,7 +638,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -643,11 +660,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = [
-        "mongo_unittest_second_group",
-        # Timeout after 300s
-        #"code_coverage_quarantine"
-    ],
+    tags = ["mongo_unittest_third_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -691,7 +704,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -712,10 +725,24 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_exec_util",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "latency_collector_test",
+    srcs = [
+        "latency_collector_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = SASL_SYSDEP + RT_SYSDEP,
+    tags = ["mongo_unittest_third_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
     ],
 )
 
@@ -726,7 +753,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
@@ -740,7 +767,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
@@ -754,7 +781,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "//src/mongo:base",
         "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
@@ -768,7 +795,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -783,7 +810,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = SASL_SYSDEP + RT_SYSDEP,
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -797,7 +824,11 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "compile_requires_large_memory_gcc_fission",
+        "mongo_unittest_eighth_group",
+    ],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -816,7 +847,7 @@ mongo_cc_unit_test(
     ],
     copts = MONGOCXX_COPTS,
     linkopts = RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -847,7 +878,7 @@ mongo_cc_unit_test(
         "kafka_utils_test.cpp",
     ],
     linkopts = RT_SYSDEP,
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
@@ -860,10 +891,65 @@ mongo_cc_unit_test(
         "aws_test.cpp",
     ],
     linkopts = RT_SYSDEP,
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         "streams_test_utils",
         "//src/mongo:base",
         "//src/third_party/aws-sdk",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "connection_collection_test",
+    srcs = [
+        "connection_collection_test.cpp",
+    ],
+    linkopts = RT_SYSDEP,
+    tags = ["mongo_unittest_seventh_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "external_function_test",
+    srcs = [
+        "external_function_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = RT_SYSDEP,
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "mongo_unittest_first_group",
+    ],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/query:query_test_service_context",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "s3_emit_operator_test",
+    srcs = [
+        "s3_emit_operator_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    linkopts = RT_SYSDEP,
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "mongo_unittest_eighth_group",
+    ],
+    deps = [
+        "streams_test_utils",
+        "//src/mongo:base",
+        "//src/mongo/db:service_context",
+        "//src/mongo/db:service_context_d_test_fixture",
+        "//src/mongo/db:service_context_test_fixture",
+        "//src/mongo/db/query:query_test_service_context",
     ],
 )

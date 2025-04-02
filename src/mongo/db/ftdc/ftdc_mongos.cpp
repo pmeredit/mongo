@@ -51,7 +51,6 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/sharding_feature_flags_gen.h"
 
@@ -168,9 +167,8 @@ void startMongoSFTDC(ServiceContext* serviceContext) {
         }
     }
 
-    // (Ignore FCV check): This code is only executed in mongoS, and they're not FCV-gated anyway.
     const UseMultiServiceSchema multiServiceSchema{
-        feature_flags::gMultiServiceLogAndFTDCFormat.isEnabledAndIgnoreFCVUnsafe()};
+        feature_flags::gMultiServiceLogAndFTDCFormat.isEnabled()};
 
     startFTDC(serviceContext, directory, startMode, {registerRouterCollectors}, multiServiceSchema);
 }

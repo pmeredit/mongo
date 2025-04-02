@@ -39,7 +39,7 @@
 #include "mongo/db/pipeline/expression_function.h"
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -50,10 +50,9 @@ TEST(ExpressionFunction, SerializeAndRedactArgs) {
     SerializationOptions options = SerializationOptions::kDebugShapeAndMarkIdentifiers_FOR_TEST;
 
     auto expCtx = ExpressionContextForTest();
-    auto expr = BSON("$function" << BSON("body"
-                                         << "function(age) {return age >= 21;}"
-                                         << "args" << BSON_ARRAY("$age") << "lang"
-                                         << "js"));
+    auto expr = BSON("$function" << BSON("body" << "function(age) {return age >= 21;}"
+                                                << "args" << BSON_ARRAY("$age") << "lang"
+                                                << "js"));
     VariablesParseState vps = expCtx.variablesParseState;
     auto exprFunc = ExpressionFunction::parse(&expCtx, expr.firstElement(), vps);
     ASSERT_DOCUMENT_EQ_AUTO(  // NOLINT

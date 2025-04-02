@@ -28,7 +28,6 @@
  */
 
 #include "mongo/db/query/query_stats/query_stats_entry.h"
-#include "mongo/db/query/query_stats/optimizer_metrics_stats_entry.h"
 
 #include <boost/optional.hpp>
 
@@ -50,6 +49,7 @@ BSONObj QueryStatsEntry::toBSON(bool includeDiskUsageMetrics) const {
         bytesRead.appendTo(builder, "bytesRead");
         readTimeMicros.appendTo(builder, "readTimeMicros");
         workingTimeMillis.appendTo(builder, "workingTimeMillis");
+        cpuNanos.appendToIfNonNegative(builder, "cpuNanos");
         hasSortStage.appendTo(builder, "hasSortStage");
         usedDisk.appendTo(builder, "usedDisk");
         fromMultiPlanner.appendTo(builder, "fromMultiPlanner");

@@ -42,11 +42,10 @@
 #include "mongo/executor/network_interface_mock.h"
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/thread_assertion_monitor.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/future_util.h"
 
 namespace mongo {
@@ -1383,6 +1382,8 @@ TEST_F(FutureUtilTest, WithCancellationWorksWithVoidInput) {
     ASSERT(cancelableFuture.isReady());
 }
 
+// TODO(SERVER-102282): One particular v5 buildvariant fails to build this test.
+#if !(!defined(__clang__) && defined(__x86_64__) && __GNUC__ >= 14)
 TEST_F(FutureUtilTest, WithCancellationWorksWithSemiFutureInput) {
     const int kResult{5};
     auto [promise, future] = makePromiseFuture<int>();
@@ -1393,6 +1394,7 @@ TEST_F(FutureUtilTest, WithCancellationWorksWithSemiFutureInput) {
     promise.emplaceValue(kResult);
     ASSERT_EQ(cancelableFuture.get(), kResult);
 }
+#endif
 
 TEST_F(FutureUtilTest, WithCancellationWorksWithSharedSemiFutureInput) {
     const int kResult{5};

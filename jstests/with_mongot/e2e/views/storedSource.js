@@ -5,7 +5,7 @@
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {createSearchIndex, dropSearchIndex} from "jstests/libs/search.js";
-import {assertViewNotApplied} from "jstests/with_mongot/e2e/lib/explain_utils.js";
+import {assertViewNotApplied} from "jstests/with_mongot/e2e_lib/explain_utils.js";
 
 const testDb = db.getSiblingDB(jsTestName());
 const coll = testDb.underlyingSourceCollection;
@@ -69,7 +69,7 @@ let pipeline = [
 ];
 
 let explain = addFieldsView.explain().aggregate(pipeline);
-assertViewNotApplied(explain.stages, viewPipeline);
+assertViewNotApplied(explain, viewPipeline);
 
 let expectedResults = [
     {
@@ -99,6 +99,7 @@ let expectedResults = [
 let results = addFieldsView.aggregate(pipeline).toArray();
 assertArrayEq({actual: results, expected: expectedResults});
 
+// TODO SERVER-100355 Re-enable the below aggregations once we support mongot queries in
 // Make sure if storedSource query is part of a inner subpipeline, the view transforms aren't
 // applied by mongod.
 const baseColl = testDb.baseColl;
@@ -117,8 +118,8 @@ let storedSourceAsSubPipe = [
         }
     }, {$project: {_id: 0, "state_facts.state": 0}}
 ];
-explain = baseColl.explain().aggregate(storedSourceAsSubPipe);
-assertViewNotApplied(explain.stages, viewPipeline);
+// explain = baseColl.explain().aggregate(storedSourceAsSubPipe);
+// assertViewNotApplied(explain, viewPipeline);
 
 expectedResults = [
     {
@@ -148,7 +149,9 @@ expectedResults = [
         }]
     }
 ];
-results = baseColl.aggregate(storedSourceAsSubPipe).toArray();
-assertArrayEq({actual: results, expected: expectedResults});
-
+assert.commandFailedWithCode(
+    baseColl.runCommand("aggregate", {pipeline: storedSourceAsSubPipe, cursor: {}}),
+    ErrorCodes.QueryFeatureNotAllowed);
+// results = baseColl.aggregate(storedSourceAsSubPipe).toArray();
+// assertArrayEq({actual: results, expected: expectedResults});
 dropSearchIndex(addFieldsView, {name: "storedSourceIx"});

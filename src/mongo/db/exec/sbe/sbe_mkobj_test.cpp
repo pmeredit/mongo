@@ -52,7 +52,7 @@
 #include "mongo/db/query/stage_builder/sbe/gen_helpers.h"
 #include "mongo/db/query/stage_types.h"
 #include "mongo/platform/compiler.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::sbe {
 class MkObjStageTest : public PlanStageTestFixture {
@@ -210,14 +210,13 @@ public:
             addObjectToArray(inputView, BSON("a" << 1 << "b" << 2 << "c" << 3));
         }
 
-        auto [expectedTag, expectedVal] = stage_builder::makeValue(BSON_ARRAY(BSON("a"
-                                                                                   << "one"
-                                                                                   << "b"
-                                                                                   << "two")
-                                                                              << BSON("a"
-                                                                                      << "one"
-                                                                                      << "b"
-                                                                                      << "two")));
+        auto [expectedTag, expectedVal] =
+            stage_builder::makeValue(BSON_ARRAY(BSON("a" << "one"
+                                                         << "b"
+                                                         << "two")
+                                                << BSON("a" << "one"
+                                                            << "b"
+                                                            << "two")));
         value::ValueGuard expectedGuard{expectedTag, expectedVal};
 
         inputGuard.reset();
@@ -267,24 +266,20 @@ public:
         }
 
         auto [expectedTag, expectedVal] =
-            stage_builder::makeValue(BSON_ARRAY(BSON("a"
-                                                     << "one"
-                                                     << "b"
-                                                     << "two"
-                                                     << "c" << 3)
-                                                << BSON("a"
-                                                        << "one"
-                                                        << "c" << 2 << "b"
-                                                        << "two")
-                                                << BSON("a"
-                                                        << "one"
-                                                        << "b"
-                                                        << "two"
-                                                        << "c" << 3)
-                                                << BSON("a"
-                                                        << "one"
-                                                        << "c" << 2 << "b"
-                                                        << "two")));
+            stage_builder::makeValue(BSON_ARRAY(BSON("a" << "one"
+                                                         << "b"
+                                                         << "two"
+                                                         << "c" << 3)
+                                                << BSON("a" << "one"
+                                                            << "c" << 2 << "b"
+                                                            << "two")
+                                                << BSON("a" << "one"
+                                                            << "b"
+                                                            << "two"
+                                                            << "c" << 3)
+                                                << BSON("a" << "one"
+                                                            << "c" << 2 << "b"
+                                                            << "two")));
         value::ValueGuard expectedGuard{expectedTag, expectedVal};
 
         inputGuard.reset();

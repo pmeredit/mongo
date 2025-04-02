@@ -73,8 +73,6 @@
 
 namespace mongo {
 
-using std::cout;
-using std::endl;
 using std::string;
 using std::vector;
 
@@ -90,6 +88,7 @@ const std::set<std::string> kSetShellParameterAllowlist = {
     "skipShellCursorFinalize",
     "tlsOCSPSlowResponderWarningSecs",
     "enableDetailedConnectionHealthMetricLogLines",
+    "defaultFindReplicaSetHostTimeoutMS",
     "multitenancySupport"};
 
 std::string getMongoShellHelp(StringData name, const moe::OptionSection& options) {
@@ -219,7 +218,6 @@ Status storeMongoShellOptions(const moe::Environment& params,
         shellGlobalParams.shouldUseImplicitSessions = false;
     }
 
-// TODO: SERVER-80343 Remove this ifdef once gRPC is compiled on all variants
 #ifdef MONGO_CONFIG_GRPC
     if (params.count("gRPC")) {
         shellGlobalParams.gRPC = true;

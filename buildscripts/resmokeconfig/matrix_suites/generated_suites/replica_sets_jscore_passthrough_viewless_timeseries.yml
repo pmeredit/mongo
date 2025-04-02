@@ -1,0 +1,64 @@
+##########################################################
+# THIS IS A GENERATED FILE -- DO NOT MODIFY.
+# IF YOU WISH TO MODIFY THIS SUITE, MODIFY THE CORRESPONDING MATRIX SUITE MAPPING FILE
+# AND REGENERATE THE MATRIX SUITES.
+#
+# matrix suite mapping file: buildscripts/resmokeconfig/matrix_suites/mappings/replica_sets_jscore_passthrough_viewless_timeseries.yml
+# regenerate matrix suites: buildscripts/resmoke.py generate-matrix-suites && bazel run //:format
+##########################################################
+executor:
+  archive:
+    hooks:
+      - RunDBCheckInBackground
+      - CheckReplDBHashInBackground
+      - ValidateCollectionsInBackground
+      - CheckReplDBHash
+      - CheckReplOplogs
+      - ValidateCollections
+  config:
+    shell_options:
+      eval: globalThis.testingReplication = true;
+  fixture:
+    class: ReplicaSetFixture
+    mongod_options:
+      set_parameters:
+        enableTestCommands: 1
+        featureFlagCreateViewlessTimeseriesCollections: 1
+    num_nodes: 2
+  hooks:
+    - class: RunDBCheckInBackground
+    - class: CheckReplDBHashInBackground
+    - class: ValidateCollectionsInBackground
+    - class: CheckReplOplogs
+    - class: CheckReplDBHash
+    - class: ValidateCollections
+    - class: CleanEveryN
+      n: 20
+matrix_suite: true
+selector:
+  exclude_with_any_tags:
+    - assumes_standalone_mongod
+    - requires_profiling
+    - viewless_timeseries_incompatible
+  roots:
+    - jstests/core/timeseries/ddl/timeseries_create_collection.js
+    - jstests/core/timeseries/geo/timeseries_geonear_edge_case_measurements.js
+    - jstests/core/timeseries/geo/timeseries_geonear_random_measurements.js
+    - jstests/core/timeseries/libs/geo.js
+    - jstests/core/timeseries/libs/timeseries.js
+    - jstests/core/timeseries/libs/timeseries_agg_helpers.js
+    - jstests/core/timeseries/libs/timeseries_groupby_reorder_helpers.js
+    - jstests/core/timeseries/libs/timeseries_sort_util.js
+    - jstests/core/timeseries/libs/timeseries_writes_util.js
+    - jstests/core/timeseries/libs/viewless_timeseries_util.js
+    - jstests/core/timeseries/query/timeseries_cursor_batches.js
+    - jstests/core/timeseries/query/timeseries_groupby_reorder.js
+    - jstests/core/timeseries/query/timeseries_groupby_reorder_expr.js
+    - jstests/core/timeseries/query/timeseries_homogeneous_top_bottom.js
+    - jstests/core/timeseries/query/timeseries_ixscan_clusteredidxscan_union.js
+    - jstests/core/timeseries/query/timeseries_project_pushdown.js
+    - jstests/core/timeseries/query/timeseries_shadowing_meta_project_pushdown.js
+    - jstests/core/timeseries/write/basic.js
+    - jstests/core/timeseries/write/timeseries_buckets_write_explain.js
+    - jstests/core/timeseries/write/timeseries_insert.js
+test_kind: js_test

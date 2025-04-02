@@ -48,8 +48,7 @@
 #include "mongo/db/query/index_entry.h"
 #include "mongo/db/query/interval.h"
 #include "mongo/db/query/interval_evaluation_tree.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -160,8 +159,7 @@ TEST_F(IndexBoundsBuilderTest, TranslateDottedEqualsToNullMultiKeyShouldBuildIne
 }
 
 TEST_F(IndexBoundsBuilderTest, TranslateEqualsToNullShouldBuildOneIntervalForHashedIndex) {
-    BSONObj indexPattern = BSON("a"
-                                << "hashed");
+    BSONObj indexPattern = BSON("a" << "hashed");
     auto testIndex = buildSimpleIndexEntry(indexPattern);
     testIndex.type = IndexType::INDEX_HASHED;
 

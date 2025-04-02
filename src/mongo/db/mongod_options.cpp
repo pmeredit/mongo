@@ -76,8 +76,6 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_proxy.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/sharding_feature_flags_gen.h"
@@ -96,7 +94,6 @@
 
 namespace mongo {
 
-using std::endl;
 
 std::string storageDBPathDescription() {
     StringBuilder sb;
@@ -166,6 +163,7 @@ StatusWith<repl::ReplSettings> populateReplSettings(const moe::Environment& para
         // set by the user. Therefore, we only need to check for it if "replSet" in not found.
         replSettings.setReplSetString(params["replication.replSetName"].as<std::string>().c_str());
     } else if (gFeatureFlagAllMongodsAreSharded.isEnabledUseLatestFCVWhenUninitialized(
+                   kNoVersionContext,
                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
                serverGlobalParams.maintenanceMode != ServerGlobalParams::StandaloneMode) {
         replSettings.setShouldAutoInitiate();
@@ -581,7 +579,7 @@ Status storeMongodOptions(const moe::Environment& params) {
 
     if (params.count("maintenanceMode") &&
         gFeatureFlagAllMongodsAreSharded.isEnabledUseLatestFCVWhenUninitialized(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+            kNoVersionContext, serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         // Setting maintenanceMode will disable sharding by setting 'clusterRole' to
         // 'ClusterRole::None'. If maintenanceMode is set to 'standalone', replication will be
         // disabled as well.
@@ -695,12 +693,12 @@ Status storeMongodOptions(const moe::Environment& params) {
         serverGlobalParams.clusterRole += ClusterRole::RouterServer;
 
         if (params.count("net.routerPort")) {
-            if (feature_flags::gRouterPort.isEnabledUseLatestFCVWhenUninitialized(fcvSnapshot)) {
+            if (feature_flags::gRouterPort.isEnabled()) {
                 serverGlobalParams.routerPort = params["net.routerPort"].as<int>();
             }
         }
     } else if (gFeatureFlagAllMongodsAreSharded.isEnabledUseLatestFCVWhenUninitialized(
-                   fcvSnapshot) &&
+                   kNoVersionContext, fcvSnapshot) &&
                serverGlobalParams.maintenanceMode == ServerGlobalParams::MaintenanceMode::None) {
         serverGlobalParams.doAutoBootstrapSharding = true;
         serverGlobalParams.clusterRole = {

@@ -31,7 +31,9 @@ class CPPIntegrationTestCase(interface.ProcessTestCase):
         """Configure the test case."""
         interface.ProcessTestCase.configure(self, fixture, *args, **kwargs)
 
-        self.program_options["connectionString"] = self.fixture.get_internal_connection_string()
+        self.program_options["connectionString"] = self.fixture.get_shell_connection_string(
+            self.program_options.get("useEgressGRPC")
+        )
 
     def _make_process(self):
         return core.programs.generic_program(

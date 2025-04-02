@@ -89,6 +89,7 @@ DEFAULTS = {
     "mongot-localdev/mongot_executable": None,
     "mongot_set_parameters": [],
     "mongocryptd_set_parameters": [],
+    "mongo_set_parameters": [],
     "mrlog": None,
     "no_journal": False,
     "num_clients_per_fixture": 1,
@@ -124,6 +125,10 @@ DEFAULTS = {
     "tag_files": [],
     "test_files": [],
     "user_friendly_output": None,
+    # Output log format.
+    "log_format": None,
+    # Level of log severity.
+    "log_level": None,
     "mixed_bin_versions": None,
     "old_bin_version": None,
     "linear_chain": None,
@@ -506,6 +511,9 @@ MONGOT_SET_PARAMETERS = []
 # The --setParameter options passed to mongocryptd.
 MONGOCRYPTD_SET_PARAMETERS = []
 
+# The --setParameter options passed to mongo shell.
+MONGO_SET_PARAMETERS = []
+
 # If true, then all mongod's started by resmoke.py and by the mongo shell will not have journaling
 # enabled.
 NO_JOURNAL = None
@@ -673,24 +681,24 @@ BENCHMARK_OUT_FORMAT = "json"
 ORDER_TESTS_BY_NAME = True
 
 # Default file names for externally generated lists of tests created during the build.
-DEFAULT_BENCHMARK_TEST_LIST = "build/benchmarks.txt"
-DEFAULT_UNIT_TEST_LIST = "build/unittests.txt"
-DEFAULT_INTEGRATION_TEST_LIST = "build/integration_tests.txt"
-DEFAULT_LIBFUZZER_TEST_LIST = "build/libfuzzer_tests.txt"
-DEFAULT_PRETTY_PRINTER_TEST_LIST = "build/pretty_printer_tests.txt"
+DEFAULT_BENCHMARK_TEST_LIST = "bazel-bin/install/install-mongo_benchmark-stripped_test_list.txt"
+DEFAULT_UNIT_TEST_LIST = "bazel-bin/install/install-mongo_unittest_test_list.txt"
+DEFAULT_INTEGRATION_TEST_LIST = "bazel-bin/install/install-mongo_integration_test_test_list.txt"
+DEFAULT_LIBFUZZER_TEST_LIST = "bazel-bin/install/install-mongo_fuzzer_test_test_list.txt"
+DEFAULT_PRETTY_PRINTER_TEST_LIST = "bazel-bin/install/install-dist-test-stripped_test_list.txt"
 SPLIT_UNITTESTS_LISTS = [
-    f"build/{test_group}_quarter_unittests.txt"
-    for test_group in ["first", "second", "third", "fourth"]
+    f"bazel-bin/install/install-mongo_unittest_{test_group}_group_test_list.txt"
+    for test_group in ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"]
 ]
 BENCHMARK_SUITE_TEST_LISTS = [
-    "build/repl_bm.txt",
-    "build/query_bm.txt",
-    "build/bsoncolumn_bm.txt",
-    "build/first_half_bm.txt",
-    "build/second_half_bm.txt",
-    "build/storage_bm.txt",
-    "build/sharding_bm.txt",
-    "build/sep_bm.txt",
+    "bazel-bin/install/install-repl_bm_test_list.txt",
+    "bazel-bin/install/install-query_bm_test_list.txt",
+    "bazel-bin/install/install-bsoncolumn_bm_test_list.txt",
+    "bazel-bin/install/install-first_half_bm_test_list.txt",
+    "bazel-bin/install/install-second_half_bm_test_list.txt",
+    "bazel-bin/install/install-storage_bm_test_list.txt",
+    "bazel-bin/install/install-sharding_bm_test_list.txt",
+    "bazel-bin/install/install-sep_bm_test_list.txt",
 ]
 # External files or executables, used as suite selectors, that are created during the build and
 # therefore might not be available when creating a test membership map.

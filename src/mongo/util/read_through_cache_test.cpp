@@ -44,9 +44,8 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/out_of_line_executor.h"
@@ -251,47 +250,6 @@ TEST_F(ReadThroughCacheTest, FetchInvalidateKeyAndRefetch) {
         }));
 }
 
-TEST_F(ReadThroughCacheTest, FetchInvalidateValueAndRefetch) {
-    auto fnTest = [&](auto cache) {
-        for (int i = 1; i <= 3; i++) {
-            auto value = cache.acquire(_opCtx, "TestKey");
-            ASSERT(value);
-            ASSERT_EQ(100 * i, value->counter);
-            ASSERT_EQ(i, cache.countLookups);
-
-            ASSERT(cache.acquire(_opCtx, "TestKey"));
-            ASSERT_EQ(i, cache.countLookups);
-
-            cache.invalidateLatestCachedValueIf_IgnoreInProgress(
-                [i](const std::string&, const CachedValue& value) {
-                    return value.counter == 100 * i;
-                });
-        }
-    };
-
-    fnTest(CacheWithThreadPool<Cache>(
-        getService(),
-        1,
-        [&, nextValue = 0](
-            OperationContext*, const std::string& key, const Cache::ValueHandle&) mutable {
-            ASSERT_EQ("TestKey", key);
-            return Cache::LookupResult(CachedValue(100 * ++nextValue));
-        }));
-
-    fnTest(CacheWithThreadPool<CausallyConsistentCache>(
-        getService(),
-        1,
-        [&, nextValue = 0](OperationContext*,
-                           const std::string& key,
-                           const CausallyConsistentCache::ValueHandle&,
-                           const Timestamp& timeInStore) mutable {
-            ASSERT_EQ("TestKey", key);
-            ++nextValue;
-            return CausallyConsistentCache::LookupResult(CachedValue(100 * nextValue),
-                                                         Timestamp(nextValue));
-        }));
-}
-
 TEST_F(ReadThroughCacheTest, FailedLookup) {
     auto fnTest = [&](auto cache) {
         ASSERT_THROWS_CODE(
@@ -448,6 +406,30 @@ TEST_F(ReadThroughCacheTest, CausalConsistencyWithLookupArgs) {
         cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestKnown, kName, 2).isValid());
 }
 
+TEST_F(ReadThroughCacheTest, TimeMonotonicityViolation) {
+    boost::optional<CausallyConsistentCache::LookupResult> nextToReturn;
+
+    CacheWithThreadPool<CausallyConsistentCache> cache(
+        getService(),
+        1,
+        [&](OperationContext*,
+            const std::string& key,
+            const CausallyConsistentCache::ValueHandle&,
+            const Timestamp& timeInStore) {
+            ASSERT_EQ("TestKey", key);
+            return CausallyConsistentCache::LookupResult(std::move(*nextToReturn));
+        });
+
+    nextToReturn.emplace(CachedValue(1), Timestamp(100));
+    ASSERT_EQ(1, cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestKnown)->counter);
+
+    cache.advanceTimeInStore("TestKey", Timestamp(120));
+    nextToReturn.emplace(CachedValue(2), Timestamp(110));
+    ASSERT_THROWS_CODE(cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestKnown),
+                       DBException,
+                       ErrorCodes::ReadThroughCacheTimeMonotonicityViolation);
+}
+
 /**
  * Fixture for tests, which need to control the creation/destruction of their operation contexts.
  */
@@ -483,8 +465,9 @@ TEST_F(ReadThroughCacheAsyncTest, SuccessfulInProgressLookupForNotCausallyConsis
     ASSERT(inProgress.valid(WithLock::withoutLock()));
     ASSERT(res.v);
     ASSERT_EQ(500, res.v->counter);
-    auto promisesToSet = inProgress.getPromisesLessThanOrEqualToTime(WithLock::withoutLock(),
-                                                                     CacheNotCausallyConsistent());
+
+    auto [promisesToSet, timeOfOldestPromise] = inProgress.getPromisesLessThanOrEqualToTime(
+        WithLock::withoutLock(), CacheNotCausallyConsistent());
     ASSERT_EQ(1U, promisesToSet.size());
     promisesToSet.front()->emplaceValue(std::move(*res.v));
 

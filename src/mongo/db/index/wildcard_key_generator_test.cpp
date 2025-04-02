@@ -45,10 +45,7 @@
 #include "mongo/db/record_id_helpers.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
@@ -1242,7 +1239,7 @@ TEST_F(WildcardKeyGeneratorDottedFieldsTest, DoNotIndexDottedFields) {
 
     auto inputDoc = fromjson(
         "{'a.b': 0, '.b': 1, 'b.': 2, a: {'.b': 3, 'b.': 4, 'b.c': 5, 'q': 6}, b: [{'d.e': 7}, {r: "
-        "8}, [{'a.b': 9}]], c: 10}}");
+        "8}, [{'a.b': 9}]], c: 10}");
 
     auto expectedKeys = makeKeySet({fromjson("{'': 'a.q', '': 6}"),
                                     fromjson("{'': 'b.r', '': 8}"),

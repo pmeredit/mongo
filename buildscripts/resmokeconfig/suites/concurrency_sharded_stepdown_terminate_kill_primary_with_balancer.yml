@@ -62,6 +62,9 @@ selector:
     # to finish. This can cause the CheckMetadataConsistency hook to hit LockBusy errors.
     - jstests/concurrency/fsm_workloads/timeseries/timeseries_insert_idle_bucket_expiration.js
 
+    # TODO: SERVER-102111 Update write path in sharded cluster doesn't promote WCOS with WCE to top level.
+    - jstests/concurrency/fsm_workloads/updateOne_without_shard_key/*.js
+
   exclude_with_any_tags:
     - requires_standalone
     - assumes_balancer_off
@@ -85,6 +88,7 @@ executor:
     shell_options:
       eval: >-
         await import("jstests/libs/override_methods/implicitly_shard_accessed_collections.js");
+        await import("jstests/libs/override_methods/implicitly_retry_crud_on_no_progress_made.js");
       global_vars:
         TestData:
           runningWithConfigStepdowns: true
@@ -142,10 +146,6 @@ executor:
         queryAnalysisWriterIntervalSecs: 1
         queryAnalysisSamplerConfigurationRefreshSecs: 1
         skipDroppingHashedShardKeyIndex: true
-        # Orphan cleanup happening too quickly can cause intermittent test failures due to
-        # inconsistent secondary reads. Choose a setting lower than continuous stepdown interval to
-        # get around SERVER-90242.
-        orphanCleanupDelaySecs: 7
     num_rs_nodes_per_shard: 3
     num_shards: 2
     num_mongos: 2

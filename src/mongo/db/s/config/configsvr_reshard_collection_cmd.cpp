@@ -61,6 +61,7 @@
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/s/config/sharding_catalog_manager.h"
 #include "mongo/db/s/resharding/coordinator_document_gen.h"
+#include "mongo/db/s/resharding/resharding_coordinator.h"
 #include "mongo/db/s/resharding/resharding_coordinator_service.h"
 #include "mongo/db/s/resharding/resharding_util.h"
 #include "mongo/db/s/shard_key_util.h"
@@ -172,34 +173,10 @@ public:
                     *presetChunks, opCtx, ShardKeyPattern(request().getKey()).getKeyPattern());
             }
 
-            if (!resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                uassert(
-                    ErrorCodes::InvalidOptions,
-                    "Resharding improvements is not enabled, reject shardDistribution parameter",
-                    !request().getShardDistribution().has_value());
-                uassert(
-                    ErrorCodes::InvalidOptions,
-                    "Resharding improvements is not enabled, reject forceRedistribution parameter",
-                    !request().getForceRedistribution().has_value());
-                uassert(ErrorCodes::InvalidOptions,
-                        "Resharding improvements is not enabled, reject reshardingUUID parameter",
-                        !request().getReshardingUUID().has_value());
-                uassert(ErrorCodes::InvalidOptions,
-                        "Resharding improvements is not enabled, reject feature flag "
-                        "moveCollection or unshardCollection",
-                        !resharding::gFeatureFlagMoveCollection.isEnabled(
-                            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
-                            !resharding::gFeatureFlagUnshardCollection.isEnabled(
-                                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
-            }
-
             if (const auto& shardDistribution = request().getShardDistribution()) {
                 resharding::validateShardDistribution(
                     *shardDistribution, opCtx, ShardKeyPattern(request().getKey()));
             }
-            resharding::validateImplicitlyCreateIndex(request().getImplicitlyCreateIndex(),
-                                                      request().getKey());
             resharding::validatePerformVerification(request().getPerformVerification());
 
             // Returns boost::none if there isn't any work to be done by the resharding operation.
@@ -226,7 +203,8 @@ public:
                             "Expected provenance to be specified",
                             request().getProvenance().has_value());
                 } else if (request().getProvenance().has_value()) {
-                    if (request().getProvenance().get() == ProvenanceEnum::kReshardCollection) {
+                    if (request().getProvenance().get() ==
+                        ReshardingProvenanceEnum::kReshardCollection) {
                         setProvenance = false;
                     } else {
                         uassert(
@@ -244,6 +222,7 @@ public:
                             ShardKeyPattern::checkShardKeyIsValidForMetadataStorage(zone.getMin()));
                         uassertStatusOK(
                             ShardKeyPattern::checkShardKeyIsValidForMetadataStorage(zone.getMax()));
+                        uassertStatusOK(ChunkRange::validate(zone.getMin(), zone.getMax()));
                     }
                 }
 

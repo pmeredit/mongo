@@ -10,6 +10,8 @@
 
 namespace streams {
 
+struct LoggingContext;
+
 // Singleton Instance holding all feature flags for this tenant.
 /* Sample BSON document parsed by this class.
  { feature_flag_a :
@@ -24,7 +26,8 @@ class TenantFeatureFlags {
 public:
     TenantFeatureFlags(const mongo::BSONObj& featureFlags);
 
-    StreamProcessorFeatureFlags getStreamProcessorFeatureFlags(const std::string&) const;
+    StreamProcessorFeatureFlags getStreamProcessorFeatureFlags(const std::string&,
+                                                               const LoggingContext& context) const;
 
 private:
     mongo::BSONObj _tenantFeatureFlags;

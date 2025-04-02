@@ -50,7 +50,9 @@ for (let i = 0; i < kNumDocs; i++) {
     assert.commandWorked(coll.insert({_id: i}));
 }
 
-const backupCursor = openBackupCursor(primary.getDB("admin"));
+// Opt out of taking the default checkpoint when we open the backup cursor as this test relies on
+// taking a backup of the state of the database of the first checkpoint.
+const backupCursor = openBackupCursor(primary.getDB("admin"), {takeCheckpoint: false});
 
 // Print the metadata document.
 assert(backupCursor.hasNext());

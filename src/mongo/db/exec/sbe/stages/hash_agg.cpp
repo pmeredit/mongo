@@ -93,7 +93,7 @@ HashAggStage::HashAggStage(std::unique_ptr<PlanStage> input,
 
     if (_allowDiskUse) {
         tassert(7039549,
-                "disk use enabled for HashAggStage but incorrect number of merging expresssions",
+                "disk use enabled for HashAggStage but incorrect number of merging expressions",
                 _aggs.size() == _mergingExprs.size());
     }
 }
@@ -261,6 +261,7 @@ void HashAggStage::open(bool reOpen) {
     _commonStats.opens++;
 
     if (!reOpen || _seekKeysAccessors.empty()) {
+        tassert(10226701, "Expecting _opCtx to be populated", _opCtx);
         _children[0]->open(_childOpened);
         _childOpened = true;
         if (_collatorAccessor) {
@@ -277,7 +278,8 @@ void HashAggStage::open(bool reOpen) {
 
         _seekKeys.resize(_seekKeysAccessors.size());
 
-        // Reset state since this stage may have been previously opened.
+        // Reset switch accessors to point to '_ht' (index 0) not '_recordStore' (index 1) since
+        // this stage may have been previously opened.
         for (auto&& accessor : _outKeyAccessors) {
             accessor->setIndex(0);
         }
@@ -287,6 +289,7 @@ void HashAggStage::open(bool reOpen) {
         if (_recordStore) {
             _recordStore->resetCursor(_opCtx, _rsCursor);
         }
+        _rsCursor.reset();
         _recordStore.reset();
         _outKeyRowRecordStore = {0};
         _outAggRowRecordStore = {0};
@@ -302,7 +305,7 @@ void HashAggStage::open(bool reOpen) {
         bool first = true;
         const bool groupByListHasSlots = !_inKeyAccessors.empty();
         while (_children[0]->getNext() == PlanState::ADVANCED) {
-            bool newKey = false;
+            bool newKey = false;  // tells if the current key is NOT in '_ht' so must be inserted
             if (groupByListHasSlots || first) {
                 // Copy keys in order to do the lookup.
                 size_t idx = 0;
@@ -326,7 +329,7 @@ void HashAggStage::open(bool reOpen) {
 
                 _htIt = it;
 
-                // Run accumulator initializer if needed.
+                // Run all acc initializers for this key. Null entries in '_aggCodes' are no-ops.
                 for (size_t idx = 0; idx < _outAggAccessors.size(); ++idx) {
                     if (_aggCodes[idx].first) {
                         auto [owned, tag, val] = _bytecode.run(_aggCodes[idx].first.get());
@@ -335,7 +338,8 @@ void HashAggStage::open(bool reOpen) {
                 }
             }
 
-            // Accumulate state in '_ht'.
+            // Accumulate state in '_ht' value, which is a materialized row of '_outAggAccessors'
+            // each of which contains the current accumulator state for one accumulator.
             for (size_t idx = 0; idx < _outAggAccessors.size(); ++idx) {
                 auto [owned, tag, val] = _bytecode.run(_aggCodes[idx].second.get());
                 _outHashAggAccessors[idx]->reset(owned, tag, val);
@@ -347,6 +351,7 @@ void HashAggStage::open(bool reOpen) {
                 if (_forceIncreasedSpilling && !newKey) {
                     // If configured to spill more than usual, we spill after seeing the same key
                     // twice.
+                    _htIt = _ht->begin();
                     spill(memoryCheckData);
                 } else {
                     // Estimates how much memory is being used. If we estimate that the hash table
@@ -355,7 +360,7 @@ void HashAggStage::open(bool reOpen) {
                     checkMemoryUsageAndSpillIfNecessary(memoryCheckData);
                 }
             }
-        }
+        }  // while child's getNext advanced
 
         if (_optimizedClose) {
             _children[0]->close();
@@ -369,27 +374,12 @@ void HashAggStage::open(bool reOpen) {
         // store.
         if (_recordStore) {
             if (!_ht->empty()) {
+                _htIt = _ht->begin();
                 spill(memoryCheckData);
             }
 
-            auto& ru = *shard_role_details::getRecoveryUnit(_opCtx);
-            _specificStats.spillingStats.updateSpilledDataStorageSize(
-                _recordStore->rs()->storageSize(ru));
-            groupCounters.incrementGroupCountersPerQuery(
-                _specificStats.spillingStats.getSpilledDataStorageSize());
-
-            // Establish a cursor, positioned at the beginning of the record store.
-            _rsCursor = _recordStore->getCursor(_opCtx);
-
-            // Callers will be obtaining the results from the spill table, so set the
-            // 'SwitchAccessors' so that they refer to the rows recovered from the record store
-            // under the hood.
-            for (auto&& accessor : _outKeyAccessors) {
-                accessor->setIndex(1);
-            }
-            for (auto&& accessor : _outAggAccessors) {
-                accessor->setIndex(1);
-            }
+            // Data will be returned from disk.
+            switchToDisk();
         }
     }
 
@@ -432,6 +422,7 @@ PlanState HashAggStage::getNextSpilled() {
             return deserializeSpilledRecord(record, _gbs.size(), keyBuffer);
         };
 
+    tassert(10226700, "Expecting _rsCursor to be populated", _rsCursor);
     if (_stashedNextRow.first.isEmpty()) {
         auto nextRecord = _rsCursor->next();
         if (!nextRecord) {
@@ -485,19 +476,7 @@ PlanState HashAggStage::getNext() {
     }
 
     // We didn't spill. Obtain the next output row from the hash table.
-    if (_htIt == _ht->end()) {
-        // First invocation of getNext() after open().
-        if (!_seekKeysAccessors.empty()) {
-            _htIt = _ht->find(_seekKeys);
-        } else {
-            _htIt = _ht->begin();
-        }
-    } else if (!_seekKeysAccessors.empty()) {
-        // Subsequent invocation with seek keys. Return only 1 single row (if any).
-        _htIt = _ht->end();
-    } else {
-        ++_htIt;
-    }
+    setIterator();
 
     if (_htIt == _ht->end()) {
         // The hash table has been drained (and we never spilled to disk) so we're done.

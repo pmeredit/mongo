@@ -38,10 +38,8 @@
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/exit.h"
@@ -51,7 +49,6 @@
 
 namespace mongo {
 namespace {
-using namespace fmt::literals;
 
 constexpr auto kTestLogTag = "test"_sd;
 

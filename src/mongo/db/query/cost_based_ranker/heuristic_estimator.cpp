@@ -29,7 +29,6 @@
 
 #include "mongo/db/query/cost_based_ranker/heuristic_estimator.h"
 
-#include <fmt/format.h>
 #include <span>
 
 #include "mongo/db/matcher/expression_leaf.h"
@@ -65,16 +64,16 @@ bool heuristicIsEstimable(const MatchExpression* expr) {
         // heuristicLeafMatchExpressionSel. The union of both sets are all MatchExpression types.
         case MatchExpression::MatchType::AND:
         case MatchExpression::MatchType::OR:
-        case MatchExpression::MatchType::ELEM_MATCH_OBJECT:
-        case MatchExpression::MatchType::ELEM_MATCH_VALUE:
         case MatchExpression::MatchType::NOT:
         case MatchExpression::MatchType::NOR:
-        case MatchExpression::MatchType::INTERNAL_SCHEMA_ALLOWED_PROPERTIES:
+        case MatchExpression::MatchType::ELEM_MATCH_OBJECT:
+        case MatchExpression::MatchType::ELEM_MATCH_VALUE:
+        case MatchExpression::MatchType::INTERNAL_SCHEMA_XOR:
         case MatchExpression::MatchType::INTERNAL_SCHEMA_ALL_ELEM_MATCH_FROM_INDEX:
         case MatchExpression::MatchType::INTERNAL_SCHEMA_COND:
         case MatchExpression::MatchType::INTERNAL_SCHEMA_MATCH_ARRAY_INDEX:
         case MatchExpression::MatchType::INTERNAL_SCHEMA_OBJECT_MATCH:
-        case MatchExpression::MatchType::INTERNAL_SCHEMA_XOR:
+        case MatchExpression::MatchType::INTERNAL_SCHEMA_ALLOWED_PROPERTIES:
             return false;
         default:
             return true;
@@ -116,7 +115,8 @@ SelectivityEstimate heuristicScaledPredSel(CardinalityEstimate inputCard, double
 SelectivityEstimate heuristicLeafMatchExpressionSel(const MatchExpression* expr,
                                                     CardinalityEstimate inputCard) {
     tassert(9844001,
-            "heuristicLeafMatchExpressionSel got non-leaf expression",
+            str::stream{} << "heuristicLeafMatchExpressionSel got non-leaf expression: "
+                          << expr->toString(),
             expr->numChildren() == 0);
 
     switch (expr->matchType()) {
@@ -147,7 +147,8 @@ SelectivityEstimate heuristicLeafMatchExpressionSel(const MatchExpression* expr,
         case MatchExpression::MatchType::MOD: {
             // Assume that the results of mod are equally likely.
             auto modExpr = static_cast<const ModMatchExpression*>(expr);
-            return {SelectivityType{1.0 / modExpr->getDivisor()}, EstimationSource::Heuristics};
+            return {SelectivityType{1.0 / std::abs(modExpr->getDivisor())},
+                    EstimationSource::Heuristics};
         }
         case MatchExpression::MatchType::EXISTS: {
             return kExistsSel;

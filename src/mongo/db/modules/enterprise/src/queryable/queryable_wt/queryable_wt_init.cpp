@@ -11,7 +11,6 @@
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/catalog/collection_options.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_engine_impl.h"
 #include "mongo/db/storage/storage_engine_init.h"
@@ -21,7 +20,6 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
@@ -85,13 +83,13 @@ public:
 
         WiredTigerExtensions::get(getGlobalServiceContext())->addExtension(fsOptions);
 
+        WiredTigerKVEngine::WiredTigerConfig wtConfig = getWiredTigerConfigFromStartupOptions();
+        wtConfig.cacheSizeMB = cacheMB;
         auto kv =
             std::make_unique<WiredTigerKVEngine>(getCanonicalName().toString(),
                                                  dbpath,
                                                  getGlobalServiceContext()->getFastClockSource(),
-                                                 wiredTigerGlobalOptions.engineConfig,
-                                                 cacheMB,
-                                                 wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
+                                                 std::move(wtConfig),
                                                  kEphemeral,
                                                  params.repair);
         kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);
@@ -99,7 +97,7 @@ public:
 
         // We're using a WT-based engine; register the ServerStatusSection for it.
         *ServerStatusSectionBuilder<WiredTigerServerStatusSection>(
-             std::string{kWiredTigerEngineName})
+             std::string{WiredTigerServerStatusSection::kServerStatusSectionName})
              .forShard();
 
         StorageEngineOptions options;

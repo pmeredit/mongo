@@ -36,16 +36,23 @@
 #include "mongo/db/auth/validated_tenancy_scope.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/fle_crud.h"
+#include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/query_request_conversion.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/query_stats/count_key.h"
 #include "mongo/db/query/query_stats/query_stats.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
+#include "mongo/db/query/timeseries/timeseries_rewrites.h"
 #include "mongo/db/query/view_response_formatter.h"
+#include "mongo/db/raw_data_operation.h"
+#include "mongo/db/server_feature_flags_gen.h"
+#include "mongo/db/version_context.h"
 #include "mongo/db/views/resolved_view.h"
 #include "mongo/platform/overflow_arithmetic.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/cluster_commands_helpers.h"
+#include "mongo/s/collection_routing_info_targeter.h"
 #include "mongo/s/commands/query_cmd/cluster_explain.h"
 #include "mongo/s/commands/strategy.h"
 #include "mongo/s/grid.h"
@@ -65,6 +72,32 @@ inline BSONObj prepareCountForPassthrough(const BSONObj& cmdObj, bool requestQue
     BSONObjBuilder bob(cmdObj);
     bob.append("includeQueryStatsMetrics", true);
     return CommandHelpers::filterCommandRequestForPassthrough(bob.done());
+}
+
+inline bool convertAndRunAggregateIfViewlessTimeseries(
+    OperationContext* const opCtx,
+    BSONObjBuilder& bodyBuilder,
+    const CountCommandRequest& request,
+    const CollectionRoutingInfo& cri,
+    const NamespaceString& nss,
+    boost::optional<mongo::ExplainOptions::Verbosity> verbosity = boost::none) {
+    if (!timeseries::isEligibleForViewlessTimeseriesRewrites(opCtx, cri)) {
+        return false;
+    } else {
+        // We only need to route the viewless timeseries request to
+        // runAggregate() which will perform the pipeline rewrites.
+        const auto hasExplain = verbosity.has_value();
+        bodyBuilder.resetToEmpty();
+        auto aggRequest = query_request_conversion::asAggregateCommandRequest(request, hasExplain);
+        uassertStatusOK(ClusterAggregate::runAggregate(
+            opCtx,
+            ClusterAggregate::Namespaces{nss, nss},
+            aggRequest,
+            {Privilege(ResourcePattern::forExactNamespace(nss), ActionType::find)},
+            verbosity,
+            &bodyBuilder));
+        return true;
+    }
 }
 
 /**
@@ -108,6 +141,10 @@ public:
                 Status::OK()};
     }
 
+    bool supportsRawData() const override {
+        return true;
+    }
+
     Status checkAuthForOperation(OperationContext* opCtx,
                                  const DatabaseName& dbName,
                                  const BSONObj& cmdObj) const override {
@@ -122,13 +159,13 @@ public:
 
     bool errmsgRun(OperationContext* opCtx,
                    const DatabaseName& dbName,
-                   const BSONObj& cmdObj,
+                   const BSONObj& originalCmdObj,
                    std::string& errmsg,
                    BSONObjBuilder& result) override {
         Impl::checkCanRunHere(opCtx);
 
         CommandHelpers::handleMarkKillOnClientDisconnect(opCtx);
-        const NamespaceString nss(parseNs(dbName, cmdObj));
+        NamespaceString nss(parseNs(dbName, originalCmdObj));
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << "Invalid namespace specified '" << nss.toStringForErrorMsg()
                               << "'",
@@ -139,14 +176,34 @@ public:
 
         std::vector<AsyncRequestsSender::Response> shardResponses;
         try {
+            auto cmdObj = translateCmdObjForRawData(opCtx, originalCmdObj, nss);
             auto countRequest = CountCommandRequest::parse(IDLParserContext("count"), cmdObj);
-            if (prepareForFLERewrite(opCtx, countRequest.getEncryptionInformation())) {
-                processFLECountS(opCtx, nss, countRequest);
-            }
 
             const auto cri = uassertStatusOK(
                 Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
+
+            // Create an RAII object that prints the collection's shard key in the case of a tassert
+            // or crash.
+            ScopedDebugInfo shardKeyDiagnostics(
+                "ShardKeyDiagnostics",
+                diagnostic_printers::ShardKeyDiagnosticPrinter{
+                    cri.isSharded() ? cri.getChunkManager().getShardKeyPattern().toBSON()
+                                    : BSONObj()});
+
             const auto collation = countRequest.getCollation().get_value_or(BSONObj());
+
+            auto aggResult = BSONObjBuilder{};
+            if (convertAndRunAggregateIfViewlessTimeseries(
+                    opCtx, aggResult, countRequest, cri, nss)) {
+                ViewResponseFormatter{aggResult.obj()}.appendAsCountResponse(
+                    &result, boost::none /*tenantId*/);
+                // We've delegated execution to agg.
+                return true;
+            }
+
+            if (prepareForFLERewrite(opCtx, countRequest.getEncryptionInformation())) {
+                processFLECountS(opCtx, nss, countRequest);
+            }
 
             const auto expCtx =
                 makeExpressionContextWithDefaultsForTargeter(opCtx,
@@ -157,10 +214,16 @@ public:
                                                              boost::none /*letParameters*/,
                                                              boost::none /*runtimeConstants*/);
 
+            // Create an RAII object that prints useful information about the ExpressionContext in
+            // the case of a tassert or crash.
+            ScopedDebugInfo expCtxDiagnostics(
+                "ExpCtxDiagnostics", diagnostic_printers::ExpressionContextPrinter{expCtx});
+
             const auto parsedFind = uassertStatusOK(parsed_find_command::parseFromCount(
                 expCtx, countRequest, ExtensionsCallbackNoop(), nss));
 
             if (feature_flags::gFeatureFlagQueryStatsCountDistinct.isEnabled(
+                    VersionContext::getDecoration(opCtx),
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
                 query_stats::registerRequest(opCtx, nss, [&]() {
                     return std::make_unique<query_stats::CountKey>(
@@ -213,10 +276,12 @@ public:
                 true /*eligibleForSampling*/);
         } catch (const ExceptionFor<ErrorCodes::CommandOnShardedViewNotSupportedOnMongod>& ex) {
             // Rewrite the count command as an aggregation.
-            auto countRequest = CountCommandRequest::parse(IDLParserContext("count"), cmdObj);
+            auto countRequest =
+                CountCommandRequest::parse(IDLParserContext("count"), originalCmdObj);
             auto aggRequestOnView =
-                query_request_conversion::asAggregateCommandRequest(countRequest, boost::none);
-            auto resolvedAggRequest = ex->asExpandedViewAggregation(aggRequestOnView);
+                query_request_conversion::asAggregateCommandRequest(countRequest);
+            auto resolvedAggRequest = ex->asExpandedViewAggregation(
+                VersionContext::getDecoration(opCtx), aggRequestOnView);
 
             BSONObj aggResult = CommandHelpers::runCommandDirectly(
                 opCtx,
@@ -224,8 +289,8 @@ public:
                     auth::ValidatedTenancyScope::get(opCtx), dbName, resolvedAggRequest.toBSON()));
 
             result.resetToEmpty();
-            ViewResponseFormatter formatter(aggResult);
-            formatter.appendAsCountResponse(&result, boost::none);
+            ViewResponseFormatter{aggResult}.appendAsCountResponse(&result,
+                                                                   boost::none /*tenantId*/);
             return true;
         } catch (const ExceptionFor<ErrorCodes::NamespaceNotFound>&) {
             // If there's no collection with this name, the count aggregation behavior below
@@ -269,7 +334,7 @@ public:
         }
 
         shardSubTotal.doneFast();
-        total = applySkipLimit(total, cmdObj);
+        total = applySkipLimit(total, originalCmdObj);
         result.appendNumber("n", total);
 
         // The # of documents returned is always 1 for the count command.
@@ -291,23 +356,39 @@ public:
                    rpc::ReplyBuilderInterface* result) const override {
         Impl::checkCanExplainHere(opCtx);
 
-        const BSONObj& cmdObj = request.body;
+        const BSONObj& originalCmdObj = request.body;
 
         auto curOp = CurOp::get(opCtx);
         curOp->debug().queryStatsInfo.disableForSubqueryExecution = true;
 
-        CountCommandRequest countRequest(NamespaceStringOrUUID(NamespaceString{}));
-        try {
-            countRequest = CountCommandRequest::parse(IDLParserContext("count"), request);
-        } catch (...) {
-            return exceptionToStatus();
-        }
-
-        const NamespaceString nss = parseNs(countRequest.getDbName(), cmdObj);
+        auto nss = parseNs(request.parseDbName(), originalCmdObj);
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << "Invalid namespace specified '" << nss.toStringForErrorMsg()
                               << "'",
                 nss.isValid());
+
+        auto cmdObj = translateCmdObjForRawData(opCtx, originalCmdObj, nss);
+        CountCommandRequest countRequest(NamespaceStringOrUUID(NamespaceString{}));
+        try {
+            countRequest = CountCommandRequest::parse(IDLParserContext("count"), cmdObj);
+        } catch (...) {
+            return exceptionToStatus();
+        }
+
+        const auto cri =
+            uassertStatusOK(Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
+
+        {
+            // This scope is used to end the use of the builder
+            // whether or not we convert to a view-less timeseries
+            // aggregate request.
+            auto bodyBuilder = result->getBodyBuilder();
+            if (convertAndRunAggregateIfViewlessTimeseries(
+                    opCtx, bodyBuilder, countRequest, cri, nss, verbosity)) {
+                // We've delegated execution to agg.
+                return Status::OK();
+            }
+        }
 
         // If the command has encryptionInformation, rewrite the query as necessary.
         if (prepareForFLERewrite(opCtx, countRequest.getEncryptionInformation())) {
@@ -319,13 +400,18 @@ public:
 
         const auto explainCmd = ClusterExplain::wrapAsExplain(countRequest.toBSON(), verbosity);
 
+        // Create an RAII object that prints the collection's shard key in the case of a tassert
+        // or crash.
+        ScopedDebugInfo shardKeyDiagnostics(
+            "ShardKeyDiagnostics",
+            diagnostic_printers::ShardKeyDiagnosticPrinter{
+                cri.isSharded() ? cri.getChunkManager().getShardKeyPattern().toBSON() : BSONObj()});
+
         // We will time how long it takes to run the commands on the shards
         Timer timer;
 
         std::vector<AsyncRequestsSender::Response> shardResponses;
         try {
-            const auto cri = uassertStatusOK(
-                Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
             shardResponses =
                 scatterGatherVersionedTargetByRoutingTable(opCtx,
                                                            nss.dbName(),
@@ -345,8 +431,8 @@ public:
             } catch (...) {
                 return exceptionToStatus();
             }
-            auto aggRequestOnView =
-                query_request_conversion::asAggregateCommandRequest(countRequest, verbosity);
+            auto aggRequestOnView = query_request_conversion::asAggregateCommandRequest(
+                countRequest, true /* hasExplain */);
             auto bodyBuilder = result->getBodyBuilder();
             // An empty PrivilegeVector is acceptable because these privileges are only checked
             // on getMore and explain will not open a cursor.
@@ -355,6 +441,7 @@ public:
                                                       *ex.extraInfo<ResolvedView>(),
                                                       nss,
                                                       PrivilegeVector(),
+                                                      verbosity,
                                                       &bodyBuilder);
         }
 
@@ -369,7 +456,7 @@ public:
             shardResponses,
             mongosStageName,
             millisElapsed,
-            cmdObj,
+            originalCmdObj,
             &bodyBuilder);
     }
 
@@ -398,6 +485,18 @@ private:
         }
 
         return num;
+    }
+
+    static BSONObj translateCmdObjForRawData(OperationContext* opCtx,
+                                             const BSONObj& cmdObj,
+                                             NamespaceString& ns) {
+        if (!OptionalBool::parseFromBSON(cmdObj[CountCommandRequest::kRawDataFieldName]) ||
+            !CollectionRoutingInfoTargeter{opCtx, ns}.timeseriesNamespaceNeedsRewrite(ns)) {
+            return cmdObj;
+        }
+
+        ns = ns.makeTimeseriesBucketsNamespace();
+        return rewriteCommandForRawDataOperation<CountCommandRequest>(cmdObj, ns.coll());
     }
 };
 

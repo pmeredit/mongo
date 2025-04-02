@@ -77,18 +77,21 @@ public:
     explicit MultipleCollectionAccessor(const CollectionPtr& mainColl)
         : MultipleCollectionAccessor(&mainColl) {}
 
-    explicit MultipleCollectionAccessor(CollectionAcquisition mainAcq) : _mainAcq(mainAcq) {}
-    MultipleCollectionAccessor(
-        CollectionAcquisition mainAcq,
-        const std::vector<CollectionOrViewAcquisition>& secondaryAcquisitions)
-        : _mainAcq(mainAcq) {
-        for (auto& acq : secondaryAcquisitions) {
-            _secondaryAcq.emplace(acq.nss(), acq);
-        }
-    }
+    explicit MultipleCollectionAccessor(CollectionAcquisition mainAcq)
+        : _mainAcq(CollectionOrViewAcquisition(std::move(mainAcq))) {}
+
+    explicit MultipleCollectionAccessor(CollectionOrViewAcquisition mainAcq) : _mainAcq(mainAcq) {}
+
+    MultipleCollectionAccessor(const CollectionOrViewAcquisition& mainAcq,
+                               const CollectionOrViewAcquisitionMap& secondaryAcquisitions,
+                               bool isAnySecondaryNamespaceAViewOrNotFullyLocal)
+        : _mainAcq(mainAcq),
+          _secondaryAcq(secondaryAcquisitions),
+          _isAnySecondaryNamespaceAViewOrNotFullyLocal(
+              isAnySecondaryNamespaceAViewOrNotFullyLocal) {}
 
     bool hasMainCollection() const {
-        return (_mainColl && _mainColl->get()) || (_mainAcq && _mainAcq->exists());
+        return (_mainColl && _mainColl->get()) || (_mainAcq && _mainAcq->collectionExists());
     }
 
     const CollectionPtr& getMainCollection() const {
@@ -111,21 +114,29 @@ public:
         return bool(_mainAcq);
     }
 
-    const CollectionAcquisition& getMainAcquisition() const {
-        return *_mainAcq;
+    const CollectionAcquisition& getMainCollectionAcquisition() const {
+        return _mainAcq->getCollection();
     }
 
     VariantCollectionPtrOrAcquisition getMainCollectionPtrOrAcquisition() const {
-        return isAcquisition() ? VariantCollectionPtrOrAcquisition(*_mainAcq)
+        return isAcquisition() ? VariantCollectionPtrOrAcquisition(_mainAcq->getCollection())
                                : VariantCollectionPtrOrAcquisition(_mainColl);
     }
 
     CollectionPtr lookupCollection(const NamespaceString& nss) const {
         if (isAcquisition()) {
-            return _lookupCollectionAcquisition(nss);
+            return _lookupCollectionAcquisitionAndGetCollPtr(nss);
         } else {
             return _lookupCollectionAutoGetters(nss);
         }
+    }
+
+    boost::optional<CollectionAcquisition> getCollectionAcquisitionFromUuid(const UUID uuid) const {
+        if (isAcquisition()) {
+            return _lookupCollectionAcquisition(uuid);
+        }
+        tasserted(9367602, "No collection acquisition with associated UUID");
+        return boost::none;
     }
 
     void clear() {
@@ -164,18 +175,37 @@ private:
                                        NamespaceStringOrUUID{nss.dbName(), *uuid},
                                        shard_role_details::getRecoveryUnit(_opCtx)
                                            ->getPointInTimeReadTimestamp())
-                                 : nullptr);
+                                 : ConsistentCollection{});
         }
         return collMap;
     }
 
-    inline CollectionPtr _lookupCollectionAcquisition(const NamespaceString& nss) const {
+    inline CollectionPtr _lookupCollectionAcquisitionAndGetCollPtr(
+        const NamespaceString& nss) const {
         if (nss == _mainAcq->nss()) {
             return CollectionPtr{_mainAcq->getCollectionPtr().get()};
         } else if (auto itr = _secondaryAcq.find(nss); itr != _secondaryAcq.end()) {
             return CollectionPtr{itr->second.getCollectionPtr().get()};
         }
-        return CollectionPtr{nullptr};
+        tasserted(
+            10096102,
+            str::stream() << "MultipleCollectionAccessor::_lookupCollectionAcquisition: requested "
+                             "unexpected collection nss: "
+                          << nss.toStringForErrorMsg());
+    }
+
+    inline boost::optional<CollectionAcquisition> _lookupCollectionAcquisition(UUID uuid) const {
+        if (_mainAcq && _mainAcq->isCollection() && uuid == _mainAcq->getCollection().uuid()) {
+            return _mainAcq->getCollection();
+        }
+        // Since _secondaryAcq is keyed by NamespaceString, iterate over all secondary
+        // acquisitions.
+        for (const auto& entry : _secondaryAcq) {
+            if (entry.second.isCollection() && entry.second.getCollection().uuid() == uuid) {
+                return entry.second.getCollection();
+            }
+        }
+        MONGO_UNREACHABLE_TASSERT(9367601);
     }
 
     inline CollectionPtr _lookupCollectionAutoGetters(const NamespaceString& nss) const {
@@ -192,7 +222,7 @@ private:
     }
 
     // Shard role api collection access.
-    boost::optional<CollectionAcquisition> _mainAcq;
+    boost::optional<CollectionOrViewAcquisition> _mainAcq;
     CollectionOrViewAcquisitionMap _secondaryAcq;
 
     // Manual collection access state

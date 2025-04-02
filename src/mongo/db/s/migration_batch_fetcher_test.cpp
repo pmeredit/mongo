@@ -62,8 +62,7 @@
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/grid.h"
 #include "mongo/stdx/future.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/out_of_line_executor.h"
 #include "mongo/util/uuid.h"
@@ -139,15 +138,13 @@ protected:
     }
 
     static BSONObj getTerminalBsonObj() {
-        return BSON("Status"
-                    << "OK"
-                    << "ok" << 1 << "objects" << createEmptyCloneArray());
+        return BSON("Status" << "OK"
+                             << "ok" << 1 << "objects" << createEmptyCloneArray());
     }
 
     static BSONObj getBatchBsonObj() {
-        return BSON("Status"
-                    << "OK"
-                    << "ok" << 1 << "objects" << createDocumentsToCloneArray());
+        return BSON("Status" << "OK"
+                             << "ok" << 1 << "objects" << createDocumentsToCloneArray());
     }
 
 private:

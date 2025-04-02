@@ -50,6 +50,7 @@
 #include "mongo/bson/oid.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/catalog/collection.h"
+#include "mongo/db/catalog/collection_catalog_helper.h"
 #include "mongo/db/catalog/collection_impl.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/catalog/create_collection.h"
@@ -90,9 +91,6 @@
 #include "mongo/db/service_entry_point_shard_role.h"
 #include "mongo/db/session/session_catalog.h"
 #include "mongo/db/session/session_catalog_mongod.h"
-#include "mongo/db/storage/recovery_unit.h"
-#include "mongo/db/storage/recovery_unit_noop.h"
-#include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/transaction/session_catalog_mongod_transaction_interface_impl.h"
@@ -165,7 +163,7 @@ public:
 
         _tempDir.emplace("oplog_application_bm_data");
         storageGlobalParams.dbpath = _tempDir->path();
-        storageGlobalParams.ephemeral = false;
+        storageGlobalParams.inMemory = false;
 
         Client::initThread("oplog application main", getGlobalServiceContext()->getService());
         _client = Client::getCurrent();
@@ -181,17 +179,10 @@ public:
         // Disable fast shutdown so that WT can free memory.
         globalFailPointRegistry().find("WTDisableFastShutDown")->setMode(FailPoint::alwaysOn);
 
-        {
-            auto initializeStorageEngineOpCtx = _svcCtx->makeOperationContext(&cc());
-            shard_role_details::setRecoveryUnit(
-                initializeStorageEngineOpCtx.get(),
-                std::make_unique<RecoveryUnitNoop>(),
-                WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
-
-            initializeStorageEngine(initializeStorageEngineOpCtx.get(),
-                                    StorageEngineInitFlags::kAllowNoLockFile |
-                                        StorageEngineInitFlags::kSkipMetadataFile);
-        }
+        catalog::startUpStorageEngineAndCollectionCatalog(
+            _svcCtx,
+            &cc(),
+            StorageEngineInitFlags::kAllowNoLockFile | StorageEngineInitFlags::kSkipMetadataFile);
 
         DatabaseHolder::set(_svcCtx, std::make_unique<DatabaseHolderImpl>());
         repl::StorageInterface::set(_svcCtx, std::make_unique<repl::StorageInterfaceImpl>());
@@ -257,7 +248,7 @@ public:
         databaseHolder->closeAll(opCtx);
 
         // Shut down storage engine.
-        shutdownGlobalStorageEngineCleanly(_svcCtx);
+        catalog::shutDownCollectionCatalogAndGlobalStorageEngineCleanly(_svcCtx);
     }
 
     // Shut down the storage engine, clear the dbpath, and restart the storage engine with empty
@@ -271,17 +262,13 @@ public:
         // Restart storage engine.
         _tempDir.emplace("oplog_application_bm_data");
         storageGlobalParams.dbpath = _tempDir->path();
-        storageGlobalParams.ephemeral = false;
+        storageGlobalParams.inMemory = false;
 
-        auto initializeStorageEngineOpCtx = _svcCtx->makeOperationContext(&cc());
-        shard_role_details::setRecoveryUnit(initializeStorageEngineOpCtx.get(),
-                                            std::make_unique<RecoveryUnitNoop>(),
-                                            WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
-
-        initializeStorageEngine(initializeStorageEngineOpCtx.get(),
-                                StorageEngineInitFlags::kAllowNoLockFile |
-                                    StorageEngineInitFlags::kSkipMetadataFile |
-                                    StorageEngineInitFlags::kForRestart);
+        catalog::startUpStorageEngineAndCollectionCatalog(
+            _svcCtx,
+            &cc(),
+            StorageEngineInitFlags::kAllowNoLockFile | StorageEngineInitFlags::kSkipMetadataFile |
+                StorageEngineInitFlags::kForRestart);
     }
 
     ServiceContext* getSvcCtx() {
@@ -330,13 +317,12 @@ public:
     void createBatch(int size) {
         const long long term1 = 1;
         for (int idx = 0; idx < size; ++idx) {
-            _oplogEntries.emplace_back(BSON("op"
-                                            << "i"
-                                            << "ns"
-                                            << "foo.bar"
-                                            << "ui" << _foobarUUID << "o" << makeDoc(idx) << "ts"
-                                            << Timestamp(1, idx) << "t" << term1 << "v" << 2
-                                            << "wall" << Date_t::now()));
+            _oplogEntries.emplace_back(BSON("op" << "i"
+                                                 << "ns"
+                                                 << "foo.bar"
+                                                 << "ui" << _foobarUUID << "o" << makeDoc(idx)
+                                                 << "ts" << Timestamp(1, idx) << "t" << term1 << "v"
+                                                 << 2 << "wall" << Date_t::now()));
         }
     }
 
@@ -363,19 +349,18 @@ public:
         for (int batchNum = 0; opsLeft > 0; ++batchNum) {
             std::vector<BSONObj> applyOpsArray;
             for (int idx = 0; idx < batchSize; ++idx) {
-                applyOpsArray.emplace_back(BSON("op"
-                                                << "i"
-                                                << "ns"
-                                                << "foo.bar"
-                                                << "ui" << _foobarUUID << "o" << makeDoc(idx)));
+                applyOpsArray.emplace_back(BSON("op" << "i"
+                                                     << "ns"
+                                                     << "foo.bar"
+                                                     << "ui" << _foobarUUID << "o"
+                                                     << makeDoc(idx)));
             }
-            _oplogEntries.emplace_back(BSON("op"
-                                            << "c"
-                                            << "ns"
-                                            << "admin.$cmd"
-                                            << "o" << BSON("applyOps" << applyOpsArray) << "ts"
-                                            << Timestamp(1, batchNum) << "t" << term1 << "v" << 2
-                                            << "wall" << Date_t::now()));
+            _oplogEntries.emplace_back(BSON("op" << "c"
+                                                 << "ns"
+                                                 << "admin.$cmd"
+                                                 << "o" << BSON("applyOps" << applyOpsArray) << "ts"
+                                                 << Timestamp(1, batchNum) << "t" << term1 << "v"
+                                                 << 2 << "wall" << Date_t::now()));
             opsLeft -= batchSize;
         }
     }
@@ -388,11 +373,11 @@ public:
         for (int batchNum = 0; opsLeft > 0; ++batchNum) {
             std::vector<BSONObj> applyOpsArray;
             for (int idx = 0; idx < batchSize; ++idx) {
-                applyOpsArray.emplace_back(BSON("op"
-                                                << "i"
-                                                << "ns"
-                                                << "foo.bar"
-                                                << "ui" << _foobarUUID << "o" << makeDoc(idx)));
+                applyOpsArray.emplace_back(BSON("op" << "i"
+                                                     << "ns"
+                                                     << "foo.bar"
+                                                     << "ui" << _foobarUUID << "o"
+                                                     << makeDoc(idx)));
             }
             _oplogEntries.emplace_back(BSON(
                 "lsid" << lsidObj << "txnNumber" << static_cast<long long>(batchNum) << "op"
@@ -429,11 +414,11 @@ public:
 
             std::vector<BSONObj> applyOpsArray;
             for (int idx = 0; idx < batchSize; ++idx) {
-                applyOpsArray.emplace_back(BSON("op"
-                                                << "i"
-                                                << "ns"
-                                                << "foo.bar"
-                                                << "ui" << _foobarUUID << "o" << makeDoc(idx)));
+                applyOpsArray.emplace_back(BSON("op" << "i"
+                                                     << "ns"
+                                                     << "foo.bar"
+                                                     << "ui" << _foobarUUID << "o"
+                                                     << makeDoc(idx)));
             }
             _oplogEntries.emplace_back(BSON(
                 "lsid" << lsidObj << "txnNumber" << txnNumber << "op"

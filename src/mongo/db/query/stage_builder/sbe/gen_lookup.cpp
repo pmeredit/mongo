@@ -280,10 +280,10 @@ std::pair<SbSlot /* keyValueSlot */, SbStage> buildForeignKeysStream(SbSlot inpu
             // Don't get field from scalars inside arrays (it would fail but we also don't want to
             // fill with "null" in this case to match the MQL semantics described above.)
             SbExpr shouldGetField =
-                b.makeBinaryOp(sbe::EPrimBinary::logicOr,
-                               b.makeFunction("isObject", keyValueSlot),
-                               b.makeUnaryOp(sbe::EPrimUnary::logicNot,
-                                             b.makeFunction("isArray", prevKeyValueSlot)));
+                b.makeBooleanOpTree(optimizer::Operations::Or,
+                                    b.makeFunction("isObject", keyValueSlot),
+                                    b.makeUnaryOp(sbe::EPrimUnary::logicNot,
+                                                  b.makeFunction("isArray", prevKeyValueSlot)));
 
             getFieldFromObject =
                 b.makeIf(std::move(shouldGetField),
@@ -470,7 +470,8 @@ std::pair<SbSlot /* keyValuesSetSlot */, SbStage> buildKeySet(
     mergingExprs.emplace_back(std::move(aggSetUnionExpr), spillSlot);
 
     auto [packedKeyValuesStage, _, aggOutSlots] =
-        b.makeHashAgg(std::move(keyValuesStage),
+        b.makeHashAgg(VariableTypes{},
+                      std::move(keyValuesStage),
                       {}, /* groupBy slots - an empty vector means creating a single group */
                       std::move(sbAggExprs),
                       {}, /* We group _all_ key values to a single set so we can ignore collation */
@@ -515,7 +516,8 @@ std::pair<SbSlot /* resultSlot */, SbStage> buildForeignMatchedArray(SbStage inn
         b.makeFunction("aggConcatArraysCapped", spillSlot, b.makeInt32Constant(sizeCap)),
         spillSlot);
 
-    auto [hashAggStage, _, aggOutSlots] = b.makeHashAgg(std::move(innerBranch),
+    auto [hashAggStage, _, aggOutSlots] = b.makeHashAgg(VariableTypes{},
+                                                        std::move(innerBranch),
                                                         {}, /* groupBy slots */
                                                         std::move(sbAggExprs),
                                                         {}, /* collatorSlot */
@@ -852,8 +854,8 @@ std::pair<SbSlot, SbStage> buildIndexJoinLookupStage(
                        b.makeConstant(sbe::value::TypeTags::bsonUndefined, 0)));
     SbSlot arrayBranchOutput = arrayBranchOutSlots[0];
 
-    auto shouldProduceSeekForArray = b.makeBinaryOp(
-        sbe::EPrimBinary::logicAnd,
+    auto shouldProduceSeekForArray = b.makeBooleanOpTree(
+        optimizer::Operations::And,
         b.makeFunction("isArray", singleLocalValueSlot),
         b.makeUnaryOp(sbe::EPrimUnary::logicNot,
                       b.makeFunction("isMember", arrayBranchOutput, localKeysSetSlot)));
@@ -969,7 +971,11 @@ std::pair<SbSlot, SbStage> buildIndexJoinLookupStage(
     // To avoid such situation, we are placing 'unique' stage to prevent repeating records from
     // appearing in the result.
     if (index.multikey) {
-        ixScanNljStage = b.makeUnique(std::move(ixScanNljStage), foreignRecordIdSlot);
+        if (foreignColl->isClustered()) {
+            ixScanNljStage = b.makeUnique(std::move(ixScanNljStage), foreignRecordIdSlot);
+        } else {
+            ixScanNljStage = b.makeUniqueRoaring(std::move(ixScanNljStage), foreignRecordIdSlot);
+        }
     }
 
     // Loop join the foreign record id produced by the index seek on the outer side with seek

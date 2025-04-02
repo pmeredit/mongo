@@ -47,24 +47,20 @@
 #include "mongo/rpc/metadata.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future_test_utils.h"
 
 namespace {
 
 using namespace mongo;
-using executor::NetworkInterfaceMock;
 using executor::RemoteCommandRequest;
 using executor::TaskExecutor;
 
 using ResponseStatus = TaskExecutor::ResponseStatus;
 
 const HostAndPort source("localhost", -1);
-const BSONObj findCmdObj = BSON("find"
-                                << "coll");
+const BSONObj findCmdObj = BSON("find" << "coll");
 
 class FetcherTest : public executor::ThreadPoolExecutorTest {
 public:
@@ -381,8 +377,7 @@ TEST_F(FetcherTest, NonFindCommand) {
     Fetcher f1(&executor,
                source,
                DatabaseName::createDatabaseName_forTest(boost::none, "db"),
-               BSON("listIndexes"
-                    << "coll"),
+               BSON("listIndexes" << "coll"),
                unreachableCallback);
     Fetcher f2(&executor,
                source,
@@ -609,9 +604,8 @@ TEST_F(FetcherTest, CursorNotAnObject) {
 
 TEST_F(FetcherTest, CursorIdFieldMissing) {
     ASSERT_OK(fetcher->schedule());
-    processNetworkResponse(BSON("cursor" << BSON("ns"
-                                                 << "db.coll"
-                                                 << "firstBatch" << BSONArray())
+    processNetworkResponse(BSON("cursor" << BSON("ns" << "db.coll"
+                                                      << "firstBatch" << BSONArray())
                                          << "ok" << 1),
                            ReadyQueueState::kEmpty,
                            FetcherState::kInactive);
@@ -1017,9 +1011,8 @@ TEST_F(FetcherTest, EmptyGetMoreRequestAfterFirstBatchMakesFetcherInactiveAndKil
 
     // killCursors command request will be canceled by executor on shutdown.
     tearDown();
-    ASSERT_EQUALS(1,
-                  countBSONFormatLogLinesIsSubset(BSON("msg"
-                                                       << "killCursors command task failed")));
+    ASSERT_EQUALS(
+        1, countBSONFormatLogLinesIsSubset(BSON("msg" << "killCursors command task failed")));
 }
 
 void setNextActionToNoAction(const StatusWith<Fetcher::QueryResponse>& fetchResult,
@@ -1093,11 +1086,9 @@ TEST_F(FetcherTest, UpdateNextActionAfterSecondBatch) {
     }
 
     ASSERT_EQUALS(1,
-                  countBSONFormatLogLinesIsSubset(BSON("msg"
-                                                       << "killCursors command failed"
-                                                       << "attr"
-                                                       << BSON("error"
-                                                               << "UnknownError: "))));
+                  countBSONFormatLogLinesIsSubset(
+                      BSON("msg" << "killCursors command failed"
+                                 << "attr" << BSON("error" << "UnknownError: "))));
 }
 
 /**
@@ -1167,13 +1158,12 @@ TEST_F(FetcherTest, ShutdownDuringSecondBatch) {
     runReadyNetworkOperations();
 
     // Fetcher should attempt (unsuccessfully) to schedule a killCursors command.
-    ASSERT_EQUALS(1,
-                  countBSONFormatLogLinesIsSubset(
-                      BSON("msg"
-                           << "Failed to schedule killCursors command"
-                           << "attr"
-                           << BSON("error"
-                                   << "ShutdownInProgress: TaskExecutor shutdown in progress"))));
+    ASSERT_EQUALS(
+        1,
+        countBSONFormatLogLinesIsSubset(BSON(
+            "msg" << "Failed to schedule killCursors command"
+                  << "attr"
+                  << BSON("error" << "ShutdownInProgress: TaskExecutor shutdown in progress"))));
 
     ASSERT_EQUALS(ErrorCodes::ShutdownInProgress, status.code());
 }

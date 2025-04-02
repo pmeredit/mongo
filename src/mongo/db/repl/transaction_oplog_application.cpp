@@ -78,9 +78,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/util/assert_util.h"
@@ -182,6 +179,7 @@ Status _applyOperationsForTransaction(OperationContext* opCtx,
 
     const bool allowCollectionCreatinInPreparedTransactions =
         feature_flags::gCreateCollectionInPreparedTransactions.isEnabled(
+            VersionContext::getDecoration(opCtx),
             serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
     // Apply each the operations via repl::applyOperation.
     for (const auto& op : txnOps) {
@@ -816,8 +814,7 @@ void reconstructPreparedTransactions(OperationContext* opCtx, repl::OplogApplica
 
     DBDirectClient client(opCtx);
     FindCommandRequest findRequest{NamespaceString::kSessionTransactionsTableNamespace};
-    findRequest.setFilter(BSON("state"
-                               << "prepared"));
+    findRequest.setFilter(BSON("state" << "prepared"));
     const auto cursor = client.find(std::move(findRequest));
 
     // Iterate over each entry in the transactions table that has a prepared

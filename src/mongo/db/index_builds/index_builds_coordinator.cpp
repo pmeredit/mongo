@@ -78,7 +78,6 @@
 #include "mongo/db/repl/timestamp_block.h"
 #include "mongo/db/s/collection_sharding_state.h"
 #include "mongo/db/s/scoped_collection_metadata.h"
-#include "mongo/db/server_options.h"
 #include "mongo/db/server_recovery.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/stats/resource_consumption_metrics.h"
@@ -92,10 +91,7 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/logv2/log_severity_suppressor.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/message.h"
 #include "mongo/s/shard_key_pattern.h"
@@ -250,7 +246,7 @@ bool shouldBuildIndexesOnEmptyCollectionSinglePhased(OperationContext* opCtx,
 
     // This check happens before spawning the index build thread. So it does not race with the
     // replication recovery flag being modified.
-    if (inReplicationRecovery(opCtx->getServiceContext()).load()) {
+    if (InReplicationRecovery::isSet(opCtx->getServiceContext())) {
         return false;
     }
 
@@ -491,7 +487,7 @@ bool isIndexBuildResumable(OperationContext* opCtx,
     // startup recovery, the last optime here derived from the local oplog may not be a valid
     // optime to wait on for the majority commit point since the rest of the replica set may
     // be on a different branch of history.
-    if (inReplicationRecovery(opCtx->getServiceContext()).load()) {
+    if (InReplicationRecovery::isSet(opCtx->getServiceContext())) {
         LOGV2(5039100,
               "Index build: in replication recovery. Not waiting for last optime before "
               "interceptors to be majority committed",
@@ -602,12 +598,12 @@ IndexBuildsCoordinator::makeKillIndexBuildOnLowDiskSpaceAction() {
     public:
         KillIndexBuildsAction(IndexBuildsCoordinator* coordinator) : _coord(coordinator) {}
 
-        int64_t getThresholdBytes() noexcept final {
+        int64_t getThresholdBytes() final {
             // This parameter's validator ensures that this multiplication will not overflow.
             return gIndexBuildMinAvailableDiskSpaceMB.load() * 1024 * 1024;
         }
 
-        void act(OperationContext* opCtx, int64_t availableBytes) noexcept final {
+        void act(OperationContext* opCtx, int64_t availableBytes) final {
             if (_coord->noIndexBuildInProgress()) {
                 // Avoid excessive logging when no index builds are in progress. Nothing prevents an
                 // index build from starting after this check.  Subsequent calls will see any
@@ -1055,8 +1051,7 @@ void IndexBuildsCoordinator::applyStartIndexBuild(OperationContext* opCtx,
 
     IndexBuildsCoordinator::IndexBuildOptions indexBuildOptions;
     indexBuildOptions.applicationMode = applicationMode;
-    if (repl::feature_flags::gReduceMajorityWriteLatency.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+    if (repl::feature_flags::gReduceMajorityWriteLatency.isEnabled()) {
         // When gReduceMajorityWriteLatency is enabled, the oplog can be written far ahead of oplog
         // application. In this case, top of oplog will include this applyIndexBuild oplog itself so
         // we will fall into deadlock if we wait the committedSnapshot to pass the top of oplog. So,
@@ -1443,8 +1438,10 @@ bool IndexBuildsCoordinator::abortIndexBuildByBuildUUID(OperationContext* opCtx,
         const auto lockOptions =
             makeAutoGetCollectionOptions(IndexBuildProtocol::kSinglePhase == replState->protocol);
         AutoGetCollection autoGetColl(opCtx, dbAndUUID, MODE_X, lockOptions);
+        // Same options used here in order to avoid locking the RSTL after having taken the Global
+        // lock.
         AutoGetCollection indexBuildEntryColl(
-            opCtx, NamespaceString::kIndexBuildEntryNamespace, MODE_IX);
+            opCtx, NamespaceString::kIndexBuildEntryNamespace, MODE_IX, lockOptions);
 
         hangAbortIndexBuildByBuildUUIDAfterLocks.pauseWhileSet();
 
@@ -2586,11 +2583,10 @@ Status IndexBuildsCoordinator::_setUpIndexBuild(OperationContext* opCtx,
     return Status::OK();
 }
 
-void IndexBuildsCoordinator::_runIndexBuild(
-    OperationContext* opCtx,
-    const UUID& buildUUID,
-    const IndexBuildOptions& indexBuildOptions,
-    const boost::optional<ResumeIndexInfo>& resumeInfo) noexcept {
+void IndexBuildsCoordinator::_runIndexBuild(OperationContext* opCtx,
+                                            const UUID& buildUUID,
+                                            const IndexBuildOptions& indexBuildOptions,
+                                            const boost::optional<ResumeIndexInfo>& resumeInfo) {
     activeIndexBuilds.sleepIfNecessary_forTestOnly();
 
     // If the index build does not exist, do not continue building the index. This may happen if an
@@ -3356,7 +3352,7 @@ StatusWith<std::pair<long long, long long>> IndexBuildsCoordinator::_runIndexReb
     OperationContext* opCtx,
     CollectionWriter& collection,
     const UUID& buildUUID,
-    RepairData repair) noexcept {
+    RepairData repair) {
     invariant(
         shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(collection->ns(), MODE_X));
 

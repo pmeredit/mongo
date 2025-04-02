@@ -37,6 +37,7 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/db/catalog/collection.h"
+#include "mongo/db/catalog/collection_catalog.h"
 #include "mongo/db/catalog/index_catalog.h"
 #include "mongo/db/catalog/validate/validate_gen.h"
 #include "mongo/db/catalog/validate/validate_state.h"
@@ -51,8 +52,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/views/view.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
@@ -71,6 +70,9 @@ ValidateState::ValidateState(OperationContext* opCtx,
                              const NamespaceString& nss,
                              ValidationOptions options)
     : ValidationOptions(std::move(options)),
+      _validateLock(isBackground()
+                        ? boost::none
+                        : boost::optional<Lock::SharedLock>{obtainSharedValidationLock(opCtx)}),
       _globalLock(opCtx, isBackground() ? MODE_IS : MODE_IX),
       _nss(nss),
       _dataThrottle(opCtx, [&]() { return gMaxValidateMBperSec.load(); }) {
@@ -226,6 +228,9 @@ Status ValidateState::initializeCollection(OperationContext* opCtx) {
         _dataThrottle.turnThrottlingOff();
     }
 
+    // We can release the validate lock here as we now have exclusive access to the collection and
+    // no CRUD operations or fast count changes will occur.
+    _validateLock.reset();
     return Status::OK();
 }
 
@@ -258,6 +263,27 @@ void ValidateState::initializeCursors(OperationContext* opCtx) {
     // (RecordId()), which will halt iteration at the initialization step.
     auto record = _traverseRecordStoreCursor->next(opCtx);
     _firstRecordId = record ? std::move(record->id) : RecordId();
+}
+
+namespace {
+/*
+ * Oplog Batch Applier takes this lock in exclusive mode when applying the
+ * batch. Foreground validation waits on this lock to begin validation.
+ * We must synchronise these operations as foreground validation involves opening a snapshot of the
+ * most recent data and during oplog application, CRUD operations on the document are performed in a
+ * transaction separate from the fast count updates. This could potentially lead to validation
+ * opening a snapshot between these two transactions and result in an incorrectly reported fast
+ * count discrepancy.
+ */
+Lock::ResourceMutex validateLock("validateLock");
+}  // namespace
+
+Lock::ExclusiveLock ValidateState::obtainExclusiveValidationLock(OperationContext* opCtx) {
+    return Lock::ExclusiveLock(opCtx, validateLock);
+}
+
+Lock::SharedLock ValidateState::obtainSharedValidationLock(OperationContext* opCtx) {
+    return Lock::SharedLock(opCtx, validateLock);
 }
 
 }  // namespace CollectionValidation

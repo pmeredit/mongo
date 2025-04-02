@@ -39,7 +39,7 @@
 
 #define CLIENT_ERR_W_CODE(code, ...) _mongocrypt_set_error(status, MONGOCRYPT_STATUS_ERROR_CLIENT, code, __VA_ARGS__)
 
-#define CLIENT_ERR(fmt, ...) CLIENT_ERR_W_CODE(MONGOCRYPT_GENERIC_ERROR_CODE, fmt, ##__VA_ARGS__)
+#define CLIENT_ERR(...) CLIENT_ERR_W_CODE(MONGOCRYPT_GENERIC_ERROR_CODE, __VA_ARGS__)
 
 #define KMS_ERR_W_CODE(code, ...) _mongocrypt_set_error(status, MONGOCRYPT_STATUS_ERROR_KMS, code, __VA_ARGS__)
 
@@ -48,6 +48,10 @@
 #define MONGOCRYPT_STR_AND_LEN(x) (x), (sizeof(x) / sizeof((x)[0]) - 1)
 
 #define MONGOCRYPT_DATA_AND_LEN(x) ((uint8_t *)x), (sizeof(x) / sizeof((x)[0]) - 1)
+
+#define LATEST_STR_ENCODE_VERSION 1
+
+#define MIN_STR_ENCODE_VERSION 1
 
 /* TODO: Move these to mongocrypt-log-private.h? */
 const char *tmp_json(const bson_t *bson);
@@ -126,6 +130,7 @@ struct _mongocrypt_t {
     /// Pointer to the global csfle_lib object. Should not be freed directly.
     mongo_crypt_v1_lib *csfle_lib;
     bool retry_enabled;
+    bool multiple_collinfo_enabled;
 };
 
 typedef enum {
@@ -142,7 +147,8 @@ typedef enum {
 typedef enum {
     MONGOCRYPT_FLE2_ALGORITHM_UNINDEXED = 1,
     MONGOCRYPT_FLE2_ALGORITHM_EQUALITY = 2,
-    MONGOCRYPT_FLE2_ALGORITHM_RANGE = 3
+    MONGOCRYPT_FLE2_ALGORITHM_RANGE = 3,
+    MONGOCRYPT_FLE2_ALGORITHM_TEXT_SEARCH = 4
 } mongocrypt_fle2_encryption_algorithm_t;
 
 bool _mongocrypt_validate_and_copy_string(const char *in, int32_t in_len, char **out) MONGOCRYPT_WARN_UNUSED_RESULT;
@@ -160,16 +166,5 @@ bool _mongocrypt_needs_credentials(mongocrypt_t *crypt);
 bool _mongocrypt_needs_credentials_for_provider(mongocrypt_t *crypt,
                                                 _mongocrypt_kms_provider_t provider,
                                                 const char *name);
-
-/**
- * Enable/disable the use of FLE2v2 payload types for write.
- *
- * @param[in] crypt The @ref mongocrypt_t object.
- * @param[in] enable Whether to enable use of FLE2v2 payloads.
- *
- * @returns A boolean indicating success. If false, an error status is set.
- * Retrieve it with @ref mongocrypt_status
- */
-bool mongocrypt_setopt_fle2v2(mongocrypt_t *crypt, bool enable);
 
 #endif /* MONGOCRYPT_PRIVATE_H */

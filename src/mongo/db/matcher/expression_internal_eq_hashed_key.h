@@ -31,7 +31,6 @@
 
 #include "mongo/db/hasher.h"
 #include "mongo/db/matcher/expression_leaf.h"
-#include "mongo/db/query/bson/dotted_path_support.h"
 
 namespace mongo {
 
@@ -61,12 +60,6 @@ public:
         // Checking the type should happen earlier during parsing.
         : InternalEqHashedKey(path, value.numberLong()) {}
 
-    bool matchesSingleElement(const BSONElement& elem, MatchDetails* details) const final {
-        tassert(7281401, "hashed value must be a long", _rhs.type() == BSONType::NumberLong);
-        const auto hashVal = BSONElementHasher::hash64(elem, BSONElementHasher::DEFAULT_HASH_SEED);
-        return hashVal == _rhs.numberLong();
-    };
-
     std::unique_ptr<MatchExpression> clone() const final {
         auto clone = std::make_unique<InternalEqHashedKey>(path(), _rhs);
         clone->setCollator(_collator);
@@ -74,18 +67,6 @@ public:
             clone->setTag(getTag()->clone());
         }
         return clone;
-    }
-
-    bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const override {
-        // Sadly, we need to match EOO elements to null index keys, as a special case.
-        if (!dotted_path_support::extractElementAtPath(doc->toBSON(), path())) {
-            return BSONElementHasher::hash64(BSON("" << BSONNULL).firstElement(),
-                                             BSONElementHasher::DEFAULT_HASH_SEED) ==
-                _rhs.numberLong();
-        }
-
-        // Otherwise, we let this traversal work for us.
-        return PathMatchExpression::matches(doc, details);
     }
 
     StringData name() const final {

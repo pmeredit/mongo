@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {
     resultsEq,
 } from "jstests/aggregation/extras/utils.js";
@@ -6,9 +12,8 @@ import {Thread} from "jstests/libs/parallelTester.js";
 import {
     flushUntilStopped,
     LocalDiskCheckpointUtil,
-} from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
-import {
     TestHelper,
+    validateLastCheckpointStat,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
@@ -17,6 +22,7 @@ import {
     makeRandomString,
     sampleUntil,
     sanitizeDoc,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID,
     waitForCount,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -26,6 +32,8 @@ import {
 
 const kafkaPlaintextName = "kafka1";
 const kafkaSASLSSLName = "kafkaSSL1";
+const kafkaSSLName = "kafkaSSL2";
+const kafkaSSLWithPasswordName = "kafkaSSL3";
 const kafkaWithCompressionTypeGzip = "kafkaWithCompressionTypeGzip";
 const kafkaWithGroupId = "kafkaWithGroupId";
 const kafkaWithAutoOffsetResetEarliest = "kafkaWithAutoOffsetResetEarliest";
@@ -34,6 +42,7 @@ const dbConnName = "db1";
 const uri = 'mongodb://' + db.getMongo().host;
 const kafkaUri = 'localhost:9092';
 const kafkaUriSASLSSL = 'localhost:9093';
+const kafkaUriSSL = 'localhost:9094';
 const topicName1 = 'outputTopic1';
 const topicName2 = 'outputTopic2';
 const topicName3 = 'outputTopic3';
@@ -66,6 +75,105 @@ const startOptions = {
     featureFlags: {useExecutionPlanFromCheckpoint: true},
 };
 const groupIdFromConnectionValue = "groupIdFromTheKafkaConnection";
+const clientCrt =
+    `-----BEGIN CERTIFICATE-----
+MIIC6TCCAdECFEQhw5wzoBDvKycYMbug4+CGuN3DMA0GCSqGSIb3DQEBCwUAMEUx
+CzAJBgNVBAYTAlVTMRAwDgYDVQQKDAdNb25nb0RCMQ8wDQYDVQQHDAZBdXN0aW4x
+EzARBgNVBAMMCm1vbmdvZGItY2EwHhcNMjUwMTI0MjEyNTQwWhcNMzUwMTIyMjEy
+NTQwWjAdMRswGQYDVQQDDBJjbGllbnQuZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3
+DQEBAQUAA4IBDwAwggEKAoIBAQDwT67cdz0nXe4u4mXfshNaOozcoO3+sm/jLhlM
+RtYO2NDR49J8u6qxTYscq5g7LotNPES5lbGU3FTcDnHEtlu/OOpvsfeFQOZfd2Id
+om0a1nPgHyPWEKj4qufmUpZsKdyGdLNlqfHYUkK3KMbXNF/+iyv7mfpm12wvnFP1
+wSArRvzqFcsoWHMr6taHmDWK2UgUqAiamEAT2nGo2xhExsZ0hSswnv61/mWaVH2/
+3zuy21Ay3RB3XcDxaOVgl/d+qN+uy713tY+7ZHinuSBtZTe/GQh48DcpeTucSKv2
+zHfschd18FmD1TvOu79OTGgt1aqRITXpP9YUqp5nQcmXePotAgMBAAEwDQYJKoZI
+hvcNAQELBQADggEBAA4MscCe4cUH7GUq2qBgM1S8NoX9PIGfcebJtAFD7UocwVWB
+j31pJ23sb6kru9YbHWP2YoxrI1FNXmOodaeQjOo0CkzEN3bneBs8PEzfK+Q3DEuL
+YmYGSTOZLjhVWyDLMUd5RcCmIlnEO0lySf6uU8iO3rzIKREgf+FPU9V7YibvMq5v
+M8yo/+tG7LATQ+Eigy/qJxEmO9V7VEkQvadA9VM8wrGlAR9usXFn3kwITOZh6Lwn
+uZFV0/ksZmYhkuaNu5NgfQaVFyb1ki8a8bLhI9Dszl4hH9WFIs20N03CVqv62NPc
+rFL9uymL2+evlSPoxY/qXdxU3ldNcwsVJyDziv4=
+-----END CERTIFICATE-----`;
+const clientKey =
+    `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDwT67cdz0nXe4u
+4mXfshNaOozcoO3+sm/jLhlMRtYO2NDR49J8u6qxTYscq5g7LotNPES5lbGU3FTc
+DnHEtlu/OOpvsfeFQOZfd2Idom0a1nPgHyPWEKj4qufmUpZsKdyGdLNlqfHYUkK3
+KMbXNF/+iyv7mfpm12wvnFP1wSArRvzqFcsoWHMr6taHmDWK2UgUqAiamEAT2nGo
+2xhExsZ0hSswnv61/mWaVH2/3zuy21Ay3RB3XcDxaOVgl/d+qN+uy713tY+7ZHin
+uSBtZTe/GQh48DcpeTucSKv2zHfschd18FmD1TvOu79OTGgt1aqRITXpP9YUqp5n
+QcmXePotAgMBAAECggEAMMeL8BaIJFCNw5iTI0grY3pVE4fbJ4Mi8RNvcStD0jmy
+kZhUJpuVd24NGeG/AexdvGzKan13UYcz9oM8FrkJgJRWChwu6S6WVLSQBwHscbEs
+Tkcj6BTzp55RelAzVntc1zIjJDTN8aIpBrLRQefQwIORhv3ndS6vOC7cYBs2o3Hd
+uZtXDjNv/G7nsxWpJYa3LjzM/dZFzjOZomvRlTP856chnqsNgt/NFA2jXaOFcIdv
+KPFqu+8/i7+XRAlDXFMON/i2xSeW0KCncQilTuOViBAEIVsEqKFpmgBUX729jiGV
+5F8yXKWl0ZPZKnWN1P8d78/0lmcjLmcwN0XPJvkCYQKBgQD0EsxDAetaYrINGQoT
+4+m9bkLQnDZi1oztwvQFAKMM7OgZd3iuZMjCNtTnwAaiyl7GuFWmMOkFkbAtFvir
+XFOK1NFRPOsm8lcLcawbXiTskHKfZ4AiX2flizerrtWJXRAYEwDzwpn2lB/cWLsd
+qpoqIK4zx5dSCbVUl8O8053H6QKBgQD8DdKmd8eFDdP3VBaL0QFZBWvpQU6bqrIk
+5B+dCC8nSK+JuzcNaHMzM0J6l0cOGg+VsPB0MsAtc3t3dmRxOY10gckHaf0eBOQ+
+W8lGa5+Urldab4l7k728m9qXemZ7fBkLQr0UgrVTI0q4ouHlzKESWNHpNDIAWONr
+Dg2tYLp5pQKBgQCYgpJ+IFnm3ZryUj4Y1aY9hwNbBPF66yOegd4mrhI0Rmh1WVDg
+b/t+V/LLaRL8b8WvGIn0UcWZhEJ4ukziDsvpCThOMemiKXW4oevwIfCinVPyRSMs
+1z69kTNVJOcrcSpYUK+coXHBQSdzcUJitDKmtksD8eidC5Hx7O8TM4v42QKBgAIK
+zqEgqVIvqX8AhGo/mEYzYAt0xwFF4cmgu4zXKyKjWSDBjpGiPgS1Lp21qhK4LVYm
+J9yZKKt1mxN9txSfxcCi6JERz8Y1fe/vaHMUnidjPjvyWWfR66CilqPRjxEDEWTg
+9o06/eMdjxZt42ysOsXeSF0eWiVckwMkCwJTnU8tAoGAJvDpsRqAWD78sSIZEg1e
+WkE+A6ENwN4OLyT81Wi1tW4j+Z7hPiFj7uMKCoH22yoD4xAiPcS6nVKN+F4cPwaY
+zS5O9R6HBBckidJpZ0B0JZHQen+WLXNJFjIU7+VrO52XSyiTsl+OnAnmT+9pZIcS
+tHcLYeEKex+3vW2s6WagydY=
+-----END PRIVATE KEY-----`;
+const clientWithPasswordCrt =
+    `-----BEGIN CERTIFICATE-----
+MIIC6TCCAdECFGxU5JTlU5bi+vOg9w6H9QKRLBIBMA0GCSqGSIb3DQEBCwUAMEUx
+CzAJBgNVBAYTAlVTMRAwDgYDVQQKDAdNb25nb0RCMQ8wDQYDVQQHDAZBdXN0aW4x
+EzARBgNVBAMMCm1vbmdvZGItY2EwHhcNMjUwMTMxMjA0MDE2WhcNMzUwMTI5MjA0
+MDE2WjAdMRswGQYDVQQDDBJjbGllbnQuZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3
+DQEBAQUAA4IBDwAwggEKAoIBAQCoaHYKDvKxCcU5TgELNdOrzf/OOF94oF9Vp+14
+mDeBxQlQ+oGy/K4C/E7mKVMBg4U/qN8ZBfTTd4PjX6j9+Z5HnaPEdLKxjVJYEoRO
+1BNPg0xoBJoMcoHosO8Y/KeaI5xXqN/uSgsYK1+LmFgUU7F4deV6PZcQX995UMCU
+rA6C4H+fgl7BHSXn0hIF8TwQggpy3s6gPAgxqSNSHJlTYZYHONw+/Uvp8R04LR1k
+5v9RvFtLQ4Utkes1xSOyASRde6YCZKBlUyGy7ZGtJq5vk51hybraQqSBoCJk2Cd3
+duw1KVfiGDy/OxxTlpM9VG4EdOD2lMMmBKqPJ5X1TVZ2msalAgMBAAEwDQYJKoZI
+hvcNAQELBQADggEBAIdlnK8JrZVTEbNWpbAMp9/55YvTSfkT55bB59Jl2O8Xsz5z
+h6KinRuxaCyygZGH62laMy1/JSRQmJHqG2q3IdQdetMPtBP0L8MsaOhPTQ4UQ3Dl
+cqi47tbb9stJ4pxQ3FO7iIBD8aqQBe2zwkFsjEBh2l/N9fSaVFlif2shPh48JqyT
+GgyCAAvf4G5ciPApTra5PAWWiF//vnLowq2lm03N6wVtk+YUwEK+psxTyixjF8xH
+Y2xSzMfXGynGiokVYPfhg3iedUEius/M2VD/uTdYTPQvYnBdooR3/3KhzpMMSuPE
+5tYCSVqp74kP5f15V52Y/XphW4viMTGK86N8G6c=
+-----END CERTIFICATE-----`;
+const clientWithPasswordKey =
+    `-----BEGIN ENCRYPTED PRIVATE KEY-----
+MIIFLTBXBgkqhkiG9w0BBQ0wSjApBgkqhkiG9w0BBQwwHAQILjXMmhr6Ks0CAggA
+MAwGCCqGSIb3DQIJBQAwHQYJYIZIAWUDBAEqBBAJSK+KHh3liTQccMvBC3YqBIIE
+0CRhWD9n8igZ/ZE4u2x5RXmbDEK2BAXeIhI+whr8pjCeckMn0oMHtWB8tbib2g9S
+rkFJo/OwT+ZRG8ZmfF6spyofTXEc4E+sPL/7ZFOMLGnzXGZUYjJWf7cy0wGYc23F
+ujdXtcP7pZbIByB5JJvQeVRGM9xgSt9dOFwT6TzflWObWugtyoGHRrOLzmODp4NN
+t4PThjUxlmXeB/DCu5Ej8yQytVYnBo1/AMnVmyYTQrhQDo1ADM2FSP9NJjEUi68z
+6jyYQAJ7HF0B1DAqlG829MZN8wCMQi9yVEONX0pcJiBbcTD8rglGfbhQVrup0t/F
+vEpQeeRwYVtqUXjzivsEx9ra/Rm3e/b2M7oZO9Ft/8xAcQ/0WG3+N/OkAuCRLOBw
+jytSxY1WtBHZCybeF8KP3b4QZpdXfB2P2T2nMVTQyLUHrMOBk01hQw5zu7PU+eHI
+RHCUjvZnTFzlQvtRgtM4Grs0fTDan+u3r+w6aub9P3FBtqqtmumiTXGrk/mN19TZ
+3zpQ4VsnUjyf9LAC+1JFSgjivCQQhB+qzDNZCqKZeyog/QvfcWiUEnsB2GgwzFl0
+bbr4itpQg6u/gXVkL8fBvc82tH+KWHTiAe8OeWTK7+GhnV5VIaL0x3Q3g4f69tzk
+Wa7SdcUkCLrY4alIN/WtGZbZbC/4j3GwT0LdEr5SyRgYSP0yL9Y/IaB7O3ZmiWQJ
++KbcSTEUDgqAVLZ6UeXWKsHpTbgo2XIkyb2J7Nbv5fMrWTLB/tgneB2VRm0ZU9GA
+zNmCibse6KXbLe34Gj4Tb3Kxbw+39gUZBWMLmveazQR4W/FOXxji3pJasC1ikmv/
+4BaTQ/vhzj9YTMLuWiEiD4yKLFxMPUKwK2Q+E/rpib8w2++YDWvuPpZkBILfMaOO
+Za4zOjQjtOuiFwqUTp9XkWieUXa89Z3TONHpFTMaVpXD3oqlBxylU/ia8JRsp8pj
+J7hLYQYou9US/8PHZhqIN58RiuR/yJXk3Sx40EyLa2TaknF9LQU3QxiIGsno1BiJ
+2dEsUKlwDyZ/OdmjgDlJT2uNak9Xxcs4qqzRiQwj8Mfwl/GTPsiHFHYXWYawsR1N
+096TKu5TcbO49M3YS2ke1dThCEuLtnYVBREHKLU1Csv65BRm/DbiVQ13G5f0BL+M
+pXbWJJkmVDxbfm96dTKHAALP1vKlA2eILDM3NCId0YFBTnOYTvdfgpZfDO6xyUbG
+GBYyUsT/9GgWNfhCDVxDWVRysECW+czMfgkQwgFo5SAmTmQ6lEzOvQhCjEhUPMy9
+jtG3zpp6HS53iiCLvh1dqi60zIK1BLVkL2EaK78DO8ZbBYvu3sVo4G1wJdWXZ+PA
+mZAh50n+hpWoGkeZe9j9klF/FbRtoWqSxEB1lb9uxDSfGX9nlEVt6Mbkdfv/pk2S
+vFPT9nGFRUCOs24xw60KD2W211mUR2niCop6HBq26syyttrDYHZWV5M/yxRE0mwC
+zvkACFSBJrcH9gHGdukRuizS58masm518ClEx03l6Svjg81ldLUWcSzjwvwt7ZXw
+2o7BqupXvu3M2a4K7Ql3991fUybQoPz8WOhfnhOedDTYC1ujVGoOiYooGduHZ/eg
+f5Jn05RP4IJo8L7Q2qOtqKcvVVG5Mjcj0cGr47k0Eq4/
+-----END ENCRYPTED PRIVATE KEY-----`;
+
 const connectionRegistry = [
     {name: dbConnName, type: 'atlas', options: {uri: uri}},
     {
@@ -83,6 +191,36 @@ const connectionRegistry = [
                 saslUsername: "kafka",
                 saslPassword: "kafka",
                 securityProtocol: "SASL_SSL",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: kafkaSSLName,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSSL,
+            auth: {
+                securityProtocol: "SSL",
+                sslCertificate: clientCrt,
+                sslKey: clientKey,
+                sslKeyPassword: "",
+                caCertificatePath:
+                    "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+            }
+        }
+    },
+    {
+        name: kafkaSSLWithPasswordName,
+        type: 'kafka',
+        options: {
+            bootstrapServers: kafkaUriSSL,
+            auth: {
+                securityProtocol: "SSL",
+                sslCertificate: clientWithPasswordCrt,
+                sslKey: clientWithPasswordKey,
+                sslKeyPassword: "mongo123",
                 caCertificatePath:
                     "src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
             }
@@ -174,6 +312,15 @@ function stopStreamProcessor(name, alreadyFlushedIds = [], skipCheckpointFlush =
     }
 }
 
+function getKafkaEmitMetrics(processorId) {
+    return sp.metrics()['gauges']
+        .filter(m => m.name == "kafka_emit_queue_byte_size" || m.name == "kafka_emit_queue_count" ||
+                    m.name == "kafka_emit_max_latency_micros")
+        .filter((m) => {
+            return m.labels.some(l => l.key === "processor_id" && l.value === processorId);
+        });
+}
+
 // Makes mongoToKafkaStartCmd for a specific collection name & topic name, being static or dynamic.
 function makeMongoToKafkaStartCmd({
     collName,
@@ -235,6 +382,7 @@ function makeMongoToKafkaStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: name,
         pipeline: [
             {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
@@ -294,6 +442,7 @@ function makeKafkaToMongoStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoNamePrefix}-${topicNameForProcessorId}`,
         pipeline: pipeline.length ? pipeline : [
             {
@@ -401,6 +550,54 @@ function insertData(coll, count = null, begIdx = 0) {
     return input;
 }
 
+function validateLatencyLogs() {
+    let line = null;
+    assert.soon(() => {
+        const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+        line = findMatchingLogLine(log, {id: 9961300});
+        return line != null;
+    });
+
+    // Validate the latency log messages are showing up.
+    const entry = JSON.parse(line)["attr"];
+    const hasFields = (obj, fields) => {
+        for (const field of fields) {
+            assert(obj.hasOwnProperty(field));
+        }
+    };
+    const fieldsGteZero = (obj, fields) => {
+        for (const field of fields) {
+            assert.gte(obj[field], 0);
+        }
+    };
+    const fieldsGtZero = (obj, fields) => {
+        for (const field of fields) {
+            assert.gt(obj[field], 0);
+        }
+    };
+    hasFields(entry, [
+        "maxDeltas",
+        "context",
+    ]);
+    hasFields(entry["context"], [
+        "streamProcessorName",
+        "streamProcessorId",
+        "tenantId",
+    ]);
+    fieldsGteZero(entry["maxDeltas"], [
+        "maxReadDelta",
+        "maxWriteDelta",
+        "maxCommitDelta",
+        "maxOverallDelta",
+    ]);
+    fieldsGtZero(entry["maxDeltas"], [
+        "maxReadDeltaSourceTime",
+        "maxWriteDeltaSourceTime",
+        "maxCommitDeltaSourceTime",
+        "maxOverallDeltaSourceTime",
+    ]);
+}
+
 // Use a streamProcessor to write data from the source collection changestream to a Kafka topic.
 // Then use another streamProcessor to write data from the Kafka topic to a sink collection.
 // Verify the data in the sink collection equals to data originally inserted into the source
@@ -418,6 +615,7 @@ function mongoToKafkaToMongo({
     compressionType,
     acks,
     connectionName = kafkaPlaintextName,
+    validateLatency = true
 } = {}) {
     // Prepare a topic 'topicName1'.
     makeSureKafkaTopicCreated(sourceColl1, topicName1, connectionName);
@@ -429,13 +627,14 @@ function mongoToKafkaToMongo({
     // kafkaToMongo uses the default kafka startAt behavior, which starts reading
     // from the current end of topic. The event we wrote above
     // won't be included in the output in the sink collection.
-    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+    let kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
         connName: connectionName,
         topicName: topicName1,
         collName: sinkColl1.getName(),
         sourceKeyFormat: sourceKeyFormat,
         sourceKeyFormatError: sourceKeyFormatError
     });
+    kafkaToMongoStartCmd.pipeline.splice(1, 0, {$addFields: {_stream_meta: {$meta: "stream"}}});
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 
@@ -472,6 +671,10 @@ function mongoToKafkaToMongo({
     } else {
         // Verify output shows up in the sink collection as expected.
         waitForCount(sinkColl1, input.length, 5 * 60 /* timeout */);
+        if (validateLatency) {
+            validateLatencyLogs();
+        }
+
         let results = sinkColl1.find({}).sort({a: 1}).toArray();
         let output = [];
         for (let i = 0; i < results.length; i++) {
@@ -581,7 +784,6 @@ function resumeFromCheckpointVersion2(numPartitions) {
 
     const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
     mkdir(destDir);
-    // eslint-disable-next-line
     copyDir(srcDir, destDir);
 
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
@@ -701,7 +903,6 @@ function resumeFromCheckpointVersion3(numPartitions) {
 
     const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
     mkdir(destDir);
-    // eslint-disable-next-line
     copyDir(srcDir, destDir);
 
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
@@ -818,7 +1019,6 @@ function resumeFromCheckpointVersion4(numPartitions) {
 
     const destDir = checkpointUtils.streamProcessorCheckpointDir + "/" + chkptId;
     mkdir(destDir);
-    // eslint-disable-next-line
     copyDir(srcDir, destDir);
 
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
@@ -847,6 +1047,7 @@ function resumeFromCheckpointVersion4(numPartitions) {
     let statsResult = getStats(kafkaToMongoName);
     jsTestLog("statsResult *********");
     jsTestLog(statsResult);
+    validateLastCheckpointStat("kafka", statsResult);
     // Verify the expected message counts in the stats response.
     // These are restored from the checkpoint.
     assert.eq(10000, statsResult.inputMessageCount);
@@ -902,6 +1103,7 @@ function mongoToKafkaToMongoGroupStreamMeta({
                 timeField: {$toDate: {$toLong: "$a"}},
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {$addFields: {topic: "$_stream_meta.source.topic"}},
         {$addFields: {partition: "$_stream_meta.source.partition"}},
         {
@@ -920,6 +1122,7 @@ function mongoToKafkaToMongoGroupStreamMeta({
                 idleTimeout: {size: NumberInt(2), unit: 'second'}
             },
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         // These will not get added since topic/partition no longer are projected
         {$addFields: {topicAfterGroup: "$_stream_meta.source.topic"}},
         {$addFields: {partitionAfterGroup: "$_stream_meta.source.partition"}},
@@ -1048,10 +1251,11 @@ function mongoToKafkaToMongoMultiTopic({
     // kafkaToMongo uses the default kafka startAt behavior, which starts reading
     // from the current end of topic. The event we wrote above
     // won't be included in the output in the sink collection.
-    const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
+    let kafkaToMongoStartCmd = makeKafkaToMongoStartCmd({
         topicName: topicNames,
         collName: sinkColl1.getName(),
     });
+    kafkaToMongoStartCmd.pipeline.splice(1, 0, {$addFields: {_stream_meta: {$meta: "stream"}}});
     const kafkaToMongoProcessorId = kafkaToMongoStartCmd.processorId;
     const kafkaToMongoName = kafkaToMongoStartCmd.name;
 
@@ -1181,6 +1385,7 @@ function mongoToKafkaToMongoMaintainStreamMeta(nonGroupWindowStage) {
                 pipeline: [nonGroupWindowStage]
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {$merge: {into: {connectionName: dbConnName, db: dbName, coll: sinkColl1.getName()}}},
     ];
     const kafkaToMongoStartCmd = makeKafkaToMongoStartCmd(
@@ -1237,7 +1442,7 @@ function mongoToKafkaToMongoGetConnectionNames() {
               [
                   {name: kafkaPlaintextName, stage: "$source"},
                   {name: dbConnName, stage: "$merge"},
-                  {name: dbConnName}
+                  {name: dbConnName, stage: "dlq"}
               ],
               kafkaToMongoStartResult);
     const mongoToKafkaStartResult = assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd({
@@ -1250,16 +1455,14 @@ function mongoToKafkaToMongoGetConnectionNames() {
               [
                   {name: dbConnName, stage: "$source"},
                   {name: kafkaPlaintextName, stage: "$emit"},
-                  {name: dbConnName}
+                  {name: dbConnName, stage: "dlq"}
               ],
               kafkaToMongoStartResult);
 }
 
-// This test uses the same logic as the mongoToKafka test, but uses the connection
-// registry entry for the SASL_SSL authenticated listener + SSL validation.
-function mongoToKafkaSASLSSL() {
+function mongoToKafkaValidation(connectionName = kafkaPlaintextName) {
     // Prepare a topic 'topicName1'.
-    makeSureKafkaTopicCreated(sourceColl1, topicName1, kafkaSASLSSLName);
+    makeSureKafkaTopicCreated(sourceColl1, topicName1, connectionName);
     // Cleanup the source collection.
     sourceColl1.drop();
 
@@ -1285,7 +1488,7 @@ function mongoToKafkaSASLSSL() {
 
     // Start the mongoToKafka streamProcessor.
     assert.commandWorked(db.runCommand(makeMongoToKafkaStartCmd(
-        {collName: sourceColl1.getName(), topicName: topicName1, connName: kafkaSASLSSLName})));
+        {collName: sourceColl1.getName(), topicName: topicName1, connName: connectionName})));
 
     // Write input to the 'sourceColl'.
     // mongoToKafka reads the source collection and writes to Kafka.
@@ -1487,6 +1690,7 @@ function kafkaConsumerGroupIdWithNewCheckpointTest(kafka) {
         const startCmd = {
             streams_startStreamProcessor: '',
             tenantId: TEST_TENANT_ID,
+            projectId: TEST_PROJECT_ID,
             name: `${kafkaToMongoNamePrefix}-${topicName1}`,
             pipeline: [
                 {
@@ -1661,6 +1865,7 @@ function kafkaMultiTopicCheckpointTest(kafka, numPartitions) {
     const startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoNamePrefix}-${topicName1}`,
         pipeline: [
             {
@@ -1852,6 +2057,7 @@ function kafkaStartAtEarliestTest(setInOperator = true, connName = kafkaPlaintex
     const startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoNamePrefix}-${topicName1}`,
         pipeline: [
             {
@@ -1883,11 +2089,83 @@ function kafkaStartAtEarliestTest(setInOperator = true, connName = kafkaPlaintex
     stopStreamProcessor(name);
 }
 
+function kafkaEmitMessageSize(inputSize, messageMaxBytes, failWithMessageSizeTooLargeError) {
+    const processorId = `processor-coll_${sourceColl1.getName()}-to-topic_${topicName1}`;
+    const options = startOptions;
+    if (messageMaxBytes && messageMaxBytes > 0) {
+        options["featureFlags"] = {kafkaEmitMessageMaxBytes: NumberLong(messageMaxBytes)};
+    }
+    const spName = `${kafkaToMongoNamePrefix}-${topicName1}`;
+    const startCmd = {
+        streams_startStreamProcessor: '',
+        tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
+        name: spName,
+        pipeline: [
+            {
+                $source: {
+                    connectionName: dbConnName,
+                    db: dbName,
+                    coll: sourceColl1.getName(),
+                    config: {fullDocument: "required", fullDocumentOnly: true}
+                }
+            },
+            {$match: {b: {$exists: true}}},
+            {
+                $emit: {
+                    connectionName: kafkaPlaintextName,
+                    topic: topicName1,
+                }
+            }
+        ],
+        connections: connectionRegistry,
+        options: options,
+        processorId: processorId,
+    };
+    const {name} = startCmd;
+    assert.commandWorked(db.runCommand(startCmd));
+
+    sourceColl1.insert({b: "c".repeat(inputSize - 1)});  // -1 to account for key size
+    if (failWithMessageSizeTooLargeError) {
+        let extraDocuments = 0;
+        assert.soon(() => {
+            if (extraDocuments < 3) {
+                // insert extra documents to ensure that poll() is being called which calls the
+                // delivery callback (dr_cb) function
+                sourceColl1.insert({b: "c".repeat(inputSize - 1)});  // -1 to account for key size
+                extraDocuments++;
+            }
+            const stats = getStats(name);
+            assert.commandWorked(stats);
+            let result = listStreamProcessors();
+            let processor = result.streamProcessors.filter(s => s.name == spName)[0];
+            // The processor fails with a "Message size too large" error either in the main consumer
+            // thread if the message exceeds the producer's message.max.bytes limit or in
+            // the delivery callback when the message size exceeds the broker's
+            // message.max.bytes limit.
+            return processor.status == "error" &&
+                processor.error.reason.includes("Message size too large");
+        }, "Expected processor to fail with 'Message size too large error'", 10 * 1000);
+    } else {
+        assert.soon(() => {
+            const stats = getStats(name);
+            assert.commandWorked(stats);
+            return stats["outputMessageCount"] == 1;
+        }, "Expected processor to process insert event", 10 * 1000);
+    }
+
+    stopStreamProcessor(name);
+}
+
 // Runs a test function with a fresh state including a fresh Kafka cluster.
-function runKafkaTest(kafka, testFn, partitionCount = 1) {
+function runKafkaTest(kafka, testFn, partitionCount = 1, messageMaxBytes = undefined) {
     // Clear any previous persistent state so that the test starts with a clean slate.
     dropCollections();
-    kafka.start(partitionCount);
+    const overrides = {};
+    if (messageMaxBytes > 0) {
+        overrides["KAFKA_MESSAGE_MAX_BYTES"] = messageMaxBytes;
+    }
+    kafka.start(partitionCount, overrides);
     const funcStr = testFn.toString();
     try {
         jsTestLog(`Running: ${funcStr}`);
@@ -1931,6 +2209,7 @@ function testPartitionIdleTimeout() {
     assert.commandWorked(db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: kafkaToMongoName,
         pipeline: [
             {
@@ -2006,6 +2285,7 @@ function testKafkaAsyncError() {
     assert.commandWorked(db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: kafkaToMongoName,
         pipeline: [
             {
@@ -2035,13 +2315,24 @@ function testKafkaAsyncError() {
     // Crash the Kafka broker.
     kafkaThatWillFail.stop();
 
+    let queueMetricsAppeared = false;
     assert.soon(() => {
         // Kafka $emit errors are detected during flush. Write some data so checkpoints and
         // flushes happen and we detect the error.
         sourceColl1.insert({a: 1});
+
+        // Validate the queue metrics show as non zero.
+        if (!queueMetricsAppeared) {
+            const queueMetrics = getKafkaEmitMetrics(startCmd.processorId);
+            if (queueMetrics.filter(m => m.value > 0).length == 3) {
+                queueMetricsAppeared = true;
+            } else {
+                return false;
+            }
+        }
+
         let result = listStreamProcessors();
         let mongoToKafka = result.streamProcessors.filter(s => s.name == "mongoToKafka")[0];
-        jsTestLog(mongoToKafka);
         return mongoToKafka.status == "error" &&
             mongoToKafka.error.reason.includes("Kafka $emit encountered error");
 
@@ -2087,8 +2378,8 @@ function testKafkaSinkAutoCreateTopicFalseError() {
         let mongoToKafka = result.streamProcessors.filter(s => s.name == mongoToKafkaName)[0];
         jsTestLog(mongoToKafka);
         return mongoToKafka.status == "error" &&
-            mongoToKafka.error.reason ===
-            `Failed to emit to topic ${topicName1} due to error: Local: Unknown topic (-188)`;
+            mongoToKafka.error.reason.includes(
+                `Failed to emit to topic ${topicName1} due to error: Local: Unknown topic (-188)`);
     }, "expected mongoToKafka processor to go into failed state");
 
     // Now stop stream processors.
@@ -2097,7 +2388,7 @@ function testKafkaSinkAutoCreateTopicFalseError() {
 
 // Verify that starting a stream processor returns an error when a Kafka with setting
 // auto.create.topic = true is set as source with a non-existent topic
-// TODO(SERVER-80885): Change this test assert that stream processor is succesfully started
+// TODO(SERVER-80865): Change this test assert that stream processor is succesfully started
 function testKafkaSourceAutoCreateTopicTrueError() {
     dropCollections();
 
@@ -2116,8 +2407,8 @@ function testKafkaSourceAutoCreateTopicTrueError() {
     // Assert that starting the processor returns the expected error
     let result = db.runCommand(startCmd);
     assert.neq(result["errmsg"], undefined);
-    assert.eq(result["errmsg"],
-              `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`);
+    assert(result["errmsg"].includes(
+        `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`));
 }
 
 function testKafkaNonExistentTopicError() {
@@ -2138,8 +2429,8 @@ function testKafkaNonExistentTopicError() {
     // Assert that starting the processor returns the expected error
     let result = db.runCommand(startCmd);
     assert.neq(result["errmsg"], undefined);
-    assert.eq(result["errmsg"],
-              `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`);
+    assert(result["errmsg"].includes(
+        `no partitions found in topic ${nonExistentTopic}. Does the topic exist?`));
 
     // Use the logs to verify we made 3 attempts
     const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
@@ -2688,7 +2979,10 @@ runKafkaTest(kafka, () => mongoToKafkaToMongoMaintainStreamMeta({
                     } /* nonGroupWindowStage
                        */));
 runKafkaTest(kafka, mongoToDynamicKafkaTopicToMongo);
-runKafkaTest(kafka, mongoToKafkaSASLSSL);
+runKafkaTest(kafka, mongoToKafkaValidation);
+runKafkaTest(kafka, () => mongoToKafkaValidation(kafkaSASLSSLName));
+runKafkaTest(kafka, () => mongoToKafkaValidation(kafkaSSLName));
+runKafkaTest(kafka, () => mongoToKafkaValidation(kafkaSSLWithPasswordName));
 runKafkaTest(kafka, kafkaConsumerGroupIdWithNewCheckpointTest(kafka));
 runKafkaTest(kafka, () => kafkaConsumerGroupOffsetWithEnableAutoCommit(kafka));
 runKafkaTest(kafka,
@@ -2714,7 +3008,8 @@ if (!debugBuild) {
     // This takes to long on debug builds.
     numDocumentsToInsert = 100000;
 }
-runKafkaTest(kafka, mongoToKafkaToMongo, 12);
+// TODO(SERVER-100934): Enable latency validation.
+runKafkaTest(kafka, () => mongoToKafkaToMongo({validateLatency: false}), 12);
 
 numDocumentsToInsert = defaultNumDocsToInsert;
 runKafkaTest(kafka, () => mongoToKafkaToMongo({expectDlq: false, jsonType: "relaxedJson"}));
@@ -3106,3 +3401,66 @@ runKafkaTest(kafka, () => {
     run("tISO8601", true);
     assert.eq(get("tISO8601"), str);
 });
+
+// Default broker and producer settings. Sending a 0.5MB message should work.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(0.5 * 1024 * 1024), /* inputSize */
+);
+
+// SERVER-100825: fix and uncomment these expected failure tests.
+// // Default broker and producer settings. Sending a 2MB message breaks
+// runKafkaTest(
+//     kafka,
+//     () => kafkaEmitMessageSize(2 * 1024 * 1024,  /* inputSize */
+//                                16 * 1024 * 1024, /* messageMaxBytes */
+//                                true),            /* failWithMessageSizeTooLargeError */
+// );
+//
+// // Default broker (1MB message.max.bytes). producer message.max.bytes = 16MB. Sending a 2MB
+// message
+// // breaks.
+// runKafkaTest(
+//     kafka,
+//     () => kafkaEmitMessageSize(2 * 1024 * 1024,  /* inputSize */
+//                                16 * 1024 * 1024, /* messageMaxBytes */
+//                                true)             /* failWithMessageSizeTooLargeError */
+// );
+//
+// 16MB broker message.max.bytes. default producer config. Sending a 0.5MB message works.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(0.5 * 1024 * 1024), /* inputSize */
+    1,                                             /* partitionCount */
+    16 * 1024 * 1024                               /* messageMaxBytes */
+);
+
+// // 16MB broker message.max.bytes. default producer config. Sending a 2MB message breaks.
+// runKafkaTest(
+//     kafka,
+//     () => kafkaEmitMessageSize(
+//         2 * 1024 * 1024, /* inputSize */
+//         1 * 1024 * 1024, /* messageMaxBytes */
+//         true,            /* failWithMessageSizeTooLargeError */
+//         ),
+//     1,               /* partitionCount */
+//     16 * 1024 * 1024 /* messageMaxBytes */
+// );
+
+// 16MB broker message.max.bytes. producer message.max.bytes = 16MB. Sending a 2MB message works.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(2 * 1024 * 1024,   /* inputSize */
+                               16 * 1024 * 1024), /* messageMaxBytes */
+    1,                                            /* partitionCount */
+    16 * 1024 * 1024                              /* messageMaxBytes */
+);
+
+// 16MB broker message.max.bytes. producer message.max.bytes = 16MB. Sending a 15MB message works.
+runKafkaTest(
+    kafka,
+    () => kafkaEmitMessageSize(15 * 1024 * 1024,  /* inputSize */
+                               16 * 1024 * 1024), /* messageMaxBytes */
+    1,                                            /* partitionCount */
+    16 * 1024 * 1024                              /* messageMaxBytes */
+);

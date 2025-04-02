@@ -1,7 +1,7 @@
 // Confirms expected index use when performing a match with a $expr statement.
 // @tags: [
 //   assumes_read_concern_local,
-//   requires_fcv_63,
+//   requires_fcv_81,
 //   # TODO SERVER-32311: re-enable test in balancer suites when the relative issue is solved.
 //   assumes_balancer_off,
 //   requires_getmore,
@@ -63,6 +63,7 @@ assert.commandWorked(coll.createIndex({"w.z": 1}));
  *  - nReturned:        The number of documents the pipeline is expected to return.
  *  - expectedIndex:    Either an index specification object when index use is expected or
  *                      'null' if a collection scan is expected.
+ *  - isEOF:            Boolean indicating whether the plan defaults to EOF.
  */
 function confirmExpectedExprExecution(expr, metricsToCheck, collation) {
     assert(metricsToCheck.hasOwnProperty("nReturned"),
@@ -113,6 +114,8 @@ function confirmExpectedExprExecution(expr, metricsToCheck, collation) {
             assert.neq(null, stage, tojson(explain));
             assert(stage.hasOwnProperty("keyPattern"), tojson(explain));
             assert.docEq(metricsToCheck.expectedIndex, stage.keyPattern, tojson(explain));
+        } else if (metricsToCheck.hasOwnProperty("isEOF") && metricsToCheck.isEOF) {
+            assert(getPlanStageFunc(explain, "EOF", tojson(explain)));
         } else {
             assert(getPlanStageFunc(explain, "COLLSCAN"), tojson(explain));
         }
@@ -167,9 +170,11 @@ confirmExpectedExprExecution({$eq: ["$c.d", 1]}, {nReturned: 1, expectedIndex: {
 confirmExpectedExprExecution({$gt: ["$c.d", 0]}, {nReturned: 1, expectedIndex: {"c.d": 1}});
 confirmExpectedExprExecution({$lt: ["$c.d", 0]}, {nReturned: 22, expectedIndex: {"c.d": 1}});
 
-// $in, $ne, and $cmp are not expected to use an index. This is because we
-// have not yet implemented a rewrite of these operators to indexable MatchExpression.
-confirmExpectedExprExecution({$in: ["$x", [1, 3]]}, {nReturned: 2});
+// $in is expected to use an index (supported in SERVER-32549).
+confirmExpectedExprExecution({$in: ["$x", [1, 3]]}, {nReturned: 2, expectedIndex: {x: 1, y: 1}});
+
+// $ne and $cmp are not expected to use an index. This is because we have not yet implemented a
+// rewrite of these operators to indexable MatchExpression.
 confirmExpectedExprExecution({$cmp: ["$x", 1]}, {nReturned: 22});
 confirmExpectedExprExecution({$ne: ["$x", 1]}, {nReturned: 22});
 
@@ -183,13 +188,13 @@ confirmExpectedExprExecution({$lte: ["$w", [1]]}, {nReturned: 23});
 
 // A constant expression is not expected to use an index.
 confirmExpectedExprExecution(1, {nReturned: 23});
-confirmExpectedExprExecution(false, {nReturned: 0});
+confirmExpectedExprExecution(false, {nReturned: 0, isEOF: true});
 confirmExpectedExprExecution({$eq: [1, 1]}, {nReturned: 23});
-confirmExpectedExprExecution({$eq: [0, 1]}, {nReturned: 0});
-confirmExpectedExprExecution({$gt: [0, 1]}, {nReturned: 0});
+confirmExpectedExprExecution({$eq: [0, 1]}, {nReturned: 0, isEOF: true});
+confirmExpectedExprExecution({$gt: [0, 1]}, {nReturned: 0, isEOF: true});
 confirmExpectedExprExecution({$gte: [1, 0]}, {nReturned: 23});
 confirmExpectedExprExecution({$lt: [0, 1]}, {nReturned: 23});
-confirmExpectedExprExecution({$lte: [1, 0]}, {nReturned: 0});
+confirmExpectedExprExecution({$lte: [1, 0]}, {nReturned: 0, isEOF: true});
 
 // Comparison of 2 fields is not expected to use an index.
 confirmExpectedExprExecution({$eq: ["$x", "$y"]}, {nReturned: 20});

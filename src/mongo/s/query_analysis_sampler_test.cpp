@@ -60,9 +60,8 @@
 #include "mongo/stdx/future.h"
 #include "mongo/transport/session.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/hostandport.h"
@@ -77,8 +76,6 @@ namespace analyze_shard_key {
 namespace {
 
 using QuerySamplingOptions = OperationContext::QuerySamplingOptions;
-
-const auto smoothingFactor = gQueryAnalysisQueryStatsSmoothingFactor.load();
 
 class QueryAnalysisSamplerRateLimiterTest : public ServiceContextTest {
 public:
@@ -911,6 +908,7 @@ TEST_F(QueryAnalysisSamplerTest, RefreshQueryStatsAndConfigurations) {
 
     auto queryStats2 = sampler.getQueryStatsForTest();
     ASSERT_EQ(queryStats2.getLastTotalCount(), 2);
+    const auto smoothingFactor = gQueryAnalysisQueryStatsSmoothingFactor.load();
     auto expectedAvgCount2 = (1 - smoothingFactor) * expectedAvgCount1 + smoothingFactor * 2;
     auto actualAvgCount2 = queryStats2.getLastAvgCount();
     ASSERT(actualAvgCount2);

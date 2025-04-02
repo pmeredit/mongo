@@ -2,13 +2,14 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/util/exception.h"
+
 #include <boost/exception/diagnostic_information.hpp>
 #include <boost/exception/exception.hpp>
 
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
-#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -34,8 +35,8 @@ SPStatus exceptionToSPStatus() noexcept {
                           << boost::diagnostic_information(ex));
 
     } catch (...) {
-        LOGV2_FATAL_CONTINUE(75385, "Caught unknown exception in exceptionToStatus()");
-        std::terminate();
+        LOGV2_INFO(75385, "Caught unknown exception in exceptionToStatus()");
+        return Status(ErrorCodes::UnknownError, "Caught unknown exception");
     }
 }
 

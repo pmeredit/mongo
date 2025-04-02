@@ -54,7 +54,7 @@ mongo_cc_unit_test(
         "file_copy_based_initial_syncer_test.cpp",
         "//src/mongo/db/repl:replication_recovery_mock.h",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         ":file_copy_based_initial_syncer",
         "//src/mongo:base",
@@ -83,7 +83,7 @@ mongo_cc_unit_test(
     srcs = [
         "initial_sync_file_mover_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         ":file_copy_based_initial_syncer",
     ],

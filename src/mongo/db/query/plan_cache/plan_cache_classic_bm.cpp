@@ -43,7 +43,7 @@
 #include "mongo/db/query/query_planner_params.h"
 #include "mongo/db/query/query_planner_test_fixture.h"
 #include "mongo/db/query/query_test_service_context.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -259,7 +259,7 @@ std::unique_ptr<FindCommandRequest> makeFindFromBmParams(
 IndexEntry createIndexEntry(BSONObj keyPattern, const std::string& indexName) {
     return IndexEntry(keyPattern,
                       IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-                      IndexDescriptor::kLatestIndexVersion,
+                      IndexConfig::kLatestIndexVersion,
                       false,
                       {},
                       {},

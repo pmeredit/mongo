@@ -37,12 +37,10 @@
 
 #include "mongo/db/client.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/admission_context.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -71,7 +69,7 @@ public:
         validate();
     }
 
-    virtual ~ThreadedTest(){};  // not necessary, but makes compilers happy
+    virtual ~ThreadedTest() {};  // not necessary, but makes compilers happy
 
 private:
     void launch_subthreads(int remaining) {

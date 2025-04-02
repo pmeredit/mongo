@@ -195,7 +195,9 @@ mongo_cc_library(
         "//src/mongo/db/catalog:collection_options",
         "//src/mongo/db/collection_crud",
         "//src/mongo/db/concurrency:exception_util",
-        "//src/mongo/db/query/query_settings:manager",
+        "//src/mongo/db/query:explain_diagnostic_printer",
+        "//src/mongo/db/query:shard_key_diagnostic_printer",
+        "//src/mongo/db/query/query_settings:query_settings_service",
         "//src/mongo/db/query/query_stats",
         "//src/mongo/db/repl:oplog",
         "//src/mongo/db/repl:repl_coordinator_interface",
@@ -215,7 +217,6 @@ mongo_cc_library(
         "//src/mongo/db/transaction:transaction_api",
         "//src/mongo/executor:inline_executor",
         "//src/mongo/s:query_analysis_sampler",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util:log_and_backoff",
     ],
 )

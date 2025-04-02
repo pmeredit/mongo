@@ -39,10 +39,10 @@ mongo_cc_library(
         "sorter_gen",
     ],
     hdrs = [
-        "sorter.cpp",  # Intentionally in hdrs.
         "sorter.h",
         "sorter_checksum_calculator.h",
         "sorter_file_name.h",
+        "sorter_template_defs.h",
         "//src/mongo/db/query/util:spill_util.h",
     ],
     deps = [
@@ -65,9 +65,7 @@ mongo_cc_unit_test(
         "sorter_stats_test.cpp",
         "sorter_test.cpp",
     ],
-    tags = [
-        "mongo_unittest_first_group",
-    ],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         ":sorter_base",
         ":sorter_stats",

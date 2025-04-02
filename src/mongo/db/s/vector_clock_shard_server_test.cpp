@@ -55,9 +55,8 @@
 #include "mongo/db/vector_clock.h"
 #include "mongo/db/vector_clock_document_gen.h"
 #include "mongo/db/vector_clock_mutable.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/future.h"
 
@@ -313,8 +312,7 @@ protected:
     }
 };
 
-const BSONObj kVectorClockQuery = BSON("_id"
-                                       << "vectorClockState");
+const BSONObj kVectorClockQuery = BSON("_id" << "vectorClockState");
 
 TEST_F(VectorClockPersistenceTest, PrimaryPersistVectorClockDocument) {
     auto sc = getServiceContext();
@@ -384,10 +382,9 @@ TEST_F(VectorClockPersistenceTest, PrimaryRecoverWithIllegalVectorClockDocument)
     ASSERT_EQ(store.count(opCtx, kVectorClockQuery), 0);
     DBDirectClient client(opCtx);
     client.insert(NamespaceString::kVectorClockNamespace,
-                  BSON("_id"
-                       << "vectorClockState"
-                       << "IllegalKey"
-                       << "IllegalValue"));
+                  BSON("_id" << "vectorClockState"
+                             << "IllegalKey"
+                             << "IllegalValue"));
 
     vc->recoverDirect(opCtx);
 

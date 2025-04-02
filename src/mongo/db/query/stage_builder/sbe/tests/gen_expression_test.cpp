@@ -27,8 +27,6 @@
  *    it in the license file.
  */
 
-#include <cstdint>
-#include <memory>
 #include <utility>
 #include <vector>
 
@@ -38,17 +36,12 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/docval_to_sbeval.h"
-#include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/pipeline/expression.h"
-#include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/expression_trigonometric.h"
-#include "mongo/db/query/query_solution.h"
 #include "mongo/db/query/stage_builder/sbe/gen_expression.h"
-#include "mongo/db/query/stage_builder/sbe/sbexpr_helpers.h"
 #include "mongo/db/query/stage_builder/sbe/tests/sbe_builder_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/idl/server_parameter_test_util.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::stage_builder {
 
@@ -68,6 +61,10 @@ public:
                  sbe::value::TypeTags expectedTag,
                  sbe::value::Value expectedVal,
                  StringData test) {
+        // TODO SERVER-100579 Remove this when feature flag is removed
+        RAIIServerParameterControllerForTest sbeUpgradeBinaryTreesFeatureFlag{
+            "featureFlagSbeUpgradeBinaryTrees", true};
+
         PlanStageSlots slots;
         auto sbExpr = generateExpression(*_state, expr, rootSlot, slots);
         GoldenSbeExprBuilderTestFixture::runTest(std::move(sbExpr), expectedTag, expectedVal, test);
@@ -114,18 +111,14 @@ TEST_F(GoldenGenExpressionTest, TestSimpleExpr) {
         runTest(&anyTrueExpr, rootSlot, val, "ExpressionAnyElementTrue"_sd);
     }
     {
-        Value arrVal = Value(BSON_ARRAY(BSON("k"
-                                             << "_id"
-                                             << "v" << 0)
-                                        << BSON("k"
-                                                << "field1"
-                                                << "v" << 4)
-                                        << BSON("k"
-                                                << "field2"
-                                                << "v" << true)
-                                        << BSON("k"
-                                                << "null"
-                                                << "v" << BSONNULL)));
+        Value arrVal = Value(BSON_ARRAY(BSON("k" << "_id"
+                                                 << "v" << 0)
+                                        << BSON("k" << "field1"
+                                                    << "v" << 4)
+                                        << BSON("k" << "field2"
+                                                    << "v" << true)
+                                        << BSON("k" << "null"
+                                                    << "v" << BSONNULL)));
         auto varExpr = ExpressionFieldPath::createVarFromString(
             _expCtx.get(), "ROOT", _expCtx->variablesParseState);
         ExpressionObjectToArray obj2arrExpr(_expCtx.get());
@@ -255,10 +248,9 @@ TEST_F(GoldenGenExpressionTest, TestExprStr) {
         ExpressionSplit splitExpr(_expCtx.get(), {strFieldExpr, constExpr});
         runTest(&splitExpr,
                 rootSlot,
-                Value(BSON_ARRAY("This"
-                                 << "is"
-                                 << "a"
-                                 << "test.")),
+                Value(BSON_ARRAY("This" << "is"
+                                        << "a"
+                                        << "test.")),
                 "ExpressionSplit"_sd);
     }
     {
@@ -326,9 +318,8 @@ TEST_F(GoldenGenExpressionTest, TestExprStr) {
             _expCtx.get(), strFieldExpr, pattern, nullptr, "$regexFind"_sd);
         runTest(&regFindExpr,
                 rootSlot,
-                Value(BSON("match"
-                           << "test"
-                           << "idx" << 10 << "captures" << BSONArray())),
+                Value(BSON("match" << "test"
+                                   << "idx" << 10 << "captures" << BSONArray())),
                 "ExpressionRegexFind"_sd);
     }
     {
@@ -338,9 +329,8 @@ TEST_F(GoldenGenExpressionTest, TestExprStr) {
             _expCtx.get(), strFieldExpr, pattern, nullptr, "$regexFindAll"_sd);
         runTest(&regFindAllExpr,
                 rootSlot,
-                Value(BSON_ARRAY(BSON("match"
-                                      << "test"
-                                      << "idx" << 10 << "captures" << BSONArray()))),
+                Value(BSON_ARRAY(BSON("match" << "test"
+                                              << "idx" << 10 << "captures" << BSONArray()))),
                 "ExpressionRegexFindAll"_sd);
     }
     {

@@ -54,13 +54,10 @@
 #include "mongo/db/query/index_bounds.h"
 #include "mongo/db/query/interval.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/s/shard_key_pattern_query_util.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
@@ -321,22 +318,19 @@ TEST_F(CMCollapseTreeTest, SortMergeFromOrInReverseDirection) {
     expected.fields.push_back(OrderedIntervalList());
     expected.fields.push_back(OrderedIntervalList());
 
-    expected.fields[0].intervals.push_back(Interval(BSON(""
-                                                         << "foo"
-                                                         << ""
-                                                         << "foo"),
+    expected.fields[0].intervals.push_back(Interval(BSON("" << "foo"
+                                                            << ""
+                                                            << "foo"),
                                                     true,
                                                     true));
-    expected.fields[1].intervals.push_back(Interval(BSON(""
-                                                         << "bar"
-                                                         << ""
-                                                         << "bar"),
+    expected.fields[1].intervals.push_back(Interval(BSON("" << "bar"
+                                                            << ""
+                                                            << "bar"),
                                                     true,
                                                     true));
-    expected.fields[1].intervals.push_back(Interval(BSON(""
-                                                         << "baz"
-                                                         << ""
-                                                         << "baz"),
+    expected.fields[1].intervals.push_back(Interval(BSON("" << "baz"
+                                                            << ""
+                                                            << "baz"),
                                                     true,
                                                     true));
     expected.fields[2].intervals.push_back(Interval(BSON("" << 100 << "" << 200), true, true));
@@ -416,9 +410,8 @@ TEST_F(CMCollapseTreeTest, ArrayEquality) {
 // { a: /abc/ } -> a: ["", {}), [/abc/, /abc/]
 TEST_F(CMCollapseTreeTest, Regex) {
     OrderedIntervalList expected;
-    expected.intervals.push_back(Interval(BSON(""
-                                               << ""
-                                               << "" << BSONObj()),
+    expected.intervals.push_back(Interval(BSON("" << ""
+                                                  << "" << BSONObj()),
                                           true,
                                           false));
     BSONObjBuilder builder;

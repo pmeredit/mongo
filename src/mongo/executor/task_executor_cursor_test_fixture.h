@@ -39,7 +39,7 @@
 #include "mongo/executor/pinned_connection_task_executor_test_fixture.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 
 /**
  * Defines two test fixtures for task executor cursors: one with pinned cursors and the other with
@@ -201,7 +201,7 @@ public:
     void postSetUp() {}
 
     BSONObj scheduleResponse(StatusWith<BSONObj> response) {
-        int32_t responseToId;
+        int32_t responseToId = -1;
         BSONObj cmdObjReceived;
         auto pf = makePromiseFuture<void>();
         expectSinkMessage([&](Message m) {

@@ -1,6 +1,8 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "streams/exec/executor.h"
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -9,6 +11,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
@@ -20,7 +23,6 @@
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/exec_internal_gen.h"
-#include "streams/exec/executor.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/kafka_consumer_operator.h"
@@ -70,6 +72,8 @@ void testOnlyInsert(SourceOperator* source, std::vector<mongo::BSONObj> inputDoc
 Executor::Executor(Context* context, Options options)
     : _context(context),
       _options(std::move(options)),
+      _idleSleeper(Sleeper::Options{.minSleep = Milliseconds{1},
+                                    .maxSleep = Milliseconds{_options.sourceIdleSleepDurationMs}}),
       _testOnlyDocsQueue(decltype(_testOnlyDocsQueue)::Options{
           .maxQueueDepth = static_cast<size_t>(_options.testOnlyDocsQueueMaxSizeBytes)}) {
     auto labels = getDefaultMetricLabels(_context);
@@ -111,13 +115,15 @@ Future<void> Executor::start() {
     dassert(!_executorThread.joinable());
     _executorThread = stdx::thread([this] {
         _executorTimer.reset();
-        bool started{false};
+        bool dlqStarted{false};
+        bool dagStarted{false};
         bool promiseFulfilled{false};
         Date_t deadline = Date_t::now() + _options.connectTimeout;
         try {
             _context->dlq->registerMetrics(_options.metricManager.get());
             // Start the DLQ.
             _context->dlq->start();
+            dlqStarted = true;
 
             const auto& operators = _options.operatorDag->operators();
             for (const auto& oper : operators) {
@@ -127,7 +133,7 @@ Future<void> Executor::start() {
             // Start the OperatorDag.
             LOGV2_INFO(76451, "starting operator dag", "context"_attr = _context);
             _options.operatorDag->start();
-            started = true;
+            dagStarted = true;
             _startDurationGauge->set(_executorTimer.millis());
             _executorTimer.reset();
             LOGV2_INFO(76452, "started operator dag", "context"_attr = _context);
@@ -151,7 +157,8 @@ Future<void> Executor::start() {
                     description.setRestoreDurationMs(duration);
                     {
                         stdx::lock_guard<stdx::mutex> lock(_mutex);
-                        _restoredCheckpointDescription = std::move(description);
+                        _restoredCheckpointDescription = description;
+                        _lastCommittedCheckpointDescription = std::move(description);
                     }
                 }
 
@@ -174,7 +181,7 @@ Future<void> Executor::start() {
             _promise.emplaceValue();
         }
 
-        if (started) {
+        if (dagStarted) {
             try {
                 LOGV2_INFO(76431, "stopping operator dag", "context"_attr = _context);
                 _options.operatorDag->stop();
@@ -188,7 +195,8 @@ Future<void> Executor::start() {
                               "reason"_attr = status.reason(),
                               "unsafeErrorMessage"_attr = status.unsafeReason());
             }
-
+        }
+        if (dlqStarted) {
             try {
                 LOGV2_INFO(8853600, "stopping DLQ", "context"_attr = _context);
                 _context->dlq->stop();
@@ -222,9 +230,9 @@ void Executor::stop(StopReason stopReason, bool checkpointOnStop) {
                "stopReason"_attr = _stopReason);
 }
 
-std::vector<OperatorStats> Executor::getOperatorStats() {
+Executor::ExecutorStats Executor::getExecutorStats() {
     stdx::lock_guard<stdx::mutex> lock(_mutex);
-    return _streamStats.operatorStats;
+    return ExecutorStats{_streamStats.operatorStats, _lastMessageIn};
 }
 
 std::vector<KafkaConsumerPartitionState> Executor::getKafkaConsumerPartitionStates() const {
@@ -296,6 +304,9 @@ void Executor::updateStats() {
     _numOutputDocumentsCounter->increment(delta.numOutputDocs);
     _numOutputBytesCounter->increment(delta.numOutputBytes);
     _memoryUsageGauge->set(_context->memoryAggregator->getCurrentMemoryUsageBytes());
+    if (delta.numInputDocs > 0) {
+        _lastMessageIn = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64());
+    }
 
     if (delta.numOutputDocs || delta.numDlqDocs) {
         // no need to check thru all the individual operators
@@ -635,18 +646,18 @@ void Executor::runLoop() {
         RunStatus status = runOnce();
         _runOnceCounter->increment(1);
         switch (status) {
-            case RunStatus::kActive:
+            case RunStatus::kActive: {
+                _idleSleeper.reset();
                 if (_options.sourceNotIdleSleepDurationMs) {
                     stdx::this_thread::sleep_for(
                         stdx::chrono::milliseconds(_options.sourceNotIdleSleepDurationMs));
                 }
                 break;
+            }
             case RunStatus::kIdle:
                 // No docs were flushed in this run, so sleep a little before starting
                 // the next run.
-                // TODO: add jitter
-                stdx::this_thread::sleep_for(
-                    stdx::chrono::milliseconds(_options.sourceIdleSleepDurationMs));
+                _idleSleeper.sleep();
                 break;
             case RunStatus::kShuttingDown:
                 // During shutdown we've written the final checkpoint and we're waiting for
@@ -665,7 +676,7 @@ BSONObj Executor::testOnlyGetFeatureFlags() const {
     stdx::lock_guard<stdx::mutex> lock(_mutex);
     mongo::MutableDocument doc;
     if (_context->featureFlags) {
-        for (auto [k, v] : _context->featureFlags->testOnlyGetFeatureFlags()) {
+        for (auto&& [k, v] : _context->featureFlags->testOnlyGetFeatureFlags()) {
             doc.addField(k, v);
         }
     }
@@ -679,11 +690,12 @@ void Executor::updateContextFeatureFlags() {
     }
 
     if (!_context->featureFlags) {
-        _context->featureFlags =
-            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(_context->streamName);
+        _context->featureFlags = _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(
+            _context->streamName, _context->toLoggingContext());
     } else {
         _context->featureFlags->updateFeatureFlags(
-            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(_context->streamName));
+            _tenantFeatureFlagsUpdate->getStreamProcessorFeatureFlags(
+                _context->streamName, _context->toLoggingContext()));
     }
     // normally we would want to just call getFeatureFlagValue to get the value, but we have
     // different defaults, depending on the presence of window.

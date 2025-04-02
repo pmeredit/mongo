@@ -48,9 +48,7 @@ selector:
     - jstests/core/**/fsync.js
     - jstests/core/**/geo_s2cursorlimitskip.js
     - jstests/core/**/geo_update_btree2.js
-    - jstests/core/**/index9.js
     - jstests/core/**/queryoptimizera.js
-    - jstests/core/**/stages*.js
     - jstests/core/**/startup_log.js
     - jstests/core/**/tailable_cursor_invalidation.js
     - jstests/core/**/tailable_getmore_batch_size.js
@@ -79,12 +77,12 @@ selector:
     - jstests/core/**/set_param1.js
     - jstests/core/**/profile*.js
     - jstests/core/query/comment_field.js
-    - jstests/core/fsync.js
+    - jstests/core/administrative/fsync.js
     - jstests/core/write/insert/batch_write_command_insert.js
-    - jstests/core/write/update/batch_write_command_update.js
-    - jstests/core/write/delete/batch_write_command_delete.js
-    - jstests/core/failcommand_failpoint.js
-    - jstests/core/write/write_commands_reject_unknown_fields.js
+    - jstests/core/query/batch_write/batch_write_command_update.js
+    - jstests/core/query/batch_write/batch_write_command_delete.js
+    - jstests/core/testing/failcommand_failpoint.js
+    - jstests/core/query/parsing/write_commands_reject_unknown_fields.js
     - jstests/core/query/explain/explain_uuid.js
     - jstests/core/query/explain/explain_includes_command.js
     - jstests/core/txns/transactions_profiling.js
@@ -107,6 +105,7 @@ selector:
     - requires_capped
   roots:
     - jstests/core/**/*.js
+    - jstests/core_sharding/**/*.js
     - jstests/fle2/**/*.js
     - src/mongo/db/modules/*/jstests/fle2/**/*.js
 test_kind: js_test

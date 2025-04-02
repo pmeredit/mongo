@@ -132,6 +132,20 @@ server_parameters:
                 expr: 16 * 1024 * 1024
         redact: false
 
+    reshardingOplogFetcherSleepMillis:
+        description: >-
+            The amount of time that the ReshardingOplogFetcher should wait for before running the
+            next aggregate command after it has exhausted the oplog entries returned by the previous
+            one.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingOplogFetcherSleepMillis
+        default:
+            expr: 1 * 1000
+        validator:
+            gte: 0
+        redact: false
+
     reshardingOplogBatchTaskCount:
         description: >-
             The number of subtasks to divide a single oplog batch into so that it may be applied
@@ -238,7 +252,7 @@ server_parameters:
         cpp_vartype: AtomicWord<int>
         cpp_varname: gRemainingReshardingOperationTimeThresholdMillis
         default:
-            expr: 2 * 1000
+            expr: 500
         validator:
             gte: 0
         redact: false
@@ -254,6 +268,45 @@ server_parameters:
         cpp_varname: gReshardingCoordinatorQuiescePeriodMillis
         default:
             expr: 15 * 60 * 1000
+        validator:
+            gte: 0
+        redact: false
+
+    reshardingVerificationChangeStreamsEventsBatchSizeLimit:
+        description: >-
+            The maximum number of events to process during verification before updating the change
+            in the number of documents and the resume token for the change stream.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingVerificationChangeStreamsEventsBatchSizeLimit
+        default:
+            expr: 1000
+        validator:
+            gte: 0
+        redact: false
+
+    reshardingVerificationChangeStreamsEventsBatchTimeLimitSeconds:
+        description: >-
+            The maximum number of seconds to process events during verification before updating the
+            change in the number of documents and the resume token for the change stream.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingVerificationChangeStreamsEventsBatchTimeLimitSeconds
+        default:
+            expr: 5 * 60
+        validator:
+            gte: 0
+        redact: false
+
+    reshardingVerificationChangeStreamsSleepMS:
+        description: >-
+            The amount of time in milliseconds to wait before sending the next getMore command after
+            the previous one did not return any change events.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingVerificationChangeStreamsSleepMS
+        default:
+            expr: 50
         validator:
             gte: 0
         redact: false

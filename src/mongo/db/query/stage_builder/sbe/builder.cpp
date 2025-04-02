@@ -62,7 +62,6 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/exec/docval_to_sbeval.h"
-#include "mongo/db/exec/sbe/abt/abt_lower_defs.h"
 #include "mongo/db/exec/sbe/makeobj_spec.h"
 #include "mongo/db/exec/sbe/match_path.h"
 #include "mongo/db/exec/sbe/sort_spec.h"
@@ -106,6 +105,7 @@
 #include "mongo/db/pipeline/accumulator.h"
 #include "mongo/db/pipeline/accumulator_multi.h"
 #include "mongo/db/pipeline/dependencies.h"
+#include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_visitor.h"
@@ -367,18 +367,17 @@ void prepareSlotBasedExecutableTree(OperationContext* opCtx,
 }  // prepareSlotBasedExecutableTree
 
 std::pair<SbStage, PlanStageData> buildSearchMetadataExecutorSBE(OperationContext* opCtx,
-                                                                 const CanonicalQuery& cq,
+                                                                 const ExpressionContext& expCtx,
                                                                  size_t remoteCursorId,
                                                                  RemoteCursorMap* remoteCursors,
                                                                  PlanYieldPolicySBE* yieldPolicy) {
-    auto expCtx = cq.getExpCtxRaw();
     Environment env(std::make_unique<sbe::RuntimeEnvironment>());
     std::unique_ptr<PlanStageStaticData> data(std::make_unique<PlanStageStaticData>());
     sbe::value::SlotIdGenerator slotIdGenerator;
     data->resultSlot = slotIdGenerator.generate();
 
-    auto stage = sbe::SearchCursorStage::createForMetadata(expCtx->getNamespaceString(),
-                                                           expCtx->getUUID(),
+    auto stage = sbe::SearchCursorStage::createForMetadata(expCtx.getNamespaceString(),
+                                                           expCtx.getUUID(),
                                                            data->resultSlot,
                                                            remoteCursorId,
                                                            yieldPolicy,
@@ -1221,7 +1220,12 @@ std::pair<SbStage, PlanStageSlots> SlotBasedStageBuilder::buildCountScan(
     if (csn->index.multikey ||
         (indexDescriptor->getIndexType() == IndexType::INDEX_WILDCARD &&
          indexDescriptor->keyPattern().nFields() > 1)) {
-        stage = b.makeUnique(std::move(stage), planStageSlots.get(PlanStageSlots::kRecordId));
+        if (collection->isClustered()) {
+            stage = b.makeUnique(std::move(stage), planStageSlots.get(PlanStageSlots::kRecordId));
+        } else {
+            stage = b.makeUniqueRoaring(std::move(stage),
+                                        planStageSlots.get(PlanStageSlots::kRecordId));
+        }
     }
 
     if (reqs.hasResult() || reqs.hasFields()) {
@@ -1615,9 +1619,9 @@ std::pair<SbStage, PlanStageSlots> SlotBasedStageBuilder::buildSort(const QueryS
                 b.makeFail(ErrorCodes::BadValue, "cannot sort with keys that are parallel arrays");
 
             auto failOnParallelArraysExpr =
-                b.makeBinaryOp(sbe::EPrimBinary::logicOr,
-                               std::move(sortKeys.parallelArraysCheckExpr),
-                               std::move(parallelArraysError));
+                b.makeBooleanOpTree(optimizer::Operations::Or,
+                                    std::move(sortKeys.parallelArraysCheckExpr),
+                                    std::move(parallelArraysError));
 
             projects.emplace_back(std::move(failOnParallelArraysExpr), boost::none);
         }
@@ -1883,7 +1887,12 @@ std::pair<SbStage, PlanStageSlots> SlotBasedStageBuilder::buildSortMerge(
                                                                      postimageAllowedFieldSets);
 
     if (mergeSortNode->dedup) {
-        stage = b.makeUnique(std::move(stage), outputs.get(kRecordId));
+        auto collection = getCurrentCollection(reqs);
+        if (collection->isClustered()) {
+            stage = b.makeUnique(std::move(stage), outputs.get(kRecordId));
+        } else {
+            stage = b.makeUniqueRoaring(std::move(stage), outputs.get(kRecordId));
+        }
     }
 
     // Stop propagating the RecordId output if none of our ancestors are going to use it.
@@ -3173,7 +3182,12 @@ std::pair<SbStage, PlanStageSlots> SlotBasedStageBuilder::buildOr(const QuerySol
                                                                      postimageAllowedFieldSets);
 
     if (orn->dedup) {
-        stage = b.makeUnique(std::move(stage), outputs.get(kRecordId));
+        auto collection = getCurrentCollection(reqs);
+        if (collection->isClustered()) {
+            stage = b.makeUnique(std::move(stage), outputs.get(kRecordId));
+        } else {
+            stage = b.makeUniqueRoaring(std::move(stage), outputs.get(kRecordId));
+        }
     }
 
     // Stop propagating the RecordId output if none of our ancestors are going to use it.

@@ -85,10 +85,8 @@ function runTest(insertHigherTermOplogEntry, testAuth) {
     // These documents will be truncated by magic restore, since they were written after the backup
     // cursor was opened. We will pass these oplog entries to magic restore to perform a PIT
     // restore, so they will be reinserted and reflected in the final state of the data.
-    ["e",
-     "f",
-     "g"]
-        .forEach(key => { assert.commandWorked(sourceDb.getCollection(coll).insert({[key]: 1})); });
+    ["e", "f", "g"].forEach(
+        key => { assert.commandWorked(sourceDb.getCollection(coll).insert({[key]: 1})); });
     assert.commandWorked(
         sourceDb.getCollection(coll).insert({"h": "x".repeat(bsonMaxUserSize - 30)}));
     assert.eq(sourceDb.getCollection(coll).find().toArray().length, 7);

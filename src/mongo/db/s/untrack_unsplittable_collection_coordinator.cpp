@@ -44,11 +44,10 @@ namespace mongo {
 
 void UntrackUnsplittableCollectionCoordinator::appendCommandInfo(
     BSONObjBuilder* cmdInfoBuilder) const {
-    cmdInfoBuilder->appendElements(BSON("op"
-                                        << "untrackUnsplittableCollection"
-                                        << "nss"
-                                        << NamespaceStringUtil::serialize(
-                                               nss(), SerializationContext::stateDefault())));
+    cmdInfoBuilder->appendElements(
+        BSON("op" << "untrackUnsplittableCollection"
+                  << "nss"
+                  << NamespaceStringUtil::serialize(nss(), SerializationContext::stateDefault())));
 }
 
 void UntrackUnsplittableCollectionCoordinator::checkIfOptionsConflict(
@@ -69,7 +68,6 @@ void UntrackUnsplittableCollectionCoordinator::_checkPreconditions() {
     getForwardableOpMetadata().setOn(opCtx);
     _completeOnError = true;
 
-    // TODO SERVER-84243: Use the CatalogCache instance for filtering metadata.
     const auto chunkManager = uassertStatusOK(
         Grid::get(opCtx)->catalogCache()->getCollectionPlacementInfoWithRefresh(opCtx, nss()));
 

@@ -16,7 +16,7 @@
 # Our workspace setup requires a specific version of poetry to be
 # installed, this script automates the pip install of that version.
 
-poetry_version='1.8.3'
+poetry_version='2.0.0'
 
 allow_no_venv=0
 python_optarg=""
@@ -81,4 +81,5 @@ run "${py3}" -m pip install "${pip_opts[@]}" "poetry==${poetry_version}"
 
 run env \
     PYTHON_KEYRING_BACKEND="keyring.backends.null.Keyring" \
-    "${py3}" -m poetry install --no-root --sync
+
+"${py3}" -m poetry install --no-root --sync

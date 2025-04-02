@@ -65,8 +65,6 @@
 #include "mongo/db/query/allowed_contexts.h"
 #include "mongo/db/query/sort_pattern.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
@@ -147,7 +145,7 @@ Pipeline::SourceContainer::iterator DocumentSourceGeoNear::doOptimizeAt(
 
 Pipeline::SourceContainer::iterator DocumentSourceGeoNear::splitForTimeseries(
     Pipeline::SourceContainer::iterator itr, Pipeline::SourceContainer* container) {
-    invariant(*itr == this);
+    tassert(9911904, "", *itr == this);
 
     // Only do this rewrite if we are immediately following an $_internalUnpackBucket stage.
     if (container->begin() == itr ||
@@ -299,11 +297,10 @@ Pipeline::SourceContainer::iterator DocumentSourceGeoNear::splitForTimeseries(
         }
 
         auto coords = nearExpr.centroid->crs == SPHERE
-            ? BSON("near" << BSON("type"
-                                  << "Point"
-                                  << "coordinates"
-                                  << BSON_ARRAY(nearExpr.centroid->oldPoint.x
-                                                << nearExpr.centroid->oldPoint.y)))
+            ? BSON("near" << BSON("type" << "Point"
+                                         << "coordinates"
+                                         << BSON_ARRAY(nearExpr.centroid->oldPoint.x
+                                                       << nearExpr.centroid->oldPoint.y)))
             : BSON("near" << BSON_ARRAY(nearExpr.centroid->oldPoint.x
                                         << nearExpr.centroid->oldPoint.y));
         tassert(5860220, "", coords.firstElement().isABSONObj());
@@ -530,8 +527,18 @@ DepsTracker::State DocumentSourceGeoNear::getDependencies(DepsTracker* deps) con
     // produced by this stage, and we could inform the query system that it need not include it in
     // its response. For now, assume that we require the entire document as well as the appropriate
     // geoNear metadata.
-    deps->setNeedsMetadata(DocumentMetadataFields::kGeoNearDist, true);
-    deps->setNeedsMetadata(DocumentMetadataFields::kGeoNearPoint, needsGeoNearPoint());
+
+    // This may look confusing, but we must call two setters on the DepsTracker for different
+    // purposes. We mark the fields as available metadata that can be consumed by any
+    // downstream stage for $meta field validation. We also also mark that this stage does
+    // require the meta fields so that the executor knows to produce the metadata.
+    // TODO SERVER-100902 Split $meta validation out of dependency tracking.
+    deps->setMetadataAvailable(DocumentMetadataFields::kGeoNearDist);
+    deps->setNeedsMetadata(DocumentMetadataFields::kGeoNearDist);
+    if (needsGeoNearPoint()) {
+        deps->setMetadataAvailable(DocumentMetadataFields::kGeoNearPoint);
+        deps->setNeedsMetadata(DocumentMetadataFields::kGeoNearPoint);
+    }
 
     deps->needWholeDocument = true;
     return DepsTracker::State::EXHAUSTIVE_FIELDS;

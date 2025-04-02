@@ -100,15 +100,13 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorFind
     size_t plannerOptions = QueryPlannerParams::DEFAULT,
     Pipeline* pipeline = nullptr,
     bool needsMerge = false,
-    QueryMetadataBitSet unavailableMetadata = QueryMetadataBitSet{},
     boost::optional<TraversalPreference> traversalPreference = boost::none,
     ExecShardFilterPolicy = AutomaticShardFiltering{});
 
 StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSearchMetadataExecutorSBE(
     OperationContext* opCtx,
-    const MultipleCollectionAccessor& collections,
     const NamespaceString& nss,
-    const CanonicalQuery& cq,
+    const ExpressionContext& expCtx,
     std::unique_ptr<executor::TaskExecutorCursor> metadataCursor);
 
 /**
@@ -160,7 +158,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorDist
  */
 StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorCount(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const CollectionPtr* collection,
+    const CollectionAcquisition& collection,
     std::unique_ptr<ParsedFindCommand> parsedFind,
     const CountCommandRequest& count);
 

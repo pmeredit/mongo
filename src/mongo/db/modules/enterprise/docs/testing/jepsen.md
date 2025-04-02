@@ -6,16 +6,16 @@ MongoDB uses [Jepsen](https://jepsen.io/) to find critical bugs that jeopardize 
 
 There are two styles of Jepsen tests, each independent from each other and even use completely separate libraries.
 
-| Style                  | jepsen                                                                                                                                                                                                                                                          | jepsen_docker                                                                                                                                                                                                                       |
+| Style                  | Plain                                                                                                                                                                                                                                                           | Docker                                                                                                                                                                                                                              |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Description            | “Plain” and “old version” Jepsen tests                                                                                                                                                                                                                          | “New” Jepsen tests that leverage Docker containers                                                                                                                                                                                  |
+| Description            | “Plain” (or “old version”) Jepsen tests                                                                                                                                                                                                                         | Newer Jepsen tests that leverage Docker containers                                                                                                                                                                                  |
 | Tasks run              | <ul><li>jepsen_read-concern-majority</li><li>jepsen_read-concern-majority_w1</li><li>jepsen_register_findAndModify</li><li>jepsen_register_linearizableRead</li><li>jepsen_set_linearizableRead</li></ul>(each repeated with their server configuration fuzzer) | <ul><li>jepsen_list-append</li></ul>(repeated with its server configuration fuzzer)                                                                                                                                                 |
 | Setup script           | [evergreen/do_jepsen_setup/install_jepsen.sh](https://github.com/10gen/mongo/blob/master/evergreen/do_jepsen_setup/install_jepsen.sh)                                                                                                                           | [evergreen/jepsen_docker/setup.sh](https://github.com/10gen/mongo/blob/master/evergreen/jepsen_docker/setup.sh)                                                                                                                     |
-| Clones from            | [10gen/jepsen --branch=v0.2.0-jepsen-mongodb-master](https://github.com/10gen/jepsen/releases/tag/v0.2.0-jepsen-mongodb-master)                                                                                                                                 | [10gen/jepsen --branch=v0.2.0-evergreen-master](https://github.com/10gen/jepsen/releases/tag/v0.2.0-evergreen-master) and [10gen/jepsen-io-mongodb --branch=v0.2.1](https://github.com/10gen/jepsen-io-mongodb/releases/tag/v0.2.1) |
-| Jepsen Version         | [0.1.8](https://github.com/10gen/jepsen/blob/v0.2.0-jepsen-mongodb-master/project.clj#L9)                                                                                                                                                                       | [0.3.5](https://github.com/10gen/jepsen-io-mongodb/blob/v0.2.1/project.clj#L7)                                                                                                                                                      |
-| MongoDB Driver Version | [3.12.11](https://github.com/10gen/jepsen/blob/v0.2.0-jepsen-mongodb-master/project.clj#L10)                                                                                                                                                                    | [5.0.0](https://github.com/10gen/jepsen-io-mongodb/blob/v0.2.1/project.clj#L8)                                                                                                                                                      |
-| JDK                    | [8](https://github.com/10gen/buildhost-configuration/blob/98f1964a98e03ff8b71466c444c4b6fd43aae1c2/roles/debian/tasks/ubuntu1804-x86_64.yml#L120)                                                                                                               | [17](https://github.com/10gen/jepsen/blob/a2d5e8767c661b2cf33d81cd61d18e6de2124783/docker/control/Dockerfile#L17)                                                                                                                   |
-| Platforms              | [ubuntu1804-64](https://github.com/10gen/mongo/blob/dd61a8d04f3403fb4ad3b08477612e7a6ac57cfc/etc/evergreen_yml_components/variants/ubuntu/test_release.yml#L30)                                                                                                 | [ubuntu2204-64](https://github.com/10gen/mongo/blob/master/etc/evergreen_yml_components/variants/ubuntu/test_release.yml)                                                                                                           |
+| Clones from            | [10gen/jepsen --branch=v0.3.0-jepsen-mongodb-master](https://github.com/10gen/jepsen/releases/tag/v0.3.0-jepsen-mongodb-master)                                                                                                                                 | [10gen/jepsen --branch=v0.2.0-evergreen-master](https://github.com/10gen/jepsen/releases/tag/v0.2.0-evergreen-master) and [10gen/jepsen-io-mongodb --branch=v0.2.1](https://github.com/10gen/jepsen-io-mongodb/releases/tag/v0.2.1) |
+| Jepsen Version         | [0.1.8](https://github.com/10gen/jepsen/blob/v0.3.0-jepsen-mongodb-master/project.clj#L9)                                                                                                                                                                       | [0.3.5](https://github.com/10gen/jepsen-io-mongodb/blob/v0.2.1/project.clj#L7)                                                                                                                                                      |
+| MongoDB Driver Version | [3.12.11](https://github.com/10gen/jepsen/blob/v0.3.0-jepsen-mongodb-master/project.clj#L10)                                                                                                                                                                    | [5.0.0](https://github.com/10gen/jepsen-io-mongodb/blob/v0.2.1/project.clj#L8)                                                                                                                                                      |
+| Platform               | [ubuntu2204-x86_64](https://github.com/10gen/mongo/blob/master/etc/evergreen_yml_components/variants/ubuntu/test_release.yml)                                                                                                                                   | [ubuntu2204-x86_64](https://github.com/10gen/mongo/blob/master/etc/evergreen_yml_components/variants/ubuntu/test_release.yml)                                                                                                       |
+| JDK                    | [8](https://github.com/10gen/buildhost-configuration/blob/f14964d04aa6eab8aac20eb03244238ec03eb2b6/roles/debian/tasks/ubuntu2204-x86_64.yml#L80)                                                                                                                | [17](https://github.com/10gen/jepsen/blob/a2d5e8767c661b2cf33d81cd61d18e6de2124783/docker/control/Dockerfile#L17)                                                                                                                   |
 
 ## Jepsen Repositories
 
@@ -128,27 +128,11 @@ for these Jepsen tests.
 
 In summary, the steps resemble the following...
 
-Ensure you have a Mongo binary to work with via [db_contrib_tool/setup_repro_env](https://github.com/10gen/db-contrib-tool/tree/main/src/db_contrib_tool/setup_repro_env):
+First build the binaries using `tcmalloc-gperf` (see [SERVER-102932](https://jira.mongodb.org/browse/SERVER-102932) for details):
 
 ```
 cd ~/mongo
-db-contrib-tool setup-repro-env
-
-# should see some commit hash found here (latest from master)
-ls ~/mongo/build/multiversion_bin/
-```
-
-```
-# set a variable to this location, eg:
-mongosrc=~/mongo/build/multiversion_bin/4f057a537dad84e2d2b7b389f0bb67b8f91abe79
-```
-
-Create a fresh working directory:
-
-```
-cd ~
-rm -rf jepsen-repro-env
-mkdir jepsen-repro-env
+bazel build --config=opt --allocator=tcmalloc-gperf install-dist-test
 ```
 
 The [do jepsen setup](https://github.com/10gen/mongo/blob/9d9b2fd898674b3e066b6d3a4f6fc3f4102053f0/etc/evergreen_yml_components/definitions.yml#L1341) function is the following steps:
@@ -162,7 +146,7 @@ The [do jepsen setup](https://github.com/10gen/mongo/blob/9d9b2fd898674b3e066b6d
 ```
 ## build_libfaketime.sh
 
-cd ~/jepsen-repro-env
+cd ~/mongo
 git clone --branch=for-jepsen --depth=1 git@github.com:10gen/libfaketime.git
 cd libfaketime
 make PREFIX=$(pwd)/build/ LIBDIRNAME='.' install
@@ -170,44 +154,57 @@ make PREFIX=$(pwd)/build/ LIBDIRNAME='.' install
 
 ## install_jepsen.sh
 
-cd ~/jepsen-repro-env
-git clone --branch=jepsen-mongodb-master --depth=1 git@github.com:10gen/jepsen.git jepsen-mongodb
+cd ~/mongo
+rm -rf jepsen-mongodb
+git clone --branch=v0.3.0-jepsen-mongodb-master --depth=1 git@github.com:10gen/jepsen.git jepsen-mongodb
 cd jepsen-mongodb
-branch=$(git symbolic-ref --short HEAD)
-commit=$(git show -s --pretty=format:"%h - %an, %ar: %s")
-echo "Git branch: $branch, commit: $commit"
 
+_JAVA_OPTIONS=
 lein install
+```
 
+Note: if you need to install `lein`, use:
 
+```
+wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
+chmod +x lein
+sudo mv lein /usr/local/bin
+```
+
+Then continue:
+
+```
 ## nodes.sh
 
-cd ~/jepsen-repro-env
+cd ~/mongo
 python -c 'import socket; num_nodes = 5; print("\n".join(["%s:%d" % (socket.gethostname(), port) for port in range(20000, 20000 + num_nodes)]))' > nodes.txt
 
 
 ## move_binaries.sh
 
-cp -rf $mongosrc/dist-test/bin/* .
-
-
-## jepsen_test_run.sh
-
-cd ~/jepsen-repro-env/jepsen-mongodb
-
-workdir=/tmp/jepsen-repro-env/workdir
-mkdir -p $workdir/tmp
-_JAVA_OPTIONS=-Djava.io.tmpdir=$workdir/tmp
+cd ~/mongo
+cp -r bazel-bin/install-dist-test/bin/mongo{,d,s,bridge} .
 ```
 
 Run the `jepsen_read-concern-majority` test:
 
 ```
+## jepsen_test_run.sh
+
+cd ~/mongo/jepsen-mongodb
+
+workdir=~/mongo
+TMPDIR=${workdir}/tmp
+mkdir -p $TMPDIR
+export _JAVA_OPTIONS=-Djava.io.tmpdir=$TMPDIR
+
+cd ~/jepsen-repro-env/jepsen-mongodb
+
 lein run test --test read-concern-majority \
-  --mongodb-dir ../ \
-  --working-dir ${workdir}/src/jepsen-workdir \
+  --mongodb-dir ~/mongo \
+  --working-dir ${workdir}/jepsen-workdir \
   --clock-skew faketime \
-  --libfaketime-path ${workdir}/src/libfaketime/build/libfaketime.so.1 \
+  --libfaketime-path ${workdir}/libfaketime/build/libfaketime.so.1 \
   --virtualization none \
   --nodes-file ../nodes.txt \
   --mongod-conf mongod_verbose.conf \
@@ -359,6 +356,27 @@ is a combination of config fuzzer and all the Jepsen tests mentioned above to
 add more randomness for Jepsen tests.
 
 ## Common Procedures
+
+### Fault Injection
+
+For any library or dependency changes, we must ensure that the tests can still catch issues appropriately. Jepsen detects _failing scenarios_, but can't guarantee that everything ran _correctly_. For example, to guard against false-negatives in tests related to linearizability, inject the following fault to ensure that these tests aren't passing blindly:
+
+```diff
+diff --git a/src/mongo/db/service_entry_point_shard_role.cpp b/src/mongo/db/service_entry_point_shard_role.cpp
+index 719c0041cc5..73268cc3b23 100644
+--- a/src/mongo/db/service_entry_point_shard_role.cpp
++++ b/src/mongo/db/service_entry_point_shard_role.cpp
+@@ -1227,7 +1227,8 @@ void RunCommandImpl::_epilogue() {
+                 requestMatchesComment;
+         });
+
+-    service_entry_point_shard_role_helpers::waitForLinearizableReadConcern(opCtx);
+
+     // Wait for data to satisfy the read concern level, if necessary.
+     service_entry_point_shard_role_helpers::waitForSpeculativeMajorityReadConcern(opCtx);
+```
+
+That should fail tests like `jepsen_register_linearizableRead` with the `Analysis invalid! (ﾉಥ益ಥ）ﾉ ┻━┻` result in the logs.
 
 ### Driver Upgrades
 

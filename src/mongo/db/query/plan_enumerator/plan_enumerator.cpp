@@ -40,7 +40,6 @@
 #include <boost/optional/optional.hpp>
 // IWYU pragma: no_include "ext/alloc_traits.h"
 #include <algorithm>
-#include <ostream>
 #include <set>
 
 #include "mongo/base/string_data.h"
@@ -55,10 +54,7 @@
 #include "mongo/db/query/plan_enumerator/memo_prune.h"
 #include "mongo/db/query/query_planner_common.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
-#include "mongo/stdx/type_traits.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 #include "mongo/util/string_map.h"

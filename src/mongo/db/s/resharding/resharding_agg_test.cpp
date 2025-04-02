@@ -85,9 +85,7 @@
 #include "mongo/db/shard_id.h"
 #include "mongo/db/transaction/transaction_history_iterator.h"
 #include "mongo/idl/idl_parser.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
@@ -98,10 +96,8 @@
 namespace mongo {
 namespace {
 
-using namespace fmt::literals;
-
 const NamespaceString kLocalOplogBufferNss = NamespaceString::createNamespaceString_forTest(
-    "config", "{}xxx.yyy"_format(NamespaceString::kReshardingLocalOplogBufferPrefix));
+    fmt::format("config", "{}xxx.yyy", NamespaceString::kReshardingLocalOplogBufferPrefix));
 
 // A mock TransactionHistoryIterator to support DSReshardingIterateTransaction.
 class MockTransactionHistoryIterator : public TransactionHistoryIteratorBase {

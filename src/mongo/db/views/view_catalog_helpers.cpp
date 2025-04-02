@@ -85,15 +85,20 @@ StatusWith<stdx::unordered_set<NamespaceString>> validatePipeline(OperationConte
 
     liteParsedPipeline.validate(opCtx, performApiVersionChecks);
 
+    // TODO SERVER-101721 Enable $rankFusion run in a view definition.
+    uassert(ErrorCodes::OptionNotSupportedOnView,
+            "$rankFusion is currently unsupported in a view definition",
+            !liteParsedPipeline.startsWithRankFusionStage());
+
     // Verify that this is a legitimate pipeline specification by making sure it parses
     // correctly. In order to parse a pipeline we need to resolve any namespaces involved to a
     // collection and a pipeline, but in this case we don't need this map to be accurate since
     // we will not be evaluating the pipeline.
-    StringMap<ResolvedNamespace> resolvedNamespaces;
+    ResolvedNamespaceMap resolvedNamespaces;
 
     // Create copy of involved namespaces, as these can be moved into the result.
     for (const auto& nss : liteParsedPipeline.getInvolvedNamespaces()) {
-        resolvedNamespaces[nss.coll()] = {nss, {}};
+        resolvedNamespaces[nss] = {nss, {}};
     }
     AggregateCommandRequest aggregateRequest(viewDef.viewOn(), viewDef.pipeline());
     // We can use a stub MongoProcessInterface because we are only
@@ -202,6 +207,11 @@ StatusWith<ResolvedView> resolveView(OperationContext* opCtx,
     boost::optional<bool> hasExtendedRange = boost::none;
     boost::optional<bool> fixedBuckets = boost::none;
 
+    // Whether we are working with a new, viewless timeseries collection. In general, we expect this
+    // to be false, but this is present so that we can enforce this invariant in ResolvedView. Once
+    // this parameter is removed from the catalog cache, this variable should be removed as well.
+    bool isNewTimeseriesWithoutView = false;
+
     for (; depth < ViewGraph::kMaxViewDepth; depth++) {
         auto view = catalog->lookupView(opCtx, *resolvedNss);
         if (!view) {
@@ -226,7 +236,8 @@ StatusWith<ResolvedView> resolveView(OperationContext* opCtx,
                  tsOptions,
                  mixedData,
                  hasExtendedRange,
-                 fixedBuckets});
+                 fixedBuckets,
+                 isNewTimeseriesWithoutView});
         }
 
         resolvedNss = &view->viewOn();
@@ -243,10 +254,12 @@ StatusWith<ResolvedView> resolveView(OperationContext* opCtx,
                     str::stream() << "expected time-series buckets collection "
                                   << (*resolvedNss).toStringForErrorMsg() << " to exist",
                     tsCollection);
-            mixedData = tsCollection->getTimeseriesBucketsMayHaveMixedSchemaData();
+            mixedData = tsCollection->getTimeseriesMixedSchemaBucketsState()
+                            .mustConsiderMixedSchemaBucketsInReads();
             tsOptions = tsCollection->getTimeseriesOptions();
             hasExtendedRange = tsCollection->getRequiresTimeseriesExtendedRangeSupport();
             fixedBuckets = tsCollection->areTimeseriesBucketsFixed();
+            isNewTimeseriesWithoutView = tsCollection->isNewTimeseriesWithoutView();
         }
 
         dependencyChain.push_back(*resolvedNss);

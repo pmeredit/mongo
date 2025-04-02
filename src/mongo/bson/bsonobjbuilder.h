@@ -566,7 +566,7 @@ public:
      */
     template <typename Map>
     requires std::is_convertible_v<decltype(std::declval<Map>().begin()->first), StringData>
-        Derived& append(StringData fieldName, const Map& map) {
+    Derived& append(StringData fieldName, const Map& map) {
         typename std::remove_reference<Derived>::type bob;
         for (auto&& [k, v] : map) {
             bob.append(k, v);
@@ -618,7 +618,7 @@ public:
 
         // None of the code which resets this builder to the not-done state is expected to throw.
         // If it does, that would be a violation of our expectations.
-        ScopeGuard resetObjectState([this]() noexcept {
+        ScopeGuard resetObjectState([this]() {
             // Immediately after the buffer for the ephemeral space created by the call to `_done()`
             // is ready, reset our state to not-done.
             _doneCalled = false;

@@ -31,8 +31,10 @@
 
 #include <boost/optional.hpp>
 
-#include "mongo/transport/grpc/server.h"
+#include "mongo/transport/grpc/client.h"
+#include "mongo/transport/grpc/service.h"
 #include "mongo/transport/transport_layer.h"
+#include "mongo/util/cancellation.h"
 
 namespace mongo::transport::grpc {
 
@@ -73,7 +75,7 @@ public:
         boost::optional<BSONObj> clientMetadata;
     };
 
-    virtual ~GRPCTransportLayer() {}
+    ~GRPCTransportLayer() override {}
 
     /**
      * Add the service to the list that will be served once this transport layer has been started.
@@ -81,6 +83,11 @@ public:
      * created. All services must be registered before setup() is invoked.
      */
     virtual Status registerService(std::unique_ptr<Service> svc) = 0;
+
+    /**
+     * Acquire a unique gRPC client, which owns a unique associated ChannelPool.
+     */
+    virtual std::shared_ptr<Client> createGRPCClient(BSONObj clientMetadata) = 0;
 
     virtual StatusWith<std::shared_ptr<Session>> connectWithAuthToken(
         HostAndPort peer,
@@ -94,6 +101,7 @@ public:
         const ReactorHandle& reactor,
         Milliseconds timeout,
         std::shared_ptr<ConnectionMetrics> connectionMetrics,
+        const CancellationToken& token = CancellationToken::uncancelable(),
         boost::optional<std::string> authToken = boost::none) = 0;
 
     StringData getNameForLogging() const override {

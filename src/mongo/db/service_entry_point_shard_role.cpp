@@ -63,7 +63,6 @@
 #include "mongo/db/auth/action_type.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/impersonation_session.h"
 #include "mongo/db/auth/ldap_cumulative_operation_stats.h"
 #include "mongo/db/auth/ldap_operation_stats.h"
 #include "mongo/db/auth/resource_pattern.h"
@@ -136,16 +135,14 @@
 #include "mongo/db/write_concern.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/check_allowed_op_query_cmd.h"
 #include "mongo/rpc/factory.h"
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/metadata.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/rpc/metadata/client_metadata.h"
+#include "mongo/rpc/metadata/impersonated_client_session.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/protocol.h"
 #include "mongo/rpc/reply_builder_interface.h"
@@ -215,7 +212,6 @@ auto& notPrimaryUnackWrites =
 
 namespace {
 
-using namespace fmt::literals;
 
 void runCommandInvocation(const RequestExecutionContext& rec, CommandInvocation* invocation) {
     CommandHelpers::runCommandInvocation(rec.getOpCtx(), invocation, rec.getReplyBuilder());
@@ -278,7 +274,7 @@ struct HandleRequest {
     };
 
     HandleRequest(OperationContext* opCtx, const Message& msg)
-        : executionContext(ExecutionContext(opCtx, const_cast<Message&>(msg))) {}
+        : executionContext(opCtx, const_cast<Message&>(msg)) {}
 
     void startOperation();
     DbResponse runOperation();
@@ -617,8 +613,10 @@ private:
             APIParameters::get(opCtx) = APIParameters::fromClient(apiParameters);
         }
 
-        rpc::readRequestMetadata(
-            opCtx, _invocation->getGenericArguments(), command->requiresAuth());
+        rpc::readRequestMetadata(opCtx,
+                                 _invocation->getGenericArguments(),
+                                 command->requiresAuth(),
+                                 _clientSessionGuard);
 
         const auto session = _execContext.getOpCtx()->getClient()->session();
         if (session) {
@@ -674,7 +672,7 @@ private:
 
     boost::optional<RunCommandOpTimes> _runCommandOpTimes;
     boost::optional<ResourceConsumption::ScopedMetricsCollector> _scopedMetrics;
-    boost::optional<ImpersonationSessionGuard> _impersonationSessionGuard;
+    boost::optional<rpc::ImpersonatedClientSessionGuard> _clientSessionGuard;
     boost::optional<auth::SecurityTokenAuthenticationGuard> _tokenAuthorizationSessionGuard;
     bool _refreshedDatabase = false;
     bool _refreshedCollection = false;
@@ -811,7 +809,6 @@ private:
 };
 
 void InvokeCommand::run() {
-    const auto dbName = _ecd->getInvocation()->ns().dbName();
     runCommandInvocation(_ecd->getExecutionContext(), _ecd->getInvocation());
 }
 
@@ -819,8 +816,6 @@ void CheckoutSessionAndInvokeCommand::run() {
     auto status = [&] {
         try {
             _checkOutSession();
-
-            const auto dbName = _ecd->getInvocation()->ns().dbName();
 
             if (auto scoped = failWithErrorCodeAfterSessionCheckOut.scoped();
                 MONGO_unlikely(scoped.isActive())) {
@@ -952,7 +947,8 @@ void CheckoutSessionAndInvokeCommand::_checkOutSession() {
     auto apiParamsFromTxn = txnParticipant.getAPIParameters(opCtx);
     uassert(
         ErrorCodes::APIMismatchError,
-        "API parameter mismatch: {} used params {}, the transaction's first command used {}"_format(
+        fmt::format(
+            "API parameter mismatch: {} used params {}, the transaction's first command used {}",
             invocation->definition()->getName(),
             apiParamsFromClient.toBSON().toString(),
             apiParamsFromTxn.toBSON().toString()),
@@ -1061,8 +1057,9 @@ void CheckoutSessionAndInvokeCommand::_checkOutSession() {
         if (readConcernArgs.hasLevel() && isCreate(command)) {
             if (!readConcernSupport.readConcernSupport.isOK()) {
                 uassertStatusOK(readConcernSupport.readConcernSupport.withContext(
-                    "Command {} does not support this transaction's {}"_format(
-                        command->getName(), readConcernArgs.toString())));
+                    fmt::format("Command {} does not support this transaction's {}",
+                                command->getName(),
+                                readConcernArgs.toString())));
             }
         }
     }
@@ -1245,7 +1242,7 @@ void RunCommandImpl::_epilogue() {
             _ok ? boost::none : boost::optional<ErrorCodes::Error>(status.code());
         boost::optional<ErrorCodes::Error> wcCode;
         auto response = body.asTempObj();
-        if (auto wcErrElement = response["writeConcernError"]; !wcErrElement.eoo()) {
+        if (auto wcErrElement = response[kWriteConcernErrorFieldName]; !wcErrElement.eoo()) {
             wcCode = ErrorCodes::Error(wcErrElement["code"].numberInt());
         }
         appendErrorLabelsAndTopologyVersion(opCtx,
@@ -1290,11 +1287,11 @@ void RunCommandAndWaitForWriteConcern::_waitForWriteConcern(BSONObjBuilder& bb) 
     if (auto scoped = failCommand.scopedIf([&](const BSONObj& obj) {
             return CommandHelpers::shouldActivateFailCommandFailPoint(
                        obj, invocation, opCtx->getClient()) &&
-                obj.hasField("writeConcernError");
+                obj.hasField(kWriteConcernErrorFieldName);
         });
         MONGO_unlikely(scoped.isActive())) {
         const BSONObj& data = scoped.getData();
-        bb.append(data["writeConcernError"]);
+        bb.append(data[kWriteConcernErrorFieldName]);
         if (data.hasField(kErrorLabelsFieldName) && data[kErrorLabelsFieldName].type() == Array) {
             // Propagate error labels specified in the failCommand failpoint to the
             // OperationContext decoration to override getErrorLabels() behaviors.
@@ -1353,11 +1350,11 @@ void RunCommandAndWaitForWriteConcern::_setup() {
                 // WriteConcern should always be explicitly specified by operations received
                 // from internal clients (ie. from a mongos or mongod), even if it is empty
                 // (ie. writeConcern: {}, which is equivalent to { w: 1, wtimeout: 0 }).
-                uassert(
-                    4569201,
-                    "received command without explicit writeConcern on an internalClient connection {}"_format(
-                        redact(_execContext.getRequest().body.toString())),
-                    genericArgs.getWriteConcern());
+                uassert(4569201,
+                        fmt::format("received command without explicit writeConcern on an "
+                                    "internalClient connection {}",
+                                    redact(_execContext.getRequest().body.toString())),
+                        genericArgs.getWriteConcern());
             } else if (serverGlobalParams.clusterRole.has(ClusterRole::ShardServer) ||
                        serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer)) {
                 if (!genericArgs.getWriteConcern()) {
@@ -1424,10 +1421,10 @@ void RunCommandAndWaitForWriteConcern::_checkWriteConcern() {
         dassert(!_extractedWriteConcern, "opGetMore contained unexpected extracted write concern");
     } else {
         dassert(_extractedWriteConcern, "no extracted write concern");
-        dassert(
-            opCtx->getWriteConcern() == _extractedWriteConcern,
-            "opCtx wc: {} extracted wc: {}"_format(opCtx->getWriteConcern().toBSON().jsonString(),
-                                                   _extractedWriteConcern->toBSON().jsonString()));
+        dassert(opCtx->getWriteConcern() == _extractedWriteConcern,
+                fmt::format("opCtx wc: {} extracted wc: {}",
+                            opCtx->getWriteConcern().toBSON().jsonString(),
+                            _extractedWriteConcern->toBSON().jsonString()));
     }
 }
 
@@ -1469,11 +1466,11 @@ StatusWith<repl::ReadConcernArgs> ExecCommandDatabase::_extractReadConcern(
             // ReadConcern should always be explicitly specified by operations received from
             // internal clients (ie. from a mongos or mongod), even if it is empty (ie.
             // readConcern: {}, meaning to use the implicit server defaults).
-            uassert(
-                4569200,
-                "received command without explicit readConcern on an internalClient connection {}"_format(
-                    redact(_execContext.getRequest().body.toString())),
-                readConcernArgs.isSpecified());
+            uassert(4569200,
+                    fmt::format("received command without explicit readConcern on an "
+                                "internalClient connection {}",
+                                redact(_execContext.getRequest().body.toString())),
+                    readConcernArgs.isSpecified());
         } else if (serverGlobalParams.clusterRole.has(ClusterRole::ShardServer) ||
                    serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer)) {
             if (!readConcernArgs.isSpecified()) {
@@ -1642,7 +1639,6 @@ void ExecCommandDatabase::_initiateCommand() {
     }
 
     if (MONGO_unlikely(genericArgs.getHelp().value_or(false))) {
-        CurOp::get(opCtx)->ensureStarted();
         // We disable not-primary-error tracker for help requests due to SERVER-11492, because
         // config servers use help requests to determine which commands are database writes, and so
         // must be forwarded to all config servers.
@@ -1650,14 +1646,6 @@ void ExecCommandDatabase::_initiateCommand() {
         Command::generateHelpResponse(opCtx, replyBuilder, *command);
         iasserted(Status(ErrorCodes::SkipCommandExecution,
                          "Skipping command execution for help request"));
-    }
-
-    _impersonationSessionGuard.emplace(opCtx);
-
-    // Restart contract tracking afer the impersonation guard checks for impersonate if using
-    // impersonation.
-    if (_impersonationSessionGuard->isActive()) {
-        authzSession->startContractTracking();
     }
 
     _invocation->checkAuthorization(opCtx, _execContext.getRequest());
@@ -1823,12 +1811,20 @@ void ExecCommandDatabase::_initiateCommand() {
         }
     }
 
+    uassert(ErrorCodes::InvalidOptions,
+            "Command does not support the rawData option",
+            !genericArgs.getRawData() || _invocation->supportsRawData() ||
+                client->isInternalClient());
+    uassert(ErrorCodes::InvalidOptions,
+            "rawData is not enabled",
+            !genericArgs.getRawData() || gFeatureFlagRawDataCrudOperations.isEnabled());
+
     if (opCtx->isStartingMultiDocumentTransaction()) {
         _setLockStateForTransaction(opCtx);
     }
 
     // Once API params and txn state are set on opCtx, enforce the "requireApiVersion" setting.
-    enforceRequireAPIVersion(opCtx, command);
+    enforceRequireAPIVersion(opCtx, command, _execContext.getRequest());
 
     if (!opCtx->getClient()->isInDirectClient()) {
         const boost::optional<ShardVersion>& shardVersion = genericArgs.getShardVersion();
@@ -1869,8 +1865,6 @@ void ExecCommandDatabase::_initiateCommand() {
         status != ErrorCodes::InterruptedDueToReplStateChange) {
         uassertStatusOK(status);
     }
-
-    CurOp::get(opCtx)->ensureStarted();
 
     command->incrementCommandsExecuted();
 }
@@ -2089,8 +2083,8 @@ void ExecCommandDatabase::_handleFailure(Status status) {
     // Append the error labels for transient transaction errors.
     auto response = _extraFieldsBuilder.asTempObj();
     boost::optional<ErrorCodes::Error> wcCode;
-    if (response.hasField("writeConcernError")) {
-        wcCode = ErrorCodes::Error(response["writeConcernError"]["code"].numberInt());
+    if (response.hasField(kWriteConcernErrorFieldName)) {
+        wcCode = ErrorCodes::Error(response[kWriteConcernErrorFieldName]["code"].numberInt());
     }
     appendErrorLabelsAndTopologyVersion(opCtx,
                                         &_extraFieldsBuilder,
@@ -2299,6 +2293,8 @@ void HandleRequest::startOperation() {
     auto opCtx = executionContext.getOpCtx();
     auto& client = executionContext.client();
 
+    CurOp::get(opCtx)->ensureStarted();
+
     if (client.isInDirectClient()) {
         if (!opCtx->getLogicalSessionId() || !opCtx->getTxnNumber()) {
             invariant(!opCtx->inMultiDocumentTransaction() &&
@@ -2419,7 +2415,7 @@ void onHandleRequestException(const HandleRequest::ExecutionContext& context,
 }
 
 Future<DbResponse> ServiceEntryPointShardRole::handleRequest(OperationContext* opCtx,
-                                                             const Message& m) noexcept try {
+                                                             const Message& m) try {
     tassert(9391501,
             "Invalid ClusterRole in ServiceEntryPointShardRole",
             opCtx->getService()->role().hasExclusively(ClusterRole::ShardServer));

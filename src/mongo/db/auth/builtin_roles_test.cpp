@@ -45,8 +45,7 @@
 #include "mongo/db/auth/builtin_roles.h"
 #include "mongo/db/auth/resource_pattern.h"
 #include "mongo/db/namespace_string.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/database_name_util.h"
 
 namespace mongo {
@@ -73,6 +72,7 @@ TEST(BuiltinRoles, BuiltinRolesOnlyOnAppropriateDatabases) {
     ASSERT(!auth::isBuiltinRole(RoleName("root", "test")));
     ASSERT(!auth::isBuiltinRole(RoleName("__system", "test")));
     ASSERT(!auth::isBuiltinRole(RoleName("MyRole", "test")));
+    ASSERT(!auth::isBuiltinRole(RoleName("searchCoordinator", "test")));
 
     ASSERT(auth::isBuiltinRole(RoleName("read", "admin")));
     ASSERT(auth::isBuiltinRole(RoleName("readWrite", "admin")));
@@ -89,6 +89,7 @@ TEST(BuiltinRoles, BuiltinRolesOnlyOnAppropriateDatabases) {
     ASSERT(auth::isBuiltinRole(RoleName("__system", "admin")));
     ASSERT(auth::isBuiltinRole(RoleName("directShardOperations", "admin")));
     ASSERT(!auth::isBuiltinRole(RoleName("MyRole", "admin")));
+    ASSERT(auth::isBuiltinRole(RoleName("searchCoordinator", "admin")));
 }
 
 TEST(BuiltinRoles, getBuiltinRolesForDB) {
@@ -127,6 +128,7 @@ TEST(BuiltinRoles, addPrivilegesForBuiltinRole) {
         ActionType::listCollections,
         ActionType::listIndexes,
         ActionType::listSearchIndexes,
+        ActionType::performRawDataOperations,
         ActionType::planCacheRead,
     });
 

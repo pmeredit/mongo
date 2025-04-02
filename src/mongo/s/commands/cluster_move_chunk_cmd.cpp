@@ -53,9 +53,6 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/reply_builder_interface.h"
 #include "mongo/s/catalog/type_chunk.h"
@@ -132,7 +129,8 @@ public:
             Timer t;
 
             const auto chunkManager =
-                getRefreshedCollectionRoutingInfoAssertSharded_DEPRECATED(opCtx, ns()).cm;
+                getRefreshedCollectionRoutingInfoAssertSharded_DEPRECATED(opCtx, ns())
+                    .getChunkManager();
             uassert(ErrorCodes::NamespaceNotSharded,
                     str::stream() << "Can't execute " << Request::kCommandName
                                   << " on unsharded collection " << ns().toStringForErrorMsg(),
@@ -204,7 +202,7 @@ public:
                 chunk.emplace(chunkManager.findIntersectingChunkWithSimpleCollation(minKey));
                 uassert(656452,
                         str::stream() << "no chunk found with the shard key bounds "
-                                      << ChunkRange(minKey, maxKey).toString(),
+                                      << "[" << minKey << "," << maxKey << ")",
                         chunk->getMin().woCompare(minKey) == 0 &&
                             chunk->getMax().woCompare(maxKey) == 0);
             }

@@ -38,8 +38,6 @@
 #include "mongo/base/initializer.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonmisc.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/stacktrace_somap.h"
 
 #if defined(__linux__)
@@ -170,7 +168,7 @@ void processLoadSegment(const dl_phdr_info& info, const ElfW(Phdr) & phdr, BSONO
                 case ELFCLASS64:
                     return "ELFCLASS64";
             }
-            return format(FMT_STRING("[elfClass unknown: {}]"), c);
+            return fmt::format("[elfClass unknown: {}]", c);
         };
         LOGV2_WARNING(23843,
                       "Unexpected ELF class (i.e. bit width)",

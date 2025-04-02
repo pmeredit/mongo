@@ -65,11 +65,6 @@
 
 namespace mongo {
 
-DocumentSourceGroupBase::~DocumentSourceGroupBase() {
-    const auto& stats = _groupProcessor.getStats();
-    groupCounters.incrementGroupCountersPerQuery(stats.spillingStats.getSpilledDataStorageSize());
-}
-
 Value DocumentSourceGroupBase::serialize(const SerializationOptions& opts) const {
     MutableDocument insides;
 
@@ -102,9 +97,11 @@ Value DocumentSourceGroupBase::serialize(const SerializationOptions& opts) const
     if (_groupProcessor.doingMerge()) {
         insides[kDoingMergeSpecField] = opts.serializeLiteral(true);
     } else if (pExpCtx->isFeatureFlagShardFilteringDistinctScanEnabled() &&
-               !_groupProcessor.willBeMerged()) {
-        // Only serialize this flag when it is set to false & we are not already merging -
-        // otherwise, mongod must infer from the expression context what to do.
+               !_groupProcessor.willBeMerged() && opts.isKeepingLiteralsUnchanged() &&
+               !opts.serializeForQueryAnalysis) {
+        // Only serialize this flag when it is set to false & we are not already merging & this is
+        // not being used for query settings & this is not being rewritten for FLE- otherwise,
+        // mongod must infer from the expression context what to do.
         insides[kWillBeMergedSpecField] = opts.serializeLiteral(_groupProcessor.willBeMerged());
     }
 
@@ -113,7 +110,8 @@ Value DocumentSourceGroupBase::serialize(const SerializationOptions& opts) const
     MutableDocument out;
     out[getSourceName()] = insides.freezeToValue();
 
-    if (opts.verbosity && *opts.verbosity >= ExplainOptions::Verbosity::kExecStats) {
+    if (opts.isSerializingForExplain() &&
+        *opts.verbosity >= ExplainOptions::Verbosity::kExecStats) {
         MutableDocument md;
 
         const auto& memoryTracker = _groupProcessor.getMemoryTracker();

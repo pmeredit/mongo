@@ -45,8 +45,7 @@
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/commands/cluster_command_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
@@ -90,24 +89,21 @@ protected:
 };
 
 TEST_F(ClusterValidateDBMetadataTest, AppendsErrorsFromShards) {
-    apiVersionErrorsShard1 = {BSON("ns"
-                                   << "test.ns"
-                                   << "code" << 9 << "codeName"
-                                   << "APIStrictError"
-                                   << "errmsg"
-                                   << " Error")};
-    apiVersionErrorsShard2 = {BSON("ns"
-                                   << "test.ns"
-                                   << "code" << 19 << "codeName"
-                                   << "APIStrictError"
-                                   << "errmsg"
-                                   << " Error"),
-                              BSON("ns"
-                                   << "test.ns"
-                                   << "code" << 19 << "codeName"
-                                   << "APIStrictError"
-                                   << "errmsg"
-                                   << " Error")};
+    apiVersionErrorsShard1 = {BSON("ns" << "test.ns"
+                                        << "code" << 9 << "codeName"
+                                        << "APIStrictError"
+                                        << "errmsg"
+                                        << " Error")};
+    apiVersionErrorsShard2 = {BSON("ns" << "test.ns"
+                                        << "code" << 19 << "codeName"
+                                        << "APIStrictError"
+                                        << "errmsg"
+                                        << " Error"),
+                              BSON("ns" << "test.ns"
+                                        << "code" << 19 << "codeName"
+                                        << "APIStrictError"
+                                        << "errmsg"
+                                        << " Error")};
     auto res = runCommandSuccessful(kCommand, false);
 
     const auto outputFromMongos = OpMsg::parse(res.response).body;
@@ -117,12 +113,11 @@ TEST_F(ClusterValidateDBMetadataTest, AppendsErrorsFromShards) {
 }
 
 TEST_F(ClusterValidateDBMetadataTest, MaxBSONSizeAfterAccumulation) {
-    const auto errorObj = BSON("ns"
-                               << "test.ns"
-                               << "code" << 9 << "codeName"
-                               << "APIStrictError"
-                               << "errmsg"
-                               << " Error");
+    const auto errorObj = BSON("ns" << "test.ns"
+                                    << "code" << 9 << "codeName"
+                                    << "APIStrictError"
+                                    << "errmsg"
+                                    << " Error");
 
     // Create two arrays whose size is less than BSONObjMaxUserSize / 2, and verify that the mongos
     // still returns 'hasMoreErrors' flag. This is because we add additional fields like 'shard' to

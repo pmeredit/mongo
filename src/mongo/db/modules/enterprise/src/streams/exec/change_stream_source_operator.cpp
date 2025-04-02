@@ -4,8 +4,6 @@
 
 #include "streams/exec/change_stream_source_operator.h"
 
-#include "mongo/util/timer.h"
-#include "streams/util/exception.h"
 #include <boost/optional/optional.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/document/value.hpp>
@@ -16,23 +14,28 @@
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/exception/query_exception.hpp>
+#include <mongocxx/exception/server_error_code.hpp>
 #include <mongocxx/options/aggregate.hpp>
 #include <mongocxx/pipeline.hpp>
 #include <mutex>
+#include <ostream>
+#include <utility>
 #include <variant>
 
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/pipeline/resume_token.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/time_support.h"
+#include "mongo/util/timer.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/connection_status.h"
 #include "streams/exec/context.h"
@@ -45,6 +48,8 @@
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
+#include "streams/util/exception.h"
+#include "streams/util/metrics.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -62,9 +67,16 @@ namespace {
 // connecting.
 MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepBeforeConnect);
 
+// If enabled failpoint the changestream background thread will sleep for 10 seconds after reading
+// a single change event.
+MONGO_FAIL_POINT_DEFINE(changestreamSourceSleepAfterReadSingle);
+
 // If enabled the executor thread will sleep for some time after processing a batch of fetched
 // events
 MONGO_FAIL_POINT_DEFINE(changestreamSlowEventProcessing);
+
+// If enabled the changestream background thread will throw a interrupted at shutdown error
+MONGO_FAIL_POINT_DEFINE(changestreamSourceServerInterruptedAtShutdownError);
 
 // Name of the error code field name in the raw server error object.
 static constexpr char kErrorCodeFieldName[] = "code";
@@ -72,12 +84,17 @@ static constexpr char kErrorCodeFieldName[] = "code";
 // Arbitrary error codes for invalid changestream aggregation pipelines
 static constexpr ErrorCodes::Error kEmptyPipelineErrorCode{40323};
 static constexpr ErrorCodes::Error kUnrecognizedPipelineStageNameErrorCode{40324};
+static constexpr ErrorCodes::Error kInvalidFieldPathNameErrorCode{16410};
+static constexpr auto kCollFieldName = "coll";
+static constexpr auto kDbFieldName = "db";
+}  // namespace
 
 // Helper function to get the timestamp of the latest event in the oplog. This involves
 // invoking a command on the server and so can be slow.
-mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
-                                    mongocxx::client* client,
-                                    bool shouldUseWatchToInitClusterChangestream) {
+mongo::Timestamp ChangeStreamSourceOperator::getLatestOplogTime(
+    mongocxx::database* database,
+    mongocxx::client* client,
+    bool shouldUseWatchToInitClusterChangestream) {
     if (!database && shouldUseWatchToInitClusterChangestream) {
         // When targetting a whole cluster change stream, use a client_session
         // and dummy watch call to get an initial clusterTime. Prior to this, we were
@@ -85,6 +102,10 @@ mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
         // clusters.
         mongocxx::client_session session{client->start_session()};
         mongocxx::options::change_stream options;
+        // Setting batch_size to 0 helps avoid long-running aggregation commands. batch_size 0
+        // results in the "aggregate" immediately returning with a cursor ID and no results.
+        // The server default for batch_sizes on subsequent getMore requests is not affected.
+        options.batch_size(0);
         auto cursor = std::make_unique<mongocxx::change_stream>(client->watch(session, options));
         auto response = session.cluster_time();
         auto clusterTime = response.find("clusterTime");
@@ -104,13 +125,13 @@ mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
     if (database) {
         // TODO(SERVER-95515): Remove this block once shouldUseWatchToInitClusterChangestream
         // feature flag is removed.
-        helloResponse = callHello(*database);
+        helloResponse = callHello(*database, _context);
     } else {
         // Use the config database because the driver requires us to call run_command under a
         // particular DB.
         const std::string defaultDb{"config"};
         auto configDatabase = client->database(defaultDb);
-        helloResponse = callHello(configDatabase);
+        helloResponse = callHello(configDatabase, _context);
     }
 
     auto operationTime = helloResponse.find("operationTime");
@@ -124,8 +145,6 @@ mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
     auto timestamp = operationTime->get_timestamp();
     return {timestamp.timestamp, timestamp.increment};
 }
-
-};  // namespace
 
 int ChangeStreamSourceOperator::DocBatch::pushDoc(mongo::BSONObj doc) {
     int docSize = doc.objsize();
@@ -187,6 +206,10 @@ ChangeStreamSourceOperator::ChangeStreamSourceOperator(Context* context, Options
     for (const auto& stage : _options.pipeline) {
         _pipeline.append_stage(toBsoncxxView(stage));
     }
+    if (_options.internalPredicate) {
+        // Append a pushed down $match.
+        _pipeline.append_stage(toBsoncxxView(*_options.internalPredicate));
+    }
 
     auto dbName = _options.clientOptions.database ? *_options.clientOptions.database : "";
     auto collName = _options.clientOptions.collection ? *_options.clientOptions.collection : "";
@@ -211,22 +234,12 @@ mongo::Seconds ChangeStreamSourceOperator::getChangeStreamLag() const {
         return mongo::Seconds{0};
     }
 
-    const auto& streamPoint = *_latestResumeToken;
     auto opLogLatestTs = _changestreamOperationTime.load().count();
 
     unsigned delta = 0;
-
-    if (const BSONObj* resumeToken = std::get_if<mongo::BSONObj>(&streamPoint)) {
-        unsigned tokenSecs = ResumeToken::parse(*resumeToken).getClusterTime().getSecs();
-        if (opLogLatestTs > tokenSecs) {
-            delta = opLogLatestTs - tokenSecs;
-        }
-    } else if (const mongo::Timestamp* ts = std::get_if<mongo::Timestamp>(&streamPoint)) {
-        if (opLogLatestTs > ts->getSecs()) {
-            delta = opLogLatestTs - ts->getSecs();
-        }
-    } else {
-        tasserted(9043601, "Unexpected resume token type");
+    unsigned tokenSecs = ResumeToken::parse(*_latestResumeToken).getClusterTime().getSecs();
+    if (opLogLatestTs > tokenSecs) {
+        delta = opLogLatestTs - tokenSecs;
     }
     return mongo::Seconds{delta};
 }
@@ -289,7 +302,7 @@ ChangeStreamSourceOperator::DocBatch ChangeStreamSourceOperator::getDocuments() 
                 2,
                 "Change stream $source: processing a batch of events",
                 "context"_attr = _context,
-                "resumeToken"_attr = tojson(*batch.lastResumeToken));
+                "resumeToken"_attr = serializeJson(*batch.lastResumeToken));
     _changeEvents.pop();
     _queueSizeGauge->incBy(-batch.size());
     _queueByteSizeGauge->incBy(-batch.getByteSize());
@@ -323,7 +336,7 @@ void ChangeStreamSourceOperator::connectToSource() {
         const auto& resumeToken = get<BSONObj>(*_state.getStartingPoint());
         LOGV2_INFO(7788511,
                    "Changestream $source starting with startAfter",
-                   "resumeToken"_attr = tojson(resumeToken),
+                   "resumeToken"_attr = serializeJson(resumeToken),
                    "context"_attr = _context);
         _changeStreamOptions.start_after(toBsoncxxView(resumeToken));
     } else {
@@ -338,6 +351,10 @@ void ChangeStreamSourceOperator::connectToSource() {
     }
 
     _clientSession.reset(new mongocxx::client_session{_client->start_session()});
+    // Setting batch_size to 0 helps avoid long-running aggregation commands. batch_size 0
+    // results in the "aggregate" immediately returning with a cursor ID and no results.
+    // The server default for batch_sizes on subsequent getMore requests is not affected.
+    _changeStreamOptions.batch_size(0);
     if (_collection) {
         _changeStreamCursor = std::make_unique<mongocxx::change_stream>(
             _collection->watch(*_clientSession, _pipeline, _changeStreamOptions));
@@ -362,7 +379,12 @@ void ChangeStreamSourceOperator::fetchLoop() {
         }
 
         // Establish the connection and start the changestream.
+        LOGV2_INFO(10162900,
+                   "establishing the connection and starting the change stream",
+                   "context"_attr = _context);
         connectToSource();
+        LOGV2_INFO(10162901, "change stream started", "context"_attr = _context);
+
         bool enableDataFlow = getOptions().enableDataFlow;
         if (!enableDataFlow) {
             // If data flow is disabled, read a single change event.
@@ -381,6 +403,8 @@ void ChangeStreamSourceOperator::fetchLoop() {
         }
 
         // Start reading events in a loop.
+        LOGV2_INFO(
+            10162902, "starting to read change stream events in a loop", "context"_attr = _context);
         while (true) {
             {
                 stdx::unique_lock lock(_mutex);
@@ -416,23 +440,73 @@ void ChangeStreamSourceOperator::fetchLoop() {
                 }
             }
 
+            if (MONGO_unlikely(changestreamSourceServerInterruptedAtShutdownError.shouldFail())) {
+                throw mongocxx::exception{ErrorCodes::InterruptedAtShutdown,
+                                          mongocxx::server_error_category(),
+                                          "interrupted at shutdown: generic server error"};
+            }
+
             // Get some change events from our change stream cursor.
             readSingleChangeEvent();
+            if (MONGO_unlikely(changestreamSourceSleepAfterReadSingle.shouldFail())) {
+                sleepFor(Seconds{10});
+            }
+
             _numReadSingleChangeEvent->increment(1);
         }
     };
     auto status = runMongocxxNoThrow(
         std::move(fetchFunc), _context, ErrorCodes::Error{8681500}, _errorPrefix, *_uri);
 
+    if (status.isOK()) {
+        return;
+    }
+
     // Translate a few other user errors specific to change stream $source.
-    auto translateCode = [&](ErrorCodes::Error newCode) -> SPStatus {
-        return SPStatus{Status{newCode, status.toString()}, status.unsafeReason()};
+    auto translateCode = [&](ErrorCodes::Error newCode, BSONObj extraDetails = {}) -> SPStatus {
+        std::string newReason = status.toString();
+        if (!extraDetails.isEmpty()) {
+            newReason += " : details: " + extraDetails.toString(false);
+        }
+        return SPStatus{Status{newCode, newReason}, status.unsafeReason()};
     };
+
     switch (int32_t statusCode = status.code(); statusCode) {
-        case ErrorCodes::ChangeStreamHistoryLost:
+        case ErrorCodes::ChangeStreamHistoryLost: {
+            BSONObjBuilder extraDetails;
+            if (_context->restoredCheckpointInfo) {
+                auto restoredCheckpointInfo = *_context->restoredCheckpointInfo;
+                auto checkpointTimestamp =
+                    restoredCheckpointInfo.description.getCheckpointTimestamp();
+
+                extraDetails.append("checkpoint.timestamp", checkpointTimestamp.toString());
+            } else if (_options.userSpecifiedStartingPoint) {
+                const auto& startingPoint = *_options.userSpecifiedStartingPoint;
+                if (auto resumeToken = std::get_if<mongo::BSONObj>(&startingPoint)) {
+                    extraDetails.append(
+                        "$source.config.startAfter.resumeToken.timestamp",
+                        std::to_string(
+                            ResumeToken::parse(*resumeToken).getClusterTime().getSecs()));
+                    extraDetails.append("$source.config.startAfter.resumeToken",
+                                        resumeToken->toString());
+                } else if (auto ts = std::get_if<mongo::Timestamp>(&startingPoint)) {
+                    extraDetails.append("$source.config.startAtOperationTime",
+                                        std::to_string(ts->getSecs()));
+                }
+            }
+            if (_latestResumeToken) {
+                extraDetails.append(
+                    "latestResumeToken.timestamp",
+                    std::to_string(
+                        ResumeToken::parse(*_latestResumeToken).getClusterTime().getSecs()));
+                extraDetails.append("latestResumeToken", _latestResumeToken->toString());
+            }
+
             // We cannot resume from this point in the changestream.
-            status = translateCode(ErrorCodes::StreamProcessorCannotResumeFromSource);
+            status = translateCode(ErrorCodes::StreamProcessorCannotResumeFromSource,
+                                   extraDetails.obj());
             break;
+        }
         case ErrorCodes::NoMatchingDocument:
             if (_options.fullDocumentMode == FullDocumentModeEnum::kRequired) {
                 // If the user specifies fullDocumentMode==kRequired, the server will return
@@ -458,6 +532,10 @@ void ChangeStreamSourceOperator::fetchLoop() {
             // number of fields
         case kUnrecognizedPipelineStageNameErrorCode:
             // Caused by a source pipeline aggregation having a unrecognized stage
+        case kInvalidFieldPathNameErrorCode:
+            // Caused by a source pipeline aggregation having an invalid fieldPath
+        case ErrorCodes::JSInterpreterFailure:
+            // Caused by a source pipeline aggregation $function stage having invalid js
         case ErrorCodes::ChangeStreamFatalError:
             // Caused by a source pipeline aggregation attempting to modify an incoming doc's _id
             // field
@@ -466,14 +544,20 @@ void ChangeStreamSourceOperator::fetchLoop() {
             status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
             break;
         default:
+            if (!_options.pipeline.empty() && !_context->restoreCheckpointId &&
+                _changestreamLastEventReceivedAt == Date_t::min()) {
+                // if the user sets a $source.config.pipeline, and this is a fresh start of a
+                // processor, treat most errors as StreamProcessorInvalidOptions
+                status = translateCode(ErrorCodes::StreamProcessorInvalidOptions);
+                break;
+            }
+
             break;
     }
 
-    // If the status returned is not OK, set the error in connectionStatus.
-    if (!status.isOK()) {
-        stdx::unique_lock lock(_mutex);
-        _connectionStatus = {ConnectionStatus::kError, std::move(status)};
-    }
+    // Set the error in connectionStatus.
+    stdx::unique_lock lock(_mutex);
+    _connectionStatus = {ConnectionStatus::kError, std::move(status)};
 }
 
 ConnectionStatus ChangeStreamSourceOperator::doGetConnectionStatus() {
@@ -545,16 +629,26 @@ void ChangeStreamSourceOperator::doStop() {
     _changeStreamCursor = nullptr;
 }
 
+void ChangeStreamSourceOperator::incPerCollectionStats(
+    mongo::stdx::unordered_map<Target, PerTargetStats>& collectionStats,
+    const Target& target,
+    int64_t inputBytes) {
+    auto it = collectionStats.find(target);
+    if (it == collectionStats.end()) {
+        it = collectionStats.insert(std::make_pair(target, PerTargetStats{})).first;
+    }
+    it->second += PerTargetStats{.inputMessageCount = 1, .inputMessageSize = inputBytes};
+}
+
 int64_t ChangeStreamSourceOperator::doRunOnce() {
-    auto dataMsg = StreamDataMsg{.creationTimer = mongo::Timer{}};
+    StreamDataMsg dataMsg;
     auto batch = getDocuments();
     auto& changeEvents = batch.docs;
     dassert(int32_t(changeEvents.size()) <= _options.maxNumDocsToReturn);
 
     // Regardless of whether we have new input documents, update latest resumeToken
     if (batch.lastResumeToken) {
-        _latestResumeToken =
-            std::variant<mongo::BSONObj, mongo::Timestamp>((*batch.lastResumeToken));
+        _latestResumeToken = *batch.lastResumeToken;
     }
 
     // Refresh flag value for staleness monitorPeriod
@@ -583,8 +677,10 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
         if (_options.sendIdleMessages && _isIdle.load()) {
             // If _options.sendIdleMessages is set, send a kIdle watermark when
             // there are 0 docs in the batch and the background thread has set _isIdle.
-            StreamControlMsg msg{
-                .watermarkMsg = WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
+            int64_t curTime = curTimeMillis64Monotonic();
+            StreamControlMsg msg{.watermarkMsg =
+                                     WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle,
+                                                         .watermarkTimestampMs = curTime}};
             _lastControlMsg = msg;
             sendControlMsg(0, std::move(msg));
         }
@@ -594,9 +690,19 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     int64_t totalNumInputDocs = changeEvents.size();
     int64_t totalNumInputBytes = 0;
     int64_t numDlqDocs = 0;
+    mongo::stdx::unordered_map<Target, PerTargetStats> perCollectionStats;
     for (auto& changeEvent : changeEvents) {
         size_t inputBytes = changeEvent.objsize();
         totalNumInputBytes += inputBytes;
+        if (getPerTargetStatsEnabled(_context->featureFlags) &&
+            changeEvent.hasField(DocumentSourceChangeStream::kNamespaceField)) {
+            auto ns = changeEvent.getObjectField(DocumentSourceChangeStream::kNamespaceField);
+            if (ns.hasField(kCollFieldName) && ns.hasField(kDbFieldName)) {
+                Target target{.db = ns.getStringField(kDbFieldName).toString(),
+                              .coll = ns.getStringField(kCollFieldName).toString()};
+                incPerCollectionStats(perCollectionStats, target, inputBytes);
+            }
+        }
         if (auto streamDoc = processChangeEvent(std::move(changeEvent)); streamDoc) {
             dataMsg.docs.push_back(std::move(*streamDoc));
         } else {
@@ -607,7 +713,8 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
     incOperatorStats(OperatorStats{.numInputDocs = totalNumInputDocs,
                                    .numInputBytes = totalNumInputBytes,
                                    .numDlqDocs = numDlqDocs,
-                                   .timeSpent = dataMsg.creationTimer->elapsed()});
+                                   .timeSpent = dataMsg.creationTimer.elapsed(),
+                                   .perTargetStats = std::move(perCollectionStats)});
 
     // Early return if we did not manage to add any change events to 'dataMsg.docs'.
     if (dataMsg.docs.empty()) {
@@ -641,7 +748,7 @@ int64_t ChangeStreamSourceOperator::doRunOnce() {
                 2,
                 "Change stream $source: updated resume token",
                 "context"_attr = _context,
-                "resumeToken"_attr = tojson(get<BSONObj>(*_state.getStartingPoint())));
+                "resumeToken"_attr = serializeJson(get<BSONObj>(*_state.getStartingPoint())));
 
     return totalNumInputDocs;
 }
@@ -661,28 +768,28 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 
     // If our cursor is exhausted, wait until the next call to 'readSingleChangeEvent' to try
     // reading from '_changeStreamCursor' again.
+
+    if (auto resumeToken = _changeStreamCursor->get_resume_token()) {
+        // Get the resume token if there is one.
+        eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
+    }
     if (_it != _changeStreamCursor->end()) {
+        // Read the current event.
         changeEvent = fromBsoncxxDocument(*_it);
 
         // Advance our cursor before processing the current document.
         ++_it;
     }
 
-    // Get the latest resume token from the cursor. The resume token might advance
-    // even if no documents are returned.
-    auto resumeToken = _changeStreamCursor->get_resume_token();
-    if (resumeToken) {
-        eventResumeToken = fromBsoncxxDocument(std::move(*resumeToken));
-    }
-    tassert(8155200,
-            "Expected resume token to be set whenever we read a change event.",
-            resumeToken || !changeEvent);
-
     // If we've hit the end of our cursor, set our iterator to the default iterator so that we
     // can reset it on the next call to 'readSingleChangeEvent'.
     if (_it == _changeStreamCursor->end()) {
         _it = mongocxx::change_stream::iterator();
     }
+
+    tassert(8155200,
+            "Expected resume token to be set whenever we read a change event.",
+            eventResumeToken || !changeEvent);
 
     // Store latest operationTime regardless of whether we get a new resumeToken/event or not
     _changestreamOperationTime.store(mongo::Seconds{_clientSession->operation_time().timestamp});
@@ -716,12 +823,6 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
         }
     }
 
-    // Return early if we didn't read a change event or resume token.
-    if (!changeEvent && !eventResumeToken) {
-        _isIdle.store(true);
-        return false;
-    }
-
     {
         stdx::lock_guard<stdx::mutex> lock(_mutex);
         const auto capacity = _options.maxNumDocsToReturn;
@@ -731,24 +832,28 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
             _memoryUsageHandle.set(_consumerStats.memoryUsageBytes);
             _changeEvents.emplace(capacity);
         }
+
         auto& activeBatch = _changeEvents.back();
-        if (changeEvent) {
-            int docSize = activeBatch.pushDoc(std::move(*changeEvent));
-            _queueSizeGauge->incBy(1);
-            _queueByteSizeGauge->incBy(docSize);
-            _consumerStats += {.memoryUsageBytes = docSize};
-            // We saw a change event, so mark isIdle false.
-            _isIdle.store(false);
-        } else {
-            // We did not see a change event, so mark isIdle as true.
-            _isIdle.store(true);
-        }
         if (eventResumeToken) {
             activeBatch.lastResumeToken = std::move(*eventResumeToken);
         }
+
+        if (!changeEvent) {
+            // We did not see a change event, so mark isIdle as true.
+            LOGV2_DEBUG(9596400, 5, "Marking changestream as idle", "context"_attr = _context);
+            _isIdle.store(true);
+            return false;
+        }
+
+        int docSize = activeBatch.pushDoc(std::move(*changeEvent));
+        _queueSizeGauge->incBy(1);
+        _queueByteSizeGauge->incBy(docSize);
+        _consumerStats += {.memoryUsageBytes = docSize};
+        // We saw a change event, so mark isIdle false.
+        _isIdle.store(false);
     }
 
-    return bool(changeEvent);
+    return true;
 }
 
 // Obtain the 'ts' field from either:
@@ -760,28 +865,35 @@ bool ChangeStreamSourceOperator::readSingleChangeEvent() {
 //
 // Then, does additional work to generate a watermark. Throws if a timestamp could not be
 // obtained.
-mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEventDoc,
-                                                       const Document& fullDocument) {
-    mongo::Date_t ts;
-    if (_options.timestampExtractor) {
-        ts = _options.timestampExtractor->extractTimestamp(fullDocument);
-    } else if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
-               !wallTime.missing()) {
+ChangeStreamSourceOperator::ChangeStreamEventTimestamp ChangeStreamSourceOperator::getTimestamp(
+    const Document& changeEventDoc, const Document& fullDocument) {
+    ChangeStreamEventTimestamp ts;
+    if (auto wallTime = changeEventDoc[DocumentSourceChangeStream::kWallTimeField];
+        !wallTime.missing()) {
         uassert(7926400,
                 "Change event's wall time was not a date",
                 wallTime.getType() == BSONType::Date);
-        ts = wallTime.getDate();
+        ts.wallTimeOrOperationTime = wallTime.getDate();
     } else {
         auto clusterTime = changeEventDoc[DocumentSourceChangeStream::kClusterTimeField];
         uassert(7926401, "Change event did not have clusterTime", !clusterTime.missing());
         uassert(7926402,
                 "clusterTime for change event was not a timestamp",
                 clusterTime.getType() == BSONType::bsonTimestamp);
-        ts = Date_t::fromDurationSinceEpoch(Seconds{clusterTime.getTimestamp().getSecs()});
+        ts.wallTimeOrOperationTime =
+            Date_t::fromDurationSinceEpoch(Seconds{clusterTime.getTimestamp().getSecs()});
+    }
+
+    if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+        ts.assignedTimestamp = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64Monotonic());
+    } else if (_options.timestampExtractor) {
+        ts.assignedTimestamp = _options.timestampExtractor->extractTimestamp(fullDocument);
+    } else {
+        ts.assignedTimestamp = ts.wallTimeOrOperationTime;
     }
 
     if (_watermarkGenerator) {
-        _watermarkGenerator->onEvent(ts.toMillisSinceEpoch());
+        _watermarkGenerator->onEvent(ts.assignedTimestamp.toMillisSinceEpoch());
     }
 
     return ts;
@@ -790,7 +902,7 @@ mongo::Date_t ChangeStreamSourceOperator::getTimestamp(const Document& changeEve
 boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     mongo::BSONObj changeStreamObj) {
     Document changeEventDoc(std::move(changeStreamObj));
-    mongo::Date_t ts;
+    ChangeStreamEventTimestamp ts;
 
     // If an exception is thrown when trying to get a timestamp, DLQ 'changeEventDoc' and
     // return.
@@ -823,21 +935,24 @@ boost::optional<StreamDocument> ChangeStreamSourceOperator::processChangeEvent(
     // Add 'ts' to 'mutableChangeEvent', overwriting 'timestampOutputFieldName' if it already
     // exists.
     if (_options.timestampOutputFieldName) {
-        mutableChangeEvent[*_options.timestampOutputFieldName] = Value(ts);
+        mutableChangeEvent[*_options.timestampOutputFieldName] = Value(ts.assignedTimestamp);
     }
     StreamDocument streamDoc(mutableChangeEvent.freeze());
 
     StreamMetaSource streamMetaSource;
     streamMetaSource.setType(StreamMetaSourceTypeEnum::Atlas);
-    if (_context->shouldUseDocumentMetadataFields) {
-        streamMetaSource.setTs(ts);
+    if (!_context->oldStreamMetaEnabled()) {
+        streamMetaSource.setTs(ts.assignedTimestamp);
     }
     streamDoc.streamMeta.setSource(std::move(streamMetaSource));
     streamDoc.onMetaUpdate(_context);
 
-    streamDoc.minProcessingTimeMs = curTimeMillis64();
-    streamDoc.minDocTimestampMs = ts.toMillisSinceEpoch();
-    streamDoc.maxDocTimestampMs = ts.toMillisSinceEpoch();
+    streamDoc.minProcessingTimeMs = _windowBoundary == mongo::WindowBoundaryEnum::processingTime
+        ? ts.assignedTimestamp.toMillisSinceEpoch()
+        : curTimeMillis64Monotonic();
+    streamDoc.minDocTimestampMs = ts.assignedTimestamp.toMillisSinceEpoch();
+    streamDoc.sourceTimestampMs = ts.wallTimeOrOperationTime.toMillisSinceEpoch();
+    streamDoc.maxDocTimestampMs = ts.assignedTimestamp.toMillisSinceEpoch();
     return streamDoc;
 }
 
@@ -846,9 +961,17 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
     _state = *_restoreCheckpointState;
     if (_options.useWatermarks) {
         if (_state.getWatermark()) {
+            if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+                while (Date_t::now().asInt64() < _state.getWatermark()->getTimestampMs()) {
+                    sleepmillis(_state.getWatermark()->getTimestampMs() - Date_t::now().asInt64());
+                }
+                tassert(ErrorCodes::InternalError,
+                        "Wallclock time should be after latest watermark timestamp",
+                        Date_t::now().asInt64() >= _state.getWatermark()->getTimestampMs());
+            }
             // All watermarks start as active when restoring from a checkpoint.
             WatermarkControlMsg watermark{WatermarkStatus::kActive,
-                                          _state.getWatermark()->getEventTimeMs()};
+                                          _state.getWatermark()->getTimestampMs()};
             _watermarkGenerator =
                 std::make_unique<DelayedWatermarkGenerator>(0, /* inputIdx */
                                                             nullptr /* combiner */,
@@ -864,7 +987,7 @@ void ChangeStreamSourceOperator::initFromCheckpoint() {
     }
     LOGV2_INFO(7788505,
                "Change stream $source restored",
-               "state"_attr = tojson(_state.toBSON()),
+               "state"_attr = serializeJson(_state.toBSON()),
                "context"_attr = _context);
 }
 

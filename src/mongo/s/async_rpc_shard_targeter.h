@@ -50,7 +50,6 @@
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/grid.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/assert_util_core.h"
 #include "mongo/util/cancellation.h"
 #include "mongo/util/future.h"
 #include "mongo/util/future_impl.h"
@@ -67,7 +66,7 @@ public:
                     OperationContext* opCtx,
                     ShardId shardId,
                     ReadPreferenceSetting readPref)
-        : _executor(executor), _opCtx(opCtx), _shardId(shardId), _readPref(readPref){};
+        : _executor(executor), _opCtx(opCtx), _shardId(shardId), _readPref(readPref) {};
 
     SemiFuture<std::vector<HostAndPort>> resolve(CancellationToken t) override {
         return getShard()

@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/kafka_consumer_operator.h"
+
 #include <fmt/format.h>
 #include <memory>
 #include <openssl/bn.h>
@@ -9,7 +11,6 @@
 
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/stdx/unordered_map.h"
@@ -21,7 +22,6 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/json_event_deserializer.h"
-#include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/kafka_utils.h"
 #include "streams/exec/message.h"
@@ -189,14 +189,14 @@ std::vector<std::vector<BSONObj>> KafkaConsumerOperatorTest::ingestDocs(
             sourceDoc.offset = partitionOffsets[partition][i];
             sourceDoc.logAppendTimeMs = partitionAppendTimes[partition][i];
             BSONObjBuilder outputDocBuilder(*sourceDoc.doc);
-            outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
+            outputDocBuilder << "_ts" << Date_t::fromMillisSinceEpoch(sourceDoc.logAppendTimeMs);
             outputDocBuilder << "_stream_meta"
                              << BSON("source"
-                                     << BSON("type"
-                                             << "kafka"
-                                             << "topic" << sourceDoc.topic << "partition"
-                                             << sourceDoc.partition << "offset" << sourceDoc.offset
-                                             << "key" << BSONNULL << "headers" << BSONArray()));
+                                     << BSON("type" << "kafka"
+                                                    << "topic" << sourceDoc.topic << "partition"
+                                                    << sourceDoc.partition << "offset"
+                                                    << sourceDoc.offset << "key" << BSONNULL
+                                                    << "headers" << BSONArray()));
             expectedOutputDocs[partition].push_back(outputDocBuilder.obj());
             sourceDocs.push_back(std::move(sourceDoc));
         }

@@ -47,7 +47,7 @@
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/query/stage_builder/sbe/builder.h"
 #include "mongo/db/query/stage_builder/sbe/tests/sbe_builder_test_fixture.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -120,7 +120,8 @@ SbeStageBuilderTestFixture::buildPlanStage(std::unique_ptr<QuerySolution> queryS
 }
 
 void GoldenSbeStageBuilderTestFixture::createCollection(const std::vector<BSONObj>& docs,
-                                                        boost::optional<BSONObj> indexKeyPattern) {
+                                                        boost::optional<BSONObj> indexKeyPattern,
+                                                        CollectionOptions options) {
     ASSERT_FALSE(_collInitialized) << "collection has been initialized";
     _collInitialized = true;
     // Create collection and index

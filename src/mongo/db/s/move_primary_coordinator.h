@@ -48,6 +48,7 @@
 #include "mongo/db/s/sharding_ddl_coordinator.h"
 #include "mongo/db/s/sharding_ddl_coordinator_service.h"
 #include "mongo/executor/scoped_task_executor.h"
+#include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/database_version.h"
 #include "mongo/util/assert_util.h"
@@ -83,7 +84,8 @@ private:
                                          const Status& status) noexcept override;
 
     ExecutorFuture<void> runMovePrimaryWorkflow(
-        std::shared_ptr<executor::ScopedTaskExecutor> executor) noexcept;
+        std::shared_ptr<executor::ScopedTaskExecutor> executor,
+        const CancellationToken& token) noexcept;
 
     /**
      * Clone data to the recipient shard.
@@ -131,11 +133,26 @@ private:
                                 const DatabaseVersion& preCommitDbVersion) const;
 
     /**
+     * Retrieves the metadata for the database after the commit to the config server.
+     */
+    DatabaseType getPostCommitDatabaseMetadata(OperationContext* opCtx) const;
+
+    /**
      * Ensures that the metadata changes have been actually commited on the config server, asserting
      * otherwise. This is a pedantic check to rule out any potentially disastrous problems.
      */
     void assertChangedMetadataOnConfig(OperationContext* opCtx,
+                                       const DatabaseType& postCommitDbType,
                                        const DatabaseVersion& preCommitDbVersion) const;
+
+    /**
+     * Commits the database metadata to the new primary shard and removes it from the old primary
+     * shard.
+     */
+    void commitMetadataToShards(OperationContext* opCtx,
+                                const DatabaseVersion& preCommitDbVersion,
+                                const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+                                const CancellationToken& token);
 
     /**
      * Clears the database metadata in the local catalog cache. Secondary nodes clear the database
@@ -154,6 +171,15 @@ private:
      */
     void dropOrphanedDataOnRecipient(OperationContext* opCtx,
                                      std::shared_ptr<executor::ScopedTaskExecutor> executor);
+
+    /**
+     * Fetches database metadata from the global catalog and installs it in the shard catalog. This
+     * operation is necessary when the FCV is transitioning to 9.0 to prevent potential races with
+     * _shardsvrCloneAuthoritativeMetadata during the upgrade phase.
+     *
+     * TODO (SERVER-98118): Remove this method once v9.0 become last-lts.
+     */
+    void cloneAuthoritativeDatabaseMetadata(OperationContext* opCtx) const;
 
     /**
      * Blocks write operations on the database, causing them to fail with the
@@ -187,13 +213,19 @@ private:
      * Requests the recipient to enter the critical section on the database, causing the database
      * metadata refreshes to block.
      */
-    void enterCriticalSectionOnRecipient(OperationContext* opCtx);
+    void enterCriticalSectionOnRecipient(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+        const CancellationToken& token);
 
     /**
      * Requests the recipient to exit the critical section on the database, causing the database
      * metadata refreshes to unblock.
      */
-    void exitCriticalSectionOnRecipient(OperationContext* opCtx);
+    void exitCriticalSectionOnRecipient(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+        const CancellationToken& token);
 
     const DatabaseName _dbName;
     const BSONObj _csReason;

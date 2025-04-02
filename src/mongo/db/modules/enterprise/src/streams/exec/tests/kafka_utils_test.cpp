@@ -2,13 +2,13 @@
  *    Copyright (C) 2025-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/bson/bsonobj.h"
-#include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "streams/exec/kafka_utils.h"
 
 #include <vector>
+
+#include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/unittest/unittest.h"
 
 using namespace mongo;
 

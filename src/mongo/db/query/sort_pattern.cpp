@@ -32,7 +32,6 @@
 #include <boost/optional/optional.hpp>
 #include <boost/smart_ptr.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
-#include <memory>
 #include <string>
 
 #include "mongo/base/error_codes.h"
@@ -45,8 +44,6 @@
 #include "mongo/db/pipeline/expression_dependencies.h"
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/db/query/sort_pattern.h"
-#include "mongo/db/server_options.h"
-#include "mongo/db/storage/storage_parameters_gen.h"
 
 namespace mongo {
 
@@ -102,8 +99,10 @@ SortPattern::SortPattern(const BSONObj& obj,
         if (keyField.type() == BSONType::Object) {
             patternPart.expression = parseMetaExpression(keyField.Obj(), expCtx);
 
-            // If sorting by textScore, sort highest scores first. If sorting by randVal, order
-            // doesn't matter, so just always use descending.
+            // If sorting by any metadata, sort highest scores first. Note this is weird for
+            // geoNearDistance, but it makes sense for every other meta field. If sorting by
+            // randVal, order doesn't matter, so just always use descending.
+            // One day we can support a syntax to customize this order if we find the motivation.
             patternPart.isAscending = false;
 
             _sortPattern.push_back(std::move(patternPart));
@@ -133,8 +132,9 @@ SortPattern::SortPattern(const BSONObj& obj,
     }
 }
 
-QueryMetadataBitSet SortPattern::metadataDeps(QueryMetadataBitSet unavailableMetadata) const {
-    DepsTracker depsTracker{unavailableMetadata};
+QueryMetadataBitSet SortPattern::metadataDeps(
+    DepsTracker::MetadataDependencyValidation availableMetadata) const {
+    DepsTracker depsTracker{availableMetadata};
     for (auto&& part : _sortPattern) {
         if (part.expression) {
             expression::addDependencies(part.expression.get(), &depsTracker);

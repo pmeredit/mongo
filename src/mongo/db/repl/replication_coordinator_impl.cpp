@@ -122,10 +122,6 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_tag.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/metadata/oplog_query_metadata.h"
@@ -224,8 +220,6 @@ auto& totalOpsRunning = *MetricBuilder<Counter64>("repl.stateTransition.totalOpe
 // 'newlyAdded' fields.
 auto& numAutoReconfigsForRemovalOfNewlyAddedFields =
     *MetricBuilder<Counter64>{"repl.reconfig.numAutoReconfigsForRemovalOfNewlyAddedFields"};
-
-using namespace fmt::literals;
 
 using CallbackArgs = executor::TaskExecutor::CallbackArgs;
 using CallbackFn = executor::TaskExecutor::CallbackFn;
@@ -3605,8 +3599,12 @@ Status ReplicationCoordinatorImpl::_doReplSetReconfig(OperationContext* opCtx,
     }
 
     _setConfigState(lk, kConfigReconfiguring);
-    auto configStateGuard = ScopeGuard(
-        [&] { lockAndCall(&lk, [=, this, &lk] { _setConfigState(lk, kConfigSteady); }); });
+    auto configStateGuard = ScopeGuard([&] {
+        lockAndCall(&lk, [=, this] {
+            _setConfigState(WithLock::withoutLock() /* We hold lk in lockAndCall. */,
+                            kConfigSteady);
+        });
+    });
 
     ReplSetConfig oldConfig = _rsConfig.unsafePeek();
     int myIndex = _selfIndex;
@@ -3722,8 +3720,8 @@ Status ReplicationCoordinatorImpl::_doReplSetReconfig(OperationContext* opCtx,
 
     bool allowSplitHorizonIP = !opCtx->getClient()->hasRemote();
 
-    Status validateStatus =
-        validateConfigForReconfig(oldConfig, newConfig, force, allowSplitHorizonIP);
+    Status validateStatus = validateConfigForReconfig(
+        VersionContext::getDecoration(opCtx), oldConfig, newConfig, force, allowSplitHorizonIP);
     if (!validateStatus.isOK()) {
         LOGV2_ERROR(21420,
                     "replSetReconfig error while validating new config",
@@ -3949,10 +3947,10 @@ Status ReplicationCoordinatorImpl::awaitConfigCommitment(OperationContext* opCtx
     stdx::unique_lock<stdx::mutex> lk(_mutex);
     // Check writable primary before waiting.
     if (!_readWriteAbility->canAcceptNonLocalWrites(lk)) {
-        return {
-            ErrorCodes::PrimarySteppedDown,
-            "replSetReconfig should only be run on a writable PRIMARY. Current state {};"_format(
-                _memberState.toString())};
+        return {ErrorCodes::PrimarySteppedDown,
+                fmt::format(
+                    "replSetReconfig should only be run on a writable PRIMARY. Current state {};",
+                    _memberState.toString())};
     }
     auto configOplogCommitmentOpTime = _topCoord->getConfigOplogCommitmentOpTime();
     auto oplogWriteConcern = _getOplogCommitmentWriteConcern(lk);
@@ -4165,7 +4163,10 @@ Status ReplicationCoordinatorImpl::_runReplSetInitiate(const BSONObj& configObj,
     _setConfigState(lk, kConfigInitiating);
 
     ScopeGuard configStateGuard = [&] {
-        lockAndCall(&lk, [=, this, &lk] { _setConfigState(lk, kConfigUninitialized); });
+        lockAndCall(&lk, [=, this] {
+            _setConfigState(WithLock::withoutLock() /* We hold lk in lockAndCall. */,
+                            kConfigUninitialized);
+        });
     };
 
     lk.unlock();
@@ -4473,8 +4474,7 @@ boost::optional<Timestamp> ReplicationCoordinatorImpl::getRecoveryTimestamp() {
 }
 
 void ReplicationCoordinatorImpl::_enterDrainMode(WithLock) {
-    _oplogSyncState = feature_flags::gReduceMajorityWriteLatency.isEnabled(
-                          serverGlobalParams.featureCompatibility.acquireFCVSnapshot())
+    _oplogSyncState = feature_flags::gReduceMajorityWriteLatency.isEnabled()
         ? OplogSyncState::WriterDraining
         : OplogSyncState::ApplierDraining;
     _externalState->stopProducer();

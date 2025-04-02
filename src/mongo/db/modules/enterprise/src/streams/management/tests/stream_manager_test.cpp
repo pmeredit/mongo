@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/management/stream_manager.h"
+
 #include <boost/optional.hpp>
 #include <chrono>
 #include <exception>
@@ -9,17 +11,16 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "mongo/base/string_data.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
-#include "mongo/db/operation_context.h"
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_set.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/duration.h"
-#include "mongo/util/processinfo.h"
 #include "mongo/util/scopeguard.h"
 #include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/checkpoint/file_util.h"
@@ -34,10 +35,13 @@
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tenant_feature_flags.h"
+#include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
-#include "streams/management/stream_manager.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/exception.h"
 #include "streams/util/metric_manager.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 using namespace std::chrono_literals;
 namespace streams {
@@ -54,6 +58,13 @@ static constexpr int64_t kMemoryUsageBatchSize = 32 * 1024 * 1024;  // 32 MB
 
 class StreamManagerTest : public AggregationContextFixture {
 public:
+    // Struct used by various StreamManagerTest utility methods to identify a processor.
+    struct ProcessorDetails {
+        StreamManager* streamManager{nullptr};
+        std::string tenantId;
+        std::string name;
+    };
+
     std::unique_ptr<StreamManager> createStreamManager(StreamManager::Options options) {
         auto streamManager =
             std::make_unique<StreamManager>(getServiceContext(), std::move(options));
@@ -135,7 +146,12 @@ public:
                                                                std::string tenantId,
                                                                std::string name) {
         stdx::lock_guard<stdx::mutex> lk(streamManager->_mutex);
-        return streamManager->getProcessorInfo(lk, tenantId, name);
+        return getStreamProcessorInfo(lk, {streamManager, tenantId, name});
+    }
+
+    StreamManager::StreamProcessorInfo* getStreamProcessorInfo(WithLock lk,
+                                                               ProcessorDetails details) {
+        return details.streamManager->getProcessorInfo(lk, details.tenantId, details.name);
     }
 
     void insert(StreamManager* streamManager,
@@ -151,33 +167,64 @@ public:
         spInfo->executor->runOnce();
     }
 
-    void setLastCheckpointSize(StreamManager::StreamProcessorInfo* info, int64_t bytes) {
+    void setLastCheckpointSize(ProcessorDetails details, int64_t bytes) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-        info->context->checkpointStorage->_lastCheckpointSizeBytes = bytes;
+        info->context->checkpointStorage->_lastCheckpointSizeBytes.store(bytes);
+    }
+
+    void waitForLastCheckpointSize(ProcessorDetails details) {
+        auto deadline = Date_t::now() + Minutes{1};
+        while (Date_t::now() < deadline) {
+            stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+            auto info = getStreamProcessorInfo(lk, details);
+            stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
+            if (info->context->checkpointStorage->_lastCheckpointSizeBytes.load() > 0) {
+                return;
+            }
+            stdx::this_thread::sleep_for(std::chrono::milliseconds{100});
+        }
+        ASSERT(false);
     }
 
     void setLastCheckpointTime(
-        StreamManager::StreamProcessorInfo* info,
+        ProcessorDetails details,
         mongo::stdx::chrono::time_point<mongo::stdx::chrono::system_clock> time) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(info->executor->_mutex);
-        info->checkpointCoordinator->_lastCheckpointTimestamp = time;
+        info->checkpointCoordinator->_lastCheckpointTimestamp.store(time);
     }
 
-    mongo::stdx::chrono::time_point<system_clock> getLastCheckpointTime(
-        StreamManager::StreamProcessorInfo* info) {
-        return info->checkpointCoordinator->_lastCheckpointTimestamp;
+    mongo::stdx::chrono::time_point<system_clock> getLastCheckpointTime(ProcessorDetails details) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
+        return info->checkpointCoordinator->_lastCheckpointTimestamp.load();
     }
 
-    void setUncheckpointedState(StreamManager::StreamProcessorInfo* info,
-                                bool uncheckpointedState) {
+    void setUncheckpointedState(ProcessorDetails details, bool uncheckpointedState) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto info = getStreamProcessorInfo(lk, details);
         info->executor->_uncheckpointedState.store(uncheckpointedState);
     }
 
-    void waitForCheckpointInterval(StreamManager::StreamProcessorInfo* info,
-                                   Milliseconds expected) {
+    void fakeLargeCheckpointCheckInterval(ProcessorDetails details,
+                                          int64_t bytes,
+                                          Milliseconds expected) {
+        // wait for at least one checkpoint
+        waitForLastCheckpointSize(details);
+
         auto deadline = Date_t::now() + Minutes{1};
         while (Date_t::now() < deadline) {
-            auto actual = Milliseconds{getCheckpointInterval(info).count()};
+            setLastCheckpointSize(details, bytes);
+            // set this to force another checkpoint
+            setLastCheckpointTime(details,
+                                  stdx::chrono::system_clock::now() - stdx::chrono::hours{1});
+            setUncheckpointedState(details, true);
+            // since the last checkpoint was 100MB, after a runOnce call in the executor background
+            // thread, the checkpoint interval should increase to 60 minutes.
+            auto actual = Milliseconds{getCheckpointInterval(details).count()};
             std::cout << "actual: " << actual << std::endl;
             if (expected == actual) {
                 return;
@@ -236,17 +283,30 @@ public:
         return streamManager->_numStreamProcessorsByStatusGauges;
     }
 
-    void updateContextFeatureFlags(StreamManager::StreamProcessorInfo* processorInfo,
+
+    std::string getWriteRootDir(ProcessorDetails details) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto processorInfo = getStreamProcessorInfo(lk, details);
+        return dynamic_cast<LocalDiskCheckpointStorage*>(
+                   processorInfo->context->checkpointStorage.get())
+            ->writeRootDir();
+    }
+
+    void updateContextFeatureFlags(ProcessorDetails details,
                                    std::shared_ptr<TenantFeatureFlags> featureFlags) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto processorInfo = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
         processorInfo->executor->_tenantFeatureFlagsUpdate = std::move(featureFlags);
         processorInfo->executor->updateContextFeatureFlags();
     }
 
-    std::chrono::milliseconds getCheckpointInterval(
-        StreamManager::StreamProcessorInfo* processorInfo) {
+    std::chrono::milliseconds getCheckpointInterval(ProcessorDetails details) {
+        stdx::lock_guard<stdx::mutex> lk(details.streamManager->_mutex);
+        auto processorInfo = getStreamProcessorInfo(lk, details);
         stdx::lock_guard<stdx::mutex> lock(processorInfo->executor->_mutex);
-        return std::chrono::milliseconds(processorInfo->checkpointCoordinator->_interval.count());
+        return std::chrono::milliseconds(
+            processorInfo->checkpointCoordinator->_interval.load().count());
     }
 
     // Used to act like the streams Agent and flush committed checkpoints.
@@ -393,9 +453,8 @@ TEST_F(StreamManagerTest, ConcurrentStartStop_StopDuringConnection) {
     // Start a stream processor asynchronously and make it sleep for 10s while establishing
     // connections.
     setGlobalFailPoint("streamProcessorStartSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 10)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 10)));
 
     stdx::thread startThread = stdx::thread([&]() {
         StartStreamProcessorCommand request;
@@ -454,9 +513,8 @@ TEST_F(StreamManagerTest, StartTimesOut) {
     // Start a stream processor asynchronously and make it sleep for 15s while establishing
     // connections.
     setGlobalFailPoint("streamProcessorStartSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 15)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 15)));
 
     StartStreamProcessorCommand request;
     request.setTenantId(StringData(kTestTenantId1));
@@ -484,9 +542,7 @@ TEST_F(StreamManagerTest, StartTimesOut) {
     ASSERT_TRUE(listReply.getStreamProcessors().empty());
 
     // Deactivate the fail point.
-    setGlobalFailPoint("streamProcessorStartSleepSeconds",
-                       BSON("mode"
-                            << "off"));
+    setGlobalFailPoint("streamProcessorStartSleepSeconds", BSON("mode" << "off"));
 }
 
 TEST_F(StreamManagerTest, StopTimesOut) {
@@ -507,9 +563,8 @@ TEST_F(StreamManagerTest, StopTimesOut) {
 
     // Set a failpoint to make Executor sleep for 15s while stopping the stream processor.
     setGlobalFailPoint("streamProcessorStopSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 15)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 15)));
 
     StopStreamProcessorCommand stopRequest;
     stopRequest.setTenantId(kTestTenantId1);
@@ -521,9 +576,7 @@ TEST_F(StreamManagerTest, StopTimesOut) {
         streamManager->stopStreamProcessor(stopRequest), DBException, "Timeout while stopping"_sd);
 
     // Deactivate the fail point.
-    setGlobalFailPoint("streamProcessorStopSleepSeconds",
-                       BSON("mode"
-                            << "off"));
+    setGlobalFailPoint("streamProcessorStopSleepSeconds", BSON("mode" << "off"));
 
     // Try stopping the stream processor again with a longer timeout and verify that it successfully
     // stops.
@@ -578,7 +631,7 @@ TEST_F(StreamManagerTest, GetStats) {
     ASSERT_EQUALS(StreamStatusEnum::Running, statsReply.getStatus());
     ASSERT_EQUALS(1, statsReply.getScaleFactor());
     ASSERT_EQUALS(2, statsReply.getInputMessageCount());
-    ASSERT_EQUALS(506, statsReply.getInputMessageSize());
+    ASSERT_EQUALS(250, statsReply.getInputMessageSize());
     ASSERT_EQUALS(1, statsReply.getOutputMessageCount());
     ASSERT_EQUALS(253, statsReply.getOutputMessageSize());
 
@@ -610,6 +663,21 @@ TEST_F(StreamManagerTest, GetStats) {
     auto finalStats =
         stopStreamProcessor(streamManager.get(), kTestTenantId1, streamName).getStats();
     finalStats.setStatus(StreamStatusEnum::Running);
+
+    auto finalOperatorStatsWrap = finalStats.getOperatorStats();
+    ASSERT_TRUE(finalOperatorStatsWrap);
+
+    auto finalOperatorStats = finalOperatorStatsWrap.get();
+    ASSERT_EQUALS(3, finalOperatorStats.size());
+
+    // executionTimeMillis can be flakey in evergreen - set to 0
+    for (int i = 0; i < 3; i++) {
+        operatorStats[i].setExecutionTimeMillis(mongo::Milliseconds{0});
+        finalOperatorStats[i].setExecutionTimeMillis(mongo::Milliseconds{0});
+    }
+    statsReply.setOperatorStats(operatorStats);
+    finalStats.setOperatorStats(finalOperatorStats);
+
     ASSERT_BSONOBJ_EQ(finalStats.toBSON(), statsReply.toBSON());
 }
 
@@ -623,17 +691,16 @@ TEST_F(StreamManagerTest, GetStats_Kafka) {
     request.setTenantId(StringData(kTestTenantId1));
     request.setName(StringData(streamName));
     request.setProcessorId(StringData(streamName));
-    request.setPipeline({BSON("$source" << BSON("connectionName"
-                                                << "kafka"
-                                                << "topic"
-                                                << "input"
-                                                << "testOnlyPartitionCount" << partitionCount)),
-                         getTestLogSinkSpec()});
+    request.setPipeline(
+        {BSON("$source" << BSON("connectionName" << "kafka"
+                                                 << "topic"
+                                                 << "input"
+                                                 << "testOnlyPartitionCount" << partitionCount)),
+         getTestLogSinkSpec()});
     request.setConnections({mongo::Connection("kafka",
                                               mongo::ConnectionTypeEnum::Kafka,
-                                              BSON("bootstrapServers"
-                                                   << "localhost:9092"
-                                                   << "isTestKafka" << true))});
+                                              BSON("bootstrapServers" << "localhost:9092"
+                                                                      << "isTestKafka" << true))});
     request.setOptions(mongo::StartOptions{});
 
     // Create rather than start since we'll be calling `runOnce()` manually within this function.
@@ -731,16 +798,12 @@ TEST_F(StreamManagerTest, GetMetrics) {
 
 TEST_F(StreamManagerTest, GetMetrics_durationSinceLastRunOnce) {
     setGlobalFailPoint("streamProcessorRunOnceSleepSeconds",
-                       BSON("mode"
-                            << "alwaysOn"
-                            << "data" << BSON("sleepSeconds" << 1)));
+                       BSON("mode" << "alwaysOn"
+                                   << "data" << BSON("sleepSeconds" << 1)));
 
     // Deactivate the fail point.
-    mongo::ScopeGuard guard([&] {
-        setGlobalFailPoint("streamProcessorRunOnceSleepSeconds",
-                           BSON("mode"
-                                << "off"));
-    });
+    mongo::ScopeGuard guard(
+        [&] { setGlobalFailPoint("streamProcessorRunOnceSleepSeconds", BSON("mode" << "off")); });
 
     auto streamManager = createStreamManager(StreamManager::Options{});
 
@@ -970,8 +1033,7 @@ TEST_F(StreamManagerTest, DisableCheckpoint) {
     request2.setTenantId(StringData(kTestTenantId1));
     request2.setName(StringData("name2"));
     request2.setProcessorId(StringData("name2"));
-    request2.setPipeline({BSON(kSourceStageName << BSON("connectionName"
-                                                        << "sample_data_solar")),
+    request2.setPipeline({BSON(kSourceStageName << BSON("connectionName" << "sample_data_solar")),
                           getTestLogSinkSpec()});
     request2.setConnections({mongo::Connection(
         "sample_data_solar", mongo::ConnectionTypeEnum::SampleSolar, mongo::BSONObj())});
@@ -1056,10 +1118,10 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         checkpointOptions.setLocalDisk(localDiskOptions);
         startOptions.setCheckpointOptions(checkpointOptions);
         request.setOptions(startOptions);
-        request.setConnections({mongo::Connection("testKafka",
-                                                  mongo::ConnectionTypeEnum::Kafka,
-                                                  BSON("bootstrapServers"
-                                                       << "localhost:9092"
+        request.setConnections(
+            {mongo::Connection("testKafka",
+                               mongo::ConnectionTypeEnum::Kafka,
+                               BSON("bootstrapServers" << "localhost:9092"
                                                        << "isTestKafka" << true))});
         const auto inputBson = fromjson("{pipeline: " + pipelineBson + "}");
         request.setPipeline(parsePipelineFromBSON(inputBson["pipeline"]));
@@ -1067,40 +1129,37 @@ TEST_F(StreamManagerTest, CheckpointInterval) {
         ASSERT(streamProcessorExists(
             streamManager.get(), kTestTenantId1, request.getName().toString()));
 
-        auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, "name1");
-        ASSERT(processorInfo->checkpointCoordinator);
-        ASSERT_EQ(stdx::chrono::milliseconds{expectedIntervalMs},
-                  getCheckpointInterval(processorInfo));
+        ProcessorDetails details = {streamManager.get(), kTestTenantId1, "name1"};
+        auto actual = getCheckpointInterval(details);
+        // Manifest file takes up a few bytes, so if one is written, the next checkpoint interval
+        // will be slightly longer.
+        ASSERT(std::abs((actual - stdx::chrono::milliseconds{expectedIntervalMs}).count()) < 20);
 
-        setLastCheckpointSize(processorInfo, 100_MiB);
-        // set this to force another checkpoint
-        setLastCheckpointTime(processorInfo,
-                              stdx::chrono::system_clock::now() - stdx::chrono::hours{1});
-        setUncheckpointedState(processorInfo, true);
-        // since the last checkpoint was 100MB, after a runOnce call in the executor background
-        // thread, the checkpoint interval should increase to 60 minutes.
-        waitForCheckpointInterval(processorInfo, Milliseconds{Minutes{60}});
+        // Fake a large checkpoint and wait a large interval.
+        fakeLargeCheckpointCheckInterval(details, 100_MiB, Milliseconds{Minutes{60}});
 
         mongo::BSONObj featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: 50000}}}");
         std::shared_ptr<TenantFeatureFlags> tFeatureFlags =
             std::make_shared<TenantFeatureFlags>(featureFlags);
-        updateContextFeatureFlags(processorInfo, tFeatureFlags);
-        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
+        updateContextFeatureFlags(details, tFeatureFlags);
+        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(details));
 
+        startCapturingLogMessages();
         featureFlags =
             mongo::fromjson("{ checkpointDuration: { streamProcessors: {name1: \"60000\"}}}");
         tFeatureFlags = std::make_shared<TenantFeatureFlags>(featureFlags);
-        try {
-            updateContextFeatureFlags(processorInfo, tFeatureFlags);
-        } catch (const DBException& ex) {
-            ASSERT_EQ(ex.code(), 9273401);
-        }
-        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(processorInfo));
+        updateContextFeatureFlags(details, tFeatureFlags);
 
-        std::string writeRootDir = dynamic_cast<LocalDiskCheckpointStorage*>(
-                                       processorInfo->context->checkpointStorage.get())
-                                       ->writeRootDir();
+        auto messages = getCapturedTextFormatLogMessages();
+        ASSERT(std::any_of(messages.begin(), messages.end(), [](const auto& message) {
+            return message.find("Invalid feature flag") != std::string::npos;
+        }));
+        stopCapturingLogMessages();
+
+        ASSERT_EQ(stdx::chrono::milliseconds{50000}, getCheckpointInterval(details));
+
+        std::string writeRootDir = getWriteRootDir(details);
         stdx::thread flusherThread([&]() {
             flushUntilStopped(writeRootDir,
                               streamManager.get(),
@@ -1227,9 +1286,8 @@ TEST_F(StreamManagerTest, Start_ShouldCorrectlyInitCheckpointCoordinatorAfterChe
 
     createSPRequest.setConnections({{"testKafka",
                                      mongo::ConnectionTypeEnum::Kafka,
-                                     BSON("bootstrapServers"
-                                          << "localhost:9092"
-                                          << "isTestKafka" << true)}});
+                                     BSON("bootstrapServers" << "localhost:9092"
+                                                             << "isTestKafka" << true)}});
 
     streamManager->startStreamProcessor(createSPRequest);
 
@@ -1305,8 +1363,8 @@ TEST_F(StreamManagerTest, Start_ShouldCorrectlyInitCheckpointCoordinatorAfterChe
             streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
     });
 
-    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
-    ASSERT_LT(getLastCheckpointTime(processorInfo), afterCheckpointCommitTs);
+    ASSERT_LT(getLastCheckpointTime({streamManager.get(), kTestTenantId1, spName}),
+              afterCheckpointCommitTs);
 }
 
 TEST_F(StreamManagerTest,
@@ -1356,9 +1414,8 @@ TEST_F(StreamManagerTest,
 
     auto sourceConnection = mongo::Connection("testKafka",
                                               mongo::ConnectionTypeEnum::Kafka,
-                                              BSON("bootstrapServers"
-                                                   << "localhost:9092"
-                                                   << "isTestKafka" << true));
+                                              BSON("bootstrapServers" << "localhost:9092"
+                                                                      << "isTestKafka" << true));
     createSPRequest.setConnections({sourceConnection});
 
     auto beforeSPStartTs = system_clock::now();
@@ -1371,8 +1428,8 @@ TEST_F(StreamManagerTest,
             streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
     });
 
-    auto processorInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
-    ASSERT_GT(getLastCheckpointTime(processorInfo), beforeSPStartTs);
+    ASSERT_GT(getLastCheckpointTime({streamManager.get(), kTestTenantId1, spName}),
+              beforeSPStartTs);
 }
 
 TEST_F(StreamManagerTest, MemoryTracking) {
@@ -1457,7 +1514,7 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp1);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 288);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 384);
     checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 0);
     ASSERT_EQUALS(kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
@@ -1471,8 +1528,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp2);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 288);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 144);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 384);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 192);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Add a new key to get $group state for sp1
@@ -1485,8 +1542,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp1);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 432);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 144);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 192);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Add a new key to get $group state for sp2
@@ -1499,8 +1556,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp2);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 432);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 288);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 384);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Open a new window for sp1
@@ -1513,8 +1570,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
            });
 
     runOnce(streamManager.get(), kTestTenantId1, sp1);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 288);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 768);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 384);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Close the first window while opening a third window for sp1
@@ -1532,8 +1589,8 @@ TEST_F(StreamManagerTest, MemoryTracking) {
     // The first window that closed had 3 $group keys, so the memory should go down by
     // a total of 48 bytes, and the previous insert opened a new window with two new keys,
     // so that added a total of 32 bytes -- (64 - 48 + 32) = 48
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 432);
-    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 288);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp1, /* expectedMemoryUsage */ 576);
+    checkSPMemoryUsage(streamManager.get(), kTestTenantId1, sp2, /* expectedMemoryUsage */ 384);
     ASSERT_EQUALS(2 * kMemoryUsageBatchSize, memoryAggregator->getCurrentMemoryUsageBytes());
 
     // Insert documents into sp3 for the first time which should cause the approximate memory
@@ -1754,6 +1811,219 @@ TEST_F(StreamManagerTest, ParseOnlyMode_Https) {
     ASSERT_EQUALS("__testMemory", parseConnections->at(0).getName());
     ASSERT_EQUALS("connName1", parseConnections->at(1).getName());
     ASSERT_EQUALS("__noopSink", parseConnections->at(2).getName());
+}
+
+TEST_F(StreamManagerTest, ParseOnlyMode_S3) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+    std::string pipelineRaw = R"([
+        { $source: { connectionName: "__testMemory" } },
+        { $emit: { connectionName: "__s3Connection", bucket: "some_bucket", path: "some/path/" } }
+    ])";
+    auto pipelineBson = fromjson("{pipeline: " + pipelineRaw + "}");
+    ASSERT_EQUALS(pipelineBson["pipeline"].type(), BSONType::Array);
+    auto pipeline = pipelineBson["pipeline"];
+
+    StartStreamProcessorCommand request;
+    request.setPipeline(parsePipelineFromBSON(pipeline));
+    request.setConnections(
+        {mongo::Connection("__testMemory", mongo::ConnectionTypeEnum::InMemory, mongo::BSONObj())});
+    auto startOptions = mongo::StartOptions{};
+    startOptions.setParseOnly(true);
+    request.setOptions(startOptions);
+    auto reply = streamManager->startStreamProcessor(request);
+    auto parseConnections = reply.getConnections();
+    ASSERT_EQUALS(2, parseConnections->size());
+    ASSERT_EQUALS("__testMemory", parseConnections->at(0).getName());
+    ASSERT_EQUALS("__s3Connection", parseConnections->at(1).getName());
+}
+
+TEST_F(StreamManagerTest, UpdateConnections_ShouldFailOnUnsupportedTypes) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    std::string spName("sp");
+
+    StartStreamProcessorCommand startRequest;
+    startRequest.setTenantId(StringData(kTestTenantId1));
+    startRequest.setName(spName);
+    startRequest.setProcessorId(spName);
+    startRequest.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+
+    std::vector<Connection> connections{
+        {kTestKafkaConnectionName.toString(), ConnectionTypeEnum::Kafka, BSONObj{}},
+        {kTestAtlasConnectionName.toString(), ConnectionTypeEnum::Atlas, BSONObj{}},
+        {kTestSampleSolarConnectionName.toString(), ConnectionTypeEnum::SampleSolar, BSONObj{}},
+        {kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}},
+        {kTestHttpsConnectionName.toString(), ConnectionTypeEnum::HTTPS, BSONObj{}}};
+    startRequest.setConnections(connections);
+    startRequest.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(startRequest);
+
+    ScopeGuard guard{[&] {
+        stopStreamProcessor(
+            streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
+    }};
+
+    UpdateConnectionCommand updateRequest;
+    updateRequest.setTenantId(kTestTenantId1);
+    updateRequest.setProcessorName(spName);
+
+    for (const auto& connection : connections) {
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS_CODE(streamManager->updateConnection(updateRequest),
+                           DBException,
+                           ErrorCodes::InternalErrorNotSupported);
+    }
+}
+
+TEST_F(StreamManagerTest, UpdateConnections_ShouldSucceedForSupportedTypes) {
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    std::string spName("sp");
+
+    StartStreamProcessorCommand startRequest;
+    startRequest.setTenantId(StringData(kTestTenantId1));
+    startRequest.setName(spName);
+    startRequest.setProcessorId(spName);
+    startRequest.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+
+    std::vector<Connection> connections{
+        {kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}},
+        {kTestAWSIAMLambdaConnectionName.toString(), ConnectionTypeEnum::AWSIAMLambda, BSONObj{}},
+        {kTestS3ConnectionName.toString(), ConnectionTypeEnum::AWSS3, BSONObj{}}};
+    startRequest.setConnections(connections);
+    startRequest.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(startRequest);
+
+    ScopeGuard guard{[&] {
+        stopStreamProcessor(
+            streamManager.get(), kTestTenantId1, spName, StopReason::ExternalStopRequest);
+    }};
+
+    struct TestCase {
+        const std::string description;
+        const Connection connection;
+        const std::function<void(Connection)> connectionAssertFn;
+    };
+
+    auto now = Date_t::now();
+    TestCase testCases[]{
+        {.description = "should support updating IAM Lambda Connection",
+         .connection =
+             Connection{kTestAWSIAMLambdaConnectionName.toString(),
+                        ConnectionTypeEnum::AWSIAMLambda,
+                        mongo::AWSIAMConnectionOptions{"new_key", "new_secret", "new_session", now}
+                            .toBSON()},
+         .connectionAssertFn =
+             [&](Connection connection) {
+                 auto actualOptions = mongo::AWSIAMConnectionOptions::parse(
+                     IDLParserContext("connectionParser"), connection.getOptions());
+                 ASSERT_EQUALS(actualOptions.getAccessKey(), "new_key");
+                 ASSERT_EQUALS(actualOptions.getAccessSecret(), "new_secret");
+                 ASSERT_EQUALS(actualOptions.getSessionToken(), "new_session");
+                 ASSERT_EQUALS(actualOptions.getExpirationDate(), now);
+             }},
+        {.description = "should support updating S3 Connection",
+         .connection =
+             Connection{kTestS3ConnectionName.toString(),
+                        ConnectionTypeEnum::AWSS3,
+                        mongo::AWSIAMConnectionOptions{"new_key", "new_secret", "new_session", now}
+                            .toBSON()},
+         .connectionAssertFn = [&](Connection connection) {
+             auto actualOptions = mongo::AWSIAMConnectionOptions::parse(
+                 IDLParserContext("connectionParser"), connection.getOptions());
+             ASSERT_EQUALS(actualOptions.getAccessKey(), "new_key");
+             ASSERT_EQUALS(actualOptions.getAccessSecret(), "new_secret");
+             ASSERT_EQUALS(actualOptions.getSessionToken(), "new_session");
+             ASSERT_EQUALS(actualOptions.getExpirationDate(), now);
+         }}};
+
+    for (const auto& tc : testCases) {
+        LOGV2_DEBUG(10274701, 1, "Running test case", "description"_attr = tc.description);
+
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId(kTestTenantId1);
+        updateRequest.setProcessorName(spName);
+        updateRequest.setConnection(tc.connection);
+        streamManager->updateConnection(updateRequest);
+
+        auto spInfo = getStreamProcessorInfo(streamManager.get(), kTestTenantId1, spName);
+        auto actualConnection =
+            spInfo->context->connections->at(tc.connection.getName().toString());
+        tc.connectionAssertFn(actualConnection);
+    }
+}
+
+TEST_F(StreamManagerTest, UpdateConnections_ShouldValidateProperly) {
+    mongo::streams::gStreamsAllowMultiTenancy = true;
+    ScopeGuard disallowMultiTenancyGuard{
+        [&] { mongo::streams::gStreamsAllowMultiTenancy = false; }};
+
+    auto streamManager = createStreamManager(StreamManager::Options{});
+
+    std::string spName1{"sp1"};
+    std::string spName2{"sp2"};
+
+    StartStreamProcessorCommand startRequest1;
+    startRequest1.setTenantId(StringData(kTestTenantId1));
+    startRequest1.setName(spName1);
+    startRequest1.setProcessorId(spName1);
+    startRequest1.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+
+    Connection connection{
+        kTestMemoryConnectionName.toString(), ConnectionTypeEnum::InMemory, BSONObj{}};
+    startRequest1.setConnections({connection});
+    startRequest1.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(startRequest1);
+
+    ScopeGuard stopSP1Guard{
+        [&] { stopStreamProcessor(streamManager.get(), kTestTenantId1, spName1); }};
+
+    // Invalid tenant ID
+    {
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId("tenant3");
+        updateRequest.setProcessorName(spName1);
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS(streamManager->updateConnection(updateRequest), DBException);
+    }
+
+    // Non-existent SP
+    {
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId(kTestTenantId1);
+        updateRequest.setProcessorName("nonexistent-sp");
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS(streamManager->updateConnection(updateRequest), DBException);
+    }
+
+    // Incorrect tenant ID
+    StartStreamProcessorCommand startRequest2;
+    startRequest2.setTenantId(StringData(kTestTenantId2));
+    startRequest2.setName(spName2);
+    startRequest2.setProcessorId(spName2);
+    startRequest2.setPipeline(
+        {getTestSourceSpec(), BSON("$match" << BSON("a" << 1)), getTestLogSinkSpec()});
+    startRequest2.setConnections({connection});
+    startRequest2.setOptions(mongo::StartOptions{});
+    streamManager->startStreamProcessor(startRequest2);
+
+    ScopeGuard stopSP2Guard{
+        [&] { stopStreamProcessor(streamManager.get(), kTestTenantId2, spName2); }};
+
+    {
+        UpdateConnectionCommand updateRequest;
+        updateRequest.setTenantId(kTestTenantId1);
+        updateRequest.setProcessorName(spName2);
+        updateRequest.setConnection(connection);
+
+        ASSERT_THROWS(streamManager->updateConnection(updateRequest), DBException);
+    }
 }
 
 }  // namespace streams

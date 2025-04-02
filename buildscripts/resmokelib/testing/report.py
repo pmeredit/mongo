@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name
 """Extension to the unittest.TestResult.
 
 This is used to support additional test status and timing information for the report.json file.
@@ -9,6 +8,7 @@ import threading
 import time
 import unittest
 from logging import Logger
+from typing import Any
 
 from buildscripts.resmokelib import config as _config
 from buildscripts.resmokelib import logging
@@ -16,11 +16,10 @@ from buildscripts.resmokelib.testing.symbolizer_service import ResmokeSymbolizer
 from buildscripts.resmokelib.testing.testcases.interface import TestCase
 
 
-# pylint: disable=attribute-defined-outside-init
 class TestReport(unittest.TestResult):
     """Record test status and timing information."""
 
-    def __init__(self, job_logger, suite_options, job_num=None):
+    def __init__(self, job_logger: logging.Logger, suite_options: Any, job_num=None):
         """
         Initialize the TestReport with the logger configuration.
 
@@ -63,7 +62,7 @@ class TestReport(unittest.TestResult):
                     f"reports must be a list of TestReport instances, current report is {type(report)}"
                 )
 
-            with report._lock:  # pylint: disable=protected-access
+            with report._lock:
                 for test_info in report.test_infos:
                     # If the user triggers a KeyboardInterrupt exception while a test is running,
                     # then it is possible for 'test_info' to be modified by a job thread later on.
@@ -121,11 +120,15 @@ class TestReport(unittest.TestResult):
         test_info.group_id = f"job{self.job_num}"
 
         basename = test.basename()
-        command = test.as_command()
-        if command:
-            self.job_logger.info("Running %s...\n%s", basename, command)
-        else:
-            self.job_logger.info("Running %s...", basename)
+        try:
+            command = test.as_command()
+            if command:
+                self.job_logger.info("Running %s...\n%s", basename, command)
+            else:
+                self.job_logger.info("Running %s...", basename)
+        except:
+            # This can happen in rare cases like in ProcessTestCase where the process building itself fails
+            self.job_logger.exception("Failed to form command for test %s" % basename)
 
         with self._lock:
             self.test_infos.append(test_info)
@@ -136,7 +139,6 @@ class TestReport(unittest.TestResult):
         test_logger = logging.loggers.new_test_logger(
             test.short_name(),
             test.basename(),
-            command,
             test.logger,
             self.job_num,
             test.id(),
@@ -220,6 +222,7 @@ class TestReport(unittest.TestResult):
             if test_info.end_time is None:
                 raise ValueError("stopTest was not called on %s" % (test.basename()))
 
+            changed = test_info.status != "error"
             # We don't distinguish between test failures and Python errors in Evergreen.
             test_info.status = "error"
             test_info.evergreen_status = "fail"
@@ -231,6 +234,9 @@ class TestReport(unittest.TestResult):
         self.num_failed = len(self.get_failed())
         self.num_errored = len(self.get_errored())
         self.num_interrupted = len(self.get_interrupted())
+
+        if changed:
+            self._log_outcome_change(test, "error")
 
     def addFailure(self, test, err):
         """Call when a failureException was raised during the execution of 'test'."""
@@ -245,7 +251,7 @@ class TestReport(unittest.TestResult):
             test_info.evergreen_status = "fail"
             test_info.return_code = test.return_code
 
-    def setFailure(self, test, return_code=1):
+    def setFailure(self, test, return_code=1, reason=""):
         """Change the outcome of an existing test to a failure."""
 
         with self._lock:
@@ -253,6 +259,7 @@ class TestReport(unittest.TestResult):
             if test_info.end_time is None:
                 raise ValueError("stopTest was not called on %s" % (test.basename()))
 
+            changed = test_info.status != "fail"
             test_info.status = "fail"
             test_info.evergreen_status = "fail"
             test_info.return_code = return_code
@@ -262,6 +269,9 @@ class TestReport(unittest.TestResult):
         self.num_failed = len(self.get_failed())
         self.num_errored = len(self.get_errored())
         self.num_interrupted = len(self.get_interrupted())
+
+        if changed:
+            self._log_outcome_change(test, "fail", reason)
 
     def addSuccess(self, test):
         """Call when 'test' executed successfully."""
@@ -398,6 +408,23 @@ class TestReport(unittest.TestResult):
                 return test_info
 
         raise ValueError("Details for %s not found in the report" % (test.basename()))
+
+    def _log_outcome_change(self, test, outcome, reason=""):
+        # Recreate the test logger for this test in order to append to the existing log.
+        logger = logging.loggers.new_test_logger(
+            test.short_name(),
+            test.basename(),
+            test.logger,
+            self.job_num,
+            test.id(),
+            self.job_logger,
+        )
+        logger.info(
+            f'Sometime after completion of {test.short_description()}, the test outcome was changed to "{outcome}"'
+            + (f" because: {reason}" if reason else "."),
+        )
+        for handler in logger.handlers:
+            logging.flush.close_later(handler)
 
 
 class TestInfo(object):

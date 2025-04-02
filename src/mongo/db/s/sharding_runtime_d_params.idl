@@ -152,7 +152,7 @@ server_parameters:
         set_at: [startup, runtime]
         cpp_vartype: AtomicWord<int>
         cpp_varname: orphanCleanupDelaySecs
-        default: 900
+        default: 3600
         redact: false
 
     disableResumableRangeDeleter:
@@ -175,4 +175,13 @@ server_parameters:
         validator:
           gte: 1
         default: 1000
+        redact: false
+
+    terminateSecondaryReadsOnOrphanCleanup:
+        description: >-
+          Enables the termination of queries on a secondary node due to orphan cleanup.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<bool>
+        cpp_varname: terminateSecondaryReadsOnOrphanCleanup
+        default: true
         redact: false

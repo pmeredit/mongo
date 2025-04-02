@@ -23,6 +23,73 @@ __live_restore_worker_check(WT_SESSION_IMPL *session)
 }
 
 /*
+ * __live_restore_clean_up --
+ *     Clean up live restore metadata once background migration has completed. This will be called
+ *     by the last background migration thread. In most cases, we'll enter this function on
+ *     completion of background migration, but we also need to handle the case where we restart part
+ *     way though the clean up.
+ */
+static int
+__live_restore_clean_up(WT_SESSION_IMPL *session, WT_THREAD *ctx)
+{
+    WTI_LIVE_RESTORE_FS *lr_fs = (WTI_LIVE_RESTORE_FS *)S2C(session)->file_system;
+    const char *force_ckpt_cfg[] = {
+      WT_CONFIG_BASE(session, WT_SESSION_checkpoint), "force=true", NULL};
+    WTI_LIVE_RESTORE_SERVER *server = S2C(session)->live_restore_server;
+
+    switch (__wti_live_restore_get_state(session, lr_fs)) {
+    case WTI_LIVE_RESTORE_STATE_NONE:
+        /* This state should be unreachable outside of initializing the live restore file system. */
+        WT_ASSERT_ALWAYS(session, false, "Live restore state is NONE!");
+        break;
+
+    case WTI_LIVE_RESTORE_STATE_BACKGROUND_MIGRATION:
+        /*
+         * We need our metadata updates to be written out. Force a checkpoint on all trees before
+         * marking background migration complete. All empty bitmaps must be written to the metadata
+         * durably first with the checkpoint.
+         */
+        WT_RET(__wt_checkpoint_db(ctx->session, force_ckpt_cfg, true));
+
+        uint64_t time_diff_ms;
+        __wt_timer_evaluate_ms(session, &server->start_timer, &time_diff_ms);
+        __wt_verbose(session, WT_VERB_LIVE_RESTORE_PROGRESS,
+          "Completed restoring %" PRIu64 " files in %" PRIu64 " seconds",
+          S2C(session)->live_restore_server->work_count, time_diff_ms / WT_THOUSAND);
+
+        WT_RET(__wti_live_restore_set_state(session, lr_fs, WTI_LIVE_RESTORE_STATE_CLEAN_UP));
+
+        /* FALLTHROUGH */
+    case WTI_LIVE_RESTORE_STATE_CLEAN_UP:
+        WT_RET(__wti_live_restore_cleanup_stop_files(session));
+
+        /*
+         * Add a delay to allow an aggressively configured sweep server to close files before we
+         * force a checkpoint.
+         */
+        struct timespec tsp;
+        tsp.tv_sec = WT_LIVE_RESTORE_TIMING_STRESS_CLEAN_UP_DELAY;
+        tsp.tv_nsec = 0;
+        __wt_timing_stress(session, WT_TIMING_STRESS_LIVE_RESTORE_CLEAN_UP, &tsp);
+
+        /*
+         * Run a second forced checkpoint now that clean up has finished. Checkpointing files on or
+         * after the clean up stage will remove any bitmap strings from the metadata file.
+         */
+        WT_RET(__wt_checkpoint_db(ctx->session, force_ckpt_cfg, true));
+        WT_RET(__wti_live_restore_set_state(session, lr_fs, WTI_LIVE_RESTORE_STATE_COMPLETE));
+
+        /* FALLTHROUGH */
+    case WTI_LIVE_RESTORE_STATE_COMPLETE:
+        break;
+    }
+
+    WT_ASSERT(
+      session, __wti_live_restore_get_state(session, lr_fs) == WTI_LIVE_RESTORE_STATE_COMPLETE);
+    return (0);
+}
+
+/*
  * __live_restore_worker_stop --
  *     When a live restore worker stops we need to manage some state. If all workers stop and the
  *     queue is empty then update the state statistic to track that.
@@ -30,36 +97,41 @@ __live_restore_worker_check(WT_SESSION_IMPL *session)
 static int
 __live_restore_worker_stop(WT_SESSION_IMPL *session, WT_THREAD *ctx)
 {
-    WT_UNUSED(ctx);
+    WT_DECL_RET;
+
     WTI_LIVE_RESTORE_SERVER *server = S2C(session)->live_restore_server;
 
     __wt_spin_lock(session, &server->queue_lock);
     server->threads_working--;
 
     if (server->threads_working == 0) {
-        /*
-         * If all the threads have stopped and the queue is empty signal that the live restore is
-         * complete.
-         */
-        if (TAILQ_EMPTY(&server->work_queue)) {
-            uint64_t time_diff_ms;
-            WT_STAT_CONN_SET(session, live_restore_state, WT_LIVE_RESTORE_COMPLETE);
-            __wt_timer_evaluate_ms(session, &server->start_timer, &time_diff_ms);
-            __wt_verbose(session, WT_VERB_LIVE_RESTORE_PROGRESS,
-              "Completed restoring %" PRIu64 " files in %" PRIu64 " seconds",
-              S2C(session)->live_restore_server->work_count, time_diff_ms / WT_THOUSAND);
-        }
-        /*
-         * Future proofing: in general unless the conn is closing the queue must be empty if there
-         * are zero threads working.
-         */
-        if (!F_ISSET(S2C(session), WT_CONN_CLOSING))
+        if (!F_ISSET(S2C(session), WT_CONN_CLOSING)) {
+            /*
+             * If all the threads are stopped and the queue is empty, background migration is done.
+             */
+            if (TAILQ_EMPTY(&server->work_queue))
+                /*
+                 * FIXME-WT-14113 This is currently the only location where we call live restore
+                 * clean up, but it requires us to start up the background migration threads first.
+                 * When WiredTiger starts in a post-background migration state, we should call live
+                 * restore clean up directly instead of spinning up the server to eventually trigger
+                 * clean up.
+                 */
+                WT_ERR(__live_restore_clean_up(session, ctx));
+
+            /*
+             * Future proofing: in general unless the conn is closing the queue must be empty if
+             * there are zero threads working.
+             */
             WT_ASSERT_ALWAYS(session, TAILQ_EMPTY(&server->work_queue),
               "All background migration threads have finished but there is still work to do!");
+        }
     }
+
+err:
     __wt_spin_unlock(session, &server->queue_lock);
 
-    return (0);
+    return (ret);
 }
 
 /*
@@ -70,8 +142,12 @@ __live_restore_worker_stop(WT_SESSION_IMPL *session, WT_THREAD *ctx)
 static void
 __live_restore_free_work_item(WT_SESSION_IMPL *session, WTI_LIVE_RESTORE_WORK_ITEM **work_itemp)
 {
+    WTI_LIVE_RESTORE_SERVER *server = S2C(session)->live_restore_server;
+
     __wt_free(session, (*work_itemp)->uri);
     __wt_free(session, *work_itemp);
+    WT_STAT_CONN_SET(
+      session, live_restore_work_remaining, __wt_atomic_sub64(&server->work_items_remaining, 1));
 
     *work_itemp = NULL;
 }
@@ -148,12 +224,30 @@ __live_restore_worker_run(WT_SESSION_IMPL *session, WT_THREAD *ctx)
      * schema operations like drop. If the file no longer exists we don't need to copy anything and
      * can return a success.
      */
-    WT_CURSOR *cursor;
+    WT_CURSOR *cursor = NULL;
     WT_SESSION *wt_session = (WT_SESSION *)session;
     ret = wt_session->open_cursor(wt_session, work_item->uri, NULL, NULL, &cursor);
+    if (ret != 0)
+        __wt_verbose_debug1(session, WT_VERB_LIVE_RESTORE,
+          "Live restore worker: Error opening cursor to %s, ret %d", work_item->uri, ret);
     if (ret == ENOENT) {
         /* Free the work item. */
         __live_restore_free_work_item(session, &work_item);
+        return (0);
+    } else if (ret == EBUSY) {
+        uint64_t remain;
+        uint32_t threads;
+        /*
+         * Someone else has exclusive access to the table. Add it back to the work queue and try
+         * again later.
+         */
+        __wt_spin_lock(session, &server->queue_lock);
+        remain = server->work_items_remaining;
+        threads = server->threads_working;
+        TAILQ_INSERT_TAIL(&server->work_queue, work_item, q);
+        __wt_spin_unlock(session, &server->queue_lock);
+        if (remain < (uint64_t)threads)
+            __wt_sleep(0, 100 * WT_THOUSAND);
         return (0);
     }
     WT_RET(ret);
@@ -162,22 +256,13 @@ __live_restore_worker_run(WT_SESSION_IMPL *session, WT_THREAD *ctx)
      * We need to get access to the WiredTiger file handle. Given we've opened the cursor we should
      * be able to access the WT_FH by first getting to its block manager and then the WT_FH.
      */
-    WT_BM *bm = CUR2BT(cursor)->bm;
-    WT_ASSERT(session, bm->is_multi_handle == false);
+    WT_BTREE *btree = CUR2BT(cursor);
+    WT_ASSERT(session, btree->bm->is_multi_handle == false);
 
     /* FIXME-WT-13897 Replace this with an API call into the block manager. */
-    WT_FILE_HANDLE *fh = bm->block->fh->handle;
-
-    __wt_verbose_debug2(
-      session, WT_VERB_LIVE_RESTORE, "Live restore worker: Filling holes in %s", work_item->uri);
-    ret = __wti_live_restore_fs_fill_holes(fh, wt_session);
-    __wt_verbose_debug1(session, WT_VERB_LIVE_RESTORE,
-      "Live restore worker: Finished finished filling holes in %s", work_item->uri);
-
-    /* Free the work item. */
+    WT_WITH_DHANDLE(session, btree->dhandle,
+      ret = __wti_live_restore_fs_restore_file(btree->bm->block->fh->handle, wt_session));
     __live_restore_free_work_item(session, &work_item);
-    WT_STAT_CONN_SET(
-      session, live_restore_work_remaining, __wt_atomic_sub64(&server->work_items_remaining, 1));
     WT_TRET(cursor->close(cursor));
     return (ret);
 }
@@ -228,7 +313,7 @@ __live_restore_init_work_queue(WT_SESSION_IMPL *session)
     /* Initialize the work queue. */
     TAILQ_INIT(&server->work_queue);
     __wt_verbose_debug1(
-      session, WT_VERB_FILEOPS, "%s", "Live restore server: Initializing the work queue");
+      session, WT_VERB_LIVE_RESTORE, "%s", "Live restore server: Initializing the work queue");
 
     WT_CURSOR *cursor;
     WT_RET(__wt_metadata_cursor(session, &cursor));
@@ -287,13 +372,6 @@ __wt_live_restore_server_create(WT_SESSION_IMPL *session, const char *cfg[])
 
     WT_ERR(__wt_spin_init(
       session, &conn->live_restore_server->queue_lock, "live restore migration work queue"));
-
-    /*
-     * Set the in progress state before we run the threads. If we do it after there's a chance we'll
-     * context switch and then this state will happen after the finish state. By setting it here it
-     * also means we transition through all valid states.
-     */
-    WT_STAT_CONN_SET(session, live_restore_state, WT_LIVE_RESTORE_IN_PROGRESS);
 
     /*
      * Even if we start from an empty database the history store file will exist before we get here

@@ -570,7 +570,7 @@ uint8_t* MONGO_API_CALL mongo_crypt_v1_analyze_query(mongo_crypt_v1_query_analyz
 
 void MONGO_API_CALL mongo_crypt_v1_bson_free(uint8_t* bson) {
     mongo::MongoCryptSupportStatusImpl* nullStatus = nullptr;
-    static_cast<void>(enterCXX(nullStatus, [=]() { delete[](bson); }));
+    static_cast<void>(enterCXX(nullStatus, [=]() { delete[] (bson); }));
 }
 
 }  // extern "C"

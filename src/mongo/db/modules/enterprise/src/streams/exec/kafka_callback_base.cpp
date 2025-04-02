@@ -2,6 +2,8 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/kafka_callback_base.h"
+
 #include <boost/algorithm/hex.hpp>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/join.hpp>
@@ -10,8 +12,6 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <termios.h>
-
-#include "streams/exec/kafka_callback_base.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 

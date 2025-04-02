@@ -33,6 +33,8 @@ enums:
             SampleSolar: "sample_solar"
             InMemory: "in_memory"
             HTTPS: "https"
+            AWSS3: "aws_iam_s3"
+            AWSIAMLambda: "aws_iam_lambda"
 
     StreamsValidationAction:
         description: "validation action for $validate stage"
@@ -88,9 +90,9 @@ enums:
         type: string
         description: "Kafka security.protocol options."
         values:
-            Plaintext: "PLAINTEXT"
             SaslPlaintext: "SASL_PLAINTEXT"
             SaslSSL: "SASL_SSL"
+            SSL: "SSL"
 
     KafkaTLSValidationAlgorithm:
         type: string
@@ -98,13 +100,21 @@ enums:
         values:
             HTTPS: "https"
             None: "none"
-    
+
     KafkaEmitJsonStringFormat:
         type: string
         description: "Json String format."
         values:
             RelaxedJson: "relaxedJson"
             CanonicalJson: "canonicalJson"
+
+    S3EmitOutputFormat:
+        type: string
+        description: "Json String format"
+        values:
+            RelaxedJson: "relaxedJson"
+            CanonicalJson: "canonicalJson"
+            BasicJson: "basicJson"
 
     KafkaKeyFormat:
         description: "The data type used to serialize and deserialize Kafka key"
@@ -159,6 +169,13 @@ enums:
             processingTime: "processingTime"
             eventTime: "eventTime"
 
+    ExternalFunctionExecution:
+        type: string
+        description: "Describes if the stage should wait for a complete response (Sync) or proceed after acknowledgement (Async)"
+        values:
+            Sync: "sync"
+            Async: "async"
+
 structs:
     StreamTimeDuration:
         description: "A duration of time."
@@ -167,7 +184,7 @@ structs:
             size:
                 description: "The size of the duration in terms of unit."
                 type: int
-                validator: {gte: 0}
+                validator: { gte: 0 }
             unit:
                 description: "The time unit used for the duration."
                 type: StreamTimeUnit
@@ -210,6 +227,18 @@ structs:
             validateTLSAlgorithm:
                 description: "If using TLS, specify algorithm to verify hostnames (https or none)."
                 type: KafkaTLSValidationAlgorithm
+                optional: true
+            sslCertificate:
+                description: "SSL certificate used for mTLS authentication"
+                type: string
+                optional: true
+            sslKey:
+                description: "SSL key used for mTLS authentication"
+                type: string
+                optional: true
+            sslKeyPassword:
+                description: "Password for the ssl key used in mTLS authentication"
+                type: string
                 optional: true
 
     KafkaConnectionOptions:
@@ -268,9 +297,23 @@ structs:
                 type: string
                 optional: true
 
+    AWSIAMConnectionOptions:
+        description: "AWS IAM connection options."
+        strict: true
+        fields:
+            accessKey:
+                type: string
+            accessSecret:
+                type: string
+            sessionToken:
+                type: string
+            expirationDate:
+                type: date
+
     Connection:
         description: "Connection registry information."
         strict: true
+        generate_comparison_operators: true
         fields:
             name:
                 description: "Name of this connection."
@@ -291,7 +334,7 @@ structs:
                 type: string
             timeField:
                 description: "Expression for computing the event time on a Document."
-                type: 
+                type:
                     variant: [object, string]
                 optional: true
             tsFieldOverride:
@@ -313,7 +356,7 @@ structs:
         fields:
             timeField:
                 description: "Expression for computing the event time on a Document."
-                type: 
+                type:
                     variant: [object, string]
                 optional: true
             tsFieldOverride:
@@ -374,7 +417,6 @@ structs:
             stage:
                 description: Stage name the connection is associated with.
                 type: string
-                optional: true
 
     KafkaSinkConfigOptions:
         description: "Optional configuration options for a Kafka Sink."
@@ -464,41 +506,46 @@ structs:
                 cpp_name: startAfter
                 type: resumeToken
                 optional: true
-                description: An object representing the point after which we should start reporting
-                             changes from. This is allowed to be a token from an invalidating
-                             command. Only one of startAfter or startAtOperationTime
-                             should be specified.
+                description:
+                    An object representing the point after which we should start reporting
+                    changes from. This is allowed to be a token from an invalidating
+                    command. Only one of startAfter or startAtOperationTime
+                    should be specified.
             startAtOperationTime:
                 cpp_name: startAtOperationTime
                 type:
                     variant: [timestamp, date]
                 optional: true
-                description: The operation time after which we should start reporting changes.
-                             Only one of startAfter or startAtOperationTime should
-                             be specified.
+                description:
+                    The operation time after which we should start reporting changes.
+                    Only one of startAfter or startAtOperationTime should
+                    be specified.
             fullDocument:
                 cpp_name: fullDocument
                 type: FullDocumentMode
                 optional: true
-                description:  A string '"updateLookup"', '"default"', '"whenAvailable"', or
-                             '"required"', indicating whether return a full document or just
-                             changes for an update.
+                description:
+                    A string '"updateLookup"', '"default"', '"whenAvailable"', or
+                    '"required"', indicating whether return a full document or just
+                    changes for an update.
             fullDocumentOnly:
-                description: If set and is true, the $source return the value of fullDocument of
-                             the change stream. The fullDocument parameter must be set to
-                             updateLookup or required
+                description:
+                    If set and is true, the $source return the value of fullDocument of
+                    the change stream. The fullDocument parameter must be set to
+                    updateLookup or required
                 type: bool
                 optional: true
             fullDocumentBeforeChange:
-                description: Valid values are "off", "whenAvailable", or "required". If set to
-                             "off", the "fullDocumentBeforeChange" field of the output document
-                             is always omitted. If set to "whenAvailable", the
-                             "fullDocumentBeforeChange" field will be populated with the
-                             pre-image of the document modified by the current change event if
-                             such a pre-image is available, and will be omitted otherwise. If
-                             set to "required", then the "fullDocumentBeforeChange" field is
-                             always populated and an exception is thrown if the pre-image is not
-                             available.
+                description:
+                    Valid values are "off", "whenAvailable", or "required". If set to
+                    "off", the "fullDocumentBeforeChange" field of the output document
+                    is always omitted. If set to "whenAvailable", the
+                    "fullDocumentBeforeChange" field will be populated with the
+                    pre-image of the document modified by the current change event if
+                    such a pre-image is available, and will be omitted otherwise. If
+                    set to "required", then the "fullDocumentBeforeChange" field is
+                    always populated and an exception is thrown if the pre-image is not
+                    available.
                 type: FullDocumentBeforeChangeMode
                 optional: true
             pipeline:
@@ -515,7 +562,7 @@ structs:
                 type: string
             timeField:
                 description: "Expression for computing the event time on a Document."
-                type: 
+                type:
                     variant: [object, string]
                 optional: true
             tsFieldOverride:
@@ -537,12 +584,17 @@ structs:
                 optional: true
             coll:
                 description: "The collection or group of collections we are interested in."
-                type: 
+                type:
                     variant: [string, array<string>]
                 optional: true
             config:
                 description: "Additional configuration options for the change stream $source."
                 type: ChangeStreamConfigOptions
+                optional: true
+            $_internalPredicate:
+                description: Internal field used to push down a $match stage following a changestream $source stage.
+                type: object
+                cpp_name: internalPredicate
                 optional: true
 
     TumblingWindowOptions:
@@ -565,12 +617,12 @@ structs:
                 optional: true
             idleTimeout:
                 description: "If set, open windows are closed if the $source is idle for this duration plus the window size."
-                type: 
+                type:
                     variant: [StreamTimeDuration, int]
                 optional: true
             allowedLateness:
                 description: "Defines the allowed lateness for documents."
-                type: 
+                type:
                     variant: [StreamTimeDuration, int]
                 optional: true
 
@@ -579,7 +631,7 @@ structs:
         strict: true
         fields:
             boundary:
-                description: "String representing how window boundaries are determined. Should be one of 'eventTime' and 'processingTime'."
+                description: "String representing how window boundaries are determined."
                 type: WindowBoundary
                 default: eventTime
             interval:
@@ -597,12 +649,12 @@ structs:
                 optional: true
             idleTimeout:
                 description: "If set, open windows are closed if the $source is idle for this duration plus the window size."
-                type: 
+                type:
                     variant: [StreamTimeDuration, int]
                 optional: true
             allowedLateness:
                 description: "Defines the allowed lateness for documents."
-                type: 
+                type:
                     variant: [StreamTimeDuration, int]
                 optional: true
 
@@ -610,6 +662,10 @@ structs:
         description: "$sessionWindow stage options"
         strict: true
         fields:
+            boundary:
+                description: "String representing how window boundaries are determined."
+                type: WindowBoundary
+                default: eventTime
             gap:
                 description: "Defines the gap between sessions."
                 type: StreamTimeDuration
@@ -623,10 +679,9 @@ structs:
                 optional: true
             allowedLateness:
                 description: "Defines the allowed lateness for documents."
-                type: 
+                type:
                     variant: [StreamTimeDuration, int]
                 optional: true
-
 
     ValidateOptions:
         description: "$validate stage options"
@@ -642,7 +697,7 @@ structs:
 
     AtlasCollection:
         description: Specifies details about Atlas instance and collection.
-                     Currently used by $merge and $lookup stages.
+            Currently used by $merge and $lookup stages.
         strict: true
         fields:
             connectionName:
@@ -671,21 +726,29 @@ structs:
             let:
                 type: object
                 optional: true
-                description: Specifies variables to use in the update pipeline defined in
-                             MergeWhenMatchedPolicy when the 'whenMatched' mode is a custom
-                             pipeline.
+                description:
+                    Specifies variables to use in the update pipeline defined in
+                    MergeWhenMatchedPolicy when the 'whenMatched' mode is a custom
+                    pipeline.
 
             whenMatched:
                 type: MergeWhenMatchedPolicy
                 optional: true
-                description: The merge mode for the merge operation when source and target elements
-                             match.
+                description:
+                    The merge mode for the merge operation when source and target elements
+                    match.
 
             whenNotMatched:
                 type: MergeWhenNotMatchedMode
                 optional: true
-                description: The merge mode for the merge operation when source and target elements
-                             do not match.
+                description:
+                    The merge mode for the merge operation when source and target elements
+                    do not match.
+
+            parallelism:
+                type: int
+                default: 1
+                description: Number of parallel writers to use in the $merge stage.
 
     KafkaSinkOptions:
         description: "Specifies details about an $emit stage configured to output to a Kafka topic"
@@ -705,7 +768,7 @@ structs:
                 description: "Specifies a single partition to write all output to."
                 type: int
                 optional: true
-    
+
     TimeseriesSinkOptions:
         description: Specifies the options for sink operator $emit to Time Series collection.
         strict: true
@@ -724,7 +787,7 @@ structs:
             timeseries:
                 type: TimeseriesOptions
                 description: Sepcifies the details of the target Time Series collection
-                optional: true 
+                optional: true
 
     HttpsConfigOptions:
         description: "Optional configuration options for the $https operator"
@@ -744,6 +807,10 @@ structs:
                 validator:
                     gt: 0
                     lt: 900
+            parseJsonStrings:
+                description: "Recursively parse the response for all json strings and deserialize them into bson."
+                type: bool
+                default: false
 
     HttpsOptions:
         description: "$https stage options."
@@ -780,7 +847,66 @@ structs:
                 description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent. Only supported with POST, PUT, and PATCH"
                 type: pipeline
                 optional: true
+            urlEncodePath:
+                description: "If set and true, url encode the path."
+                type: bool
+                default: false
             config:
                 description: "Additional configuration options for the $https operator"
                 type: HttpsConfigOptions
                 optional: true
+
+    ExternalFunctionOptions:
+        description: "$externalFunction stage options."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the connection used for auth."
+                type: string
+            functionName:
+                description: "The name of the function."
+                type: string
+            execution:
+                description: "Whether to wait for the response payload from the lambda to return or move on after request acknowledgement."
+                type: ExternalFunctionExecution
+                default: Sync
+            as:
+                description: "Defines the field name for response data. Required if execution == sync and not a sink stage"
+                type: string
+                optional: true
+            onError:
+                description: "Describes how error responses from the external function are handled."
+                type: OnError
+                default: DLQ
+            payload:
+                description: "An inner pipeline that determines the payload sent for the request, otherwise the incoming document will be sent."
+                type: pipeline
+                optional: true
+
+    S3Options:
+        description: "s3 $emit stage options."
+        strict: true
+        fields:
+            connectionName:
+                description: "Name of the connection used for auth."
+                type: string
+            region:
+                description: "Defines the region of the S3 bucket being written to. Defaults to SPI region."
+                type: string
+                optional: true
+            bucket:
+                description: "The target S3 bucket to upload files to."
+                type:
+                    variant: [object, string]
+            path:
+                description: "The target path within the bucket to upload files to."
+                type:
+                    variant: [object, string]
+            delimiter:
+                description: "The delimiter used to add between documents written to a file being uploaded to S3."
+                type: string
+                optional: true
+            outputFormat:
+                description: "Output format type"
+                type: S3EmitOutputFormat
+                default: RelaxedJson

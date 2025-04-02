@@ -13,3 +13,20 @@ function round(num) {
 export function ceEqual(lhs, rhs) {
     return Math.abs(round(lhs) - round(rhs)) < 0.1;
 }
+
+function planEstimateTypeIs(plan, type) {
+    return plan.estimatesMetadata.ceSource === type;
+}
+
+// Return true if the plan was estimated with a histogam estimation source. Return false otherwise.
+export function planEstimatedWithHistogram(plan) {
+    return planEstimateTypeIs(plan, "Histogram");
+}
+
+/**
+ * Assert the given plan was not costed. This is used as an indicator to whether CBR used its
+ * fallback to multiplanning for this plan.
+ */
+export function assertPlanNotCosted(plan) {
+    assert(!plan.hasOwnProperty('costEstimate'), plan);
+}

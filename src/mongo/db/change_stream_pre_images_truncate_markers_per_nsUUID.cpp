@@ -52,9 +52,7 @@
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/storage/record_data.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/timer.h"
 

@@ -48,7 +48,6 @@
 #include "mongo/db/repl/replication_consistency_markers_impl.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
@@ -126,9 +125,6 @@ void InitialSyncBaseCloner::handleStageAttemptFailed(BaseClonerStage* stage, Sta
         // error occurred and it's safe to continue (which will cause another retry).
         if (!checkSyncSourceIsStillValid().isOK())
             return;
-        // After successfully checking the sync source validity, the client should
-        // always be OK.
-        invariant(!getClient()->isFailed());
     }
 }
 

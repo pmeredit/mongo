@@ -43,10 +43,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/errno_util.h"
 #include "mongo/util/procparser.h"
 #include "mongo/util/string_map.h"
@@ -54,8 +51,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
 namespace mongo {
-
-using namespace fmt::literals;
 
 namespace {
 
@@ -1134,10 +1129,10 @@ TEST_F(FTDCProcNetstat, TestLocalSockstat) {
     LOGV2(4840200, "Parsed local /net/proc/sockstat file", "obj"_attr = obj);
 
     for (auto&& [category, nodes] : testKeys) {
-        ASSERT(obj[category].isABSONObj()) << ", category={}"_format(category);
+        ASSERT(obj[category].isABSONObj()) << fmt::format(", category={}", category);
         for (auto&& node : nodes) {
             ASSERT(obj[category][node].isNumber())
-                << ", category={}, node={}"_format(category, node);
+                << fmt::format(", category={}, node={}", category, node);
         }
     }
 }

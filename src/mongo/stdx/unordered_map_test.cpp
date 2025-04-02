@@ -37,12 +37,9 @@
 #include <absl/container/node_hash_map.h>
 
 #include "mongo/base/string_data.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace {
-
-using namespace fmt::literals;
 
 template <typename Map>
 std::string dumpMap(const Map& m) {
@@ -50,7 +47,7 @@ std::string dumpMap(const Map& m) {
     r += "{";
     const char* comma = "";
     for (auto&& [k, v] : m) {
-        r += "{}{}:{}"_format(comma, k, v);
+        r += fmt::format("{}{}:{}", comma, k, v);
         comma = ", ";
     }
     r += "}";

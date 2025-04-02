@@ -63,6 +63,7 @@
 #include "mongo/db/collection_crud/capped_visibility.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/database_name.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/index/index_descriptor.h"
@@ -91,13 +92,12 @@
 #include "mongo/db/timeseries/timeseries_constants.h"
 #include "mongo/db/timeseries/timeseries_extended_range.h"
 #include "mongo/db/timeseries/timeseries_index_schema_conversion_functions.h"
+#include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/ttl/ttl_collection_cache.h"
+#include "mongo/db/version_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_tag.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
@@ -114,6 +114,10 @@ namespace {
 MONGO_FAIL_POINT_DEFINE(allowSettingMalformedCollectionValidators);
 MONGO_FAIL_POINT_DEFINE(timeseriesBucketingParametersChangedInputValue);
 MONGO_FAIL_POINT_DEFINE(skipCappedDeletes);
+// Simulate the behavior of mixed-schema flag of MongoDB versions without SERVER-91195:
+// Only set the legacy time-series mixed-schema flag at the top level of the catalog,
+// and clear the new durable flag which is stored inside the collection options.
+MONGO_FAIL_POINT_DEFINE(simulateLegacyTimeseriesMixedSchemaFlag);
 
 Status checkValidatorCanBeUsedOnNs(const BSONObj& validator,
                                    const NamespaceString& nss,
@@ -517,25 +521,19 @@ void CollectionImpl::_setMetadata(
     if (metadata->options.timeseries) {
         // If present, reuse the storageEngine options to work around the issue described in
         // SERVER-91194.
-        boost::optional<bool> optBackwardsCompatiblesMayHaveMixedSchemaDataFlag =
-            getFlagFromStorageEngineBson(
-                metadata->options.storageEngine,
-                backwards_compatible_collection_options::kTimeseriesBucketsMayHaveMixedSchemaData);
-        if (optBackwardsCompatiblesMayHaveMixedSchemaDataFlag.has_value()) {
+        _shared->_durableTimeseriesBucketsMayHaveMixedSchemaData = getFlagFromStorageEngineBson(
+            metadata->options.storageEngine,
+            backwards_compatible_collection_options::kTimeseriesBucketsMayHaveMixedSchemaData);
+        if (_shared->_durableTimeseriesBucketsMayHaveMixedSchemaData.has_value()) {
             metadata->timeseriesBucketsMayHaveMixedSchemaData =
-                *optBackwardsCompatiblesMayHaveMixedSchemaDataFlag;
+                *_shared->_durableTimeseriesBucketsMayHaveMixedSchemaData;
         }
 
         // If present, reuse storageEngine options to work around the issue described in
         // SERVER-91193
-        boost::optional<bool> optBackwardsCompatibleParametersHaveChangedFlag =
-            getFlagFromStorageEngineBson(
-                metadata->options.storageEngine,
-                backwards_compatible_collection_options::kTimeseriesBucketingParametersHaveChanged);
-        if (optBackwardsCompatibleParametersHaveChangedFlag.has_value()) {
-            metadata->timeseriesBucketingParametersHaveChanged =
-                *optBackwardsCompatibleParametersHaveChangedFlag;
-        }
+        _shared->_durableTimeseriesBucketingParametersHaveChanged = getFlagFromStorageEngineBson(
+            metadata->options.storageEngine,
+            backwards_compatible_collection_options::kTimeseriesBucketingParametersHaveChanged);
     }
     _metadata = std::move(metadata);
 }
@@ -646,7 +644,7 @@ std::pair<Collection::SchemaValidationResult, Status> CollectionImpl::checkValid
     }
 
     try {
-        if (validatorMatchExpr->matchesBSON(document))
+        if (exec::matcher::matchesBSON(validatorMatchExpr, document))
             return {SchemaValidationResult::kPass, Status::OK()};
     } catch (DBException&) {
     };
@@ -848,15 +846,39 @@ bool CollectionImpl::updateWithDamagesSupported() const {
     return _shared->_recordStore->updateWithDamagesSupported();
 }
 
+bool CollectionImpl::isTimeseriesCollection() const {
+    return getTimeseriesOptions().has_value();
+}
+
+bool CollectionImpl::isNewTimeseriesWithoutView() const {
+    return isTimeseriesCollection() && !ns().isTimeseriesBucketsCollection();
+}
+
 bool CollectionImpl::isTemporary() const {
     return _metadata->options.temp;
 }
 
-boost::optional<bool> CollectionImpl::getTimeseriesBucketsMayHaveMixedSchemaData() const {
+timeseries::MixedSchemaBucketsState CollectionImpl::getTimeseriesMixedSchemaBucketsState() const {
     if (!getTimeseriesOptions()) {
-        return boost::none;
+        return timeseries::MixedSchemaBucketsState::Invalid;
     }
-    return _metadata->timeseriesBucketsMayHaveMixedSchemaData;
+
+    if (!_shared->_durableTimeseriesBucketsMayHaveMixedSchemaData.has_value() &&
+        !_metadata->timeseriesBucketsMayHaveMixedSchemaData.has_value()) {
+        return timeseries::MixedSchemaBucketsState::Invalid;
+    }
+
+    if (_shared->_durableTimeseriesBucketsMayHaveMixedSchemaData.value_or(false)) {
+        return timeseries::MixedSchemaBucketsState::DurableMayHaveMixedSchemaBuckets;
+    }
+
+    if (_metadata->timeseriesBucketsMayHaveMixedSchemaData.value_or(false)) {
+        return timeseries::MixedSchemaBucketsState::NonDurableMayHaveMixedSchemaBuckets;
+    }
+
+    invariant(!_shared->_durableTimeseriesBucketsMayHaveMixedSchemaData.value_or(true) ||
+              !_metadata->timeseriesBucketsMayHaveMixedSchemaData.value_or(true));
+    return timeseries::MixedSchemaBucketsState::NoMixedSchemaBuckets;
 }
 
 boost::optional<bool> CollectionImpl::timeseriesBucketingParametersHaveChanged() const {
@@ -876,16 +898,7 @@ boost::optional<bool> CollectionImpl::timeseriesBucketingParametersHaveChanged()
         return true;
     }
 
-    if (!feature_flags::gTSBucketingParametersUnchanged.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        // Pessimistically return true because v7.1+ versions may have missed cloning this catalog
-        // option upon chunk migrations, movePrimary, resharding, initial sync or backup/restore
-        // (SERVER-91193).
-        return true;
-    }
-
-    // Else, fallback to legacy parameter.
-    return _metadata->timeseriesBucketingParametersHaveChanged;
+    return _shared->_durableTimeseriesBucketingParametersHaveChanged;
 }
 
 void CollectionImpl::setTimeseriesBucketingParametersChanged(OperationContext* opCtx,
@@ -895,16 +908,17 @@ void CollectionImpl::setTimeseriesBucketingParametersChanged(OperationContext* o
     // TODO SERVER-92265 properly set this catalog option
     _writeMetadata(opCtx, [&](BSONCollectionCatalogEntry::MetaData& md) {
         // Reuse storageEngine options to work around the issue described in SERVER-91193
-        if (value.has_value()) {
-            md.options.storageEngine = setFlagToStorageEngineBson(
-                md.options.storageEngine,
-                backwards_compatible_collection_options::kTimeseriesBucketingParametersHaveChanged,
-                *value);
-        }
+        _shared->_durableTimeseriesBucketingParametersHaveChanged = value;
+        md.options.storageEngine = setFlagToStorageEngineBson(
+            md.options.storageEngine,
+            backwards_compatible_collection_options::kTimeseriesBucketingParametersHaveChanged,
+            value);
+    });
+}
 
-        // Also update legacy parameter for compatibility when downgrading to older sub-versions
-        // only relying on this option (best-effort because it may be lost due to SERVER-91193)
-        md.timeseriesBucketingParametersHaveChanged = value;
+void CollectionImpl::removeLegacyTimeseriesBucketingParametersHaveChanged(OperationContext* opCtx) {
+    _writeMetadata(opCtx, [&](BSONCollectionCatalogEntry::MetaData& md) {
+        md.timeseriesBucketingParametersHaveChanged_DO_NOT_USE.reset();
     });
 }
 
@@ -923,10 +937,13 @@ void CollectionImpl::setTimeseriesBucketsMayHaveMixedSchemaData(OperationContext
     _writeMetadata(opCtx, [&](BSONCollectionCatalogEntry::MetaData& md) {
         // Reuse storageEngine options to work around the issue described in SERVER-91194
         if (setting.has_value()) {
+            _shared->_durableTimeseriesBucketsMayHaveMixedSchemaData =
+                MONGO_unlikely(simulateLegacyTimeseriesMixedSchemaFlag.shouldFail()) ? boost::none
+                                                                                     : setting;
             md.options.storageEngine = setFlagToStorageEngineBson(
                 md.options.storageEngine,
                 backwards_compatible_collection_options::kTimeseriesBucketsMayHaveMixedSchemaData,
-                *setting);
+                _shared->_durableTimeseriesBucketsMayHaveMixedSchemaData);
         }
 
         // Also update legacy parameter for compatibility when downgrading to older sub-versions
@@ -972,10 +989,12 @@ void CollectionImpl::setRequiresTimeseriesExtendedRangeSupport(OperationContext*
 }
 
 bool CollectionImpl::areTimeseriesBucketsFixed() const {
-    auto tsOptions = getTimeseriesOptions();
-    boost::optional<bool> parametersChanged = timeseriesBucketingParametersHaveChanged();
-    return parametersChanged.has_value() && !parametersChanged.get() && tsOptions &&
-        tsOptions->getBucketMaxSpanSeconds() == tsOptions->getBucketRoundingSeconds();
+    if (const auto& optTsOptions = getTimeseriesOptions(); optTsOptions) {
+        // Assume parameters have changed unless otherwise specified.
+        const auto parametersChanged = timeseriesBucketingParametersHaveChanged().value_or(true);
+        return timeseries::areTimeseriesBucketsFixed(optTsOptions.get(), parametersChanged);
+    }
+    return false;
 }
 
 bool CollectionImpl::isClustered() const {
@@ -1160,6 +1179,19 @@ long long CollectionImpl::numRecords(OperationContext* opCtx) const {
 
 long long CollectionImpl::dataSize(OperationContext* opCtx) const {
     return _shared->_recordStore->dataSize();
+}
+
+int64_t CollectionImpl::sizeOnDisk(OperationContext* opCtx,
+                                   const StorageEngine& storageEngine) const {
+    auto& ru = *shard_role_details::getRecoveryUnit(opCtx);
+
+    int64_t size = getRecordStore()->storageSize(ru);
+    auto it = getIndexCatalog()->getIndexIterator(
+        opCtx, IndexCatalog::InclusionPolicy::kReady | IndexCatalog::InclusionPolicy::kUnfinished);
+    while (it->more()) {
+        size += storageEngine.getIdentSize(ru, it->next()->getIdent());
+    }
+    return size;
 }
 
 bool CollectionImpl::isEmpty(OperationContext* opCtx) const {
@@ -1388,7 +1420,7 @@ Status CollectionImpl::updateValidator(OperationContext* opCtx,
     return Status::OK();
 }
 
-boost::optional<TimeseriesOptions> CollectionImpl::getTimeseriesOptions() const {
+const boost::optional<TimeseriesOptions>& CollectionImpl::getTimeseriesOptions() const {
     return _metadata->options.timeseries;
 }
 
@@ -1584,21 +1616,28 @@ void CollectionImpl::updatePrepareUniqueSetting(OperationContext* opCtx,
     });
 }
 
-std::vector<std::string> CollectionImpl::repairInvalidIndexOptions(OperationContext* opCtx) {
+std::vector<std::string> CollectionImpl::repairInvalidIndexOptions(OperationContext* opCtx,
+                                                                   bool removeDeprecatedFields) {
     std::vector<std::string> indexesWithInvalidOptions;
+    const auto& allowedFieldNames = removeDeprecatedFields
+        ? index_key_validate::kNonDeprecatedAllowedFieldNames
+        : index_key_validate::kAllowedFieldNames;
 
     _writeMetadata(opCtx, [&](BSONCollectionCatalogEntry::MetaData& md) {
         for (auto& index : md.indexes) {
             if (index.isPresent()) {
                 BSONObj oldSpec = index.spec;
 
-                Status status = index_key_validate::validateIndexSpec(opCtx, oldSpec).getStatus();
+                Status status =
+                    index_key_validate::validateIndexSpec(opCtx, oldSpec, allowedFieldNames)
+                        .getStatus();
                 if (status.isOK()) {
                     continue;
                 }
 
                 indexesWithInvalidOptions.push_back(std::string(index.nameStringData()));
-                index.spec = index_key_validate::repairIndexSpec(md.nss, oldSpec);
+                index.spec =
+                    index_key_validate::repairIndexSpec(md.nss, oldSpec, allowedFieldNames);
             }
         }
     });
@@ -1639,7 +1678,8 @@ Status CollectionImpl::prepareForIndexBuild(OperationContext* opCtx,
               str::stream() << "index " << imd.nameStringData()
                             << " is already in current metadata: " << _metadata->toBSON());
 
-    if (getTimeseriesBucketsMayHaveMixedSchemaData() &&
+    if (getTimeseriesMixedSchemaBucketsState().isValid() &&
+        getTimeseriesMixedSchemaBucketsState().mustConsiderMixedSchemaBucketsInReads() &&
         timeseries::doesBucketsIndexIncludeMeasurement(
             opCtx, ns(), *getTimeseriesOptions(), spec->infoObj())) {
         LOGV2(6057502,

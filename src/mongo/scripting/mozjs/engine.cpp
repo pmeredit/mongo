@@ -43,9 +43,6 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/scripting/mozjs/engine.h"
 #include "mongo/scripting/mozjs/engine_gen.h"
@@ -78,8 +75,7 @@ void ScriptEngine::setup(ExecutionEnvironment environment) {
 }
 
 std::string ScriptEngine::getInterpreterVersionString() {
-    using namespace fmt::literals;
-    return "MozJS-{}"_format(MOZJS_MAJOR_VERSION);
+    return fmt::format("MozJS-{}", MOZJS_MAJOR_VERSION);
 }
 
 namespace mozjs {

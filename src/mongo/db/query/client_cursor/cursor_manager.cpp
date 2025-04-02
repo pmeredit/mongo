@@ -50,16 +50,14 @@
 #include "mongo/db/curop.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/query/client_cursor/allocate_cursor_id.h"
 #include "mongo/db/query/client_cursor/cursor_server_params.h"
+#include "mongo/db/query/client_cursor/generic_cursor_utils.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/session/kill_sessions_common.h"
 #include "mongo/db/session/logical_session_cache.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/random.h"
 #include "mongo/stdx/mutex.h"
@@ -206,9 +204,10 @@ StatusWith<ClientCursorPin> CursorManager::pinCursor(
     }
 
     ClientCursor* cursor = it->second;
-    uassert(ErrorCodes::CursorInUse,
-            str::stream() << "cursor id " << id << " is already in use",
-            !cursor->_operationUsingCursor);
+    if (cursor->_operationUsingCursor) {
+        return {ErrorCodes::CursorInUse,
+                str::stream() << "cursor id " << id << " is already in use"};
+    }
     if (cursor->getExecutor()->isMarkedAsKilled()) {
         // This cursor was killed while it was idle.
         Status error = cursor->getExecutor()->getKillStatus();
@@ -476,6 +475,9 @@ Status CursorManager::killCursor(OperationContext* opCtx, CursorId id) {
     }
     auto cursor = it->second;
 
+    generic_cursor::validateKillInTransaction(
+        opCtx, id, cursor->getSessionId(), cursor->getTxnNumber());
+
     if (cursor->_operationUsingCursor) {
         // Rather than removing the cursor directly, kill the operation that's currently using the
         // cursor. It will stop on its own (and remove the cursor) when it sees that it's been
@@ -515,6 +517,18 @@ Status CursorManager::checkAuthForKillCursors(OperationContext* opCtx, CursorId 
     // reading from it because we hold the partition's lock.
     AuthorizationSession* as = AuthorizationSession::get(opCtx->getClient());
     return auth::checkAuthForKillCursors(as, cursor->nss(), cursor->getAuthenticatedUser());
+}
+
+Status CursorManager::checkAuthForReleaseMemory(OperationContext* opCtx, CursorId id) {
+    auto lockedPartition = _cursorMap->lockOnePartition(id);
+    auto it = lockedPartition->find(id);
+    if (it == lockedPartition->end()) {
+        return {ErrorCodes::CursorNotFound, str::stream() << "cursor id " << id << " not found"};
+    }
+
+    ClientCursor* cursor = it->second;
+    AuthorizationSession* as = AuthorizationSession::get(opCtx->getClient());
+    return auth::checkAuthForReleaseMemory(as, cursor->nss());
 }
 
 }  // namespace mongo

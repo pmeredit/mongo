@@ -47,8 +47,7 @@
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/db/repl/member_config.h"
 #include "mongo/db/repl/member_id.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 
@@ -86,9 +85,7 @@ TEST(MemberConfig, ParseFailsWithIllegalFieldName) {
 
 TEST(MemberConfig, ParseFailsWithMissingIdField) {
     ReplSetTagConfig tagConfig;
-    ASSERT_THROWS_CODE(MemberConfig(BSON("host"
-                                         << "localhost:12345"),
-                                    &tagConfig),
+    ASSERT_THROWS_CODE(MemberConfig(BSON("host" << "localhost:12345"), &tagConfig),
                        AssertionException,
                        ErrorCodes::IDLFailedToParse);
 }
@@ -125,15 +122,12 @@ TEST(MemberConfig, ParseMemberConfigId) {
 
 TEST(MemberConfig, ParseFailsWithBadIdField) {
     ReplSetTagConfig tagConfig;
-    ASSERT_THROWS_CODE(MemberConfig(BSON("host"
-                                         << "localhost:12345"),
-                                    &tagConfig),
+    ASSERT_THROWS_CODE(MemberConfig(BSON("host" << "localhost:12345"), &tagConfig),
                        AssertionException,
                        ErrorCodes::IDLFailedToParse);
-    ASSERT_THROWS(MemberConfig(BSON("_id"
-                                    << "0"
-                                    << "host"
-                                    << "localhost:12345"),
+    ASSERT_THROWS(MemberConfig(BSON("_id" << "0"
+                                          << "host"
+                                          << "localhost:12345"),
                                &tagConfig),
                   ExceptionFor<ErrorCodes::TypeMismatch>);
     ASSERT_THROWS(MemberConfig(BSON("_id" << Date_t() << "host"
@@ -793,10 +787,9 @@ TEST(MemberConfig, ParseTags) {
     MemberConfig mc(BSON("_id" << 0 << "host"
                                << "h"
                                << "tags"
-                               << BSON("k1"
-                                       << "v1"
-                                       << "k2"
-                                       << "v2")),
+                               << BSON("k1" << "v1"
+                                            << "k2"
+                                            << "v2")),
                     &tagConfig);
     ASSERT_TRUE(mc.hasTags());
     ASSERT_EQUALS(7U, mc.getNumTags());
@@ -843,10 +836,9 @@ TEST(MemberConfig, ParseHorizonFields) {
     MemberConfig mc(BSON("_id" << 0 << "host"
                                << "h"
                                << "horizons"
-                               << BSON("alpha"
-                                       << "a.host:43"
-                                       << "beta"
-                                       << "b.host:256")),
+                               << BSON("alpha" << "a.host:43"
+                                               << "beta"
+                                               << "b.host:256")),
                     &tagConfig);
 
     ASSERT_EQUALS(std::size_t{1}, mc.getHorizonMappings().count("alpha"));
@@ -870,11 +862,10 @@ TEST(MemberConfig, DuplicateHorizonNames) {
         MemberConfig mem(BSON("_id" << 0 << "host"
                                     << "h"
                                     << "horizons"
-                                    << BSON("goofyRepeatedHorizonName"
-                                            << "a.host:43"
-                                            << "goofyRepeatedHorizonName"
+                                    << BSON("goofyRepeatedHorizonName" << "a.host:43"
+                                                                       << "goofyRepeatedHorizonName"
 
-                                            << "b.host:256")),
+                                                                       << "b.host:256")),
                          &tagConfig);
         ASSERT_TRUE(false);  // Should not succeed.
     } catch (const ExceptionFor<ErrorCodes::BadValue>& ex) {
@@ -906,10 +897,9 @@ TEST(MemberConfig, DuplicateHorizonHostAndPort) {
         MemberConfig mem(BSON("_id" << 0 << "host"
                                     << "uniquehostname.example.com:42"
                                     << "horizons"
-                                    << BSON("alpha"
-                                            << "duplicatedhostname.example.com:42"
-                                            << "beta"
-                                            << "duplicatedhostname.example.com:42")),
+                                    << BSON("alpha" << "duplicatedhostname.example.com:42"
+                                                    << "beta"
+                                                    << "duplicatedhostname.example.com:42")),
                          &tagConfig);
         ASSERT_TRUE(false);  // Should not succeed.
     } catch (const ExceptionFor<ErrorCodes::BadValue>& ex) {
@@ -924,10 +914,9 @@ TEST(MemberConfig, DuplicateHorizonHostAndPort) {
         MemberConfig mem(BSON("_id" << 0 << "host"
                                     << "duplicatedhostname.example.com:42"
                                     << "horizons"
-                                    << BSON("alpha"
-                                            << "uniquehostname.example.com:42"
-                                            << "beta"
-                                            << "duplicatedhostname.example.com:42")),
+                                    << BSON("alpha" << "uniquehostname.example.com:42"
+                                                    << "beta"
+                                                    << "duplicatedhostname.example.com:42")),
                          &tagConfig);
         ASSERT_TRUE(false);  // Should not succeed.
     } catch (const ExceptionFor<ErrorCodes::BadValue>& ex) {
@@ -941,10 +930,9 @@ TEST(MemberConfig, DuplicateHorizonHostAndPort) {
         MemberConfig mem(BSON("_id" << 0 << "host"
                                     << "duplicatedhostname.example.com:42"
                                     << "horizons"
-                                    << BSON("alpha"
-                                            << "uniquehostname.example.com:43"
-                                            << "beta"
-                                            << "duplicatedhostname.example.com:43")),
+                                    << BSON("alpha" << "uniquehostname.example.com:43"
+                                                    << "beta"
+                                                    << "duplicatedhostname.example.com:43")),
                          &tagConfig);
         ASSERT_TRUE(false);  // Should not succeed.
     } catch (const ExceptionFor<ErrorCodes::BadValue>& ex) {
@@ -958,10 +946,9 @@ TEST(MemberConfig, DuplicateHorizonHostAndPort) {
         MemberConfig mem(BSON("_id" << 0 << "host"
                                     << "uniquehostname.example.com:42"
                                     << "horizons"
-                                    << BSON("alpha"
-                                            << "duplicatedhostname.example.com:42"
-                                            << "beta"
-                                            << "duplicatedhostname.example.com:43")),
+                                    << BSON("alpha" << "duplicatedhostname.example.com:42"
+                                                    << "beta"
+                                                    << "duplicatedhostname.example.com:43")),
                          &tagConfig);
         ASSERT_TRUE(false);  // Should not succeed.
     } catch (const ExceptionFor<ErrorCodes::BadValue>& ex) {
@@ -989,9 +976,7 @@ TEST(MemberConfig, HorizonFieldWithEmptyStringIsRejected) {
     try {
         MemberConfig mem(BSON("_id" << 0 << "host"
                                     << "h"
-                                    << "horizons"
-                                    << BSON(""
-                                            << "example.com:42")),
+                                    << "horizons" << BSON("" << "example.com:42")),
                          &tagConfig);
         ASSERT_TRUE(false);  // Never should get here
     } catch (const ExceptionFor<ErrorCodes::BadValue>& ex) {

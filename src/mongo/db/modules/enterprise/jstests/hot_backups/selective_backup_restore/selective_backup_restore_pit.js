@@ -214,8 +214,9 @@ const backupDbPath = primary.dbpath + "/backup";
 resetDbpath(backupDbPath);
 mkdir(backupDbPath + "/journal");
 
-// Open a backup cursor on the checkpoint.
-let backupCursor = openBackupCursor(primary.getDB("admin"));
+// Opt out of taking the default checkpoint when we open the backup cursor as this test relies on
+// backing up data from the previous checkpoint.
+let backupCursor = openBackupCursor(primary.getDB("admin"), {takeCheckpoint: false});
 
 // Print the metadata document.
 assert(backupCursor.hasNext());

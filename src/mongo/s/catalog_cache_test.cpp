@@ -58,14 +58,12 @@
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/catalog_cache_loader_mock.h"
 #include "mongo/s/chunk_version.h"
-#include "mongo/s/index_version.h"
 #include "mongo/s/shard_cannot_refresh_due_to_locks_held_exception.h"
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/uuid.h"
@@ -167,16 +165,9 @@ protected:
         auto coll = makeCollectionType(version);
         const auto scopedCollProv = scopedCollectionProvider(coll);
         const auto scopedChunksProv = scopedChunksProvider(makeChunks(version.placementVersion()));
-        auto future = launchAsync([&] {
-            onCommand([&](const executor::RemoteCommandRequest& request) {
-                return makeCollectionAndIndexesAggregationResponse(coll, std::vector<BSONObj>());
-            });
-        });
-
         const auto swCri =
             _catalogCache->getCollectionRoutingInfo(operationContext(), coll.getNss());
         ASSERT_OK(swCri.getStatus());
-        future.default_timed_get();
         return coll;
     }
 
@@ -205,20 +196,7 @@ protected:
                             Date_t::now(),
                             kUUID,
                             kShardKeyPattern.getKeyPattern()};
-        if (collPlacementVersion.indexVersion()) {
-            coll.setIndexVersion(CollectionIndexes(kUUID, *collPlacementVersion.indexVersion()));
-        }
         return coll;
-    }
-
-    BSONObj makeCollectionAndIndexesAggregationResponse(const CollectionType& coll,
-                                                        const std::vector<BSONObj>& indexes) {
-        BSONObj obj = coll.toBSON();
-        BSONObjBuilder indexField;
-        indexField.append("indexes", indexes);
-        BSONObj newObj = obj.addField(indexField.obj().firstElement());
-        return CursorResponse(CollectionType::ConfigNS, CursorId{0}, {newObj})
-            .toBSON(CursorResponse::ResponseType::InitialResponse);
     }
 
     const NamespaceString kNss =
@@ -229,8 +207,6 @@ protected:
     const int kDummyPort{12345};
     const HostAndPort kConfigHostAndPort{"DummyConfig", kDummyPort};
     const std::vector<ShardId> kShards{{"0"}, {"1"}};
-    RAIIServerParameterControllerForTest featureFlagController{
-        "featureFlagGlobalIndexesShardingCatalog", true};
 
     std::shared_ptr<CatalogCacheLoaderMock> _catalogCacheLoader;
     std::unique_ptr<CatalogCache> _catalogCache;
@@ -291,18 +267,54 @@ TEST_F(CatalogCacheTest, GetDatabaseDrop) {
     ASSERT_EQUALS(ErrorCodes::NamespaceNotFound, swDatabase.getStatus());
 }
 
-TEST_F(CatalogCacheTest, InvalidateSingleDbOnShardRemoval) {
+TEST_F(CatalogCacheTest, AdvanceTimeInStoreForSingleDbOnShardRemoval) {
+    // Put initial metadata in the local cache.
     const auto dbVersion = DatabaseVersion(UUID::gen(), Timestamp(1, 1));
     loadDatabases({DatabaseType(kDbName, kShards[0], dbVersion)});
 
-    _catalogCache->invalidateEntriesThatReferenceShard(kShards[0]);
+    _catalogCache->advanceTimeInStoreForEntriesThatReferenceShard(kShards[0]);
+
+    // Put the new metadata in the loader.
     _catalogCacheLoader->setDatabaseRefreshReturnValue(
         DatabaseType(kDbName, kShards[1], dbVersion));
+
+    // Refresh the local cache.
     const auto swDatabase = _catalogCache->getDatabase(operationContext(), kDbName);
 
     ASSERT_OK(swDatabase.getStatus());
-    auto cachedDb = swDatabase.getValue();
+    const auto cachedDb = swDatabase.getValue();
     ASSERT_EQ(cachedDb->getPrimary(), kShards[1]);
+}
+
+TEST_F(CatalogCacheTest, AdvanceTimeInStoreForSingleCollectionOnShardRemoval) {
+    // Put initial metadata in the local cache.
+    const auto initDbVer = DatabaseVersion(UUID::gen(), Timestamp(1, 1));
+    const auto initDbEntry = DatabaseType(kNss.dbName(), kShards[0], initDbVer);
+    loadDatabases({initDbEntry});
+    const auto initCollVer =
+        ShardVersionFactory::make(ChunkVersion({OID::gen(), Timestamp(1, 1)}, {1, 0}),
+                                  boost::optional<CollectionIndexes>(boost::none));
+    loadCollection(initCollVer);
+
+    _catalogCache->advanceTimeInStoreForEntriesThatReferenceShard(kShards[0]);
+
+    // Put the new metadata in the loader.
+    const auto newDbEntry = initDbEntry;
+    auto newCollVer = initCollVer;
+    newCollVer.placementVersion().incMajor();
+    const auto newCollEntry = makeCollectionType(newCollVer);
+    const auto newChunkEntries = makeChunks(newCollVer.placementVersion());
+
+    _catalogCacheLoader->setDatabaseRefreshReturnValue(newDbEntry);
+    _catalogCacheLoader->setCollectionRefreshReturnValue(newCollEntry);
+    _catalogCacheLoader->setChunkRefreshReturnValue(newChunkEntries);
+
+    // Refresh the local cache.
+    const auto swColl = _catalogCache->getCollectionRoutingInfo(operationContext(), kNss);
+
+    ASSERT_OK(swColl.getStatus());
+    auto cachedColl = swColl.getValue();
+    ASSERT_EQ(newCollVer, cachedColl.getCollectionVersion());
 }
 
 TEST_F(CatalogCacheTest, OnStaleDatabaseVersionNoVersion) {
@@ -449,18 +461,12 @@ TEST_F(CatalogCacheTest, TimeseriesFieldsAreProperlyPropagatedOnCC) {
 
         const auto scopedCollProv = scopedCollectionProvider(coll);
         const auto scopedChunksProv = scopedChunksProvider(chunks);
-        auto future = launchAsync([&] {
-            onCommand([&](const executor::RemoteCommandRequest& request) {
-                return makeCollectionAndIndexesAggregationResponse(coll, std::vector<BSONObj>());
-            });
-        });
 
         const auto swCri =
             _catalogCache->getCollectionRoutingInfo(operationContext(), coll.getNss());
         ASSERT_OK(swCri.getStatus());
-        future.default_timed_get();
 
-        const auto& chunkManager = swCri.getValue().cm;
+        const auto& chunkManager = swCri.getValue().getChunkManager();
         ASSERT(chunkManager.getTimeseriesFields().has_value());
         ASSERT(chunkManager.getTimeseriesFields()->getGranularity() ==
                BucketGranularityEnum::Seconds);
@@ -480,19 +486,13 @@ TEST_F(CatalogCacheTest, TimeseriesFieldsAreProperlyPropagatedOnCC) {
 
         const auto scopedCollProv = scopedCollectionProvider(coll);
         const auto scopedChunksProv = scopedChunksProvider(std::vector{lastChunk});
-        auto future = launchAsync([&] {
-            onCommand([&](const executor::RemoteCommandRequest& request) {
-                return makeCollectionAndIndexesAggregationResponse(coll, std::vector<BSONObj>());
-            });
-        });
 
         _catalogCache->onStaleCollectionVersion(coll.getNss(), boost::none /* wantedVersion */);
         const auto swCri =
             _catalogCache->getCollectionRoutingInfo(operationContext(), coll.getNss());
         ASSERT_OK(swCri.getStatus());
-        future.default_timed_get();
 
-        const auto& chunkManager = swCri.getValue().cm;
+        const auto& chunkManager = swCri.getValue().getChunkManager();
         ASSERT(chunkManager.getTimeseriesFields().has_value());
         ASSERT(chunkManager.getTimeseriesFields()->getGranularity() ==
                BucketGranularityEnum::Hours);
@@ -518,58 +518,6 @@ TEST_F(CatalogCacheTest, LookupCollectionWithInvalidOptions) {
     ASSERT_EQUALS(swCri.getStatus(), ErrorCodes::InvalidOptions);
 }
 
-
-TEST_F(CatalogCacheTest, OnStaleShardVersionWithGreaterIndexVersion) {
-    const auto dbVersion = DatabaseVersion(UUID::gen(), Timestamp(1, 1));
-    const CollectionGeneration gen(OID::gen(), Timestamp(1, 1));
-    const auto cachedCollVersion = ShardVersionFactory::make(
-        ChunkVersion(gen, {1, 0}), boost::optional<CollectionIndexes>(boost::none));
-    const auto wantedCollVersion = ShardVersionFactory::make(
-        ChunkVersion(gen, {1, 0}), CollectionIndexes(kUUID, Timestamp(1, 0)));
-
-    loadDatabases({DatabaseType(kNss.dbName(), kShards[0], dbVersion)});
-    CollectionType coll = loadCollection(cachedCollVersion);
-    _catalogCache->onStaleCollectionVersion(kNss, wantedCollVersion);
-
-    auto future = launchAsync([&] {
-        onCommand([&](const executor::RemoteCommandRequest& request) {
-            coll.setIndexVersion({coll.getUuid(), Timestamp(1, 0)});
-            return makeCollectionAndIndexesAggregationResponse(
-                coll,
-                {IndexCatalogType("x_1", BSON("x" << 1), BSONObj(), Timestamp(1, 0), coll.getUuid())
-                     .toBSON()});
-        });
-    });
-
-    const auto routingInfo = _catalogCache->getCollectionRoutingInfo(operationContext(), kNss);
-    future.default_timed_get();
-}
-
-TEST_F(CatalogCacheTest, OnStaleShardVersionIndexVersionBumpNotNone) {
-    const auto dbVersion = DatabaseVersion(UUID::gen(), Timestamp(1, 1));
-    const CollectionGeneration gen(OID::gen(), Timestamp(1, 1));
-    const auto cachedCollVersion = ShardVersionFactory::make(
-        ChunkVersion(gen, {1, 0}), CollectionIndexes(kUUID, Timestamp(1, 0)));
-    const auto wantedCollVersion = ShardVersionFactory::make(
-        ChunkVersion(gen, {1, 0}), CollectionIndexes(kUUID, Timestamp(2, 0)));
-
-    loadDatabases({DatabaseType(kNss.dbName(), kShards[0], dbVersion)});
-    CollectionType coll = loadCollection(cachedCollVersion);
-    _catalogCache->onStaleCollectionVersion(kNss, wantedCollVersion);
-
-    auto future = launchAsync([&] {
-        onCommand([&](const executor::RemoteCommandRequest& request) {
-            coll.setIndexVersion({coll.getUuid(), Timestamp(2, 0)});
-            return makeCollectionAndIndexesAggregationResponse(
-                coll,
-                {IndexCatalogType("x_1", BSON("x" << 1), BSONObj(), Timestamp(2, 0), coll.getUuid())
-                     .toBSON()});
-        });
-    });
-
-    const auto routingInfo = _catalogCache->getCollectionRoutingInfo(operationContext(), kNss);
-    future.default_timed_get();
-}
 
 TEST_F(CatalogCacheTest, PeekCollectionCacheVersion) {
     // Nothing cached, then peek returns boost::none. Does not attempt to refresh.

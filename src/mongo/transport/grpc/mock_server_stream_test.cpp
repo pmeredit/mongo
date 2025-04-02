@@ -44,7 +44,6 @@
 #include "mongo/transport/grpc/mock_server_stream.h"
 #include "mongo/transport/grpc/mock_stub.h"
 #include "mongo/transport/grpc/test_fixtures.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/thread_assertion_monitor.h"
 #include "mongo/unittest/unittest.h"
@@ -61,15 +60,13 @@ namespace mongo::transport::grpc {
 template <class Base>
 class MockServerStreamBase : public Base {
 public:
-    virtual void setUp() override {
+    void setUp() override {
         Base::setUp();
 
         MockStubTestFixtures fixtures;
         _reactor = std::make_shared<GRPCReactor>();
-        _fixtures = fixtures.makeStreamTestFixtures(
-            Base::getServiceContext()->getFastClockSource()->now() + getTimeout(),
-            _clientMetadata,
-            _reactor);
+        _deadline = Base::getServiceContext()->getFastClockSource()->now() + getTimeout();
+        _fixtures = fixtures.makeStreamTestFixtures(_deadline, _clientMetadata, _reactor);
     }
 
     virtual Milliseconds getTimeout() const {
@@ -130,8 +127,11 @@ public:
 
             getServerContext().tryCancel();
 
-            ASSERT_TRUE(opDone.waitFor(opCtx.get(), Milliseconds(25)))
-                << "operation thread should be finished after cancel";
+            // Operation thread should finish after cancel.
+            opDone.get(opCtx.get());
+
+            // Ensure that the operation finished via cancellation rather than the timeout.
+            ASSERT_LT(Base::getServiceContext()->getFastClockSource()->now(), _deadline);
 
             opThread.join();
         });
@@ -142,6 +142,7 @@ private:
     const Message _clientFirstMessage = makeUniqueMessage();
     std::unique_ptr<MockStreamTestFixtures> _fixtures;
     std::shared_ptr<GRPCReactor> _reactor;
+    Date_t _deadline;
 };
 
 class MockServerStreamTest : public MockServerStreamBase<ServiceContextTest> {};

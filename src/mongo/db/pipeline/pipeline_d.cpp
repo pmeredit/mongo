@@ -137,7 +137,6 @@
 #include "mongo/db/record_id.h"
 #include "mongo/db/s/collection_sharding_state.h"
 #include "mongo/db/s/scoped_collection_metadata.h"
-#include "mongo/db/server_options.h"
 #include "mongo/db/server_parameter.h"
 #include "mongo/db/server_parameter_with_storage.h"
 #include "mongo/db/storage/record_store.h"
@@ -250,7 +249,7 @@ boost::optional<StringData> extractGeoNearFieldFromIndexesByType(OperationContex
  */
 StringData extractGeoNearFieldFromIndexes(OperationContext* opCtx,
                                           const CollectionPtr& collection) {
-    invariant(collection);
+    tassert(9911911, "", collection);
 
     // Look for relevant 2d index first. If none, look for relevant 2dsphere index.
     auto geoNearField = extractGeoNearFieldFromIndexesByType(opCtx, collection, IndexNames::GEO_2D);
@@ -385,7 +384,7 @@ SortAndUnpackInPipeline findUnpackAndSort(const Pipeline::SourceContainer& sourc
 }  // namespace
 
 StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRandomCursorExecutor(
-    const CollectionPtr& coll,
+    const VariantCollectionPtrOrAcquisition& coll,
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     Pipeline* pipeline,
     long long sampleSize,
@@ -397,7 +396,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
     // locks ourselves in this function because double-locking forces any PlanExecutor we create to
     // adopt an INTERRUPT_ONLY policy.
     invariant(opCtx->isLockFreeReadsOp() ||
-              shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(coll->ns(), MODE_IS));
+              shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(coll.nss(), MODE_IS));
 
     auto* clusterParameters = ServerParameterSet::getClusterParameterSet();
     auto* randomCursorSampleRatioParam =
@@ -431,7 +430,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
     }
 
     // Attempt to get a random cursor from the RecordStore.
-    auto rsRandCursor = coll->getRecordStore()->getRandomCursor(opCtx);
+    auto rsRandCursor = coll.getRecordStore()->getRandomCursor(opCtx);
     if (!rsRandCursor) {
         // The storage engine has no random cursor support.
         return nullptr;
@@ -440,14 +439,14 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
     // Build a MultiIteratorStage and pass it the random-sampling RecordCursor.
     auto ws = std::make_unique<WorkingSet>();
     std::unique_ptr<PlanStage> root =
-        std::make_unique<MultiIteratorStage>(expCtx.get(), ws.get(), &coll);
+        std::make_unique<MultiIteratorStage>(expCtx.get(), ws.get(), coll);
     static_cast<MultiIteratorStage*>(root.get())->addIterator(std::move(rsRandCursor));
 
     TrialStage* trialStage = nullptr;
 
     const auto [isSharded, optOwnershipFilter] = [&]() {
         auto scopedCss =
-            CollectionShardingState::assertCollectionLockedAndAcquire(opCtx, coll->ns());
+            CollectionShardingState::assertCollectionLockedAndAcquire(opCtx, coll.nss());
         const bool isSharded = scopedCss->getCollectionDescription(opCtx).isSharded();
         boost::optional<ScopedCollectionFilter> optFilter = isSharded
             ? boost::optional<ScopedCollectionFilter>(scopedCss->getOwnershipFilter(
@@ -526,7 +525,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
             gTimeseriesBucketMaxCount);
 
         std::unique_ptr<PlanStage> collScanPlan = std::make_unique<CollectionScan>(
-            expCtx.get(), &coll, CollectionScanParams{}, ws.get(), nullptr);
+            expCtx.get(), coll, CollectionScanParams{}, ws.get(), nullptr);
 
         if (isSharded) {
             // In the sharded case, we need to add a shard-filterer stage to the backup plan to
@@ -578,7 +577,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
             expCtx.get(), *optOwnershipFilter, ws.get(), std::move(root));
         // The backup plan is SHARDING_FILTER-COLLSCAN.
         std::unique_ptr<PlanStage> collScanPlan = std::make_unique<CollectionScan>(
-            expCtx.get(), &coll, CollectionScanParams{}, ws.get(), nullptr);
+            expCtx.get(), coll, CollectionScanParams{}, ws.get(), nullptr);
         collScanPlan = std::make_unique<ShardFilterStage>(
             expCtx.get(), *optOwnershipFilter, ws.get(), std::move(collScanPlan));
         // Place a TRIAL stage at the root of the plan tree, and pass it the trial and backup plans.
@@ -594,10 +593,10 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
     constexpr auto yieldPolicy = PlanYieldPolicy::YieldPolicy::YIELD_AUTO;
     if (trialStage) {
         auto classicTrialPolicy = makeClassicYieldPolicy(expCtx->getOperationContext(),
-                                                         coll->ns(),
+                                                         coll.nss(),
                                                          static_cast<PlanStage*>(trialStage),
                                                          yieldPolicy,
-                                                         VariantCollectionPtrOrAcquisition{&coll});
+                                                         coll);
         if (auto status = trialStage->pickBestPlan(classicTrialPolicy.get()); !status.isOK()) {
             return status;
         }
@@ -611,7 +610,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
         if (isStorageOptimizedSample) {
             // Replace $sample stage with $sampleFromRandomCursor stage.
             pipeline->popFront();
-            std::string idString = coll->ns().isOplog() ? "ts" : "_id";
+            std::string idString = coll.nss().isOplog() ? "ts" : "_id";
             pipeline->addInitialSource(DocumentSourceSampleFromRandomCursor::create(
                 expCtx, sampleSize, idString, numRecords));
         }
@@ -635,23 +634,23 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PipelineD::createRan
     return plan_executor_factory::make(expCtx,
                                        std::move(ws),
                                        std::move(root),
-                                       &coll,
+                                       coll,
                                        yieldPolicy,
                                        QueryPlannerParams::RETURN_OWNED_DATA,
-                                       coll->ns());
+                                       coll.nss());
 }
 
 PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorSample(
     DocumentSourceSample* sampleStage,
     DocumentSourceInternalUnpackBucket* unpackBucketStage,
-    const CollectionPtr& collection,
+    const VariantCollectionPtrOrAcquisition& collection,
     Pipeline* pipeline) {
     tassert(5422105, "sampleStage cannot be a nullptr", sampleStage);
 
     auto expCtx = pipeline->getContext();
 
     const long long sampleSize = sampleStage->getSampleSize();
-    const long long numRecords = collection->getRecordStore()->numRecords();
+    const long long numRecords = collection.getRecordStore()->numRecords();
 
     boost::optional<timeseries::BucketUnpacker> bucketUnpacker;
     if (unpackBucketStage) {
@@ -667,16 +666,21 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorSample(
         // case where a DocumentSourceCursor has been created (yet hasn't been put into a
         // Pipeline) and an exception is thrown, an invariant will trigger in the
         // DocumentSourceCursor. This is a design flaw in DocumentSourceCursor.
-        auto deps = pipeline->getDependencies(DepsTracker::kAllMetadata);
+        auto deps = pipeline->getDependencies(DepsTracker::kNoMetadata);
         const auto cursorType = deps.hasNoRequirements()
             ? DocumentSourceCursor::CursorType::kEmptyDocuments
             : DocumentSourceCursor::CursorType::kRegular;
         attachExecutorCallback =
             [cursorType](const MultipleCollectionAccessor& collections,
                          std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
-                         Pipeline* pipeline) {
-                auto cursor = DocumentSourceCursor::create(
-                    collections, std::move(exec), pipeline->getContext(), cursorType);
+                         Pipeline* pipeline,
+                         boost::intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>
+                             transactionResourcesStasher) {
+                auto cursor = DocumentSourceCursor::create(collections,
+                                                           std::move(exec),
+                                                           transactionResourcesStasher,
+                                                           pipeline->getContext(),
+                                                           cursorType);
                 pipeline->addInitialSource(std::move(cursor));
             };
         return {std::move(exec), std::move(attachExecutorCallback), {}};
@@ -708,12 +712,14 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutor(
         // Try to inspect if the DocumentSourceSample or a DocumentSourceInternalUnpackBucket stage
         // can be optimized for sampling backed by a storage engine supplied random cursor.
         auto&& [sampleStage, unpackBucketStage] = extractSampleUnpackBucket(sources);
-        const auto& collection = collections.getMainCollection();
 
         // Optimize an initial $sample stage if possible.
-        if (collection && sampleStage) {
+        if (collections.hasMainCollection() && sampleStage) {
             auto queryExecutors =
-                buildInnerQueryExecutorSample(sampleStage, unpackBucketStage, collection, pipeline);
+                buildInnerQueryExecutorSample(sampleStage,
+                                              unpackBucketStage,
+                                              collections.getMainCollectionPtrOrAcquisition(),
+                                              pipeline);
             if (queryExecutors.mainExecutor) {
                 return queryExecutors;
             }
@@ -739,12 +745,14 @@ void PipelineD::attachInnerQueryExecutorToPipeline(
     const MultipleCollectionAccessor& collections,
     PipelineD::AttachExecutorCallback attachExecutorCallback,
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
-    Pipeline* pipeline) {
+    Pipeline* pipeline,
+    const boost::intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>&
+        transactionResourcesStasher) {
     // If the pipeline doesn't need a $cursor stage, there will be no callback function and
     // PlanExecutor provided in the 'attachExecutorCallback' object, so we don't need to do
     // anything.
     if (attachExecutorCallback && exec) {
-        attachExecutorCallback(collections, std::move(exec), pipeline);
+        attachExecutorCallback(collections, std::move(exec), pipeline, transactionResourcesStasher);
     }
 }
 
@@ -753,12 +761,15 @@ void PipelineD::buildAndAttachInnerQueryExecutorToPipeline(
     const NamespaceString& nss,
     const AggregateCommandRequest* aggRequest,
     Pipeline* pipeline,
+    const boost::intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>&
+        transactionResourcesStasher,
     ExecShardFilterPolicy shardFilterPolicy) {
 
     auto [executor, callback, additionalExec] =
         buildInnerQueryExecutor(collections, nss, aggRequest, pipeline, shardFilterPolicy);
     tassert(7856010, "Unexpected additional executors", additionalExec.empty());
-    attachInnerQueryExecutorToPipeline(collections, callback, std::move(executor), pipeline);
+    attachInnerQueryExecutorToPipeline(
+        collections, callback, std::move(executor), pipeline, transactionResourcesStasher);
 }
 
 namespace {
@@ -923,7 +934,7 @@ StatusWith<std::unique_ptr<CanonicalQuery>> createCanonicalQuery(
     const intrusive_ptr<ExpressionContext>& expCtx,
     const NamespaceString& nss,
     Pipeline* pipeline,
-    QueryMetadataBitSet unavailableMetadata,
+    QueryMetadataBitSet availableMetadata,
     const BSONObj& queryObj,
     boost::intrusive_ptr<DocumentSourceMatch> leadingMatch,
     const boost::optional<SortPattern>& sortPattern,
@@ -988,10 +999,19 @@ StatusWith<std::unique_ptr<CanonicalQuery>> createCanonicalQuery(
     // The end of last-minute pipeline optimizations.
     // =============================================================================================
 
+    // Before performing dependency analysis, we must validate the meta dependencies. This is a bit
+    // redundant since calling Pipeline::getDependencies() also performs some $meta validation.
+    // However, as of SERVER-99153, calling Pipeline::validateMetaDependencies() performs _more_
+    // validation.
+    // TODO SERVER-40900 $meta validation should occur before optimization, at a consistent point
+    // for all queries.
+    // TODO SERVER-100902 Calling Pipeline::getDependencies() should perform no validation.
+    pipeline->validateMetaDependencies(availableMetadata);
+
     // Perform dependency analysis. In order to minimize the dependency set, we only analyze the
     // stages that remain in the pipeline after pushdown. In particular, any dependencies for a
     // $match or $sort pushed down into the query layer will not be reflected here.
-    auto deps = pipeline->getDependencies(unavailableMetadata);
+    auto deps = pipeline->getDependencies(availableMetadata);
     *shouldProduceEmptyDocs = deps.hasNoRequirements();
 
     BSONObj projObj;
@@ -1112,7 +1132,7 @@ tryPrepareDistinctExecutor(const intrusive_ptr<ExpressionContext>& expCtx,
                            const MultipleCollectionAccessor& collections,
                            const NamespaceString& nss,
                            Pipeline* pipeline,
-                           QueryMetadataBitSet unavailableMetadata,
+                           QueryMetadataBitSet availableMetadata,
                            const BSONObj& queryObj,
                            boost::intrusive_ptr<DocumentSourceMatch> leadingMatch,
                            const AggregateCommandRequest* aggRequest,
@@ -1141,7 +1161,7 @@ tryPrepareDistinctExecutor(const intrusive_ptr<ExpressionContext>& expCtx,
     auto swCq = createCanonicalQuery(expCtx,
                                      nss,
                                      pipeline,
-                                     unavailableMetadata,
+                                     availableMetadata,
                                      queryObj,
                                      leadingMatch,
                                      std::move(sortPatternForCanonicalQuery),
@@ -1290,7 +1310,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecutor
     const MultipleCollectionAccessor& collections,
     const NamespaceString& nss,
     Pipeline* pipeline,
-    QueryMetadataBitSet unavailableMetadata,
+    QueryMetadataBitSet availableMetadata,
     const BSONObj& queryObj,
     boost::intrusive_ptr<DocumentSourceMatch> leadingMatch,
     const AggregateCommandRequest* aggRequest,
@@ -1305,7 +1325,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecutor
                                                  collections,
                                                  nss,
                                                  pipeline,
-                                                 unavailableMetadata,
+                                                 availableMetadata,
                                                  queryObj,
                                                  leadingMatch,
                                                  aggRequest,
@@ -1365,7 +1385,6 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecutor
                                     plannerOpts,
                                     pipeline,
                                     expCtx->getNeedsMerge(),
-                                    unavailableMetadata,
                                     std::move(traversalPreference),
                                     shardFilterPolicy);
 
@@ -1392,7 +1411,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecutor
     // While constructing the executor, some stages might have been lowered from the 'pipeline' into
     // the executor, so we need to recheck whether the executor's layer can still produce an empty
     // document.
-    *shouldProduceEmptyDocs = pipeline->getDependencies(unavailableMetadata).hasNoRequirements();
+    *shouldProduceEmptyDocs = pipeline->getDependencies(availableMetadata).hasNoRequirements();
     if (executor.isOK()) {
         executor.getValue()->setReturnOwnedData(!*shouldProduceEmptyDocs);
     }
@@ -1683,15 +1702,18 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorSearch(
         // The $search is pushed down into SBE executor.
         if (auto cursor = search_helpers::getSearchMetadataCursor(searchStage)) {
             // Create a yield policy for metadata cursor.
+            // This pipeline does not hold any ShardRole resources, so pass an empty
+            // MultipleCollectionAccessor.
+            MultipleCollectionAccessor emptyMca;
             auto metadataYieldPolicy =
                 PlanYieldPolicyRemoteCursor::make(expCtx->getOperationContext(),
                                                   PlanYieldPolicy::YieldPolicy::YIELD_AUTO,
-                                                  collections,
+                                                  emptyMca,
                                                   nss);
             cursor->updateYieldPolicy(std::move(metadataYieldPolicy));
 
             additionalExecutors.push_back(uassertStatusOK(getSearchMetadataExecutorSBE(
-                expCtx->getOperationContext(), collections, nss, *cq, std::move(cursor))));
+                expCtx->getOperationContext(), nss, *expCtx, std::move(cursor))));
         }
     }
     return {std::move(executor), callback, std::move(additionalExecutors)};
@@ -1711,7 +1733,10 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorGeneric(
     auto expCtx = pipeline->getContext();
 
     // Look for an initial match. This works whether we got an initial query or not. If not, it
-    // results in a "{}" query, which will be what we want in that case.
+    // results in a "{}" query, which will be what we want in that case. Note that if there is a
+    // leading $match, 'queryObj' will hold a reference to that $match's MatchExpression backing
+    // BSON. This gets passed into the FindCommandRequest we construct later through
+    // 'prepareExecutor', and this is how we keep the MatchExpression's backing BSON alive.
     const BSONObj queryObj = pipeline->getInitialQuery();
     boost::intrusive_ptr<DocumentSourceMatch> leadingMatch;
     bool isTextQuery = false;
@@ -1737,9 +1762,7 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorGeneric(
         }
     }
 
-    auto unavailableMetadata = isTextQuery
-        ? DepsTracker::kDefaultUnavailableMetadata & ~DepsTracker::kOnlyTextScore
-        : DepsTracker::kDefaultUnavailableMetadata;
+    auto availableMetadata = isTextQuery ? DepsTracker::kOnlyTextScore : DepsTracker::kNoMetadata;
 
     // If this is a query on a time-series collection we might need to keep it fully classic to
     // ensure no perf regressions until we implement the corresponding scenarios fully in SBE.
@@ -1794,7 +1817,7 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorGeneric(
                                                 collections,
                                                 nss,
                                                 pipeline,
-                                                unavailableMetadata,
+                                                availableMetadata,
                                                 queryObj,
                                                 std::move(leadingMatch),
                                                 aggRequest,
@@ -1834,9 +1857,15 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorGeneric(
     auto attachExecutorCallback = [cursorType, resumeTrackingType](
                                       const MultipleCollectionAccessor& collections,
                                       std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
-                                      Pipeline* pipeline) {
-        auto cursor = DocumentSourceCursor::create(
-            collections, std::move(exec), pipeline->getContext(), cursorType, resumeTrackingType);
+                                      Pipeline* pipeline,
+                                      intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>
+                                          transactionResourcesStasher) {
+        auto cursor = DocumentSourceCursor::create(collections,
+                                                   std::move(exec),
+                                                   transactionResourcesStasher,
+                                                   pipeline->getContext(),
+                                                   cursorType,
+                                                   resumeTrackingType);
         pipeline->addInitialSource(std::move(cursor));
     };
     return {std::move(exec), std::move(attachExecutorCallback), {}};
@@ -1857,7 +1886,7 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorGeoNear(
     Pipeline::SourceContainer& sources = pipeline->_sources;
     auto expCtx = pipeline->getContext();
     const auto geoNearStage = dynamic_cast<DocumentSourceGeoNear*>(sources.front().get());
-    invariant(geoNearStage);
+    tassert(9911900, "", geoNearStage);
 
     // If the user specified a "key" field, use that field to satisfy the "near" query. Otherwise,
     // look for a geo-indexed field in 'collection' that can.
@@ -1872,34 +1901,36 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutorGeoNear(
     BSONObj fullQuery = geoNearStage->asNearQuery(nearFieldName);
 
     bool shouldProduceEmptyDocs = false;
-    auto exec = uassertStatusOK(
-        prepareExecutor(expCtx,
-                        collections,
-                        nss,
-                        pipeline,
-                        DepsTracker::kDefaultUnavailableMetadata & ~DepsTracker::kAllGeoNearData,
-                        fullQuery,
-                        nullptr,
-                        aggRequest,
-                        Pipeline::kGeoNearMatcherFeatures,
-                        &shouldProduceEmptyDocs,
-                        false /* timeseriesBoundedSortOptimization */));
+    auto exec = uassertStatusOK(prepareExecutor(expCtx,
+                                                collections,
+                                                nss,
+                                                pipeline,
+                                                DepsTracker::kAllGeoNearData,
+                                                fullQuery,
+                                                nullptr,
+                                                aggRequest,
+                                                Pipeline::kGeoNearMatcherFeatures,
+                                                &shouldProduceEmptyDocs,
+                                                false /* timeseriesBoundedSortOptimization */));
 
-    auto attachExecutorCallback = [distanceField = geoNearStage->getDistanceField(),
-                                   locationField = geoNearStage->getLocationField(),
-                                   distanceMultiplier =
-                                       geoNearStage->getDistanceMultiplier().value_or(1.0)](
-                                      const MultipleCollectionAccessor& collections,
-                                      std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
-                                      Pipeline* pipeline) {
-        auto cursor = DocumentSourceGeoNearCursor::create(collections,
-                                                          std::move(exec),
-                                                          pipeline->getContext(),
-                                                          distanceField,
-                                                          locationField,
-                                                          distanceMultiplier);
-        pipeline->addInitialSource(std::move(cursor));
-    };
+    auto attachExecutorCallback =
+        [distanceField = geoNearStage->getDistanceField(),
+         locationField = geoNearStage->getLocationField(),
+         distanceMultiplier = geoNearStage->getDistanceMultiplier().value_or(1.0)](
+            const MultipleCollectionAccessor& collections,
+            std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
+            Pipeline* pipeline,
+            boost::intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>
+                transactionResourcesStasher) {
+            auto cursor = DocumentSourceGeoNearCursor::create(collections,
+                                                              std::move(exec),
+                                                              transactionResourcesStasher,
+                                                              pipeline->getContext(),
+                                                              distanceField,
+                                                              locationField,
+                                                              distanceMultiplier);
+            pipeline->addInitialSource(std::move(cursor));
+        };
     // Remove the initial $geoNear; it will be replaced by $geoNearCursor.
     sources.pop_front();
     return {std::move(exec), std::move(attachExecutorCallback), {}};
@@ -2111,8 +2142,7 @@ bool PipelineD::isSearchPresentAndEligibleForSbe(const Pipeline* pipeline) {
     auto firstStageIsSearch = search_helpers::isSearchPipeline(pipeline) ||
         search_helpers::isSearchMetaPipeline(pipeline);
 
-    auto searchInSbeEnabled = feature_flags::gFeatureFlagSearchInSbe.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+    auto searchInSbeEnabled = feature_flags::gFeatureFlagSearchInSbe.isEnabled();
     auto forceClassicEngine =
         expCtx->getQueryKnobConfiguration().getInternalQueryFrameworkControlForOp() ==
         QueryFrameworkControlEnum::kForceClassicEngine;

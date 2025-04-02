@@ -11,9 +11,9 @@
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_from_accumulator_quantile.h"
+#include "mongo/db/pipeline/expression_sharding.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
-#include "mongo/s/commands/sharding_expressions.h"
 #include "query_analysis.h"
 
 namespace mongo {
@@ -30,7 +30,7 @@ namespace aggregate_expression_intender {
  * Indicates whether or not mark() actually inserted any intent-to-encrypt markers, since they are
  * not always necessary.
  */
-enum class [[nodiscard]] Intention : bool{Marked = true, NotMarked = false};
+enum class [[nodiscard]] Intention : bool { Marked = true, NotMarked = false };
 
 inline Intention operator||(Intention a, Intention b) {
     if (a == Intention::Marked || b == Intention::Marked) {
@@ -95,6 +95,12 @@ struct Subtree {
         // specific ExpressionFieldPath we know is allowed to add an extra layer of defense.
         ExpressionFieldPath* temporarilyPermittedEncryptedFieldPath{nullptr};
 
+        // Stores encryptionPlaceholderContext to generate correct placeholders when rewriting
+        // literals. Default is kComparison while text search may use specific placeholder contexts
+        // such as kTextPrefixComparison.
+        EncryptionPlaceholderContext encryptionPlaceholderContext =
+            EncryptionPlaceholderContext::kComparison;
+
         // The following structs are state types. Each Compared Subtree starts in the Unkown state
         // and transitions into the NotEncrypted or Encrypted state.
 
@@ -147,7 +153,8 @@ std::string toString() {
 
 void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             const ResolvedEncryptionInfo& encryptedType,
-                            ExpressionConstant* literal);
+                            ExpressionConstant* literal,
+                            EncryptionPlaceholderContext placeholderContext);
 
 void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& subtreeStack);
 
@@ -155,7 +162,6 @@ template <typename Out>
 void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     // It's really easy to push and forget to pop (enter but not exit). As a layer of safety we
     // verify that you are popping off the stack the type you expect to be popping.
-    using namespace fmt::literals;
     visit(
         [](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;
@@ -165,8 +171,9 @@ void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtre
                 // This is a workaround, once we upgrade to a version of gcc which has a fix for
                 // that bug (e.g. gcc 9.1), we can move 'msg' inline.
                 std::string msg =
-                    "exiting a subtree of an unexpected type. Expected {}, found {}"_format(
-                        toString<Out>(), toString(output));
+                    fmt::format("exiting a subtree of an unexpected type. Expected {}, found {}",
+                                toString<Out>(),
+                                toString(output));
                 invariant(false, msg);
             }
         },
@@ -178,12 +185,15 @@ void exitSubtreeNoReplacement(const ExpressionContext& expCtx, std::stack<Subtre
 template <typename Out>
 Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     bool literalRewritten = false;
-    if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output))
+    if (auto compared = get_if<Subtree::Compared>(&subtreeStack.top().output)) {
         if (auto encrypted = get_if<Subtree::Compared::Encrypted>(&compared->state)) {
-            for (auto&& literal : compared->literals)
-                rewriteLiteralToIntent(expCtx, encrypted->type, literal);
+            for (auto&& literal : compared->literals) {
+                rewriteLiteralToIntent(
+                    expCtx, encrypted->type, literal, compared->encryptionPlaceholderContext);
+            }
             literalRewritten = compared->literals.size() > 0;
         }
+    }
     exitSubtreeNoReplacement<Out>(expCtx, subtreeStack);
     return literalRewritten ? Intention::Marked : Intention::NotMarked;
 }
@@ -361,9 +371,6 @@ protected:
     void visit(ExpressionCeil*) final {
         ensureNotEncryptedEnterEval("a ceiling calculation", subtreeStack);
     }
-    void visit(ExpressionCoerceToBool*) final {
-        ensureNotEncryptedEnterEval("a coercion to boolean", subtreeStack);
-    }
     void visit(ExpressionCompare* compare) override {
         switch (compare->getOp()) {
             case ExpressionCompare::EQ:
@@ -537,6 +544,32 @@ protected:
     }
     void visit(ExpressionInternalFLEBetween*) final {
         ensureNotEncryptedEnterEval("a fle between match", subtreeStack);
+    }
+    void visit(ExpressionEncStrStartsWith* encStrStartsWith) override {
+        uassert(10112201,
+                "$encStrStartsWith can only be used with FLE2",
+                schema.parsedFrom == FleVersion::kFle2);
+        tassert(10112205,
+                "$encStrStartsWith encountered in not-allowed context.",
+                fieldRefSupported == FLE2FieldRefExpr::allowed);
+        ensureNotEncrypted("a fle $encStrStartsWith", subtreeStack);
+        auto* fp = dynamic_cast<ExpressionFieldPath*>(encStrStartsWith->getChildren()[0].get());
+        Subtree::Compared comparedSubtree;
+        // We must correctly mark permitted encrypted field paths as we must pass a check for
+        // ExpressionFieldPaths during the postVisit, but the text search predicate will not be
+        // replaced with a placeholder in the base implementation.
+        comparedSubtree.temporarilyPermittedEncryptedFieldPath = fp;
+        enterSubtree(comparedSubtree, subtreeStack);
+    }
+    void visit(ExpressionEncStrEndsWith*) final {
+        // TODO SERVER-101214: Implement preVisit of $encStrEndsWith.
+        uasserted(10120902, "$encStrEndsWith is not yet implemented.");
+        ensureNotEncryptedEnterEval("a fle $encStrEndsWith", subtreeStack);
+    }
+    void visit(ExpressionEncStrContains*) final {
+        // TODO SERVER-102089: Implement preVisit of $encStrContains.
+        uasserted(10208802, "$encStrContains is not yet implemented.");
+        ensureNotEncryptedEnterEval("a fle $encStrContains", subtreeStack);
     }
     void visit(ExpressionInternalRawSortKey*) final {
         ensureNotEncryptedEnterEval("a raw sort key metadata access", subtreeStack);
@@ -828,6 +861,9 @@ protected:
         ensureNotEncryptedEnterEval("a key string value generation computing operation",
                                     subtreeStack);
     }
+    void visit(ExpressionUUID*) final {
+        ensureNotEncryptedEnterEval("a $uuid expression", subtreeStack);
+    }
 
     bool isEncryptedFieldPath(ExpressionFieldPath* fieldPathExpr) {
         if (fieldPathExpr) {
@@ -869,7 +905,6 @@ protected:
     void visit(ExpressionArrayToObject*) override {}
     void visit(ExpressionBsonSize*) override {}
     void visit(ExpressionCeil*) override {}
-    void visit(ExpressionCoerceToBool*) override {}
     void visit(ExpressionCompare*) override {}
     void visit(ExpressionConcat*) override {}
     void visit(ExpressionConcatArrays*) override {}
@@ -929,6 +964,15 @@ protected:
     void visit(ExpressionLog10*) override {}
     void visit(ExpressionInternalFLEEqual*) override {}
     void visit(ExpressionInternalFLEBetween*) override {}
+    void visit(ExpressionEncStrStartsWith*) override {}
+    void visit(ExpressionEncStrEndsWith*) override {
+        // TODO SERVER-101214: Implement inVisit of $encStrEndsWith.
+        uasserted(10120903, "$encStrEndsWith is not yet implemented.");
+    }
+    void visit(ExpressionEncStrContains*) override {
+        // TODO SERVER-102089: Implement inVisit of $encStrContains.
+        uasserted(10208803, "$encStrContains is not yet implemented.");
+    }
     void visit(ExpressionInternalRawSortKey*) override {}
     void visit(ExpressionMap*) override {}
     void visit(ExpressionMeta*) override {}
@@ -1041,6 +1085,7 @@ protected:
     void visit(ExpressionInternalOwningShard*) override {}
     void visit(ExpressionInternalIndexKey*) override {}
     void visit(ExpressionInternalKeyStringValue*) override {}
+    void visit(ExpressionUUID*) override {}
 
 
 public:
@@ -1127,9 +1172,6 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCeil*) override {
-        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
-    }
-    void visit(ExpressionCoerceToBool*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCompare* compare) override {
@@ -1261,6 +1303,17 @@ protected:
     }
     void visit(ExpressionInternalFLEBetween*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionEncStrStartsWith*) override {
+        exitSubtreeNoReplacement<Subtree::Compared>(expCtx, subtreeStack);
+    }
+    void visit(ExpressionEncStrEndsWith*) override {
+        // TODO SERVER-101214: Implement postVisit of $encStrEndsWith.
+        uasserted(10120904, "$encStrEndsWith is not yet implemented.");
+    }
+    void visit(ExpressionEncStrContains*) override {
+        // TODO SERVER-102089: Implement postVisit of $encStrContains.
+        uasserted(10208804, "$encStrContains is not yet implemented.");
     }
     void visit(ExpressionInternalRawSortKey*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
@@ -1536,6 +1589,9 @@ protected:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionInternalKeyStringValue*) override {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionUUID*) override {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
 

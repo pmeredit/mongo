@@ -39,10 +39,8 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/rpc/metadata/egress_metadata_hook_list.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 
 using std::string;
 
@@ -107,9 +105,7 @@ TEST(EgressMetadataHookListTest, SingleHook) {
 
     BSONObjBuilder builder;
     ASSERT_OK(hookList.writeRequestMetadata(nullptr, &builder));
-    ASSERT_BSONOBJ_EQ(BSON("h1"
-                           << ""),
-                      builder.obj());
+    ASSERT_BSONOBJ_EQ(BSON("h1" << ""), builder.obj());
 
     BSONObj testObj(BSON("x" << 1));
     ASSERT_OK(hookList.readReplyMetadata(nullptr, testObj));
@@ -128,10 +124,9 @@ TEST(EgressMetadataHookListTest, MultipleHooks) {
 
     BSONObjBuilder builder;
     ASSERT_OK(hookList.writeRequestMetadata(nullptr, &builder));
-    ASSERT_BSONOBJ_EQ(BSON("foo"
-                           << ""
-                           << "bar"
-                           << ""),
+    ASSERT_BSONOBJ_EQ(BSON("foo" << ""
+                                 << "bar"
+                                 << ""),
                       builder.obj());
 
     BSONObj testObj(BSON("x" << 1));

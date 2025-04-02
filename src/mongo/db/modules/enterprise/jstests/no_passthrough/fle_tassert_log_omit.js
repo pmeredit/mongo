@@ -63,11 +63,12 @@ function runTest(conn, restartFn) {
         assert(diagnostics.length > 0, "Failed to find relevant ScopedDebugInfo log line");
 
         // Log lines should not contain the command contents. There may be multiple ScopedDebugInfo
-        // log lines, and that each one can contain >1 commandDiagnostic entries.
-        assert(diagnostics.every(line => line.includes("commandDiagnostics: omitted") &&
-                                     !line.includes("opDescription")),
-               "Found a log line containing command diagnostics, when none were expected " +
-                   tojson(diagnostics));
+        // log lines, and each one can contain multiple entries depending on the available printers.
+        assert(
+            diagnostics.every(line => line.includes("curOpDiagnostics: omitted") &&
+                                  !line.includes("opDescription") && !line.includes("winningPlan")),
+            "Found a log line containing command diagnostics, when none were expected " +
+                tojson(diagnostics));
 
         // Each test case restarts the required node to clear the previous logs.
         restartFn();
@@ -76,8 +77,11 @@ function runTest(conn, restartFn) {
     // Avoid running these test cases on mongos, since the required failpoints do not exist there.
     if (!FixtureHelpers.isMongos(db)) {
         // GetMore
-        const {cursor} =
-            assert.commandWorked(client.getDB().erunCommand({find: collName, batchSize: 0}));
+        // Insert a matching document so that the cursor is not null
+        assert.commandWorked(
+            client.getDB().erunCommand({insert: collName, documents: [query], ordered: false}));
+        const {cursor} = assert.commandWorked(
+            client.getDB().erunCommand({find: collName, filter: query, batchSize: 0}));
         runEncryptedCommandAndCheckLog({
             failpoint: planExecutorAlwaysFails,
             description: "getMore",

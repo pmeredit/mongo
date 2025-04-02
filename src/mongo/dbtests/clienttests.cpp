@@ -53,12 +53,11 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/find_command.h"
-#include "mongo/db/query/query_settings/query_settings_manager.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/net/hostandport.h"
 
@@ -73,7 +72,9 @@ public:
         DBDirectClient db(&opCtx);
 
         db.dropDatabase(DatabaseName::createDatabaseName_forTest(boost::none, "test"));
-        query_settings::QuerySettingsManager::create(opCtx.getServiceContext(), {}, {});
+
+        // Initialize the query settings.
+        query_settings::initializeForTest(opCtx.getServiceContext());
     }
 
     virtual ~Base() {
@@ -141,11 +142,11 @@ public:
         db.insert(nss(), BSON("x" << 1 << "y" << 2));
         db.insert(nss(), BSON("x" << 2 << "y" << 2));
 
-        ASSERT(ctx.getCollection());
+        ASSERT(ctx.getCollection().exists());
         // Helper to refetch the IndexCatalog from the catalog in order to see any changes made to
         // it after a Collection write inside 'createIndex'.
         auto indexCatalog = [&ctx]() -> const IndexCatalog* {
-            return ctx.getCollection()->getIndexCatalog();
+            return ctx.getCollection().getCollectionPtr()->getIndexCatalog();
         };
 
         const bool includeBuildUUIDs = false;
@@ -201,10 +202,7 @@ public:
             NamespaceString::createNamespaceString_forTest("unittests.clienttests.create");
         db.createCollection(nss);
         BSONObj info;
-        ASSERT(db.runCommand(nss.dbName(),
-                             BSON("collstats"
-                                  << "clienttests.create"),
-                             info));
+        ASSERT(db.runCommand(nss.dbName(), BSON("collstats" << "clienttests.create"), info));
     }
 };
 

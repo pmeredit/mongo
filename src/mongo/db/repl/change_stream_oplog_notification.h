@@ -44,46 +44,13 @@
 namespace mongo {
 
 /*
-CommitPhase is used to implement a double oplog entry protocol to support the change stream.
-A first notification is written to the oplog to notify the operation is about to be committed.
-A second notification will eventually confirm the operation is committed or aborted.
-This is necessary to make sure the change stream  will have a cursor open against any shards owning
-data for the nss before the operation is committed (and therefore any insert or update is
-performed on those shards).
-- kPrepare: Before the commit. Not reported to the user.
-- kSuccessful: After the commit. Reported to the user.
-- kAborted: After the abort. Not reported to the user.
-*/
-enum class CommitPhase {
-    kSuccessful,
-    kAborted,
-    kPrepare,
-};
-
-/*
  * This function writes a no-op oplog entry on shardCollection event.
  * TODO SERVER-66333: move all other notifyChangeStreams* functions here.
  */
-void notifyChangeStreamsOnShardCollection(
-    OperationContext* opCtx,
-    const NamespaceString& nss,
-    const UUID& uuid,
-    BSONObj cmd,
-    CommitPhase commitPhase,
-    const boost::optional<std::set<ShardId>>& shardIds = boost::none);
-
-/**
- * Writes a no-op oplog entry to match the addition of a database to the sharding catalog;
- * such database may have been either created or imported into the cluster (as part of an
- * addShard operation).
- * @param dbName the name of the database being added
- * @param primaryShard the primary shard ID assigned to the database being added (it may differ from
- * the shard ID of the RS where this method gets invoked)
- * @param isImported false when dbName is added to the sharding catalog by a database creation
- * request, true when the addition is the result of an addShard operation.
- */
-void notifyChangeStreamsOnDatabaseAdded(OperationContext* opCtx,
-                                        const DatabasesAdded& databasesAddedNotification);
+void notifyChangeStreamsOnShardCollection(OperationContext* opCtx,
+                                          const NamespaceString& nss,
+                                          const UUID& uuid,
+                                          BSONObj cmd);
 
 /**
  * Writes a no-op oplog entry on movePrimary event.

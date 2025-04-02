@@ -43,15 +43,12 @@
 #include <boost/optional/optional.hpp>
 
 #include "mongo/base/string_data.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/represent_as.h"
 
 namespace mongo {
 
 namespace {
-
-using namespace fmt::literals;
 
 // Char values
 const char kCharMax = std::numeric_limits<char>::max();
@@ -370,9 +367,12 @@ void integerToDecimal128() {
         ASSERT(d);
         if (!d->isEqual(Decimal128(std::to_string(n)))) {
             FAIL(
-                "Failed expectation, representAs<Decimal128>({}) == Decimal128({}),"
-                " but !Decimal128({}).isEqual(Decimal128(std::to_string({}))"_format(
-                    n, d->toString(), d->toString(), n));
+                fmt::format("Failed expectation, representAs<Decimal128>({}) == Decimal128({}),"
+                            " but !Decimal128({}).isEqual(Decimal128(std::to_string({}))",
+                            n,
+                            d->toString(),
+                            d->toString(),
+                            n));
         }
     }
 }

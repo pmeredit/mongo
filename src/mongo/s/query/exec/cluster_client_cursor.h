@@ -34,7 +34,6 @@
 #include "mongo/client/read_preference.h"
 #include "mongo/db/api_parameters.h"
 #include "mongo/db/auth/user_name.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/session/logical_session_id.h"
 #include "mongo/s/query/exec/cluster_client_cursor_params.h"
 #include "mongo/s/query/exec/cluster_query_result.h"
@@ -60,7 +59,7 @@ class StatusWith;
  */
 class ClusterClientCursor {
 public:
-    virtual ~ClusterClientCursor(){};
+    virtual ~ClusterClientCursor() = default;
 
     /**
      * Returns the next available result document (along with an ok status). May block waiting
@@ -72,6 +71,8 @@ public:
      * A non-ok status is returned in case of any error.
      */
     virtual StatusWith<ClusterQueryResult> next() = 0;
+
+    virtual Status releaseMemory() = 0;
 
     /**
      * Must be called before destruction to abandon a not-yet-exhausted cursor. If next() has
@@ -148,21 +149,21 @@ public:
      * Queued documents are returned in FIFO order. The queued results are exhausted before
      * generating further results from the underlying mongos query stages.
      *
-     * 'obj' must be owned BSON.
+     * The BSONObj in the 'ClusterQueryResult' must be owned BSON.
      */
-    virtual void queueResult(const ClusterQueryResult& result) = 0;
+    virtual void queueResult(ClusterQueryResult&& result) = 0;
 
     /**
      * Returns whether or not all the remote cursors underlying this cursor have been exhausted.
      */
-    virtual bool remotesExhausted() = 0;
+    virtual bool remotesExhausted() const = 0;
 
     /**
      * Returns whether or not the cursor has been killed. Repeated calls to kill() can occur in
      * ~ClusterClientCursorGuard() if the cursor was killed while the cursor was checked out or in
      * use with the guard.
      */
-    virtual bool hasBeenKilled() = 0;
+    virtual bool hasBeenKilled() const = 0;
 
     /**
      * Sets the maxTimeMS value that the cursor should forward with any internally issued getMore

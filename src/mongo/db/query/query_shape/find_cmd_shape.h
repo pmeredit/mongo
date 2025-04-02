@@ -31,7 +31,6 @@
 
 #include "mongo/db/query/query_shape/let_shape_component.h"
 #include "mongo/db/query/query_shape/query_shape.h"
-#include "mongo/db/query/query_shape/shape_helpers.h"
 
 namespace mongo::query_shape {
 
@@ -135,7 +134,4 @@ H AbslHashValue(H h, const FindCmdShapeComponents::HasField& hasField) {
     return H::combine(
         std::move(h), hasField.projection, hasField.sort, hasField.limit, hasField.skip);
 }
-static_assert(sizeof(FindCmdShape) == sizeof(Shape) + sizeof(FindCmdShapeComponents),
-              "If the class' members have changed, this assert and the extraSize() calculation may "
-              "need to be updated with a new value.");
 }  // namespace mongo::query_shape

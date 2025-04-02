@@ -55,8 +55,6 @@
 #include "mongo/db/vector_clock_mutable.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
@@ -99,6 +97,7 @@ MigrationCoordinator::MigrationCoordinator(MigrationSessionId sessionId,
                                            ChunkRange range,
                                            ChunkVersion preMigrationChunkVersion,
                                            const KeyPattern& shardKeyPattern,
+                                           ChunkVersion currentCollectionVersion,
                                            bool waitForDelete)
     : _migrationInfo(UUID::gen(),
                      std::move(sessionId),
@@ -111,6 +110,7 @@ MigrationCoordinator::MigrationCoordinator(MigrationSessionId sessionId,
                      std::move(range),
                      std::move(preMigrationChunkVersion)),
       _shardKeyPattern(shardKeyPattern),
+      _shardVersionPriorToTheMigration(currentCollectionVersion),
       _waitForDelete(waitForDelete) {}
 
 MigrationCoordinator::MigrationCoordinator(const MigrationCoordinatorDocument& doc)
@@ -155,6 +155,7 @@ void MigrationCoordinator::startMigration(OperationContext* opCtx) {
     donorDeletionTask.setKeyPattern(*_shardKeyPattern);
     const auto currentTime = VectorClock::get(opCtx)->getTime();
     donorDeletionTask.setTimestamp(currentTime.clusterTime().asTimestamp());
+    donorDeletionTask.setPreMigrationShardVersion(_shardVersionPriorToTheMigration);
     rangedeletionutil::persistRangeDeletionTaskLocally(
         opCtx, donorDeletionTask, WriteConcerns::kMajorityWriteConcernShardingTimeout);
 }
@@ -286,9 +287,7 @@ SharedSemiFuture<void> MigrationCoordinator::_commitMigrationOnDonorAndRecipient
 
 
     auto waitForActiveQueriesToComplete = [&]() {
-        AutoGetCollection autoColl(opCtx, deletionTask.getNss(), MODE_IS);
-        return CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(
-                   opCtx, deletionTask.getNss())
+        return CollectionShardingRuntime::acquireShared(opCtx, deletionTask.getNss())
             ->getOngoingQueriesCompletionFuture(deletionTask.getCollectionUuid(),
                                                 deletionTask.getRange())
             .semi();

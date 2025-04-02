@@ -36,7 +36,6 @@
 #include "mongo/executor/network_interface.h"
 #include "mongo/executor/network_interface_thread_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/functional.h"
 
@@ -156,7 +155,7 @@ void NetworkInterfaceThreadPool::_consumeTasks(stdx::unique_lock<stdx::mutex> lk
     invariant(ret.isOK() || ErrorCodes::isShutdownError(ret.code()));
 }
 
-void NetworkInterfaceThreadPool::_consumeTasksInline(stdx::unique_lock<stdx::mutex> lk) noexcept {
+void NetworkInterfaceThreadPool::_consumeTasksInline(stdx::unique_lock<stdx::mutex> lk) {
     _consumeState = ConsumeState::kConsuming;
     const ScopeGuard consumingTasksGuard([&] { _consumeState = ConsumeState::kNeutral; });
 

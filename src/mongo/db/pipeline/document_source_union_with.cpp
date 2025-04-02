@@ -53,8 +53,6 @@
 #include "mongo/db/views/resolved_view.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/str.h"
@@ -123,6 +121,17 @@ DocumentSourceUnionWith::DocumentSourceUnionWith(
           expCtx,
           buildPipelineFromViewDefinition(
               expCtx, expCtx->getResolvedNamespace(unionNss), pipeline, unionNss)) {
+    // Save state regarding the resolved namespace in case we are running explain with
+    // 'executionStats' or 'allPlansExecution' on a $unionWith with a view on a mongod. Otherwise we
+    // wouldn't be able to see details about the execution of the view pipeline in the explain
+    // result.
+    ResolvedNamespace resolvedNs = expCtx->getResolvedNamespace(unionNss);
+    if (expCtx->getExplain() &&
+        expCtx->getExplain().value() != explain::VerbosityEnum::kQueryPlanner &&
+        !resolvedNs.pipeline.empty()) {
+        _resolvedNsForView = resolvedNs;
+    }
+
     _userNss = std::move(unionNss);
     _userPipeline = std::move(pipeline);
 }
@@ -149,7 +158,6 @@ void validateUnionWithCollectionlessPipeline(
                 "first"_attr = firstStageBson);
     uassert(ErrorCodes::FailedToParse,
             errMsg,
-            // TODO SERVER-59628 replace with constraints check
             (firstStageBson.hasField(DocumentSourceDocuments::kStageName) ||
              firstStageBson.hasField(DocumentSourceQueue::kStageName))
 
@@ -164,7 +172,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceUnionWith::clone(
 }
 
 std::unique_ptr<DocumentSourceUnionWith::LiteParsed> DocumentSourceUnionWith::LiteParsed::parse(
-    const NamespaceString& nss, const BSONElement& spec) {
+    const NamespaceString& nss, const BSONElement& spec, const LiteParserOptions& options) {
     uassert(ErrorCodes::FailedToParse,
             str::stream()
                 << "the $unionWith stage specification must be an object or string, but found "
@@ -268,8 +276,8 @@ DocumentSource::GetNextResult DocumentSourceUnionWith::doGetNext() {
     }
 
     if (_executionState == ExecutionProgress::kStartingSubPipeline) {
-        // Since the subpipeline will be executed again for explain, we store the starting
-        // state of the variables to reset them later.
+        // Since the subpipeline will be executed again for explain, we store the starting state of
+        // the variables to reset them later.
         if (pExpCtx->getExplain()) {
             auto expCtx = _pipeline->getContext();
             _variables = expCtx->variables;
@@ -395,7 +403,7 @@ void DocumentSourceUnionWith::doDispose() {
 Value DocumentSourceUnionWith::serialize(const SerializationOptions& opts) const {
     auto collectionless =
         _pipeline->getContext()->getNamespaceString().isCollectionlessAggregateNS();
-    if (opts.verbosity) {
+    if (opts.isSerializingForExplain()) {
         // There are several different possible states depending on the explain verbosity as well as
         // the other stages in the pipeline:
         //  * If verbosity is queryPlanner, then the sub-pipeline should be untouched and we can
@@ -424,7 +432,21 @@ Value DocumentSourceUnionWith::serialize(const SerializationOptions& opts) const
             // TODO SERVER-94227 we probably don't need to do any validation as part of this parsing
             // pass?
             _variables.copyToExpCtx(_variablesParseState, _pipeline->getContext().get());
-            pipeCopy = Pipeline::parse(recoveredPipeline, _pipeline->getContext()).release();
+
+            // Resolve the view definition, if there is one.
+            if (_resolvedNsForView.has_value()) {
+                // This takes care of the case where this code is executing on a mongod and we have
+                // the full catalog information, so we can resolve the view.
+                pipeCopy =
+                    buildPipelineFromViewDefinition(
+                        pExpCtx,
+                        ResolvedNamespace{_resolvedNsForView->ns, _resolvedNsForView->pipeline},
+                        std::move(recoveredPipeline),
+                        _resolvedNsForView->ns)
+                        .release();
+            } else {
+                pipeCopy = Pipeline::parse(recoveredPipeline, _pipeline->getContext()).release();
+            }
         } else {
             // The plan does not require reading from the sub-pipeline, so just include the
             // serialization in the explain output.
@@ -462,6 +484,8 @@ Value DocumentSourceUnionWith::serialize(const SerializationOptions& opts) const
                 return preparePipelineAndExplain(pipeCopy);
             } catch (const ExceptionFor<ErrorCodes::CommandOnShardedViewNotSupportedOnMongod>& e) {
                 logShardedViewFound(e);
+                // This takes care of the case where this code is executing on mongos and we had to
+                // get the view pipeline from a shard.
                 auto resolvedPipeline = buildPipelineFromViewDefinition(
                     pExpCtx,
                     ResolvedNamespace{e->getNamespace(), e->getPipeline()},
@@ -486,8 +510,7 @@ Value DocumentSourceUnionWith::serialize(const SerializationOptions& opts) const
         // special case here if we are serializing the stage for that purpose. Otherwise, we should
         // return the current (optimized) pipeline for introspection with explain, etc.
         auto serializedPipeline = [&]() -> std::vector<BSONObj> {
-            if (opts.transformIdentifiers ||
-                opts.literalPolicy != LiteralSerializationPolicy::kUnchanged) {
+            if (opts.isSerializingForQueryStats()) {
                 // TODO SERVER-94227 we don't need to do any validation as part of this parsing
                 // pass.
                 return Pipeline::parse(_userPipeline, _pipeline->getContext())
@@ -510,10 +533,7 @@ DepsTracker::State DocumentSourceUnionWith::getDependencies(DepsTracker* deps) c
         return DepsTracker::State::SEE_NEXT;
     }
 
-    // We only need to know what variable dependencies exist in the subpipeline. So without
-    // knowledge of what metadata is in fact unavailable, we "lie" and say that all metadata
-    // is available to avoid tripping any assertions.
-    DepsTracker subDeps(DepsTracker::kNoMetadata);
+    DepsTracker subDeps;
     // Get the subpipeline dependencies.
     for (auto&& source : _pipeline->getSources()) {
         source->getDependencies(&subDeps);

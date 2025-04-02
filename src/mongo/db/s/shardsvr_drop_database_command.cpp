@@ -36,13 +36,9 @@
 #include <boost/optional/optional.hpp>
 
 #include "mongo/base/checked_cast.h"
-#include "mongo/base/error_codes.h"
-#include "mongo/db/auth/action_type.h"
-#include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/resource_pattern.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/commands/feature_compatibility_version.h"
 #include "mongo/db/curop.h"
-#include "mongo/db/database_name.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
@@ -50,15 +46,12 @@
 #include "mongo/db/s/drop_database_coordinator.h"
 #include "mongo/db/s/drop_database_coordinator_document_gen.h"
 #include "mongo/db/s/operation_sharding_state.h"
-#include "mongo/db/s/sharding_ddl_coordinator.h"
 #include "mongo/db/s/sharding_ddl_coordinator_gen.h"
 #include "mongo/db/s/sharding_ddl_coordinator_service.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/rpc/op_msg.h"
 #include "mongo/s/request_types/sharded_ddl_commands_gen.h"
+#include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future.h"
@@ -105,29 +98,54 @@ public:
                 DatabaseProfileSettings::get(opCtx->getServiceContext())
                     .getDatabaseProfileLevel(ns().dbName()));
 
-            DropDatabaseCoordinatorDocument coordinatorDoc;
-            coordinatorDoc.setShardingDDLCoordinatorMetadata(
-                {{ns(), DDLCoordinatorTypeEnum::kDropDatabase}});
-            auto service = ShardingDDLCoordinatorService::getService(opCtx);
             const auto requestVersion =
                 OperationShardingState::get(opCtx).getDbVersion(ns().dbName());
-            auto dropDatabaseCoordinator = [&]() {
+            const auto service = ShardingDDLCoordinatorService::getService(opCtx);
+
+            const auto dropDatabaseCoordinatorFuture = [&] {
                 while (true) {
-                    auto currentCoordinator = checked_pointer_cast<DropDatabaseCoordinator>(
-                        service->getOrCreateInstance(opCtx, coordinatorDoc.toBSON()));
-                    const auto currentDbVersion = currentCoordinator->getDatabaseVersion();
-                    if (currentDbVersion == requestVersion) {
-                        return currentCoordinator;
+                    std::shared_ptr<DropDatabaseCoordinator> dropDatabaseCoordinator;
+
+                    {
+                        FixedFCVRegion fcvRegion(opCtx);
+
+                        // The Operation FCV is currently propagated only for DDL operations,
+                        // which cannot be nested. Therefore, the VersionContext shouldn't have
+                        // been initialized yet.
+                        invariant(!VersionContext::getDecoration(opCtx).isInitialized());
+                        const auto authoritativeMetadataAccessLevel =
+                            sharding_ddl_util::getGrantedAuthoritativeMetadataAccessLevel(
+                                VersionContext::getDecoration(opCtx),
+                                fcvRegion->acquireFCVSnapshot());
+
+                        DropDatabaseCoordinatorDocument coordinatorDoc;
+                        coordinatorDoc.setShardingDDLCoordinatorMetadata(
+                            {{ns(), DDLCoordinatorTypeEnum::kDropDatabase}});
+                        coordinatorDoc.setAuthoritativeMetadataAccessLevel(
+                            authoritativeMetadataAccessLevel);
+
+                        dropDatabaseCoordinator = checked_pointer_cast<DropDatabaseCoordinator>(
+                            service->getOrCreateInstance(opCtx, coordinatorDoc.toBSON()));
                     }
+
+                    invariant(dropDatabaseCoordinator);
+
+                    const auto currentDbVersion = dropDatabaseCoordinator->getDatabaseVersion();
+                    if (currentDbVersion == requestVersion) {
+                        return dropDatabaseCoordinator->getCompletionFuture();
+                    }
+
                     LOGV2_DEBUG(6073000,
                                 2,
-                                "DbVersion mismatch, waiting for existing coordinator to finish",
+                                "DbVersion mismatch, waiting for existing coordinator "
+                                "to finish",
                                 "requestedVersion"_attr = requestVersion,
                                 "coordinatorVersion"_attr = currentDbVersion);
-                    currentCoordinator->getCompletionFuture().wait(opCtx);
+                    dropDatabaseCoordinator->getCompletionFuture().wait(opCtx);
                 }
             }();
-            dropDatabaseCoordinator->getCompletionFuture().get(opCtx);
+
+            dropDatabaseCoordinatorFuture.get(opCtx);
         }
 
     private:

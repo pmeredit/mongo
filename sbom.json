@@ -504,7 +504,7 @@
         "name": "Organization: github"
       },
       "name": "fmtlib/fmt",
-      "version": "7.1.3",
+      "version": "11.1.3",
       "licenses": [
         {
           "license": {
@@ -512,11 +512,11 @@
           }
         }
       ],
-      "purl": "pkg:github/fmtlib/fmt@7.1.3",
+      "purl": "pkg:github/fmtlib/fmt@11.1.3",
       "properties": [
         {
           "name": "internal:team_responsible",
-          "value": "Server Security"
+          "value": "Server Programmability"
         },
         {
           "name": "emits_persisted_data",
@@ -1191,7 +1191,7 @@
         "name": "Organization: github"
       },
       "name": "MongoDB C Driver",
-      "version": "1.27.6",
+      "version": "1.28.1",
       "licenses": [
         {
           "license": {
@@ -1199,7 +1199,7 @@
           }
         }
       ],
-      "purl": "pkg:github/mongodb/mongo-c-driver@1.27.6",
+      "purl": "pkg:github/mongodb/mongo-c-driver@1.28.1",
       "properties": [
         {
           "name": "internal:team_responsible",
@@ -1234,7 +1234,7 @@
         "name": "Organization: debian"
       },
       "name": "Mozilla Firefox",
-      "version": "115.7.0esr",
+      "version": "128.8.0esr",
       "licenses": [
         {
           "license": {
@@ -1242,7 +1242,7 @@
           }
         }
       ],
-      "purl": "pkg:deb/debian/firefox-esr@115.7.0esr-1",
+      "purl": "pkg:deb/debian/firefox-esr@128.8.0esr-1",
       "properties": [
         {
           "name": "internal:team_responsible",
@@ -1623,45 +1623,6 @@
       },
       "scope": "excluded",
       "purl": "pkg:github/schemastore/schemastore@6847cfc3a17a04a7664474212db50c627e1e3408"
-    },
-    {
-      "supplier": {
-        "name": "Organization: github"
-      },
-      "name": "SCons - a Software Construction tool",
-      "version": "3.1.2",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "purl": "pkg:github/SCons/scons@3.1.2",
-      "properties": [
-        {
-          "name": "internal:team_responsible",
-          "value": "Build"
-        },
-        {
-          "name": "emits_persisted_data",
-          "value": "false"
-        },
-        {
-          "name": "info_link",
-          "value": "https://github.com/SCons/scons"
-        }
-      ],
-      "type": "library",
-      "bom-ref": "144a085e-96cd-4061-acf6-262fd1b69abe",
-      "evidence": {
-        "occurrences": [
-          {
-            "location": "src/third_party/scons-3.1.2"
-          }
-        ]
-      },
-      "scope": "required"
     },
     {
       "supplier": {

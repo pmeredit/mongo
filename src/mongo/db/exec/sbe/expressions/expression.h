@@ -42,12 +42,12 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/string_data.h"
-#include "mongo/db/exec/sbe/abt/slots_provider.h"
+#include "mongo/db/exec/sbe/slots_provider.h"
 #include "mongo/db/exec/sbe/util/debug_print.h"
 #include "mongo/db/exec/sbe/values/slot.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
 namespace sbe {
@@ -160,6 +160,15 @@ inline std::unique_ptr<EExpression> makeE(Args&&... args) {
 template <typename... Ts>
 inline auto makeEs(Ts&&... pack) {
     EExpression::Vector exprs;
+
+    (exprs.emplace_back(std::forward<Ts>(pack)), ...);
+
+    return exprs;
+}
+
+template <typename... Ts>
+inline auto makeVEs(Ts&&... pack) {
+    std::vector<std::unique_ptr<EExpression>> exprs;
 
     (exprs.emplace_back(std::forward<Ts>(pack)), ...);
 
@@ -317,21 +326,55 @@ private:
 };
 
 /**
- * This is a binary primitive (builtin) operation.
+ * This is a n-ary primitive (builtin) operation.
  */
-class EPrimBinary final : public EExpression {
+class EPrimNary final : public EExpression {
 public:
     enum Op {
         // Logical operations. These operations are short-circuiting.
         logicAnd,
         logicOr,
 
+        // Math operations.
+        add,
+    };
+
+    EPrimNary(Op op, std::vector<std::unique_ptr<EExpression>> args) : _op(op) {
+        _nodes.reserve(args.size());
+        for (auto&& arg : args) {
+            _nodes.emplace_back(std::move(arg));
+        }
+        validateNodes();
+    }
+
+    std::unique_ptr<EExpression> clone() const override;
+
+    vm::CodeFragment compileDirect(CompileCtx& ctx) const override;
+
+    std::vector<DebugPrinter::Block> debugPrint() const override;
+
+    size_t estimateSize() const final;
+
+private:
+    Op _op;
+};
+
+/**
+ * This is a binary primitive (builtin) operation.
+ */
+class EPrimBinary final : public EExpression {
+public:
+    enum Op {
+        // Logical operations. These operations are short-circuiting.
+        logicAnd,  // TODO: remove with SERVER-100579
+        logicOr,   // TODO: remove with SERVER-100579
+
         // Nothing-handling operation. This is short-circuiting like logicOr,
         // but it checks Nothing / non-Nothing instead of false / true.
         fillEmpty,
 
         // Math operations.
-        add,
+        add,  // TODO: remove with SERVER-100579
         sub,
         mul,
         div,
@@ -456,6 +499,69 @@ public:
     std::vector<DebugPrinter::Block> debugPrint() const override;
 
     size_t estimateSize() const final;
+};
+
+/**
+ * This is a multi-conditional (a.k.a. if-then-elif-...-else) expression.
+ */
+class ESwitch final : public EExpression {
+public:
+    /**
+     * Create a Switch multi-conditional expression by providing a flat list of expressions. These
+     * are taken as pairs of (condition, thenBranch) followed by a final 'default' expression.
+     */
+    ESwitch(std::vector<std::unique_ptr<sbe::EExpression>> nodes) {
+        // Enforce that the list is not empty and contains an odd number of expressions.
+        // When it contains a single expression, it represents a switch where only the 'default'
+        // branch is present.
+        tassert(10130700,
+                "switch created with a wrong number of expressions",
+                nodes.size() > 1 && ((nodes.size() - 1) % 2) == 0);
+        _nodes.reserve(nodes.size());
+        for (auto&& n : nodes) {
+            _nodes.emplace_back(std::move(n));
+        }
+        validateNodes();
+    }
+
+    std::unique_ptr<EExpression> clone() const override;
+
+    vm::CodeFragment compileDirect(CompileCtx& ctx) const override;
+
+    std::vector<DebugPrinter::Block> debugPrint() const override;
+
+    size_t estimateSize() const final;
+
+    /**
+     * Computes the number of pairs (condition, thenBranch) contained in the flat list of
+     * expressions. i.e. exclude the final 'default' expression, then divide by two.
+     */
+    size_t getNumBranches() const {
+        return (_nodes.size() - 1) / 2;
+    }
+
+    /**
+     * Extract from the flat list of expressions the expression representing the idx-th condition.
+     */
+    const EExpression* getCondition(size_t idx) const {
+        return _nodes[idx * 2].get();
+    }
+
+    /**
+     * Extract from the flat list of expressions the expression representing the idx-th branch, i.e.
+     * right after the idx-th condition.
+     */
+    const EExpression* getThenBranch(size_t idx) const {
+        return _nodes[idx * 2 + 1].get();
+    }
+
+    /**
+     * Extract from the flat list of expressions the expression representing the default branch,
+     * i.e. the last item of the list.
+     */
+    const EExpression* getDefault() const {
+        return _nodes.back().get();
+    }
 };
 
 /**

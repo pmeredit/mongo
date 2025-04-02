@@ -54,8 +54,7 @@
 #include "mongo/db/query/plan_cache/plan_cache_indexability.h"
 #include "mongo/db/query/plan_cache/plan_cache_key_factory.h"
 #include "mongo/db/query/plan_cache/plan_cache_key_info.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 
@@ -145,8 +144,8 @@ void assertPlanCacheKeysUnequalDueToDiscriminators(const PlanCacheKeyInfo& a,
 }  // namespace
 
 TEST_F(PlanCacheKeyInfoTest, EqualityOperator) {
-    unique_ptr<CanonicalQuery> cqEqZero(canonicalize("{a: 0}}"));
-    unique_ptr<CanonicalQuery> cqEqOne(canonicalize("{a: 1}}"));
+    unique_ptr<CanonicalQuery> cqEqZero(canonicalize("{a: 0}"));
+    unique_ptr<CanonicalQuery> cqEqOne(canonicalize("{a: 1}"));
 
     NamespaceSpec nsSpec;
     nsSpec.setDb(makeDbName("db"));
@@ -216,9 +215,9 @@ TEST_F(PlanCacheKeyInfoTest, ComputeKeySparseIndex) {
                       true,                          // sparse
                       IndexEntry::Identifier{""})};  // name
 
-    unique_ptr<CanonicalQuery> cqEqNumber(canonicalize("{a: 0}}"));
-    unique_ptr<CanonicalQuery> cqEqString(canonicalize("{a: 'x'}}"));
-    unique_ptr<CanonicalQuery> cqEqNull(canonicalize("{a: null}}"));
+    unique_ptr<CanonicalQuery> cqEqNumber(canonicalize("{a: 0}"));
+    unique_ptr<CanonicalQuery> cqEqString(canonicalize("{a: 'x'}"));
+    unique_ptr<CanonicalQuery> cqEqNull(canonicalize("{a: null}"));
 
     // 'cqEqNumber' and 'cqEqString' get the same key, since both are compatible with this
     // index.
@@ -834,7 +833,7 @@ TEST_F(PlanCacheKeyInfoTest,
 }
 
 TEST_F(PlanCacheKeyInfoTest, StableKeyDoesNotChangeAcrossIndexCreation) {
-    unique_ptr<CanonicalQuery> cq(canonicalize("{a: 0}}"));
+    unique_ptr<CanonicalQuery> cq(canonicalize("{a: 0}"));
     const auto preIndexKey = makeKey(*cq);
     const auto preIndexStableKey = preIndexKey.getQueryShape();
     ASSERT_EQ(preIndexKey.getIndexabilityDiscriminators(), "");

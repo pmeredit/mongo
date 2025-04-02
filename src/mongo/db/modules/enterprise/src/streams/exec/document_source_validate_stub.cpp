@@ -2,11 +2,12 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/document_source_validate_stub.h"
+
 #include <chrono>
 
 #include "mongo/util/assert_util.h"
 #include "streams/exec/document_source_feeder.h"
-#include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/message.h"
 #include "streams/exec/planner.h"
 

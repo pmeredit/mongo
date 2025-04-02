@@ -2,6 +2,14 @@
 BUILD files in the "src/" subtree.
 """
 
+load("//bazel/toolchains:mongo_defines.bzl", "MONGO_GLOBAL_DEFINES")
+load(
+    "//bazel/toolchains:mongo_errors.bzl",
+    "LIBCXX_ERROR_MESSAGE",
+    "REQUIRED_SETTINGS_LIBUNWIND_ERROR_MESSAGE",
+    "SYSTEM_ALLOCATOR_SANITIZER_ERROR_MESSAGE",
+    "THREAD_SANITIZER_ERROR_MESSAGE",
+)
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_github_grpc_grpc//bazel:protobuf.bzl", "well_known_proto_libs")
@@ -11,9 +19,7 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 load(
     "//bazel:header_deps.bzl",
     "HEADER_DEP_SUFFIX",
-    "LINK_DEP_SUFFIX",
     "create_header_dep",
-    "create_link_deps",
 )
 load(
     "//bazel:separate_debug.bzl",
@@ -24,6 +30,7 @@ load(
     "extract_debuginfo_binary",
     "extract_debuginfo_test",
 )
+load("@local_host_values//:local_host_values_set.bzl", "NUM_CPUS")
 
 # https://learn.microsoft.com/en-us/cpp/build/reference/md-mt-ld-use-run-time-library?view=msvc-170
 #   /MD defines _MT and _DLL and links in MSVCRT.lib into each .obj file
@@ -331,108 +338,6 @@ WINDOWS_LINKFLAGS = (
     MSVC_OPT_LINKFLAGS
 )
 
-WINDOWS_DEFINES = select({
-    "@platforms//os:windows": [
-        # This tells the Windows compiler not to link against the .lib files and
-        # to use boost as a bunch of header-only libraries
-        "BOOST_ALL_NO_LIB",
-        "_UNICODE",
-        "UNICODE",
-
-        # Temporary fixes to allow compilation with VS2017
-        "_SILENCE_CXX17_ALLOCATOR_VOID_DEPRECATION_WARNING",
-        "_SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING",
-        "_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING",
-
-        # TODO(SERVER-60151): Until we are fully in C++20 mode, it is easier to
-        # simply suppress C++20 deprecations. After we have switched over we
-        # should address any actual deprecated usages and then remove this flag.
-        "_SILENCE_ALL_CXX20_DEPRECATION_WARNINGS",
-        "_CONSOLE",
-        "_CRT_SECURE_NO_WARNINGS",
-        "_ENABLE_EXTENDED_ALIGNED_STORAGE",
-        "_SCL_SECURE_NO_WARNINGS",
-    ],
-    "//conditions:default": [],
-})
-
-LINUX_DEFINES = select({
-    "@platforms//os:linux": [
-        # On linux, C code compiled with gcc/clang -std=c11 causes
-        # __STRICT_ANSI__ to be set, and that drops out all of the feature test
-        # definitions, resulting in confusing errors when we run C language
-        # configure checks and expect to be able to find newer POSIX things.
-        # Explicitly enabling _XOPEN_SOURCE fixes that, and should be mostly
-        # harmless as on Linux, these macros are cumulative. The C++ compiler
-        # already sets _XOPEN_SOURCE, and, notably, setting it again does not
-        # disable any other feature test macros, so this is safe to do. Other
-        # platforms like macOS and BSD have crazy rules, so don't try this
-        # there.
-        #
-        # Furthermore, as both C++ compilers appear to define _GNU_SOURCE
-        # unconditionally (because libstdc++ requires it), it seems prudent to
-        # explicitly add that too, so that C language checks see a consistent
-        # set of definitions.
-        "_XOPEN_SOURCE=700",
-        "_GNU_SOURCE",
-    ],
-    "//conditions:default": [],
-})
-
-MACOS_DEFINES = select({
-    "@platforms//os:macos": [
-        # TODO SERVER-54659 - ASIO depends on std::result_of which was removed
-        # in C++ 20. xcode15 does not have backwards compatibility
-        "ASIO_HAS_STD_INVOKE_RESULT",
-        # This is needed to compile boost on the newer xcodes
-        "BOOST_NO_CXX98_FUNCTION_BASE",
-    ],
-    "//conditions:default": [],
-})
-
-ABSEIL_DEFINES = [
-    "ABSL_FORCE_ALIGNED_ACCESS",
-]
-
-BOOST_DEFINES = [
-    "BOOST_ENABLE_ASSERT_DEBUG_HANDLER",
-    # TODO: Ideally, we could not set this define in C++20 builds, but at least
-    # our current Xcode 12 doesn't offer std::atomic_ref, so we cannot.
-    "BOOST_FILESYSTEM_NO_CXX20_ATOMIC_REF",
-    "BOOST_LOG_NO_SHORTHAND_NAMES",
-    "BOOST_LOG_USE_NATIVE_SYSLOG",
-    "BOOST_LOG_WITHOUT_THREAD_ATTR",
-    "BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS",
-    "BOOST_SYSTEM_NO_DEPRECATED",
-    "BOOST_THREAD_USES_DATETIME",
-    "BOOST_THREAD_VERSION=5",
-] + select({
-    "//bazel/config:linkdynamic_not_shared_archive": ["BOOST_LOG_DYN_LINK"],
-    "//conditions:default": [],
-}) + select({
-    "@platforms//os:windows": ["BOOST_ALL_NO_LIB"],
-    "//conditions:default": [],
-})
-
-ENTERPRISE_DEFINES = select({
-    "//bazel/config:build_enterprise_enabled": ["MONGO_ENTERPRISE_VERSION=1"],
-    "//conditions:default": [],
-}) + select({
-    "//bazel/config:enterprise_feature_audit_enabled": ["MONGO_ENTERPRISE_AUDIT=1"],
-    "//conditions:default": [],
-}) + select({
-    "//bazel/config:enterprise_feature_encryptdb_enabled": ["MONGO_ENTERPRISE_ENCRYPTDB=1"],
-    "//conditions:default": [],
-})
-
-# Fortify only possibly makes sense on POSIX systems, and we know that clang is
-# not a valid combination:
-# http://lists.llvm.org/pipermail/cfe-dev/2015-November/045852.html
-GCC_OPT_DEFINES = select({
-    "//bazel/config:gcc_opt": ["_FORTIFY_SOURCE=2"],
-    "//conditions:default": [],
-})
-
 LINUX_OPT_COPTS = select({
     # This is opt=debug, not to be confused with (opt=on && dbg=on)
     "//bazel/config:gcc_or_clang_opt_debug": [
@@ -501,13 +406,6 @@ CLANG_WARNINGS_COPTS = select({
         # only) flag that turns it on.
         "-Wunused-exception-parameter",
 
-        # TODO: Note that the following two flags are added to CCFLAGS even
-        # though they are really C++ specific. We need to do this because SCons
-        # passes CXXFLAGS *before* CCFLAGS, but CCFLAGS contains -Wall, which
-        # re-enables the warnings we are trying to suppress. In the future, we
-        # should move all warning flags to CCWARNFLAGS and CXXWARNFLAGS and add
-        # these to CCOM and CXXCOM as appropriate.
-        #
         # Clang likes to warn about unused private fields, but some of our
         # third_party libraries have such things.
         "-Wno-unused-private-field",
@@ -712,43 +610,12 @@ EXTRA_GLOBAL_LIBS_LINKFLAGS = select({
     "//conditions:default": [],
 })
 
-# TODO(SERVER-85340): Fix this error message when libc++ is readded to the
-#                     toolchain.
-LIBCXX_ERROR_MESSAGE = """
-Error:
-    libc++ is not currently supported in the mongo toolchain. Follow this ticket
-    to see when support is being added SERVER-85340 We currently only support
-    passing the libcxx config on macos for compatibility reasons.
-
-    libc++ requires these configuration: --compiler_type=clang
-"""
-
 LIBCXX_COPTS = select({
     "//bazel/config:use_libcxx_required_settings": ["-stdlib=libc++"],
     "//bazel/config:use_libcxx_disabled": [],
 }, no_match_error = LIBCXX_ERROR_MESSAGE)
 
 LIBCXX_LINKFLAGS = LIBCXX_COPTS
-
-# TODO(SERVER-54659): ASIO depends on std::result_of which was removed in C++ 20
-LIBCXX_DEFINES = select({
-    "//bazel/config:use_libcxx_required_settings": ["ASIO_HAS_STD_INVOKE_RESULT"],
-    "//bazel/config:use_libcxx_disabled": [],
-}, no_match_error = LIBCXX_ERROR_MESSAGE)
-
-DEBUG_DEFINES = select({
-    "//bazel/config:dbg_enabled": [],
-    "//conditions:default": ["NDEBUG"],
-})
-
-PCRE2_DEFINES = ["PCRE2_STATIC"]
-
-SAFEINT_DEFINES = ["SAFEINT_USE_INTRINSICS=0"]
-
-REQUIRED_SETTINGS_LIBUNWIND_ERROR_MESSAGE = """
-Error:
-  libunwind=on is only supported on linux"
-"""
 
 # These will throw an error if the following condition is not met:
 # (libunwind == on && os == linux) || libunwind == off || libunwind == auto
@@ -788,12 +655,6 @@ ANY_SANITIZER_GCC_LINKFLAGS = select({
     "//conditions:default": [],
 })
 
-SYSTEM_ALLOCATOR_SANITIZER_ERROR_MESSAGE = """
-Error:
-  fuzzer, address, and memory sanitizers require these configurations:
-      --allocator=system
-"""
-
 ADDRESS_SANITIZER_COPTS = select({
     "//bazel/config:asan_disabled": [],
     "//bazel/config:sanitize_address_required_settings": [
@@ -805,15 +666,6 @@ ADDRESS_SANITIZER_COPTS = select({
 ADDRESS_SANITIZER_LINKFLAGS = select({
     "//bazel/config:asan_disabled": [],
     "//bazel/config:sanitize_address_required_settings": ["-fsanitize=address"],
-}, no_match_error = SYSTEM_ALLOCATOR_SANITIZER_ERROR_MESSAGE)
-
-# Unfortunately, abseil requires that we make these macros (this, and THREAD_
-# and UNDEFINED_BEHAVIOR_ below) set, because apparently it is too hard to query
-# the running compiler. We do this unconditionally because abseil is basically
-# pervasive via the 'base' library.
-ADDRESS_SANITIZER_DEFINES = select({
-    "//bazel/config:sanitize_address_required_settings": ["ADDRESS_SANITIZER"],
-    "//bazel/config:asan_disabled": [],
 }, no_match_error = SYSTEM_ALLOCATOR_SANITIZER_ERROR_MESSAGE)
 
 # Makes it easier to debug memory failures at the cost of some perf:
@@ -868,6 +720,7 @@ FUZZER_SANITIZER_LINKFLAGS = select({
     "//bazel/config:fsan_disabled": [],
 }, no_match_error = SYSTEM_ALLOCATOR_SANITIZER_ERROR_MESSAGE + "fuzzer")
 
+# TODO - Patrice: Move error message to defs.
 # Combines following two conditions -
 # 1.
 # TODO: SERVER-48622
@@ -882,15 +735,6 @@ FUZZER_SANITIZER_LINKFLAGS = select({
 # We add supressions based on the library file in etc/tsan.suppressions so the
 # link-model needs to be dynamic.
 
-THREAD_SANITIZER_ERROR_MESSAGE = """
-Error:
-  Build failed due to either -
-    - Cannot use libunwind with TSAN, please add
-        --use_libunwind=False to your compile flags or
-    - TSAN is only supported with dynamic link models, please add
-        --linkstatic=False to your compile flags.
-"""
-
 THREAD_SANITIZER_COPTS = select({
     "//bazel/config:sanitize_thread_required_settings": [
         "-fsanitize=thread",
@@ -903,16 +747,6 @@ THREAD_SANITIZER_LINKFLAGS = select({
     "//bazel/config:sanitize_thread_required_settings": ["-fsanitize=thread"],
     "//bazel/config:tsan_disabled": [],
 }, no_match_error = THREAD_SANITIZER_ERROR_MESSAGE)
-
-THREAD_SANITIZER_DEFINES = select({
-    "//bazel/config:sanitize_thread_required_settings": ["THREAD_SANITIZER"],
-    "//bazel/config:tsan_disabled": [],
-}, no_match_error = THREAD_SANITIZER_ERROR_MESSAGE)
-
-UNDEFINED_SANITIZER_DEFINES = select({
-    "//bazel/config:ubsan_enabled": ["UNDEFINED_BEHAVIOR_SANITIZER"],
-    "//bazel/config:ubsan_disabled": [],
-})
 
 # By default, undefined behavior sanitizer doesn't stop on the first error. Make
 # it so. Newer versions of clang have renamed the flag. However, this flag
@@ -1156,24 +990,6 @@ TCMALLOC_DEPS = select({
     ],
 }, no_match_error = TCMALLOC_ERROR_MESSAGE)
 
-TCMALLOC_DEFINES = select({
-    "//bazel/config:tcmalloc_google_enabled": ["ABSL_ALLOCATOR_NOTHROW"],
-    "//conditions:default": [],
-})
-
-#TODO SERVER-84714 add message about using the toolchain version of C++ libs
-GLIBCXX_DEBUG_ERROR_MESSAGE = """
-Error:
-    glibcxx_debug requires these configurations:
-        --dbg=True
-        --use_libcxx=False
-"""
-
-GLIBCXX_DEBUG_DEFINES = select({
-    ("//bazel/config:use_glibcxx_debug_required_settings"): ["_GLIBCXX_DEBUG"],
-    ("//bazel/config:use_glibcxx_debug_disabled"): [],
-}, no_match_error = GLIBCXX_DEBUG_ERROR_MESSAGE)
-
 DETECT_ODR_VIOLATIONS_ERROR_MESSAGE = """
 Error:
     detect_odr_violations requires these configurations:
@@ -1192,12 +1008,27 @@ DETECT_ODR_VIOLATIONS_LINKFLAGS = select({
 GDWARF_FEATURES = select({
     "//bazel/config:linux_clang": ["dwarf32"],
     "//bazel/config:linux_gcc_fission": ["dwarf32"],  # gdb crashes with -gsplit-dwarf and -gdwarf64
-    # SCons implementation originally used a compiler check to verify that
-    # -gdwarf64 was supported. If this creates incompatibility issues, we may
-    # need to fallback to -gdwarf32 in certain cases.
     "//bazel/config:linux_gcc": ["dwarf64"],
     # SUSE15 builds system libraries with dwarf32, use dwarf32 to be keep consistent
     "//bazel/config:suse15_gcc": ["dwarf32"],
+    "//conditions:default": [],
+})
+
+# TODO(SERVER-101099): Remove this once builds are containerized and system libraries inside the containers
+# no longer contain debug symbols.
+#
+# In RHEL8 and RHEL9 the debug symbols for libgcc aren't stripped and are instead split, which still leaves behind
+# debug symbols in the libgcc shared object file. These debug symbols are created with gdwarf32, so they're limited to
+# a 32 bit address space. Even if the mongodb binaries are compiled with gdwarf64, there's a chance that the gdwarf32
+# libgcc debug symbols will be placed after the gdwarf64 debug symbols. This started happening in the RHEL9 ppc64le
+# build.
+#
+# The workaround for this is stripping the debug symbols from libgcc and statically compiling the libgcc from the
+# toolchain into the mongodb binaries. The longer term solution for this is to containerize the non-remote-execution
+# build and strip the debug symbols inside the container, or patch the compilers to properly order gdwarf32 symbols
+# before gdwarf64 symbols. See https://reviews.llvm.org/D96144
+LIBGCC_LINKFLAGS = select({
+    "//bazel/config:rhel9_ppc64le_gcc_linkstatic": ["-static-libgcc"],
     "//conditions:default": [],
 })
 
@@ -1248,19 +1079,14 @@ GCC_OR_CLANG_LINKFLAGS = select({
 })
 
 COMPRESS_DEBUG_COPTS = select({
-    # Disable debug compression in assembler by default unless using debug fission.
-    # Debug compression significantly reduces .o, .dwo, and .a sizes, and with
-    # fission enabled, the linker sees so little of the dwarf that decompression
-    # isn't a problem.
-    "//bazel/config:fission_enabled": [
+    # Debug compression significantly reduces .o, .dwo, and .a sizes
+    "//bazel/config:compress_debug_compile_enabled": [
         "-Wa,--compress-debug-sections",
     ],
-    "//bazel/config:linux_gcc": [
+    # explicitly disable compression if its not enabled or else not passing the flag
+    # by default still compresses on x86/x86_64 - nocompress is only a flag in gcc not clang
+    "//bazel/config:compress_debug_compile_disabled_linux_gcc": [
         "-Wa,--nocompress-debug-sections",
-    ],
-    # subsumes both of the two above - if both are true, we want compression
-    "//bazel/config:linux_gcc_fission": [
-        "-Wa,--compress-debug-sections",
     ],
     "//conditions:default": [],
 })
@@ -1400,6 +1226,18 @@ Error:
   python buildscripts/install_bazel.py
 """)
 
+# These are warnings are disabled globally at the toolchain level to allow external repository compilation.
+# Re-enable them for MongoDB source code.
+RE_ENABLE_DISABLED_3RD_PARTY_WARNINGS_FEATURES = select({
+    "//bazel/config:compiler_type_clang": [
+        "-disable_warnings_for_third_party_libraries_clang",
+    ],
+    "//bazel/config:compiler_type_gcc": [
+        "-disable_warnings_for_third_party_libraries_gcc",
+    ],
+    "//conditions:default": [],
+})
+
 MONGO_GLOBAL_INCLUDE_DIRECTORIES = [
     "-Isrc",
     "-I$(GENDIR)/src",
@@ -1422,25 +1260,6 @@ MONGO_GLOBAL_SRC_DEPS = [
     "//src/third_party/valgrind:headers",
     "//src/third_party/abseil-cpp:absl_local_repo_deps",
 ]
-
-MONGO_GLOBAL_DEFINES = (
-    DEBUG_DEFINES +
-    LIBCXX_DEFINES +
-    ADDRESS_SANITIZER_DEFINES +
-    THREAD_SANITIZER_DEFINES +
-    UNDEFINED_SANITIZER_DEFINES +
-    GLIBCXX_DEBUG_DEFINES +
-    WINDOWS_DEFINES +
-    MACOS_DEFINES +
-    TCMALLOC_DEFINES +
-    LINUX_DEFINES +
-    GCC_OPT_DEFINES +
-    BOOST_DEFINES +
-    ABSEIL_DEFINES +
-    PCRE2_DEFINES +
-    SAFEINT_DEFINES +
-    ENTERPRISE_DEFINES
-)
 
 MONGO_GLOBAL_COPTS = (
     MONGO_GLOBAL_INCLUDE_DIRECTORIES +
@@ -1502,7 +1321,8 @@ MONGO_GLOBAL_LINKFLAGS = (
     SASL_WINDOWS_LINKFLAGS +
     PGO_PROFILE_FLAGS +
     SANITIZE_WITHOUT_TSAN_LINKFLAGS +
-    SHARED_ARCHIVE_LINKFLAGS
+    SHARED_ARCHIVE_LINKFLAGS +
+    LIBGCC_LINKFLAGS
 )
 
 MONGO_GLOBAL_ADDITIONAL_LINKER_INPUTS = SYMBOL_ORDER_FILES
@@ -1557,15 +1377,22 @@ def force_includes_hdr(package_name, name):
 
     return []
 
+# TODO(SERVER-103006): Stop including this flag when ASP is able to upgrade mongoc and mongocxx
+STREAMS_THIRD_PARTY_DIR = "src/mongo/db/modules/enterprise/src/streams/third_party"
+
 def package_specific_copt(package_name):
     if package_name.startswith("src/third_party"):
         return MONGO_COPTS_THIRD_PARTY
+    if package_name.startswith(STREAMS_THIRD_PARTY_DIR):
+        return UBSAN_OPTS_THIRD_PARTY
 
     return []
 
 def package_specific_linkflag(package_name):
     if package_name.startswith("src/third_party"):
         return MONGO_LINKFLAGS_THIRD_PARTY
+    if package_name.startswith(STREAMS_THIRD_PARTY_DIR):
+        return UBSAN_OPTS_THIRD_PARTY
 
     return []
 
@@ -1654,6 +1481,7 @@ def mongo_cc_library(
         no_undefined_ref_DO_NOT_USE = True,
         linkshared = False,
         skip_windows_crt_flags = False,
+        shared_lib_name = "",
         **kwargs):
     """Wrapper around cc_library.
 
@@ -1716,6 +1544,7 @@ def mongo_cc_library(
             deps += MONGO_GLOBAL_SRC_DEPS
             if name != "_global_header_bypass":
                 deps += ["//src/mongo:_global_header_bypass"]
+        features = features + RE_ENABLE_DISABLED_3RD_PARTY_WARNINGS_FEATURES
 
     if "modules/enterprise" in native.package_name():
         enterprise_compatible = select({
@@ -1823,14 +1652,6 @@ def mongo_cc_library(
         header_deps = header_deps,
     )
 
-    create_link_deps(
-        name = name + LINK_DEP_SUFFIX,
-        target_name = name,
-        link_deps = [name] + deps + cc_deps,
-        tags = ["scons_link_lists"],
-        target_compatible_with = target_compatible_with + enterprise_compatible,
-    )
-
     # Create a cc_library entry to generate a shared archive of the target.
     cc_library(
         name = name + SHARED_ARCHIVE_SUFFIX,
@@ -1842,13 +1663,13 @@ def mongo_cc_library(
         testonly = testonly,
         copts = MONGO_GLOBAL_COPTS + package_specific_copts + copts + fincludes_copt,
         data = data,
-        tags = tags,
+        tags = tags + ["mongo_library"],
         linkopts = MONGO_GLOBAL_LINKFLAGS + package_specific_linkflags + linkopts,
         linkstatic = True,
         local_defines = MONGO_GLOBAL_DEFINES + visibility_support_defines + local_defines,
         defines = defines,
         includes = includes,
-        features = MONGO_GLOBAL_FEATURES + ["supports_pic", "pic"] + features,
+        features = MONGO_GLOBAL_FEATURES + features,
         target_compatible_with = select({
             "//bazel/config:shared_archive_enabled": [],
             "//conditions:default": ["@platforms//:incompatible"],
@@ -1873,17 +1694,13 @@ def mongo_cc_library(
         testonly = testonly,
         copts = MONGO_GLOBAL_COPTS + package_specific_copts + copts + fincludes_copt,
         data = data,
-        tags = tags,
+        tags = tags + ["mongo_library"],
         linkopts = MONGO_GLOBAL_LINKFLAGS + package_specific_linkflags + linkopts,
         linkstatic = True,
         local_defines = MONGO_GLOBAL_DEFINES + local_defines,
         defines = defines,
         includes = includes,
-        features = MONGO_GLOBAL_FEATURES + SKIP_ARCHIVE_FEATURE + select({
-            "//bazel/config:linkstatic_disabled": ["supports_pic", "pic"],
-            "//bazel/config:shared_archive_enabled": ["supports_pic", "pic"],
-            "//conditions:default": ["-pic", "pie"],
-        }) + features,
+        features = MONGO_GLOBAL_FEATURES + SKIP_ARCHIVE_FEATURE + features,
         target_compatible_with = target_compatible_with + enterprise_compatible,
         additional_linker_inputs = additional_linker_inputs + MONGO_GLOBAL_ADDITIONAL_LINKER_INPUTS,
         exec_properties = exec_properties,
@@ -1916,10 +1733,11 @@ def mongo_cc_library(
         name = name + CC_SHARED_LIBRARY_SUFFIX + WITH_DEBUG_SUFFIX,
         deps = [name + WITH_DEBUG_SUFFIX + "_ownership_remapped"] if linkshared else [name + WITH_DEBUG_SUFFIX],
         visibility = visibility,
-        tags = tags,
+        tags = tags + ["mongo_library"],
         user_link_flags = MONGO_GLOBAL_LINKFLAGS + package_specific_linkflags + undefined_ref_flag + non_transitive_dyn_linkopts + rpath_flags + visibility_support_shared_flags,
         target_compatible_with = shared_library_compatible_with + target_compatible_with + enterprise_compatible,
         dynamic_deps = dynamic_deps,
+        shared_lib_name = shared_lib_name,
         features = select({
             "//bazel/config:windows_debug_symbols_enabled": ["generate_pdb_file"],
             "//conditions:default": [],
@@ -2010,6 +1828,7 @@ def _mongo_cc_binary_and_test(
         srcs = srcs + ["//src/mongo:mongo_config_header"]
         deps += MONGO_GLOBAL_SRC_DEPS
         deps += ["//src/mongo:_global_header_bypass"]
+        features = features + RE_ENABLE_DISABLED_3RD_PARTY_WARNINGS_FEATURES
 
     if "modules/enterprise" in native.package_name():
         enterprise_compatible = select({
@@ -2102,6 +1921,16 @@ def _mongo_cc_binary_and_test(
         "//conditions:default": {},
     })
 
+    # This is used as a tool in part of the shared archive build, so it needs to be marked
+    # as compatible with a shared archive build.
+    if name in ["grpc_cpp_plugin", "protobuf_compiler"]:
+        features = features + ["-pie", "pic"]
+    else:
+        target_compatible_with += select({
+            "//bazel/config:shared_archive_enabled": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        })
+
     args = {
         "name": name + WITH_DEBUG_SUFFIX,
         "srcs": srcs + fincludes_hdr + SANITIZER_DENYLIST_HEADERS,
@@ -2111,7 +1940,11 @@ def _mongo_cc_binary_and_test(
         "copts": MONGO_GLOBAL_COPTS + package_specific_copts + copts + fincludes_copt,
         "data": data + SANITIZER_DATA,
         "tags": tags,
-        "linkopts": MONGO_GLOBAL_LINKFLAGS + package_specific_linkflags + linkopts + rpath_flags,
+        "linkopts": MONGO_GLOBAL_LINKFLAGS + package_specific_linkflags + linkopts + rpath_flags + select({
+            "//bazel/config:thin_lto_enabled": ["-Wl,--threads=" + str(NUM_CPUS)],
+            "//bazel/config:bolt_enabled": ["-Wl,--threads=" + str(NUM_CPUS)],
+            "//conditions:default": [],
+        }),
         "linkstatic": LINKSTATIC_ENABLED,
         "local_defines": MONGO_GLOBAL_DEFINES + local_defines,
         "defines": defines,
@@ -2124,29 +1957,19 @@ def _mongo_cc_binary_and_test(
             "//bazel/config:linkstatic_disabled": deps,
             "//conditions:default": [],
         }),
-        "target_compatible_with": target_compatible_with + enterprise_compatible + select({
-            "//bazel/config:shared_archive_enabled": ["@platforms//:incompatible"],
-            "//conditions:default": [],
-        }),
+        "target_compatible_with": target_compatible_with + enterprise_compatible,
         "additional_linker_inputs": additional_linker_inputs + MONGO_GLOBAL_ADDITIONAL_LINKER_INPUTS,
-        "exec_properties": exec_properties,
+        "exec_properties": exec_properties | select({
+            # Debug compression significantly reduces .o, .dwo, and .a sizes
+            "//bazel/config:compress_debug_compile_enabled": {"cpp_link.coefficient": "18.0"},
+            "//conditions:default": {"cpp_link.coefficient": "3.0"},
+        }) | select({
+            "//bazel/config:thin_lto_enabled": {"cpp_link.cpus": str(NUM_CPUS)},
+            "//bazel/config:bolt_enabled": {"cpp_link.cpus": str(NUM_CPUS)},
+            "//conditions:default": {},
+        }),
         "env": env | SANITIZER_ENV,
     } | kwargs
-
-    create_link_deps(
-        name = name + LINK_DEP_SUFFIX,
-        target_name = name,
-        link_deps = all_deps,
-        tags = ["scons_link_lists"],
-        testonly = testonly,
-        target_compatible_with = target_compatible_with + enterprise_compatible,
-    )
-
-    write_sources(
-        name = name + "_sources_list",
-        sources = srcs,
-        tags = ["scons_link_lists"],
-    )
 
     original_tags = list(args["tags"])
     if _program_type == "binary":
@@ -2493,11 +2316,6 @@ write_target = rule(
 )
 
 def idl_generator(name, tags = [], **kwargs):
-    write_target(
-        name = name + "_gen_source_tag",
-        target_name = name,
-        tags = ["scons_link_lists"],
-    )
     idl_generator_rule(
         name = name,
         tags = tags + ["gen_source"],
@@ -2555,6 +2373,7 @@ strip_deps = rule(
         "input": attr.label(
             providers = [CcInfo],
         ),
+        "linkstatic": attr.bool(),
     },
     provides = [CcInfo],
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
@@ -2592,12 +2411,6 @@ def mongo_proto_library(
         **kwargs
     )
 
-    dummy_file(
-        name = name + "_exclude_link",
-        output = "lib" + name + ".so.exclude_lib",
-        tags = ["scons_link_lists"],
-    )
-
 def mongo_cc_proto_library(
         name,
         deps,
@@ -2606,12 +2419,12 @@ def mongo_cc_proto_library(
     native.cc_proto_library(
         name = name + "_raw",
         deps = deps,
-        tags = tags + ["gen_source"],
         **kwargs
     )
     strip_deps(
         name = name,
         input = name + "_raw",
+        tags = tags + ["gen_source"],
     )
 
 def mongo_cc_grpc_library(
@@ -2627,6 +2440,17 @@ def mongo_cc_grpc_library(
         no_undefined_ref_DO_NOT_USE = True,
         **kwargs):
     codegen_grpc_target = "_" + name + "_grpc_codegen"
+
+    # TODO(SERVER-100148): Re-enable sandboxing on protobuf compilation
+    # once we can rely on //external:grpc_cpp_plugin.
+    #
+    # TSAN is currently being applied to protoc which is failing to run
+    # under Bazel's sandbox due to the system call to disable ASLR
+    # failing.
+    #
+    # To workaround this issue, disable the sandbox only when compiling
+    # protobufs, since we don't care about threading issues in the
+    # proto compiler itself.
     generate_cc(
         name = codegen_grpc_target,
         srcs = srcs,
@@ -2634,6 +2458,10 @@ def mongo_cc_grpc_library(
         well_known_protos = well_known_protos,
         generate_mocks = generate_mocks,
         tags = tags + ["gen_source"],
+        disable_sandbox = select({
+            "//bazel/config:tsan_enabled": True,
+            "//conditions:default": False,
+        }),
         **kwargs
     )
 

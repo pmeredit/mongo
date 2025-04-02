@@ -443,7 +443,6 @@ mongo_cc_library(
         "//src/mongo/rpc:command_status",
         "//src/mongo/rpc:metadata",
         "//src/mongo/transport:transport_layer_common",  # TODO(SERVER-93876): Remove.
-        "//src/mongo/util:fail_point",  # TODO(SERVER-93876): Remove.
         "//src/mongo/util/net:network",  # TODO(SERVER-93876): Remove.
     ],
 )
@@ -461,7 +460,6 @@ mongo_cc_library(
         ":replica_set_messages",
         "//src/mongo/db:server_base",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db:service_context",
-        "//src/mongo/util:fail_point",  # TODO(SERVER-93876): Remove.
         "//src/mongo/util/concurrency:spin_lock",  # TODO(SERVER-93876): Remove.
     ],
 )
@@ -647,8 +645,6 @@ mongo_cc_library(
     header_deps = [
         "//src/mongo/bson/column",
         "//src/mongo/db/auth:cluster_auth_mode",
-        "//src/mongo/db/concurrency:flow_control_ticketholder",
-        "//src/mongo/db/exec/sbe:query_sbe_plan_stats",
         "//src/mongo/db/fts/unicode:unicode",
         "//src/mongo/db/fts:fts_query_noop",
     ],
@@ -737,11 +733,9 @@ mongo_cc_library(
     hdrs = [
         "initial_sync_shared_data.h",
         "repl_sync_shared_data.h",
+        "//src/mongo:core_headers",
         "//src/mongo/db:wire_version.h",
         "//src/mongo/db/query/client_cursor:cursor_id.h",
-    ],
-    header_deps = [
-        "//src/mongo/db/concurrency:flow_control_ticketholder",
     ],
     deps = [
         "//src/mongo:base",
@@ -780,7 +774,7 @@ mongo_cc_library(
         ":oplog_entry",
         ":optime",  # TODO(SERVER-93876): Remove.
         "//src/mongo:base",
-        "//src/mongo/util:fail_point",  # TODO(SERVER-93876): Remove.
+        "//src/mongo/db/storage:remove_saver",
     ],
 )
 
@@ -835,6 +829,7 @@ mongo_cc_library(
     ],
     hdrs = [
         "speculative_majority_read_info.h",
+        "//src/mongo:core_headers",
     ],
     deps = [
         ":optime",
@@ -909,12 +904,6 @@ mongo_cc_library(
     hdrs = [
         "wait_for_majority_service.h",
     ],
-    copts = select({
-        # TODO(SERVER-77205): Review and Possibly Remove '-Wno-deprecated' after
-        #                     Mozjs Update
-        "@platforms//os:windows": [],
-        "//conditions:default": ["-Wno-deprecated"],
-    }),
     deps = [
         "//src/mongo/db:rw_concern_d",
         "//src/mongo/db:server_base",
@@ -1003,7 +992,6 @@ mongo_cc_library(
         ":replication_consistency_markers_impl",
         "//src/mongo:base",
         "//src/mongo/client:clientdriver_network",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -1198,9 +1186,11 @@ mongo_cc_library(
         "//src/mongo/db:common",
         "//src/mongo/db:dbhelpers",
         "//src/mongo/db:multitenancy",
+        "//src/mongo/db:periodic_runner_cache_pressure_rollback",
         "//src/mongo/db:query_exec",
         "//src/mongo/db:record_id_helpers",
         "//src/mongo/db:vector_clock",
+        "//src/mongo/db/catalog:catalog_control",
         "//src/mongo/db/catalog:catalog_helpers",
         "//src/mongo/db/catalog:database_holder",
         "//src/mongo/db/catalog:local_oplog_info",
@@ -1211,6 +1201,7 @@ mongo_cc_library(
         "//src/mongo/db/storage:oplog_truncation",
         "//src/mongo/db/storage:record_store_base",
         "//src/mongo/db/storage:storage_control",
+        "//src/mongo/db/storage:storage_util",
     ],
 )
 
@@ -1266,11 +1257,10 @@ mongo_cc_library(
         ":repl_coordinator_interface",
         ":repl_server_parameters",
         "//src/mongo/db:server_base",
+        "//src/mongo/db:shard_role_api_stor_ex",
         "//src/mongo/db/admission:execution_admission_context",
         "//src/mongo/db/auth:authorization_manager_global",
-        "//src/mongo/db/concurrency:lock_manager",
         "//src/mongo/executor:task_executor_interface",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util:processinfo",
         "//src/mongo/util/concurrency:spin_lock",
         "//src/mongo/util/concurrency:thread_pool",
@@ -1426,6 +1416,7 @@ mongo_cc_library(
         "//src/mongo/db/concurrency:exception_util",
         "//src/mongo/db/concurrency:lock_manager",
         "//src/mongo/db/storage:journal_flusher",
+        "//src/mongo/db/storage:storage_util",
     ],
 )
 
@@ -1455,7 +1446,6 @@ mongo_cc_library(
         "//src/mongo/db/commands:test_commands_enabled",
         "//src/mongo/db/stats:counters",
         "//src/mongo/transport:message_compressor",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -1478,7 +1468,6 @@ mongo_cc_library(
         "//src/mongo/db:query_exec",
         "//src/mongo/db:shard_role",
         "//src/mongo/db/index:index_access_method",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -1509,7 +1498,6 @@ mongo_cc_library(
         "//src/mongo/db/index_builds:commit_quorum_options",
         "//src/mongo/db/stats:counters",
         "//src/mongo/rpc:metadata",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -1758,7 +1746,6 @@ mongo_cc_library(
         "//src/mongo/db/storage:flow_control",
         "//src/mongo/db/storage:storage_control",
         "//src/mongo/rpc:client_metadata",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -1841,7 +1828,6 @@ mongo_cc_library(
         "//src/mongo/rpc:command_status",
         "//src/mongo/rpc:metadata",
         "//src/mongo/transport:transport_layer_common",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -2191,7 +2177,7 @@ mongo_cc_unit_test(
     srcs = [
         "idempotency_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     target_compatible_with = select({
         "//bazel/config:use_wiredtiger_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -2330,7 +2316,7 @@ mongo_cc_unit_test(
     ],
     tags = [
         "compile_requires_large_memory_gcc",
-        "mongo_unittest_third_group",
+        "mongo_unittest_fifth_group",
     ],
     deps = [
         ":isself",
@@ -2362,7 +2348,7 @@ mongo_cc_unit_test(
     ],
     tags = [
         "compile_requires_large_memory_gcc",
-        "mongo_unittest_third_group",
+        "mongo_unittest_fifth_group",
     ],
     deps = [
         ":data_replicator_external_state_mock",
@@ -2402,7 +2388,7 @@ mongo_cc_unit_test(
         "rollback_impl_test.cpp",
         "//src/mongo/db/catalog:collection_mock.h",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         ":oplog_interface_local",
         ":oplog_interface_remote",
@@ -2428,7 +2414,7 @@ mongo_cc_unit_test(
         "initial_syncer_test.cpp",
         "//src/mongo/db/storage:storage_engine_mock.h",
     ],
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         ":abstract_async_component",
         ":data_replicator_external_state_mock",
@@ -2453,7 +2439,7 @@ mongo_cc_unit_test(
         "storage_timestamp_test.cpp",
         "//src/mongo/dbtests:dbtests.h",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         ":oplog_application",
         ":oplog_entry_test_helpers",
@@ -2488,7 +2474,7 @@ mongo_cc_unit_test(
         "repl_set_tag_test.cpp",
         "//src/mongo/unittest:ensure_fcv.h",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     deps = [
         ":repl_coordinator_impl",
         ":replmocks",
@@ -2505,7 +2491,7 @@ mongo_cc_unit_test(
         "replication_consistency_markers_impl_test.cpp",
         "replication_recovery_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         ":oplog_applier_impl_test_fixture",
         ":oplog_entry",
@@ -2520,7 +2506,7 @@ mongo_cc_unit_test(
     srcs = [
         "storage_interface_impl_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         ":oplog_applier_impl_test_fixture",
         ":replication_process",
@@ -2535,7 +2521,7 @@ mongo_cc_unit_test(
     srcs = [
         "topology_version_observer_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         ":repl_coordinator_impl",
         ":repl_coordinator_test_fixture",
@@ -2577,7 +2563,10 @@ mongo_cc_unit_test(
         "database_cloner_test.cpp",
         "initial_sync_shared_data_test.cpp",
     ],
-    tags = ["mongo_unittest_first_group"],
+    tags = [
+        "compile_requires_large_memory_gcc",
+        "mongo_unittest_first_group",
+    ],
     deps = [
         ":cloner_test_fixtures",
         ":initial_sync_cloners",
@@ -2593,7 +2582,7 @@ mongo_cc_unit_test(
         "replica_set_aware_service_test.cpp",
         "//src/mongo/db/catalog:database_holder_mock.h",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         ":repl_coordinator_impl",
         ":repl_coordinator_test_fixture",

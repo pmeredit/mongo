@@ -51,14 +51,11 @@
 #include "mongo/db/write_concern.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/duration.h"
@@ -67,8 +64,6 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
-
-using namespace fmt::literals;
 
 namespace mongo {
 namespace {
@@ -111,11 +106,11 @@ TEST_F(ReshardingCollectionTest, TestWritesToTempReshardingCollection) {
     auto uuid = UUID::gen();
 
     auto tempNss = NamespaceString::createNamespaceString_forTest(
-        "{}.system.resharding.{}"_format("test", uuid.toString()));
+        fmt::format("{}.system.resharding.{}", "test", uuid.toString()));
     ASSERT_OK(client.insert(tempNss, BSON("x" << 5)));
 
     auto chunksNss = NamespaceString::createNamespaceString_forTest(
-        "config.cache.chunks.{}.system.resharding.{}"_format("test", uuid.toString()));
+        fmt::format("config.cache.chunks.{}.system.resharding.{}", "test", uuid.toString()));
     ASSERT_OK(client.insert(chunksNss, BSON("X" << 5)));
 }
 
@@ -136,11 +131,11 @@ TEST_F(ReshardingCollectionTest, TestWritesToTempReshardingCollectionStressTest)
                 auto uuid = UUID::gen();
 
                 auto tempNss = NamespaceString::createNamespaceString_forTest(
-                    "{}.system.resharding.{}"_format("test", uuid.toString()));
+                    fmt::format("{}.system.resharding.{}", "test", uuid.toString()));
                 ASSERT_OK(client.insert(tempNss, BSON("x" << 5)));
 
-                auto chunksNss = NamespaceString::createNamespaceString_forTest(
-                    "config.cache.chunks.{}.system.resharding.{}"_format("test", uuid.toString()));
+                auto chunksNss = NamespaceString::createNamespaceString_forTest(fmt::format(
+                    "config.cache.chunks.{}.system.resharding.{}", "test", uuid.toString()));
                 ASSERT_OK(client.insert(chunksNss, BSON("X" << 5)));
                 iterations.increment();
             }

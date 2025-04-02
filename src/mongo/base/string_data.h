@@ -403,6 +403,24 @@ inline std::string operator+(StringData a, std::string b) {
     return b.insert(0, std::string_view{a});
 }
 
+/**
+ * Converts `StringData` -> `std::string_view`.
+ * `std::string_view` is banned in favor of `StringData`.
+ * Use this where `std::string_view` must be used instead.
+ */
+constexpr std::string_view toStdStringViewForInterop(StringData s) {
+    return {s.data(), s.size()};
+}
+
+/**
+ * Converts `std::string_view` -> `StringData`.
+ * `std::string_view` is banned in favor of `StringData`.
+ * Use this where `std::string_view` must be used instead.
+ */
+constexpr StringData toStringDataForInterop(std::string_view s) {
+    return {s.data(), s.size()};
+}
+
 inline namespace literals {
 
 /**
@@ -418,13 +436,13 @@ constexpr StringData operator"" _sd(const char* c, std::size_t len) {
 
 namespace fmt {
 template <>
-class formatter<mongo::StringData> : formatter<std::string_view> {
+class formatter<mongo::StringData> : private formatter<std::string_view> {
     using Base = formatter<std::string_view>;
 
 public:
     using Base::parse;
-    template <typename FormatContext>
-    auto format(mongo::StringData s, FormatContext& fc) {
+
+    auto format(mongo::StringData s, auto& fc) const {
         return Base::format(std::string_view{s}, fc);
     }
 };

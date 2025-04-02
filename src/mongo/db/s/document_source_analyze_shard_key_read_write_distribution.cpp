@@ -223,16 +223,16 @@ CollectionRoutingInfoTargeter makeCollectionRoutingInfoTargeter(
                                                             true /* allowMigrations */,
                                                             chunks);
 
-    auto cm = ChunkManager(ShardId("0"),
-                           DatabaseVersion(UUID::gen(), validAfter),
-                           RoutingTableHistoryValueHandle(std::make_shared<RoutingTableHistory>(
+    auto cm = ChunkManager(RoutingTableHistoryValueHandle(std::make_shared<RoutingTableHistory>(
                                std::move(routingTableHistory))),
                            boost::none);
 
     return CollectionRoutingInfoTargeter(
         nss,
-        CollectionRoutingInfo{std::move(cm),
-                              boost::optional<ShardingIndexesCatalogCache>(boost::none)});
+        CollectionRoutingInfo{
+            std::move(cm),
+            DatabaseTypeValueHandle(DatabaseType{
+                nss.dbName(), ShardId("0"), DatabaseVersion(UUID::gen(), validAfter)})});
 }
 
 /**
@@ -306,8 +306,7 @@ void processSampledDiffs(OperationContext* opCtx,
             const auto prefixPath =
                 SampledQueryDiffDocument::kDiffFieldName + "." + shardKeyPrefixFieldName;
             andArrayBuilder.append(BSON(prefixPath << BSON("$exists" << true)));
-            andArrayBuilder.append(BSON(prefixPath << BSON("$not" << BSON("$type"
-                                                                          << "object"))));
+            andArrayBuilder.append(BSON(prefixPath << BSON("$not" << BSON("$type" << "object"))));
             andArrayBuilder.done();
             orArrayBuilder.append(andBuilder.done());
 
@@ -408,8 +407,8 @@ DocumentSource::GetNextResult DocumentSourceAnalyzeShardKeyReadWriteDistribution
 }
 
 std::unique_ptr<DocumentSourceAnalyzeShardKeyReadWriteDistribution::LiteParsed>
-DocumentSourceAnalyzeShardKeyReadWriteDistribution::LiteParsed::parse(const NamespaceString& nss,
-                                                                      const BSONElement& specElem) {
+DocumentSourceAnalyzeShardKeyReadWriteDistribution::LiteParsed::parse(
+    const NamespaceString& nss, const BSONElement& specElem, const LiteParserOptions& options) {
     uassert(
         ErrorCodes::IllegalOperation,
         str::stream() << kStageName << " is not supported on a standalone mongod",

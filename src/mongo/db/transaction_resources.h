@@ -48,7 +48,6 @@
 #include "mongo/db/views/view.h"
 #include "mongo/s/database_version.h"
 #include "mongo/s/shard_version.h"
-#include "mongo/util/inline_memory.h"
 #include "mongo/util/uuid.h"
 
 namespace mongo {
@@ -125,7 +124,44 @@ struct AcquisitionLocks {
     LockMode collLock = MODE_NONE;
 };
 
-struct AcquiredCollection {
+struct AcquiredBase {
+    AcquiredBase(int acquireCollectionCallNum,
+                 AcquisitionPrerequisites prerequisites,
+                 std::shared_ptr<Lock::DBLock> dbLock,
+                 boost::optional<Lock::CollectionLock> collectionLock,
+                 std::shared_ptr<LockFreeReadsBlock> lockFreeReadsBlock,
+                 std::shared_ptr<Lock::GlobalLock> globalLock,
+                 AcquisitionLocks locksRequirements)
+        : acquireCollectionCallNum(acquireCollectionCallNum),
+          prerequisites(std::move(prerequisites)),
+          dbLock(std::move(dbLock)),
+          collectionLock(std::move(collectionLock)),
+          lockFreeReadsBlock(std::move(lockFreeReadsBlock)),
+          globalLock(std::move(globalLock)),
+          locks(std::move(locksRequirements)) {}
+
+    // The number containing at which acquireCollection call this acquisition was built. All
+    // acquisitions created on the same call to acquireCollection will share the same number
+    // and contain shared_ptrs to the Global/DB/Lock-free locks shared amongst them.
+    int acquireCollectionCallNum;
+
+    AcquisitionPrerequisites prerequisites;
+
+    std::shared_ptr<Lock::DBLock> dbLock;
+    boost::optional<Lock::CollectionLock> collectionLock;
+
+    std::shared_ptr<LockFreeReadsBlock> lockFreeReadsBlock;
+    std::shared_ptr<Lock::GlobalLock> globalLock;  // Only for lock-free acquisitions. Otherwise the
+                                                   // global lock is held by 'dbLock'.
+
+    AcquisitionLocks locks;
+
+    // Maintains a reference count to how many references there are to this acquisition by the
+    // CollectionAcquisition/ViewAcquisition class.
+    mutable int64_t refCount = 0;
+};
+
+struct AcquiredCollection : AcquiredBase {
     AcquiredCollection(int acquireCollectionCallNum,
                        AcquisitionPrerequisites prerequisites,
                        std::shared_ptr<Lock::DBLock> dbLock,
@@ -136,13 +172,13 @@ struct AcquiredCollection {
                        boost::optional<ScopedCollectionDescription> collectionDescription,
                        boost::optional<ScopedCollectionFilter> ownershipFilter,
                        CollectionPtr collectionPtr)
-        : acquireCollectionCallNum(acquireCollectionCallNum),
-          prerequisites(std::move(prerequisites)),
-          dbLock(std::move(dbLock)),
-          collectionLock(std::move(collectionLock)),
-          lockFreeReadsBlock(std::move(lockFreeReadsBlock)),
-          globalLock(std::move(globalLock)),
-          locks(std::move(locksRequirements)),
+        : AcquiredBase(acquireCollectionCallNum,
+                       std::move(prerequisites),
+                       std::move(dbLock),
+                       std::move(collectionLock),
+                       std::move(lockFreeReadsBlock),
+                       std::move(globalLock),
+                       std::move(locksRequirements)),
           collectionDescription(std::move(collectionDescription)),
           ownershipFilter(std::move(ownershipFilter)),
           collectionPtr(std::move(collectionPtr)),
@@ -163,23 +199,7 @@ struct AcquiredCollection {
                              std::move(locksRequirements),
                              boost::none,
                              boost::none,
-                             std::move(collectionPtr)){};
-
-    // The number containing at which acquireCollection call this acquisition was built. All
-    // acquisitions created on the same call to acquireCollection will share the same number and
-    // contain shared_ptrs to the Global/DB/Lock-free locks shared amongst them.
-    int acquireCollectionCallNum;
-
-    AcquisitionPrerequisites prerequisites;
-
-    std::shared_ptr<Lock::DBLock> dbLock;
-    boost::optional<Lock::CollectionLock> collectionLock;
-
-    std::shared_ptr<LockFreeReadsBlock> lockFreeReadsBlock;
-    std::shared_ptr<Lock::GlobalLock> globalLock;  // Only for lock-free acquisitions. Otherwise the
-                                                   // global lock is held by 'dbLock'.
-
-    AcquisitionLocks locks;
+                             std::move(collectionPtr)) {};
 
     boost::optional<ScopedCollectionDescription> collectionDescription;
     boost::optional<ScopedCollectionFilter> ownershipFilter;
@@ -189,23 +209,10 @@ struct AcquiredCollection {
     // Indicates whether this acquisition has been invalidated after a ScopedLocalCatalogWriteFence
     // was unable to restore it on rollback.
     bool invalidated;
-
-    // Maintains a reference count to how many references there are to this acquisition by the
-    // CollectionAcquisition class.
-    mutable int64_t refCount = 0;
 };
 
-struct AcquiredView {
-    AcquisitionPrerequisites prerequisites;
-
-    std::shared_ptr<Lock::DBLock> dbLock;
-    boost::optional<Lock::CollectionLock> collectionLock;
-
+struct AcquiredView : AcquiredBase {
     std::shared_ptr<const ViewDefinition> viewDefinition;
-
-    // Maintains a reference count to how many references there are to this acquisition by the
-    // ViewAcquisition class.
-    mutable int64_t refCount = 0;
 };
 
 /**
@@ -228,12 +235,12 @@ void makeLockerOnOperationContext(OperationContext* opCtx);
 
 /**
  * Swaps the locker, releasing the old locker to the caller.
- * The Client lock is going to be acquired by this function.
+ * The client lock is going to be acquired by this function.
  */
 std::unique_ptr<Locker> swapLocker(OperationContext* opCtx, std::unique_ptr<Locker> newLocker);
 std::unique_ptr<Locker> swapLocker(OperationContext* opCtx,
                                    std::unique_ptr<Locker> newLocker,
-                                   WithLock lk);
+                                   ClientLock& clientLock);
 
 /**
  * Get the RecoveryUnit for the given opCtx. Caller DOES NOT own pointer.
@@ -250,10 +257,10 @@ inline const RecoveryUnit* getRecoveryUnit(const OperationContext* opCtx) {
 /**
  * Returns the RecoveryUnit (same return value as recoveryUnit()) but the caller takes
  * ownership of the returned RecoveryUnit, and the OperationContext instance relinquishes
- * ownership. Sets the RecoveryUnit to NULL.
+ * ownership. Sets the RecoveryUnit to NULL. Requires holding the client lock.
  */
-// TODO (SERVER-77213): Move implementation to .cpp file
 std::unique_ptr<RecoveryUnit> releaseRecoveryUnit(OperationContext* opCtx);
+std::unique_ptr<RecoveryUnit> releaseRecoveryUnit(OperationContext* opCtx, ClientLock& clientLock);
 
 /*
  * Sets up a new, inactive RecoveryUnit in the OperationContext. Destroys any previous recovery
@@ -261,24 +268,31 @@ std::unique_ptr<RecoveryUnit> releaseRecoveryUnit(OperationContext* opCtx);
  */
 // TODO (SERVER-77213): Move implementation to .cpp file
 inline void replaceRecoveryUnit(OperationContext* opCtx) {
-    opCtx->replaceRecoveryUnit_DO_NOT_USE();
+    ClientLock lk(opCtx->getClient());
+    opCtx->replaceRecoveryUnit_DO_NOT_USE(lk);
 }
 
 /*
  * Similar to replaceRecoveryUnit(), but returns the previous recovery unit like
- * releaseRecoveryUnit().
+ * releaseRecoveryUnit(). Requires holding the client lock.
  */
-std::unique_ptr<RecoveryUnit> releaseAndReplaceRecoveryUnit(OperationContext* opCtx);
+std::unique_ptr<RecoveryUnit> releaseAndReplaceRecoveryUnit(OperationContext* opCtx,
+                                                            ClientLock& clientLock);
 
 /**
  * Associates the OperatingContext with a different RecoveryUnit for getMore or
  * subtransactions, see RecoveryUnitSwap. The new state is passed and the old state is
  * returned separately even though the state logically belongs to the RecoveryUnit,
- * as it is managed by the OperationContext.
+ * as it is managed by the OperationContext. The client lock is going to be acquired by this
+ * function.
  */
 WriteUnitOfWork::RecoveryUnitState setRecoveryUnit(OperationContext* opCtx,
                                                    std::unique_ptr<RecoveryUnit> unit,
                                                    WriteUnitOfWork::RecoveryUnitState state);
+WriteUnitOfWork::RecoveryUnitState setRecoveryUnit(OperationContext* opCtx,
+                                                   std::unique_ptr<RecoveryUnit> unit,
+                                                   WriteUnitOfWork::RecoveryUnitState state,
+                                                   ClientLock& clientLock);
 
 WriteUnitOfWork* getWriteUnitOfWork(OperationContext* opCtx);
 
@@ -351,6 +365,10 @@ struct TransactionResources {
      */
     void assertNoAcquiredCollections() const;
 
+    bool isEmpty() const {
+        return state == State::EMPTY;
+    }
+
     /**
      * Transaction resources can only be in one of 4 states:
      * - EMPTY: This state is equivalent to a brand new constructed transaction resources which have
@@ -365,8 +383,8 @@ struct TransactionResources {
      * The set of valid transitions are:
      * - EMPTY <-> ACTIVE <-> YIELDED
      * - EMPTY <-> ACTIVE <-> STASHED
-     * - STASHED -> FAILED -> EMPTY
-     * - YIELDED -> FAILED -> EMPTY
+     * - STASHED <-> FAILED -> EMPTY
+     * - YIELDED <-> FAILED -> EMPTY
      */
     enum class State { EMPTY, ACTIVE, STASHED, YIELDED, FAILED };
 
@@ -385,8 +403,8 @@ struct TransactionResources {
     ////////////////////////////////////////////////////////////////////////////////////////
     // Per-collection resources
 
-    using AcquiredCollections = inline_memory::List<AcquiredCollection, 1>;
-    using AcquiredViews = inline_memory::List<AcquiredView, 1>;
+    using AcquiredCollections = std::list<AcquiredCollection>;
+    using AcquiredViews = std::list<AcquiredView>;
 
     // Set of all collections which are currently acquired
     AcquiredCollections acquiredCollections;
@@ -410,6 +428,9 @@ struct TransactionResources {
     // The number of times we have called acquireCollection* on these TransactionResources. The
     // number is used to identify acquisitions that share the same global/db locks.
     int currentAcquireCallCount = 0;
+
+    // The catalog epoch when the resources were first acquired.
+    boost::optional<int64_t> catalogEpoch;
 
     int increaseAcquireCollectionCallCount() {
         return currentAcquireCallCount++;

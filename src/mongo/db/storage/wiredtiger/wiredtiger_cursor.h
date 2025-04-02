@@ -33,8 +33,8 @@
 #include <string>
 #include <wiredtiger.h>
 
-#include "mongo/db/storage/wiredtiger/wiredtiger_connection.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_managed_session.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_session.h"
 
 namespace mongo {
 
@@ -44,15 +44,24 @@ namespace mongo {
  */
 class WiredTigerCursor {
 public:
+    struct Params {
+        // The table id this cursor will operate on.
+        uint64_t tableID{0};
+        bool isCheckpoint{false};
+        // When 'true', data read from disk should not be kept in the storage engine cache.
+        bool readOnce{false};
+        bool allowOverwrite{false};
+        bool random{false};
+    };
+
     /**
      * If 'allowOverwrite' is true, insert operations will not return an error if the record
      * already exists, and update/remove operations will not return error if the record does not
      * exist.
+     *
+     * If 'random' is true, every next calls will yield records in a random order.
      */
-    WiredTigerCursor(WiredTigerRecoveryUnit& ru,
-                     const std::string& uri,
-                     uint64_t tableID,
-                     bool allowOverwrite);
+    WiredTigerCursor(Params params, const std::string& uri, WiredTigerSession& session);
 
     // Prevent duplication of the logical owned-ness of the cursors via move or copy.
     WiredTigerCursor(WiredTigerCursor&&) = delete;
@@ -71,7 +80,7 @@ public:
     }
 
     WiredTigerSession* getSession() {
-        return _session;
+        return &_session;
     }
 
     /**
@@ -83,9 +92,9 @@ public:
 
 protected:
     uint64_t _tableID;
-    WiredTigerSession* _session;
-    std::string _config;
     bool _isCheckpoint;
+    WiredTigerSession& _session;
+    std::string _config;
 
     WT_CURSOR* _cursor = nullptr;  // Owned
 };
@@ -98,7 +107,9 @@ protected:
  */
 class WiredTigerBulkLoadCursor {
 public:
-    WiredTigerBulkLoadCursor(WiredTigerRecoveryUnit&, const std::string& indexUri);
+    WiredTigerBulkLoadCursor(OperationContext* opCtx,
+                             WiredTigerSession& outerSession,
+                             const std::string& indexUri);
 
     ~WiredTigerBulkLoadCursor() {
         _cursor->close(_cursor);
@@ -113,7 +124,7 @@ public:
     }
 
 private:
-    UniqueWiredTigerSession const _session;
+    WiredTigerManagedSession const _session;
     WT_CURSOR* _cursor = nullptr;  // Owned
 };
 }  // namespace mongo

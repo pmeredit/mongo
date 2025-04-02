@@ -1,21 +1,45 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {
-    getAtlasStreamProcessorHandle,
+    getAtlasStreamProcessingInstance,
     getDefaultSp,
     test
 } from 'src/mongo/db/modules/enterprise/jstests/streams/fake_client.js';
 import {makeRandomString} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
+// Setup the target cluster used for $source and $merge stage.
+// by default use the local mongod as the source/merge target
+let targetConn = new Mongo(db.getMongo().host);
+let targetClusterURI = _getEnv("ATLAS_CLUSTER_URI");
+if (targetClusterURI && targetClusterURI !== null && targetClusterURI !== "") {
+    // Use a remote Atlas cluster as the source/merge target.
+    targetConn = new Mongo(targetClusterURI);
+    jsTestLog("Running against target Atlas cluster");
+}
+
+// Setup the sp client handle (either a locally running mongod, or
+// a stream processing instance in Atlas Stream Processing).
+let sp = getDefaultSp(targetClusterURI);
+let aspUri = _getEnv("ASP_URI");
+if (aspUri != "" && aspUri != null) {
+    jsTestLog("Using ASP service");
+    sp = getAtlasStreamProcessingInstance(aspUri);
+}
+
+let targetDb = targetConn.getDB(test.dbName);
 const spName = "simple_merge_benchmark";
-const windowSpName = "window_simple_merge_benchmark";
-const inputColl = db.getSiblingDB(test.dbName)[test.inputCollName];
-const spOutputColl = db.getSiblingDB(test.dbName)[test.outputCollName];
-const spWindowOutputCollName = "window-" + test.outputCollName;
-const spWindowOutputColl = db.getSiblingDB(test.dbName)[spWindowOutputCollName];
+const inputColl = targetDb.getSiblingDB(test.dbName)[test.inputCollName];
 const aggOutputCollName = `agg-${test.outputCollName}`;
-const aggOutputColl = db.getSiblingDB(test.dbName)[aggOutputCollName];
+const aggOutputColl = targetDb.getSiblingDB(test.dbName)[aggOutputCollName];
 const aggWhenMatchedOutputCollName = `aggwhenmatched-${test.outputCollName}`;
-const aggWhenMatchOutputColl = db.getSiblingDB(test.dbName)[aggWhenMatchedOutputCollName];
-let sp = null;
+const aggWhenMatchOutputColl = targetDb.getSiblingDB(test.dbName)[aggWhenMatchedOutputCollName];
+const timeoutMs = 10 * 1000 * 60;
+const pollingMs = 200;
+const baseDocCount = 100000;
 
 function generateInput({docSize, docCount}) {
     // 3 integers, one _id.
@@ -39,7 +63,7 @@ function generateInput({docSize, docCount}) {
 
 // Insert the data into the input collection. Returns an operationTimestamp before the inserts.
 function setup(input) {
-    const startTime = db.hello().$clusterTime.clusterTime;
+    const startTime = targetDb.hello().$clusterTime.clusterTime;
     const batchSize = 1000;
     let batch = [];
     const flush = () => {
@@ -59,86 +83,38 @@ function setup(input) {
     return startTime;
 }
 
-// Wait for the expected numbers of messages to exist in the target coll.
-function waitForDone(coll, expectedMessages, pollingIntervalMs = 200) {
-    while (coll.count() != expectedMessages) {
-        sleep(pollingIntervalMs);
-    }
-}
-
 // Run a $source, $merge streamProcessor beginning from clusterTime.
-function runStreamProcessor(clusterTime, inputLength) {
-    sp.createStreamProcessor(spName, [
+function runStreamProcessor(clusterTime, inputLength, parallelism) {
+    const collName = test.outputCollName + parallelism ? `-${parallelism}` : "";
+    const outputColl = targetDb.getSiblingDB(test.dbName)[collName];
+    outputColl.drop();
+    let pipeline = [
         {
             $source: {
                 connectionName: test.atlasConnection,
                 db: test.dbName,
                 coll: test.inputCollName,
-                config: {
-                    startAtOperationTime: clusterTime,
-                    fullDocumentOnly: true,
-                    fullDocument: "required"
-                }
+                config: {startAtOperationTime: clusterTime}
             }
         },
-        {
-            $merge: {
-                into: {
-                    connectionName: test.atlasConnection,
-                    db: test.dbName,
-                    coll: test.outputCollName
-                }
-            }
-        },
-    ]);
+        {$match: {operationType: "insert"}},
+        {$project: {_id: 0}},
+        {$replaceRoot: {newRoot: "$fullDocument"}},
+        {$merge: {into: {connectionName: test.atlasConnection, db: test.dbName, coll: collName}}},
+    ];
+    if (parallelism) {
+        pipeline[pipeline.length - 1]["$merge"]["parallelism"] = NumberInt(parallelism);
+    }
+    sp.createStreamProcessor(spName, pipeline);
     const startTime = new Date();
     sp[spName].start();
-    waitForDone(spOutputColl, inputLength);
+    assert.soon(() => { return outputColl.count() == inputLength; },
+                "waiting for expected output",
+                timeoutMs,
+                pollingMs);
     const endTime = new Date();
     sp[spName].stop();
-    return endTime - startTime;
-}
-
-// Run a $source,$tumblingWindow,$merge streamProcessor beginning from clusterTime.
-function runStreamProcessorWithWindow(clusterTime, inputLength) {
-    sp.createStreamProcessor(windowSpName, [
-        {
-            $source: {
-                connectionName: test.atlasConnection,
-                db: test.dbName,
-                coll: test.inputCollName,
-                config: {
-                    startAtOperationTime: clusterTime,
-                    fullDocumentOnly: true,
-                    fullDocument: "required"
-                }
-            }
-        },
-        {
-            $tumblingWindow: {
-                interval: {size: NumberInt(1), unit: "second"},
-                idleTimeout: {size: NumberInt(10), unit: "second"},
-                allowedLateness: {size: NumberInt(10), unit: "second"},
-                pipeline: [
-                    {$group: {_id: '$$ROOT', count: {$sum: 1}}},
-                    {$project: {_id: 0, data: "$_id", count: 1}},
-                ]
-            }
-        },
-        {
-            $merge: {
-                into: {
-                    connectionName: test.atlasConnection,
-                    db: test.dbName,
-                    coll: spWindowOutputCollName
-                }
-            }
-        },
-    ]);
-    const startTime = new Date();
-    sp[windowSpName].start();
-    waitForDone(spWindowOutputColl, inputLength);
-    return new Date() - startTime;
+    return {time: endTime - startTime, outputColl: outputColl};
 }
 
 // Run aggregate with default $merge.
@@ -157,70 +133,164 @@ function runAggregateWithWhenMatchedFailed() {
     return new Date() - startTime;
 }
 
-function benchmark() {
-    const dbUri = db.getMongo().host;
-    const runningOnAtlas = dbUri.includes("mongodb.net");
-    if (runningOnAtlas) {
-        let aspUri = _getEnv("ASP_URI");
-        if (aspUri != "" && aspUri != null) {
-            sp = getAtlasStreamProcessorHandle(aspUri);
+function getAvgResults(results) {
+    let avg = {};
+    for (let result of results) {
+        for (let prop in result) {
+            if (result.hasOwnProperty(prop)) {
+                let time = result[prop];
+                if (!avg.hasOwnProperty(prop)) {
+                    avg[prop] = {sum: 0, count: 0};
+                }
+                avg[prop] = {sum: avg[prop].sum + time, count: avg[prop].count + 1};
+            }
         }
-    } else {
-        // Running locally.
-        sp = getDefaultSp();
     }
 
-    inputColl.drop();
-    spWindowOutputColl.drop();
-    spOutputColl.drop();
-    aggOutputColl.drop();
-    aggWhenMatchOutputColl.drop();
-    Random.setRandomSeed(42);
-    // Set the oplog to 16GB.
-    db.adminCommand({replSetResizeOplog: 1, size: 16000});
-
-    // The input is 10k 1kB documents, about 10MB of data.
-    let input = generateInput({docSize: 1000, docCount: 1000000});
-    const inputLength = input.length;
-    const clusterTime = setup(input);
-    input = [];
-
-    // Run the workloads.
-    let aggResult = runAggregate();
-    let insertAggResult = runAggregateWithWhenMatchedFailed();
-    let spResult = null;
-    let spWindowResult = null;
-    if (sp != null) {
-        spResult = runStreamProcessor(clusterTime, inputLength);
-        spWindowResult = runStreamProcessorWithWindow(clusterTime, inputLength);
+    jsTestLog(`running avg ${tojson(avg)}`);
+    for (let prop in avg) {
+        avg[prop] = avg[prop].sum / avg[prop].count;
     }
 
-    jsTestLog("simple_merge_benchmark results:");
-    jsTestLog({
-        "sp": spResult,
-        "spWithWindow": spWindowResult,
-        "agg": aggResult,
-        "insertAgg": insertAggResult
-    });
-
-    if (sp != null) {
-        sp[spName].drop(false /*assertWorked*/);
-        sp[windowSpName].drop(false /*assertWorked*/);
-        assert.eq(inputLength, spOutputColl.count());
-        assert.eq(inputLength, spWindowOutputColl.count());
-    }
-    assert.eq(inputLength, aggOutputColl.count());
-    assert.eq(inputLength, aggWhenMatchOutputColl.count());
-    inputColl.drop();
-    spWindowOutputColl.drop();
-    spOutputColl.drop();
-    aggOutputColl.drop();
-    aggWhenMatchOutputColl.drop();
+    return avg;
 }
 
-const buildInfo = db.getServerBuildInfo();
+function benchmarkChangestreamSource(reps) {
+    // Set the oplog to 16GB.
+    targetDb.adminCommand({replSetResizeOplog: 1, size: 16000});
+
+    let results = [];
+    for (let i = 0; i < reps; i += 1) {
+        // Set the input of 1million 1kB documents, about 1GB of data.
+        inputColl.drop();
+        aggOutputColl.drop();
+        aggWhenMatchOutputColl.drop();
+        Random.setRandomSeed(42);
+        let input = generateInput({docSize: 1000, docCount: baseDocCount});
+        const inputLength = input.length;
+        const clusterTime = setup(input);
+        input = [];
+
+        // Run the workloads.
+        let aggResult = runAggregate();
+        let insertAggResult = runAggregateWithWhenMatchedFailed();
+        let spResults = {};
+        if (sp != null) {
+            for (let parallelism of [1, 2, 4, 8]) {
+                const {time, outputColl} =
+                    runStreamProcessor(clusterTime, inputLength, parallelism);
+                assert.eq(inputLength, outputColl.count());
+                spResults["spparallelism-" + parallelism] = time;
+                if (sp != null) {
+                    sp[spName].drop(false /*assertWorked*/);
+                }
+                outputColl.drop();
+            }
+        }
+
+        let iteration = {aggResult: aggResult, insertAggResult: insertAggResult};
+        iteration = Object.assign(iteration, spResults);
+        results.push(iteration);
+
+        assert.eq(inputLength, aggOutputColl.count());
+        assert.eq(inputLength, aggWhenMatchOutputColl.count());
+        inputColl.drop();
+        aggOutputColl.drop();
+        aggWhenMatchOutputColl.drop();
+    }
+
+    jsTestLog(`results benchmarkChangestreamSource: ${tojson(results)}`);
+    jsTestLog(`final avg benchmarkChangestreamSource: ${tojson(getAvgResults(results))}`);
+}
+
+function benchmarkUnwindDuplication(reps) {
+    // Set the oplog to 16GB.
+    targetDb.adminCommand({replSetResizeOplog: 1, size: 16000});
+
+    let docCount = 2 * baseDocCount;
+    let outputDocsPerDoc = 1000;
+    let arr = Array.from(Array(outputDocsPerDoc).keys());
+    let inputDocs = docCount / outputDocsPerDoc;
+    let input = Array.from(Array(inputDocs).keys()).map(i => { return {i: i, arr: arr}; });
+
+    let results = [];
+    for (let i = 0; i < reps; i += 1) {
+        // Set the input of 1million 1kB documents, about 1GB of data.
+        inputColl.drop();
+        const clusterTime = setup(input);
+
+        // Run the workloads.
+        let spResults = {};
+        if (sp != null) {
+            for (let parallelism of [1, 2, 4, 8]) {
+                const collName = test.outputCollName + parallelism ? `-${parallelism}` : "";
+                const outputColl = targetDb.getSiblingDB(test.dbName)[collName];
+                outputColl.drop();
+                let pipeline = [
+                    {
+                        $source: {
+                            connectionName: test.atlasConnection,
+                            db: test.dbName,
+                            coll: test.inputCollName,
+                            config: {
+                                startAtOperationTime: clusterTime,
+                            }
+                        }
+                    },
+                    {$match: {operationType: "insert"}},
+                    {$replaceRoot: {newRoot: "$fullDocument"}},
+                    {$project: {_id: 0}},
+                    {$unwind: "$arr"},
+                    {
+                        $merge: {
+                            into: {
+                                connectionName: test.atlasConnection,
+                                db: test.dbName,
+                                coll: collName
+                            }
+                        }
+                    },
+                ];
+                if (parallelism) {
+                    pipeline[pipeline.length - 1]["$merge"]["parallelism"] = NumberInt(parallelism);
+                }
+                sp.createStreamProcessor(spName, pipeline);
+                const startTime = new Date();
+                sp[spName].start();
+
+                assert.soon(() => { return outputColl.count() == docCount; },
+                            "waiting for expected output",
+                            timeoutMs,
+                            pollingMs);
+
+                const endTime = new Date();
+                sp[spName].stop();
+                let time = endTime - startTime;
+
+                assert.eq(docCount, outputColl.count());
+                spResults["spparallelism-" + parallelism] = time;
+                if (sp != null) {
+                    sp[spName].drop(false /*assertWorked*/);
+                }
+            }
+        }
+
+        let iteration = {};
+        iteration = Object.assign(iteration, spResults);
+        results.push(iteration);
+
+        inputColl.drop();
+    }
+
+    jsTestLog(`results benchmarkUnwindDuplication: ${tojson(results)}`);
+    jsTestLog(`final benchmarkUnwindDuplication: ${tojson(getAvgResults(results))}`);
+}
+
+const buildInfo = targetDb.getServerBuildInfo();
 if (!buildInfo.isDebug() && !buildInfo.isAddressSanitizerActive() &&
     !buildInfo.isThreadSanitizerActive() && !buildInfo.isLeakSanitizerActive()) {
     // Don't run this on debug builds or sanitizer builds in Evergreen, it takes too long.
-    benchmark();
+    const reps = 1;
+    benchmarkChangestreamSource(reps);
+    benchmarkUnwindDuplication(reps);
 }

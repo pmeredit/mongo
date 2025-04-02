@@ -51,9 +51,7 @@
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/db/storage/write_unit_of_work.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo::express {
@@ -283,9 +281,8 @@ TEST_F(ExpressPlanTest, TestLookupViaUserIndexWithMatchingQuery) {
 
 TEST_F(ExpressPlanTest, TestLookupViaUserIndexWithMatchingQueryUsingCollator) {
     StringData indexName = "a_1"_sd;
-    auto collationSpec = BSON("locale"
-                              << "en_US"
-                              << "strength" << 2);
+    auto collationSpec = BSON("locale" << "en_US"
+                                       << "strength" << 2);
     auto indexSpec = BSON("v" << 2 << "name" << indexName << "key" << BSON("a" << 1) << "collation"
                               << collationSpec);
     auto collection = createAndPopulateTestCollectionWithIndex(

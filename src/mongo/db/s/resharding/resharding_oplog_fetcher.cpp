@@ -90,8 +90,6 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/database_version.h"
 #include "mongo/s/grid.h"
@@ -109,9 +107,9 @@
 namespace mongo {
 namespace {
 boost::intrusive_ptr<ExpressionContext> _makeExpressionContext(OperationContext* opCtx) {
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[NamespaceString::kRsOplogNamespace.coll()] = {
-        NamespaceString::kRsOplogNamespace, std::vector<BSONObj>()};
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[NamespaceString::kRsOplogNamespace] = {NamespaceString::kRsOplogNamespace,
+                                                              std::vector<BSONObj>()};
     return ExpressionContextBuilder{}
         .opCtx(opCtx)
         .mongoProcessInterface(MongoProcessInterface::create(opCtx))
@@ -317,14 +315,6 @@ ExecutorFuture<void> ReshardingOplogFetcher::_reschedule(
                                 ClientOperationKillableByStepdown{false});
             return iterate(client.get(), factory);
         })
-        .then([executor, cancelToken](bool moreToCome) {
-            // Wait a little before re-running the aggregation pipeline on the donor's oplog. The
-            // 1-second value was chosen to match the default awaitData timeout that would have been
-            // used if the aggregation cursor was TailableModeEnum::kTailableAndAwaitData.
-            return executor->sleepFor(Seconds{1}, cancelToken).then([moreToCome] {
-                return moreToCome;
-            });
-        })
         .then([this, executor, cancelToken, factory](bool moreToCome) mutable {
             if (!moreToCome) {
                 LOGV2_INFO(6077401,
@@ -340,7 +330,16 @@ ExecutorFuture<void> ReshardingOplogFetcher::_reschedule(
                     Status{ErrorCodes::CallbackCanceled,
                            "Resharding oplog fetcher canceled due to abort or stepdown"});
             }
-            return _reschedule(std::move(executor), cancelToken, factory);
+
+            // Wait a little before re-running the aggregation pipeline on the donor's oplog. The
+            // 1-second value was chosen to match the default awaitData timeout that would have been
+            // used if the aggregation cursor was TailableModeEnum::kTailableAndAwaitData.
+            return executor
+                ->sleepFor(Milliseconds{resharding::gReshardingOplogFetcherSleepMillis.load()},
+                           cancelToken)
+                .then([this, executor, cancelToken, factory] {
+                    return _reschedule(std::move(executor), cancelToken, factory);
+                });
         });
 }
 
@@ -553,8 +552,8 @@ bool ReshardingOplogFetcher::consume(Client* client,
                         oplog.setOpType(repl::OpTypeEnum::kNoop);
                         oplog.setUuid(_collUUID);
                         oplog.set_id(Value(newStartAt.toBSON()));
-                        oplog.setObject(BSON("msg"
-                                             << "Latest oplog ts from donor's cursor response"));
+                        oplog.setObject(
+                            BSON("msg" << "Latest oplog ts from donor's cursor response"));
                         oplog.setObject2(BSON("type" << resharding::kReshardProgressMark));
                         oplog.setOpTime(OplogSlot());
                         oplog.setWallClockTime(

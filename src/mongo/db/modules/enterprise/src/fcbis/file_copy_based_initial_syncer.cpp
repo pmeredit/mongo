@@ -7,6 +7,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/catalog_control.h"
+#include "mongo/db/catalog/catalog_helper.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/exception_util.h"
@@ -1208,7 +1209,7 @@ std::string FileCopyBasedInitialSyncer::_getPathRelativeTo(StringData path, Stri
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
     std::shared_ptr<BackupFileMetadataCollection> filesToClone) {
     return AsyncTry([this, self = shared_from_this(), filesToClone, fileIndex = size_t(0)]() mutable
-                    -> ExecutorFuture<bool> {
+                        -> ExecutorFuture<bool> {
                stdx::lock_guard lock(_mutex);
                // Returns "true" only when all files are finished cloning.
                if (fileIndex == filesToClone->size())
@@ -1401,10 +1402,7 @@ void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
     auto opCtx = cc().makeOperationContext();
     // Replay the oplog.  Setting inReplicationRecovery tells storage not to update the
     // size storer (for fastcount), which should be correct already in the files we received.
-    inReplicationRecovery(opCtx->getServiceContext()).store(true);
-    ON_BLOCK_EXIT([serviceContext = opCtx->getServiceContext()] {
-        inReplicationRecovery(serviceContext).store(false);
-    });
+    InReplicationRecovery inReplicationRecovery(opCtx->getServiceContext());
 
     // The oplogTruncateAfterPoint is a logged table, so it will be correct whether we have done
     // only an initial backup, or extensions.  We will apply all oplog entries up to the
@@ -1680,6 +1678,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
             // Clear the cached oplog pointer in the service context.
             repl::clearLocalOplogPtr(opCtx->getServiceContext());
         });
+    catalog::initializeCollectionCatalog(opCtx, opCtx->getServiceContext()->getStorageEngine());
     opCtx->getServiceContext()->getStorageEngine()->notifyStorageStartupRecoveryComplete();
     invariant(StorageEngine::LastShutdownState::kClean == lastShutdownState);
 
@@ -1774,8 +1773,7 @@ void FileCopyBasedInitialSyncer::Stats::append(BSONObjBuilder* builder) const {
     for (unsigned int i = 0; i < initialSyncAttemptInfos.size(); ++i) {
         BSONObj obj = initialSyncAttemptInfos[i].toBSON();
         if (builder->len() + obj.objsize() > BSONObjMaxUserSize) {
-            arrBuilder.append(BSON("Warning"
-                                   << "output truncated due to BSON object limit"));
+            arrBuilder.append(BSON("Warning" << "output truncated due to BSON object limit"));
             break;
         }
         arrBuilder.append(obj);
@@ -1881,8 +1879,7 @@ BSONObj FileCopyBasedInitialSyncer::_getInitialSyncProgress(WithLock) const {
         BSONObjBuilder flStat;
         el->append(&flStat);
         if (bob.len() + flStat.len() > BSONObjMaxUserSize) {
-            fls.append(BSON("Warning"
-                            << "output truncated due to BSON object limit"));
+            fls.append(BSON("Warning" << "output truncated due to BSON object limit"));
             break;
         }
         fls.append(flStat.obj());
@@ -2010,10 +2007,7 @@ void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
 
     // Setting inReplicationRecovery prevents double-counting of reconstructed prepared
     // transactions.
-    inReplicationRecovery(opCtx->getServiceContext()).store(true);
-    ON_BLOCK_EXIT([serviceContext = opCtx->getServiceContext()] {
-        inReplicationRecovery(serviceContext).store(false);
-    });
+    InReplicationRecovery inReplicationRecovery(opCtx->getServiceContext());
     reconstructPreparedTransactions(opCtx, repl::OplogApplication::Mode::kInitialSync);
 
     _runPostReplicationStartupStorageInitialization(opCtx);
@@ -2034,7 +2028,8 @@ void FileCopyBasedInitialSyncer::_runPostReplicationStartupStorageInitialization
         TransactionParticipant::getOldestActiveTimestamp);
 
     // This handles dropping of drop-pending collections.
-    storageEngine->startTimestampMonitor();
+    storageEngine->startTimestampMonitor(
+        {&catalog_helper::kCollectionCatalogCleanupTimestampListener});
 }
 
 bool FileCopyBasedInitialSyncer::_isShuttingDown() const {

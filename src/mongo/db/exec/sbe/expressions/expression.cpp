@@ -200,16 +200,14 @@ std::vector<DebugPrinter::Block> EVariable::debugPrint() const {
     return ret;
 }
 
-std::unique_ptr<EExpression> EPrimBinary::clone() const {
-    if (_nodes.size() == 2) {
-        return std::make_unique<EPrimBinary>(_op, _nodes[0]->clone(), _nodes[1]->clone());
-    } else {
-        invariant(_nodes.size() == 3);
-        return std::make_unique<EPrimBinary>(
-            _op, _nodes[0]->clone(), _nodes[1]->clone(), _nodes[2]->clone());
+std::unique_ptr<EExpression> EPrimNary::clone() const {
+    std::vector<std::unique_ptr<EExpression>> args;
+    args.reserve(_nodes.size());
+    for (auto& arg : _nodes) {
+        args.emplace_back(arg->clone());
     }
+    return std::make_unique<EPrimNary>(_op, std::move(args));
 }
-
 
 /*
  * Given a vector of clauses named [lhs1,...,lhsN-1, rhs], and a boolean isDisjunctive to indicate
@@ -240,9 +238,8 @@ std::unique_ptr<EExpression> EPrimBinary::clone() const {
  * @true:     push true
  * @end:
  */
-vm::CodeFragment buildShortCircuitCode(CompileCtx& ctx,
-                                       const std::vector<const EExpression*>& clauses,
-                                       bool isDisjunction) {
+template <typename Vector>
+vm::CodeFragment buildShortCircuitCode(CompileCtx& ctx, const Vector& clauses, bool isDisjunction) {
     return withNewLabels(ctx, [&](vm::LabelId endLabel, vm::LabelId resultLabel) {
         // Build code fragment for all but the last clause, which is used for the final result
         // branch.
@@ -275,10 +272,81 @@ vm::CodeFragment buildShortCircuitCode(CompileCtx& ctx,
 
         // Only one of `finalClause` or `resultBranch` will execute, so the stack size adjustment
         // should only be made one time here, rather than one adjustment for each CodeFragment.
-        code.append(std::move(finalClause), std::move(resultBranch));
+        code.append({std::move(finalClause), std::move(resultBranch)});
         code.appendLabel(endLabel);
         return code;
     });
+}
+
+vm::CodeFragment EPrimNary::compileDirect(CompileCtx& ctx) const {
+    if (_op == EPrimNary::logicAnd || _op == EPrimNary::logicOr) {
+        return buildShortCircuitCode(ctx, _nodes, _op == EPrimNary::logicOr /*isDisjunction*/);
+    }
+
+    vm::CodeFragment code;
+    vm::Instruction::Parameter lhsParam, rhsParam;
+
+    lhsParam = appendParameter(code, ctx, _nodes[0].get());
+
+    auto appendInstr = [&](vm::Instruction::Parameter lhsParam,
+                           vm::Instruction::Parameter rhsParam) {
+        switch (_op) {
+            case EPrimNary::add:
+                code.appendAdd(lhsParam, rhsParam);
+                break;
+            default:
+                MONGO_UNREACHABLE;
+        }
+    };
+
+    for (size_t idx = 1; idx < _nodes.size(); ++idx) {
+        rhsParam = appendParameter(code, ctx, _nodes[idx].get());
+        appendInstr(lhsParam, rhsParam);
+        lhsParam = {};
+    }
+
+    return code;
+}
+
+std::vector<DebugPrinter::Block> EPrimNary::debugPrint() const {
+    std::vector<DebugPrinter::Block> ret;
+
+    ret.emplace_back("(`");
+    for (size_t i = 0; i < _nodes.size(); i++) {
+        DebugPrinter::addBlocks(ret, _nodes[i]->debugPrint());
+        if (i != _nodes.size() - 1) {
+            switch (_op) {
+                case EPrimNary::logicAnd:
+                    ret.emplace_back("&&");
+                    break;
+                case EPrimNary::logicOr:
+                    ret.emplace_back("||");
+                    break;
+                case EPrimNary::add:
+                    ret.emplace_back("+");
+                    break;
+                default:
+                    MONGO_UNREACHABLE;
+            }
+        }
+    }
+    ret.emplace_back("`)");
+
+    return ret;
+}
+
+size_t EPrimNary::estimateSize() const {
+    return sizeof(*this) + size_estimator::estimate(_nodes);
+}
+
+std::unique_ptr<EExpression> EPrimBinary::clone() const {
+    if (_nodes.size() == 2) {
+        return std::make_unique<EPrimBinary>(_op, _nodes[0]->clone(), _nodes[1]->clone());
+    } else {
+        invariant(_nodes.size() == 3);
+        return std::make_unique<EPrimBinary>(
+            _op, _nodes[0]->clone(), _nodes[1]->clone(), _nodes[2]->clone());
+    }
 }
 
 vm::CodeFragment EPrimBinary::compileDirect(CompileCtx& ctx) const {
@@ -1065,6 +1133,7 @@ static stdx::unordered_map<std::string, BuiltinFn> kBuiltinFunctions = {
      BuiltinFn{[](size_t n) { return n == 2; }, vm::Builtin::cellFoldValues_P, false}},
     {"cellBlockGetFlatValuesBlock",
      BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::cellBlockGetFlatValuesBlock, false}},
+    {"currentDate", BuiltinFn{[](size_t n) { return n == 0; }, vm::Builtin::currentDate, false}},
 };
 
 /**
@@ -1402,7 +1471,7 @@ vm::CodeFragment EIf::compileDirect(CompileCtx& ctx) const {
      *            cond
      *            jumpNothing @end
      *            jumpTrue @then
-     * @else:     elseBranch
+     *            elseBranch
      *            jump @end
      * @then:     thenBranch
      * @end:
@@ -1425,7 +1494,7 @@ vm::CodeFragment EIf::compileDirect(CompileCtx& ctx) const {
         thenCodeBranch.append(_nodes[1]->compileDirect(ctx));
 
         // Combine the branches
-        code.append(std::move(elseCodeBranch), std::move(thenCodeBranch));
+        code.append({std::move(elseCodeBranch), std::move(thenCodeBranch)});
         code.appendLabel(endLabel);
         return code;
     });
@@ -1456,6 +1525,104 @@ std::vector<DebugPrinter::Block> EIf::debugPrint() const {
 }
 
 size_t EIf::estimateSize() const {
+    return sizeof(*this) + size_estimator::estimate(_nodes);
+}
+
+std::unique_ptr<EExpression> ESwitch::clone() const {
+    std::vector<std::unique_ptr<EExpression>> nodes;
+    nodes.reserve(_nodes.size());
+    for (auto&& n : _nodes) {
+        nodes.push_back(n->clone());
+    }
+    return std::make_unique<ESwitch>(std::move(nodes));
+}
+
+vm::CodeFragment ESwitch::compileDirect(CompileCtx& ctx) const {
+    /*
+     * Compile if-then-elif-...-else into following bytecode:
+     *            cond1
+     *            jumpNothing @end
+     *            jumpTrue @then1
+     *            cond2
+     *            jumpNothing @end
+     *            jumpTrue @then2
+     *            elseBranch
+     *            jump @end
+     * @then1:    thenBranch1
+     *            jump @end
+     * @then2:    thenBranch2
+     * @end:
+     */
+
+    auto endLabel = ctx.newLabelId();
+    size_t numBranches = getNumBranches();
+    std::vector<vm::LabelId> labels;
+    labels.reserve(numBranches);
+    for (size_t i = 0; i < numBranches; i++) {
+        labels.push_back(ctx.newLabelId());
+    }
+    std::vector<vm::CodeFragment> fragments;
+    fragments.reserve(numBranches + 1);
+
+    vm::CodeFragment mainCode;
+    for (size_t i = 0; i < numBranches; i++) {
+        // Compile the condition
+        auto code = getCondition(i)->compileDirect(ctx);
+        // Compile the jumps
+        code.appendLabelJumpNothing(endLabel);
+        code.appendLabelJumpTrue(labels[i]);
+        mainCode.append(std::move(code));
+    }
+    // Compile else-branch
+    fragments.emplace_back(getDefault()->compileDirect(ctx));
+    fragments.back().appendLabelJump(endLabel);
+    // Compile then-branch
+    for (size_t i = 0; i < numBranches; i++) {
+        vm::CodeFragment thenCodeBranch;
+        thenCodeBranch.appendLabel(labels[i]);
+        thenCodeBranch.append(getThenBranch(i)->compileDirect(ctx));
+        if (i < numBranches - 1) {
+            thenCodeBranch.appendLabelJump(endLabel);
+        }
+        fragments.emplace_back(std::move(thenCodeBranch));
+    }
+
+    mainCode.append(std::move(fragments));
+    mainCode.appendLabel(endLabel);
+
+    for (size_t i = 0; i < numBranches; i++) {
+        mainCode.removeLabel(labels[i]);
+    }
+    mainCode.removeLabel(endLabel);
+    return mainCode;
+}
+
+std::vector<DebugPrinter::Block> ESwitch::debugPrint() const {
+    std::vector<DebugPrinter::Block> ret;
+
+    ret.emplace_back(DebugPrinter::Block::cmdIncIndent);
+
+    for (size_t i = 0; i < getNumBranches(); i++) {
+        // Print the condition.
+        DebugPrinter::addKeyword(ret, i == 0 ? "if" : "elif");
+        DebugPrinter::addBlocks(ret, getCondition(i)->debugPrint());
+        DebugPrinter::addNewLine(ret);
+
+        // Print thenBranch.
+        DebugPrinter::addKeyword(ret, "then");
+        DebugPrinter::addBlocks(ret, getThenBranch(i)->debugPrint());
+        DebugPrinter::addNewLine(ret);
+    }
+    // Print elseBranch.
+    DebugPrinter::addKeyword(ret, "else");
+    DebugPrinter::addBlocks(ret, getDefault()->debugPrint());
+
+    ret.emplace_back(DebugPrinter::Block::cmdDecIndent);
+
+    return ret;
+}
+
+size_t ESwitch::estimateSize() const {
     return sizeof(*this) + size_estimator::estimate(_nodes);
 }
 

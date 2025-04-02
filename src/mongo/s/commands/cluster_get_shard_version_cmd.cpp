@@ -51,9 +51,6 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/chunk_manager.h"
@@ -129,8 +126,8 @@ public:
             result.append("version", cachedDbInfo->getVersion().toBSON());
         } else {
             // Return the collection's information.
-            const auto [cm, sii] =
-                uassertStatusOK(catalogCache->getCollectionRoutingInfo(opCtx, nss));
+            const auto cri = uassertStatusOK(catalogCache->getCollectionRoutingInfo(opCtx, nss));
+            const auto& cm = cri.getChunkManager();
             uassert(ErrorCodes::NamespaceNotFound,
                     str::stream() << "Collection " << nss.toStringForErrorMsg()
                                   << " does not have a routing table.",
@@ -141,10 +138,6 @@ public:
             result.append("versionTimestamp", cm.getVersion().getTimestamp());
             // Added to the result bson if the max bson size is exceeded
             BSONObjBuilder exceededSizeElt(BSON("exceededSize" << true));
-
-            if (sii) {
-                result.append("indexVersion", sii->getCollectionIndexes().indexVersion());
-            }
 
             if (cmdObj["fullMetadata"].trueValue()) {
                 BSONArrayBuilder chunksArrBuilder;
@@ -171,24 +164,6 @@ public:
 
                 if (!exceedsSizeLimit) {
                     result.append("chunks", chunksArrBuilder.arr());
-
-                    if (sii) {
-                        BSONArrayBuilder indexesArrBuilder;
-                        sii->forEachIndex([&](const auto& index) {
-                            BSONObjBuilder indexB(index.toBSON());
-                            if (result.len() + exceededSizeElt.len() + indexesArrBuilder.len() +
-                                    indexB.len() >
-                                BSONObjMaxUserSize) {
-                                exceedsSizeLimit = true;
-                            } else {
-                                indexesArrBuilder.append(indexB.done());
-                            }
-
-                            return !exceedsSizeLimit;
-                        });
-
-                        result.append("indexes", indexesArrBuilder.arr());
-                    }
                 }
 
                 if (exceedsSizeLimit) {

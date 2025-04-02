@@ -45,15 +45,12 @@
 #include "mongo/logv2/redaction.h"
 #include "mongo/platform/source_location.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 struct TestForeignRootException {
     explicit TestForeignRootException(std::string what) : _what{std::move(what)} {}
@@ -138,7 +135,7 @@ TEST_F(DynamicCatchTest, Nesting) {
 }
 
 TEST_F(DynamicCatchTest, RealisticScenarios) {
-    auto trial = [&](SourceLocationHolder loc, auto&& f, std::string expected) {
+    auto trial = [&](SourceLocation loc, auto&& f, std::string expected) {
         try {
             f();
             invariant(false, "`f` didn't throw");
@@ -147,25 +144,21 @@ TEST_F(DynamicCatchTest, RealisticScenarios) {
             StreamDynCatch dc;
             installSomeHandlers(dc);
             dc.doCatch(os);
-            ASSERT_STRING_SEARCH_REGEX(os.str(), expected) << " loc: " << loc;
+            ASSERT_STRING_SEARCH_REGEX(os.str(), expected) << " location: " << loc;
         }
     };
 #define LOC MONGO_SOURCE_LOCATION()
-    trial(
-        LOC, [] { throw TestForeignRootException{"oops"}; }, "TestForeignRootException: oops");
-    trial(
-        LOC, [] { throw std::out_of_range{"testRange"}; }, "testRange");
-    trial(
-        LOC, [] { throw SpecificStdException{"oops"}; }, "SpecificStdException: oops");
-    trial(
-        LOC, [] { uasserted(ErrorCodes::UnknownError, "test"); }, "UnknownError.*test");
+    trial(LOC, [] { throw TestForeignRootException{"oops"}; }, "TestForeignRootException: oops");
+    trial(LOC, [] { throw std::out_of_range{"testRange"}; }, "testRange");
+    trial(LOC, [] { throw SpecificStdException{"oops"}; }, "SpecificStdException: oops");
+    trial(LOC, [] { uasserted(ErrorCodes::UnknownError, "test"); }, "UnknownError.*test");
 #undef LOC
 }
 
 TEST_F(DynamicCatchTest, NoExtraArgs) {
     DynamicCatch<> dc;
     std::string capture = ">";
-    dc.addCatch<SomeException>([&](const auto& ex) { capture += "({})"_format(ex.msg); });
+    dc.addCatch<SomeException>([&](const auto& ex) { capture += fmt::format("({})", ex.msg); });
     try {
         throw SomeException{"oops"};
     } catch (const SomeException&) {
@@ -179,7 +172,7 @@ TEST_F(DynamicCatchTest, MultipleArgs) {
     DynamicCatch<std::vector<std::string>&, const std::string&> dc;
     dc.addCatch<SomeException>(
         [](const auto& ex, std::vector<std::string>& vec, const std::string& id) {
-            vec.push_back("{{{}:{}}}"_format(id, ex.msg));
+            vec.push_back(fmt::format("{{{}:{}}}", id, ex.msg));
         });
     try {
         throw SomeException{"oops"};
@@ -187,7 +180,7 @@ TEST_F(DynamicCatchTest, MultipleArgs) {
         dc.doCatch(events, "here");
         dc.doCatch(events, "andHere");
     }
-    ASSERT_EQ("[{}]"_format(fmt::join(events, ",")), "[{here:oops},{andHere:oops}]");
+    ASSERT_EQ(fmt::format("[{}]", fmt::join(events, ",")), "[{here:oops},{andHere:oops}]");
 }
 
 DEATH_TEST_REGEX(DynamicCatchDeath,

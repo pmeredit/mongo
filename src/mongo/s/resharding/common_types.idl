@@ -89,15 +89,6 @@ enums:
             kRunning: "running"
             kInactive: "inactive"
 
-    Provenance:
-        description: "The source operation that called this resharding operation."
-        type: string
-        values:
-            kReshardCollection: "reshardCollection"
-            kMoveCollection: "moveCollection"
-            kUnshardCollection: "unshardCollection"
-            kBalancerMoveCollection: "balancerMoveCollection"
-
 structs:
     CommonReshardingMetadata:
         description: "Immutable metadata shared across all node types for a resharding operation."
@@ -137,14 +128,9 @@ structs:
                 description: >-
                     The resharding UUID provided by the user, used to identify retries.
             provenance:
-                type: Provenance
+                type: ReshardingProvenance
                 description: "The source operation that called this resharding operation."
                 optional: true
-            implicitlyCreateIndex:
-                type: bool
-                description: "Whether to create an index on the shard key pattern if the shard key
-                              does not already have a support index."
-                default: true
             performVerification:
                 type: optionalBool
                 description: "Whether to perform data comparison verification."
@@ -197,6 +183,10 @@ structs:
             writesDuringCriticalSection:
                 type: long
                 description: "Number of writes during critical section on this donor shard."
+                optional: true
+            phaseDurations:
+                type: object_owned
+                description: "Time spent in each phase so far."
                 optional: true
 
     DonorShardFetchTimestamp:
@@ -251,6 +241,10 @@ structs:
             numOfIndexes:
                 type: long
                 description: "Number of indexes on this recipient shard for the resharded collection."
+                optional: true
+            phaseDurations:
+                type: object_owned
+                description: "Time spent in each phase so far."
                 optional: true
 
     ReshardingApproxCopySize:
@@ -357,3 +351,17 @@ structs:
             shard:
                 type: shard_id
                 description: "Id of the shard for this shard key range."
+    ChangeStreamsMonitorContext:
+        description: "Contains information about the change stream monitor's progress"
+        strict: false
+        fields:
+            startAtOperationTime:
+                type: timestamp
+            resumeToken:
+                type: object_owned
+                optional: true
+            documentsDelta:
+                type: long
+            completed:
+                type: bool
+                default: false

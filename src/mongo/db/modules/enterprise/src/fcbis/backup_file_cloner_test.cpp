@@ -412,10 +412,9 @@ TEST_F(BackupFileClonerTest, InProgressStats) {
 
         // Stop after the query stage for one more stats check.
         FailPointEnableBlock clonerFailpoint("hangAfterClonerStage",
-                                             BSON("cloner"
-                                                  << "BackupFileCloner"
-                                                  << "stage"
-                                                  << "query"));
+                                             BSON("cloner" << "BackupFileCloner"
+                                                           << "stage"
+                                                           << "query"));
         // Run the cloner in another thread.
         backupFileClonerThread = stdx::thread([&] {
             Client::initThread("BackupFileClonerRunner", getGlobalServiceContext()->getService());

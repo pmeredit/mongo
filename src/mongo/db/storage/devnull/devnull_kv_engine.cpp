@@ -317,7 +317,7 @@ public:
 
     std::variant<Status, DuplicateKey> insert(
         OperationContext* opCtx,
-        const key_string::Value& keyString,
+        const key_string::View& keyString,
         bool dupsAllowed,
         IncludeDuplicateRecordId includeDuplicateRecordId) override {
         return Status::OK();
@@ -424,7 +424,7 @@ std::unique_ptr<SortedDataInterface> DevNullKVEngine::getSortedDataInterface(
     const NamespaceString& nss,
     const CollectionOptions& collOptions,
     StringData ident,
-    const IndexDescriptor* desc) {
+    const IndexConfig& config) {
     return std::make_unique<DevNullSortedDataInterface>(ident);
 }
 

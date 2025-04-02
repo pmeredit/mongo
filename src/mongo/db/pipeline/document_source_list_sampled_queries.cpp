@@ -41,9 +41,6 @@
 #include "mongo/db/pipeline/sharded_agg_helpers_targeting_policy.h"
 #include "mongo/db/query/allowed_contexts.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/analyze_shard_key_common_gen.h"
 #include "mongo/s/analyze_shard_key_documents_gen.h"
 #include "mongo/util/assert_util.h"
@@ -126,7 +123,8 @@ void DocumentSourceListSampledQueries::reattachToOperationContext(OperationConte
 
 std::unique_ptr<DocumentSourceListSampledQueries::LiteParsed>
 DocumentSourceListSampledQueries::LiteParsed::parse(const NamespaceString& nss,
-                                                    const BSONElement& specElem) {
+                                                    const BSONElement& specElem,
+                                                    const LiteParserOptions& options) {
     uassert(6876000,
             str::stream() << kStageName << " must take a nested object but found: " << specElem,
             specElem.type() == BSONType::Object);

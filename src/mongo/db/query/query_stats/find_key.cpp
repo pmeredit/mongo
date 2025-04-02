@@ -47,23 +47,11 @@ void FindCmdComponents::appendTo(BSONObjBuilder& bob, const SerializationOptions
     // Provide an arbitrary literal long here.
     tassert(7973602,
             "Serialization policy not supported - original values have been discarded",
-            opts.literalPolicy != LiteralSerializationPolicy::kUnchanged);
+            !opts.isKeepingLiteralsUnchanged());
 
     if (_hasField.batchSize) {
         opts.appendLiteral(&bob, FindCommandRequest::kBatchSizeFieldName, 0ll);
     }
 }
 
-std::unique_ptr<FindCommandRequest> FindKey::reparse(OperationContext* opCtx) const {
-    auto fcr =
-        static_cast<const query_shape::FindCmdShape*>(universalComponents()._queryShape.get())
-            ->toFindCommandRequest();
-    if (_components._hasField.allowPartialResults)
-        fcr->setAllowPartialResults(_components._allowPartialResults);
-    if (_components._hasField.noCursorTimeout)
-        fcr->setNoCursorTimeout(_components._noCursorTimeout);
-    if (_components._hasField.batchSize)
-        fcr->setBatchSize(1ll);
-    return fcr;
-}
 }  // namespace mongo::query_stats

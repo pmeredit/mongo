@@ -33,7 +33,6 @@
 
 #include "mongo/db/catalog/clustered_collection_options_gen.h"
 #include "mongo/db/catalog/collection.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/query/canonical_distinct.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/collation/collation_index_key.h"
@@ -152,9 +151,9 @@ struct QueryPlannerParams {
         // Set this so that collection scans on the oplog wait for visibility before reading.
         OPLOG_SCAN_WAIT_FOR_VISIBLE = 1 << 6,
 
-        // Set this so that tryGetExecutorDistinct() will only use a plan that _guarantees_ it will
-        // return exactly one document per value of the distinct field. See the comments above the
-        // declaration of tryGetExecutorDistinct() for more detail.
+        // Set this so that tryGetQuerySolutionForDistinct() will only use a plan that _guarantees_
+        // it will return exactly one document per value of the distinct field. See the comments
+        // above the declaration of tryGetQuerySolutionForDistinct() for more detail.
         STRICT_DISTINCT_ONLY = 1 << 7,
 
         // Set this on an oplog scan to uassert that the oplog has not already rolled over the

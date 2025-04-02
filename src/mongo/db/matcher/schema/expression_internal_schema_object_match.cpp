@@ -53,14 +53,6 @@ InternalSchemaObjectMatchExpression::InternalSchemaObjectMatchExpression(
                           std::move(annotation)),
       _sub(std::move(expr)) {}
 
-bool InternalSchemaObjectMatchExpression::matchesSingleElement(const BSONElement& elem,
-                                                               MatchDetails* details) const {
-    if (elem.type() != BSONType::Object) {
-        return false;
-    }
-    return _sub->matchesBSON(elem.Obj());
-}
-
 void InternalSchemaObjectMatchExpression::debugString(StringBuilder& debug,
                                                       int indentationLevel) const {
     _debugAddSpace(debug, indentationLevel);

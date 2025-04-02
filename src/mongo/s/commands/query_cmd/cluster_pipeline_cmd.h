@@ -35,7 +35,9 @@
 #include "mongo/db/commands.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/views/resolved_view.h"
+#include "mongo/s/collection_routing_info_targeter.h"
 #include "mongo/s/query/planner/cluster_aggregate.h"
 
 namespace mongo {
@@ -119,32 +121,62 @@ public:
 
         ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
                                                      bool isImplicitDefault) const override {
-            return _liteParsedPipeline.supportsReadConcern(
-                level, isImplicitDefault, _aggregationRequest.getExplain());
+            bool isExplain = _aggregationRequest.getExplain().get_value_or(false);
+            return _liteParsedPipeline.supportsReadConcern(level, isImplicitDefault, isExplain);
+        }
+
+        bool supportsRawData() const override {
+            return true;
+        }
+
+        void _runAggOnNamespace(OperationContext* opCtx,
+                                BSONObjBuilder* result,
+                                boost::optional<ExplainOptions::Verbosity> verbosity,
+                                const NamespaceString& executionNss) {
+            uassertStatusOK(ClusterAggregate::runAggregate(
+                opCtx,
+                ClusterAggregate::Namespaces{_aggregationRequest.getNamespace(), executionNss},
+                _aggregationRequest,
+                _liteParsedPipeline,
+                _privileges,
+                verbosity,
+                result));
         }
 
         void _runAggCommand(OperationContext* opCtx,
-                            const BSONObj& cmdObj,
-                            BSONObjBuilder* result) {
+                            BSONObjBuilder* result,
+                            boost::optional<ExplainOptions::Verbosity> verbosity) {
             const auto& nss = _aggregationRequest.getNamespace();
 
             try {
-                uassertStatusOK(
-                    ClusterAggregate::runAggregate(opCtx,
-                                                   ClusterAggregate::Namespaces{nss, nss},
-                                                   _aggregationRequest,
-                                                   _liteParsedPipeline,
-                                                   _privileges,
-                                                   result));
+                _runAggOnNamespace(opCtx,
+                                   result,
+                                   verbosity,
+                                   isRawDataOperation(opCtx) &&
+                                           CollectionRoutingInfoTargeter{opCtx, nss}
+                                               .timeseriesNamespaceNeedsRewrite(nss)
+                                       ? nss.makeTimeseriesBucketsNamespace()
+                                       : nss);
             } catch (const ExceptionFor<ErrorCodes::CommandOnShardedViewNotSupportedOnMongod>& ex) {
-                // If the aggregation failed because the namespace is a view, re-run the command
-                // with the resolved view pipeline and namespace.
-                uassertStatusOK(ClusterAggregate::retryOnViewError(opCtx,
-                                                                   _aggregationRequest,
-                                                                   *ex.extraInfo<ResolvedView>(),
-                                                                   nss,
-                                                                   _privileges,
-                                                                   result));
+                if (!isRawDataOperation(opCtx) ||
+                    !ex->getNamespace().isTimeseriesBucketsCollection()) {
+                    // If the aggregation failed because the namespace is a view, re-run the command
+                    // with the resolved view pipeline and namespace.
+                    uassertStatusOK(
+                        ClusterAggregate::retryOnViewError(opCtx,
+                                                           _aggregationRequest,
+                                                           *ex.extraInfo<ResolvedView>(),
+                                                           nss,
+                                                           _privileges,
+                                                           verbosity,
+                                                           result));
+                } else {
+                    // If the resolved view is on a time-series collection and the command request
+                    // was for raw data, we want to run aggregate on the buckets namespace instead
+                    // of as a view.
+                    result->resetToEmpty();
+                    _runAggOnNamespace(opCtx, result, verbosity, ex->getNamespace());
+                }
             }
         }
 
@@ -155,7 +187,11 @@ public:
             Impl::checkCanRunHere(opCtx);
 
             auto bob = reply->getBodyBuilder();
-            _runAggCommand(opCtx, _request.body, &bob);
+            boost::optional<ExplainOptions::Verbosity> verbosity = boost::none;
+            if (_aggregationRequest.getExplain().get_value_or(false)) {
+                verbosity = ExplainOptions::Verbosity::kQueryPlanner;
+            }
+            _runAggCommand(opCtx, &bob, verbosity);
         }
 
         void explain(OperationContext* opCtx,
@@ -163,7 +199,7 @@ public:
                      rpc::ReplyBuilderInterface* result) override {
             Impl::checkCanExplainHere(opCtx);
             auto bodyBuilder = result->getBodyBuilder();
-            _runAggCommand(opCtx, _request.body, &bodyBuilder);
+            _runAggCommand(opCtx, &bodyBuilder, verbosity);
         }
 
         void doCheckAuthorization(OperationContext* opCtx) const override {

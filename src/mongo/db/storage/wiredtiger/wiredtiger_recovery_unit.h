@@ -47,12 +47,13 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_begin_transaction_block.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_connection.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_cursor.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_oplog_manager.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_snapshot_manager.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_stats.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/timer.h"
 
 namespace mongo {
@@ -205,6 +206,8 @@ public:
     bool gatherWriteContextForDebugging() const;
     void storeWriteContextForDebugging(const BSONObj& info);
 
+    void setOperationContext(OperationContext* opCtx) override;
+
 private:
     void doBeginUnitOfWork() override;
     void doCommitUnitOfWork() override;
@@ -253,7 +256,7 @@ private:
 
     WiredTigerConnection* _connection;      // not owned
     WiredTigerOplogManager* _oplogManager;  // not owned
-    UniqueWiredTigerSession _unique_session;
+    WiredTigerManagedSession _managedSession;
     WiredTigerSession* _session = nullptr;
     bool _isTimestamped = false;
 
@@ -305,5 +308,11 @@ private:
     // Detects any attempt to reconfigure options used by an open transaction.
     OpenSnapshotOptions _optionsUsedToOpenSnapshot;
 };
+
+// Constructs a WiredTigerCursor::Params instance from the given params and returns it.
+WiredTigerCursor::Params getWiredTigerCursorParams(WiredTigerRecoveryUnit& wtRu,
+                                                   uint64_t tableID,
+                                                   bool allowOverwrite = false,
+                                                   bool random = false);
 
 }  // namespace mongo

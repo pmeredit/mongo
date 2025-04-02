@@ -130,6 +130,7 @@ mongo_cc_library(
         "//src/mongo/db:common",
         "//src/mongo/db:server_base",
         "//src/mongo/db:server_feature_flags",
+        "//src/mongo/db:wire_version",
         "//src/mongo/idl:cluster_server_parameter",
         "//src/mongo/shell:kms_idl",
         "//src/mongo/util:testing_options",
@@ -286,9 +287,7 @@ mongo_cc_library(
     hdrs = [
         "hash_block.h",
         "sha512_block.h",
-    ],
-    header_deps = [
-        "//src/mongo/db/concurrency:flow_control_ticketholder",
+        "//src/mongo:core_headers",
     ],
     local_defines = select({
         "//bazel/config:mongo_crypto_tom": ["LTC_NO_PROTOTYPES"],
@@ -437,7 +436,7 @@ mongo_cc_unit_test(
         "//bazel/config:mongo_crypto_openssl": ["jwt_test.cpp"],
         "//conditions:default": [],
     }),
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         ":aead_encryption",
         ":encrypted_field_config",
@@ -466,7 +465,7 @@ mongo_cc_unit_test(
         "jws_validated_token_test.cpp",
         "jws_validator_test.cpp",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     target_compatible_with = select({
         "//bazel/config:mongo_crypto_openssl": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -476,7 +475,6 @@ mongo_cc_unit_test(
         ":jwt",
         "//src/mongo:base",
         "//src/mongo/db:server_base",
-        "//src/mongo/db/concurrency:lock_manager",
         "//src/mongo/util:clock_source_mock",
         "//src/mongo/util/net:openssl_init",
     ],
@@ -492,6 +490,5 @@ mongo_cc_benchmark(
         ":fle_crypto",
         ":sha_block",
         "//src/mongo/db:server_base",
-        "//src/mongo/db/concurrency:lock_manager",
     ],
 )

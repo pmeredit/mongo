@@ -184,7 +184,6 @@ mongo_cc_library(
         "//src/mongo/rpc:command_status",  # TODO(SERVER-93876): Remove.
         "//src/mongo/transport:message_compressor",  # TODO(SERVER-93876): Remove.
         "//src/mongo/transport:transport_layer_common",  # TODO(SERVER-93876): Remove.
-        "//src/mongo/util:fail_point",  # TODO(SERVER-93876): Remove.
         "//src/mongo/util/net:ssl_manager",  # TODO(SERVER-93876): Remove.
     ],
 )
@@ -599,7 +598,7 @@ mongo_cc_unit_test(
     data = [
         "//src/mongo/client/mongo_uri_tests:test_data",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     target_compatible_with = select({
         "//bazel/config:use_wiredtiger_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -626,7 +625,6 @@ mongo_cc_unit_test(
         "//src/mongo/idl:server_parameter_test_util",
         "//src/mongo/rpc:command_status",
         "//src/mongo/transport:transport_layer_common",
-        "//src/mongo/transport:transport_layer_egress_init",
         "//src/mongo/unittest:task_executor_proxy",
         "//src/mongo/util:md5",
         "//src/mongo/util/net:network",
@@ -638,7 +636,7 @@ mongo_cc_unit_test(
     srcs = [
         "dbclient_rs_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         ":clientdriver_network",
         ":replica_set_monitor_test_helper",
@@ -654,7 +652,7 @@ mongo_cc_unit_test(
     srcs = [
         "dbclient_grpc_stream_test.cpp",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     target_compatible_with = select({
         "//bazel/config:build_grpc_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -671,7 +669,7 @@ mongo_cc_unit_test(
 mongo_cc_unit_test(
     name = "scoped_db_connection_pool_test",
     srcs = ["scoped_db_connection_test.cpp"],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         ":clientdriver_network",
         "//src/mongo/dbtests:mocklib",
@@ -683,7 +681,7 @@ mongo_cc_unit_test(
     srcs = [
         "dbclient_connection_test.cpp",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     deps = [
         ":clientdriver_network",
         "//src/mongo/util:version_impl",

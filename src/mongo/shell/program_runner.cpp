@@ -71,11 +71,6 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/config.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
-#include "mongo/logv2/log_tag.h"
-#include "mongo/logv2/log_truncation.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/errno_util.h"
@@ -112,7 +107,6 @@ inline int pipe(int fds[2]) {
 #endif
 
 namespace {
-using namespace fmt::literals;
 
 void safeClose(int fd) {
 #ifndef _WIN32
@@ -348,8 +342,9 @@ HANDLE ProgramRegistry::getHandleForPid(ProcessId pid) const {
     stdx::lock_guard<stdx::recursive_mutex> lk(_mutex);
 
     auto iter = _handles.find(pid);
-    uassert(
-        ErrorCodes::BadValue, "Unregistered pid {}"_format(pid.toNative()), iter != _handles.end());
+    uassert(ErrorCodes::BadValue,
+            fmt::format("Unregistered pid {}", pid.toNative()),
+            iter != _handles.end());
     return iter->second;
 }
 

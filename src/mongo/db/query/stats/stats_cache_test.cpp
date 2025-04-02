@@ -30,9 +30,7 @@
 #include <absl/container/node_hash_map.h>
 #include <boost/move/utility_core.hpp>
 #include <cstddef>
-#include <list>
 #include <string>
-#include <type_traits>
 #include <utility>
 
 #include "mongo/base/error_codes.h"
@@ -43,11 +41,8 @@
 #include "mongo/db/query/stats/stats_cache.h"
 #include "mongo/db/query/stats/stats_cache_loader_mock.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrency/thread_pool.h"
-#include "mongo/util/future.h"
-#include "mongo/util/read_through_cache.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 

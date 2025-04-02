@@ -49,15 +49,13 @@
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/read_concern_level.h"
 #include "mongo/db/repl/repl_client_info.h"
+#include "mongo/db/s/config/remove_shard_command_helpers.h"
 #include "mongo/db/s/config/sharding_catalog_manager.h"
 #include "mongo/db/s/replica_set_endpoint_feature_flag.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/grid.h"
@@ -121,6 +119,8 @@ public:
                               const BSONObj& cmdObj,
                               const RequestParser& requestParser,
                               BSONObjBuilder& result) override {
+        opCtx->setAlwaysInterruptAtStepDownOrUp_UNSAFE();
+
         uassert(ErrorCodes::IllegalOperation,
                 "_configsvrRemoveShard can only be run on config servers",
                 serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer));
@@ -141,7 +141,7 @@ public:
 
         const auto& request = requestParser.request();
 
-        const auto shardId = [&] {
+        const auto [shardId, replicaSetName] = [&] {
             const auto shardIdOrUrl = request.getCommandParameter();
             auto swShard = Grid::get(opCtx)->shardRegistry()->getShard(opCtx, shardIdOrUrl);
             if (swShard == ErrorCodes::ShardNotFound) {
@@ -149,13 +149,14 @@ public:
                 // connections again after a second shard has been added. Unsharded collections are
                 // allowed to be tracked and moved as soon as a second shard is added to the
                 // cluster, and these collections will not handle direct connections properly.
-                if (replica_set_endpoint::isFeatureFlagEnabled()) {
+                if (replica_set_endpoint::isFeatureFlagEnabled(
+                        VersionContext::getDecoration(opCtx))) {
                     uassertStatusOK(ShardingCatalogManager::get(opCtx)
                                         ->updateClusterCardinalityParameterIfNeeded(opCtx));
                 }
             }
             const auto shard = uassertStatusOK(swShard);
-            return shard->getId();
+            return std::make_pair(shard->getId(), shard->getConnString().getReplicaSetName());
         }();
 
         uassert(ErrorCodes::IllegalOperation,
@@ -166,9 +167,9 @@ public:
 
         const auto shardingCatalogManager = ShardingCatalogManager::get(opCtx);
 
-        const auto shardDrainingStatus = [&] {
+        const auto shardDrainingStatus = [&, shardId = shardId, replicaSetName = replicaSetName] {
             try {
-                return shardingCatalogManager->removeShard(opCtx, shardId);
+                return topology_change_helpers::removeShard(opCtx, shardId, replicaSetName);
             } catch (const DBException& ex) {
                 LOGV2(21923,
                       "Failed to remove shard",

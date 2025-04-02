@@ -2,13 +2,23 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/stream_stats.h"
+
+#include <memory>
+#include <vector>
+
+#include "mongo/base/string_data.h"
+#include "mongo/bson/timestamp.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
+#include "mongo/db/pipeline/resume_token.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/time_support.h"
+#include "streams/exec/change_stream_source_operator.h"
+#include "streams/exec/context.h"
 #include "streams/exec/https_operator.h"
-#include "streams/exec/stream_stats.h"
+#include "streams/exec/kafka_consumer_operator.h"
+#include "streams/exec/stats_utils.h"
 #include "streams/exec/tests/test_utils.h"
 
 namespace streams {
@@ -151,6 +161,103 @@ TEST(StatsTest, ComputeStreamSummaryStatsTest) {
     ASSERT_EQ(result.watermark, -1);
     ASSERT_EQ(result.numDlqDocs, 0);
     ASSERT_EQ(result.numDlqBytes, 0);
+}
+TEST(StatsTest, UpdateChangeStreamCollectionStats) {
+    OperatorStats opStats;
+    std::string db1 = "db1";
+    std::string coll1 = "coll1";
+    std::string db2 = "db2";
+    std::string coll2 = "coll2";
+    std::string db3 = "db";
+    std::string coll3 = "1coll1";
+    Target target1{.db = db1, .coll = coll1};
+    Target target2{.db = db2, .coll = coll1};
+    Target target3{.db = db1, .coll = coll2};
+    Target target4{.db = db3, .coll = coll3};
+    mongo::stdx::unordered_map<Target, PerTargetStats>& perTargetStats = opStats.perTargetStats;
+    ChangeStreamSourceOperator::incPerCollectionStats(perTargetStats, target1, 50);
+    perTargetStats = opStats.perTargetStats;
+    ASSERT(perTargetStats.contains(target1));
+    ASSERT_EQ(perTargetStats[target1].inputMessageSize, 50);
+
+    ChangeStreamSourceOperator::incPerCollectionStats(perTargetStats, target1, 50);
+    perTargetStats = opStats.perTargetStats;
+    ASSERT_EQ(perTargetStats[target1].inputMessageCount, 2);
+    ASSERT_EQ(perTargetStats[target1].inputMessageSize, 100);
+
+    ChangeStreamSourceOperator::incPerCollectionStats(perTargetStats, target2, 50);
+    perTargetStats = opStats.perTargetStats;
+    ASSERT_EQ(perTargetStats.size(), 2);
+    ASSERT(perTargetStats.contains(target2));
+    ASSERT_EQ(perTargetStats[target2].inputMessageSize, 50);
+
+    ChangeStreamSourceOperator::incPerCollectionStats(perTargetStats, target3, 75);
+    perTargetStats = opStats.perTargetStats;
+    ASSERT_EQ(perTargetStats.size(), 3);
+    ASSERT(perTargetStats.contains(target3));
+    ASSERT_EQ(perTargetStats[target3].inputMessageSize, 75);
+
+    ChangeStreamSourceOperator::incPerCollectionStats(perTargetStats, target4, 100);
+    perTargetStats = opStats.perTargetStats;
+    ASSERT_EQ(perTargetStats.size(), 4);
+    ASSERT(perTargetStats.contains(target4));
+    ASSERT_EQ(perTargetStats[target4].inputMessageSize, 100);
+}
+
+TEST(StatsTest, LastCheckpointToInternalStatsSchemaTest) {
+    mongo::CheckpointDescription checkpointDesc;
+    std::string resumeTokenData = "8267CEF86D000000042B0429296E1404";
+    checkpointDesc.setSourceState(
+        BSON(ChangeStreamSourceCheckpointState::kStartingPointFieldName
+             << BSON(mongo::ResumeToken::kDataFieldName << resumeTokenData)));
+    Date_t now = Date_t::now();
+    checkpointDesc.setCheckpointTimestamp(now);
+
+    // Change stream source with resume token
+    LastCheckpointState lastCheckpointStateResumeToken = lastCheckpointInternalToStatsSchema(
+        ChangeStreamSourceOperator::kChangeStreamConsumerOperatorName, checkpointDesc);
+    ASSERT_EQ(lastCheckpointStateResumeToken.getCommitTime(), now);
+    ChangeStreamSourceCheckpointStateForStats changeStreamSourceCheckpointState =
+        std::get<ChangeStreamSourceCheckpointStateForStats>(
+            std::move(lastCheckpointStateResumeToken.getSourceState()));
+    ASSERT(changeStreamSourceCheckpointState.getResumeToken());
+    BSONObj resumeToken = std::move(*changeStreamSourceCheckpointState.getResumeToken());
+    ASSERT_EQ(resumeToken.getStringField(mongo::ResumeToken::kDataFieldName), resumeTokenData);
+
+    // Change stream source with timestamp
+    Timestamp curTimestamp = Timestamp();
+    checkpointDesc.setSourceState(
+        BSON(ChangeStreamSourceCheckpointState::kStartingPointFieldName << curTimestamp));
+    LastCheckpointState lastCheckpointStateTimestamp = lastCheckpointInternalToStatsSchema(
+        ChangeStreamSourceOperator::kChangeStreamConsumerOperatorName, checkpointDesc);
+    ASSERT_EQ(lastCheckpointStateTimestamp.getCommitTime(), now);
+    ChangeStreamSourceCheckpointStateForStats changeStreamSourceCheckpointState2 =
+        std::get<ChangeStreamSourceCheckpointStateForStats>(
+            lastCheckpointStateTimestamp.getSourceState());
+    ASSERT(!changeStreamSourceCheckpointState2.getResumeToken());
+    ASSERT_EQ(curTimestamp, changeStreamSourceCheckpointState2.getClusterTime());
+
+    // Kafka source
+    KafkaSourceCheckpointState kafkaSourceCheckpointState;
+    KafkaPartitionCheckpointState kafkaPartitionCheckpointState;
+    kafkaPartitionCheckpointState.setPartition(0);
+    kafkaPartitionCheckpointState.setOffset(5002);
+    kafkaPartitionCheckpointState.setTopic(StringData{"t1"});
+    kafkaSourceCheckpointState.setPartitions(
+        std::vector<KafkaPartitionCheckpointState>{kafkaPartitionCheckpointState});
+    checkpointDesc.setSourceState(kafkaSourceCheckpointState.toBSON());
+    LastCheckpointState lastCheckpointStateKafkaSource = lastCheckpointInternalToStatsSchema(
+        KafkaConsumerOperator::kKafkaConsumerOperatorName, checkpointDesc);
+    ASSERT_EQ(lastCheckpointStateKafkaSource.getCommitTime(), now);
+    std::vector<KafkaPartitionCheckpointStateForStats> kafkaSourceCheckpointStateForStats =
+        std::get<std::vector<KafkaPartitionCheckpointStateForStats>>(
+            lastCheckpointStateKafkaSource.getSourceState());
+    ASSERT_EQ(kafkaSourceCheckpointStateForStats.size(), 1);
+    KafkaPartitionCheckpointStateForStats kafkaPartitionCheckpointStateForStats =
+        kafkaSourceCheckpointStateForStats[0];
+    ASSERT_EQ(kafkaPartitionCheckpointStateForStats.getPartition(), 0);
+    ASSERT_EQ(kafkaPartitionCheckpointStateForStats.getOffset(), 5002);
+    ASSERT_EQ(kafkaPartitionCheckpointStateForStats.getTopic(), StringData{"t1"});
 }
 
 }  // namespace streams

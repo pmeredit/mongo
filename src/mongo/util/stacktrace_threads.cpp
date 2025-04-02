@@ -68,8 +68,6 @@
 #include "mongo/bson/oid.h"
 #include "mongo/config.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/future.h"
 #include "mongo/util/stacktrace_somap.h"
@@ -209,7 +207,7 @@ public:
 
 private:
     std::string makeId() {
-        return format(FMT_STRING("{:03d}"), _serial++);
+        return fmt::format("{:03d}", _serial++);
     }
 
     size_t _hits = 0;

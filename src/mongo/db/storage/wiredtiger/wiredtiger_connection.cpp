@@ -30,21 +30,23 @@
 #include <cerrno>
 #include <cstdlib>
 
+#include <algorithm>
 #include <boost/move/utility_core.hpp>
 #include <boost/optional/optional.hpp>
+#include <functional>
+#include <iterator>
 #include <wiredtiger.h>
 
 #include "mongo/base/error_codes.h"
+#include "mongo/db/storage/storage_parameters_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_connection.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_error_util.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_global_options_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
-#include "mongo/util/processinfo.h"
 #include "mongo/util/str.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
@@ -52,19 +54,10 @@
 
 namespace mongo {
 
-namespace {
-
-const size_t numRegistryPartitions = 2 * ProcessInfo::getNumLogicalCores();
-
-}  // namespace
-
-WiredTigerConnection::WiredTigerConnection(WiredTigerKVEngine* engine)
-    : WiredTigerConnection(engine->getConn(), engine->getClockSource(), engine) {}
-
 WiredTigerConnection::WiredTigerConnection(WT_CONNECTION* conn,
                                            ClockSource* cs,
-                                           WiredTigerKVEngine* engine)
-    : _conn(conn), _clockSource(cs), _engine(engine), _registry(numRegistryPartitions) {
+                                           WiredTigerKVEngineBase* engine)
+    : _conn(conn), _clockSource(cs), _engine(engine) {
     uassertStatusOK(_compiledConfigurations.compileAll(_conn));
     uassert(9728400,
             "wiredTigerCursorCacheSize parameter value must be <= 0",
@@ -104,7 +97,10 @@ void WiredTigerConnection::waitUntilPreparedUnitOfWorkCommitsOrAborts(Interrupti
     // other prepared transactions committing or aborting, we could reach a deadlock. Since the
     // caller is already expecting spurious wakeups, we impose a large timeout to periodically force
     // the caller to retry its operation.
-    const auto deadline = Date_t::now() + Seconds(1);
+    // TODO SERVER-82334: remove the wake up logic.
+    const auto deadline = feature_flags::gStorageEngineInterruptibility.isEnabled()
+        ? Date_t::max()
+        : Date_t::now() + Seconds(1);
     stdx::unique_lock<stdx::mutex> lk(_prepareCommittedOrAbortedMutex);
     if (lastCount == _prepareCommitOrAbortCounter.loadRelaxed()) {
         interruptible.waitForConditionOrInterruptUntil(
@@ -121,13 +117,6 @@ void WiredTigerConnection::notifyPreparedUnitOfWorkHasCommittedOrAborted() {
 }
 
 
-void WiredTigerConnection::closeAllCursors(const std::string& uri) {
-    stdx::lock_guard<stdx::mutex> lock(_cacheLock);
-    for (SessionCache::iterator i = _sessions.begin(); i != _sessions.end(); i++) {
-        (*i)->closeAllCursors(uri);
-    }
-}
-
 size_t WiredTigerConnection::getIdleSessionsCount() {
     stdx::lock_guard<stdx::mutex> lock(_cacheLock);
     return _sessions.size();
@@ -140,27 +129,29 @@ void WiredTigerConnection::closeExpiredIdleSessions(int64_t idleTimeMillis) {
     }
 
     auto cutoffTime = _clockSource->now() - Milliseconds(idleTimeMillis);
-    SessionCache sessionsToClose;
-
-    {
-        stdx::lock_guard<stdx::mutex> lock(_cacheLock);
-        // Discard all sessions that became idle before the cutoff time
-        for (auto it = _sessions.begin(); it != _sessions.end();) {
-            auto session = *it;
-            invariant(session->getIdleExpireTime() != Date_t::min());
-            if (session->getIdleExpireTime() < cutoffTime) {
-                it = _sessions.erase(it);
-                sessionsToClose.push_back(session);
-            } else {
-                ++it;
-            }
-        }
-    }
 
     // Closing expired idle sessions is expensive, so do it outside of the cache mutex. This helps
     // to avoid periodic operation latency spikes as seen in SERVER-52879.
-    for (auto session : sessionsToClose) {
-        delete session;
+    SessionCache sessionsToClose;
+    {
+        stdx::lock_guard<stdx::mutex> lock(_cacheLock);
+
+        // Discard all sessions that became idle before the cutoff time
+        auto isSessionExpired = [cutoffTime](auto& session) {
+            invariant(session->getIdleExpireTime() != Date_t::min());
+            return session->getIdleExpireTime() < cutoffTime;
+        };
+        // Re-order non expired sessions to the beginning and return the position of the first
+        // expired.
+        auto it = std::partition(_sessions.begin(), _sessions.end(), std::not_fn(isSessionExpired));
+
+        // Move expired session
+        sessionsToClose.insert(sessionsToClose.end(),
+                               std::make_move_iterator(it),
+                               std::make_move_iterator(_sessions.end()));
+
+        // Erase moved sessions
+        _sessions.erase(it, _sessions.end());
     }
 }
 
@@ -173,17 +164,19 @@ void WiredTigerConnection::closeAll() {
         _epoch.fetchAndAdd(1);
         _sessions.swap(swap);
     }
-
-    for (SessionCache::iterator i = swap.begin(); i != swap.end(); i++) {
-        delete (*i);
-    }
 }
 
 bool WiredTigerConnection::isEphemeral() {
     return _engine && _engine->isEphemeral();
 }
 
-UniqueWiredTigerSession WiredTigerConnection::getSession() {
+WiredTigerManagedSession WiredTigerConnection::getSession(OperationContext& opCtx) {
+    auto session = getUninterruptibleSession();
+    session->attachOperationContext(opCtx);
+    return session;
+}
+
+WiredTigerManagedSession WiredTigerConnection::getUninterruptibleSession() {
     // We should never be able to get here after _shuttingDown is set, because no new
     // operations should be allowed to start.
     invariant(!(_shuttingDown.load() & kShuttingDownMask));
@@ -193,19 +186,19 @@ UniqueWiredTigerSession WiredTigerConnection::getSession() {
         if (!_sessions.empty()) {
             // Get the most recently used session so that if we discard sessions, we're
             // discarding older ones
-            WiredTigerSession* cachedSession = _sessions.back();
+            std::unique_ptr<WiredTigerSession> cachedSession = std::move(_sessions.back());
             _sessions.pop_back();
             // Reset the idle time
             cachedSession->setIdleExpireTime(Date_t::min());
-            return UniqueWiredTigerSession(cachedSession);
+            return WiredTigerManagedSession(std::move(cachedSession));
         }
     }
 
     // Outside of the cache partition lock, but on release will be put back on the cache
-    return UniqueWiredTigerSession(new WiredTigerSession(this, _epoch.load()));
+    return WiredTigerManagedSession(std::make_unique<WiredTigerSession>(this, _epoch.load()));
 }
 
-void WiredTigerConnection::_releaseSession(WiredTigerSession* session) {
+void WiredTigerConnection::_releaseSession(std::unique_ptr<WiredTigerSession> session) {
     invariant(session);
 
     BlockShutdown blockShutdown(this);
@@ -213,69 +206,45 @@ void WiredTigerConnection::_releaseSession(WiredTigerSession* session) {
     uint64_t currentEpoch = _epoch.load();
     if (isShuttingDown() || session->_getEpoch() != currentEpoch) {
         invariant(session->_getEpoch() <= currentEpoch);
-        // There is a race condition with clean shutdown, where the storage engine is ripped from
-        // underneath OperationContexts, which are not "active" (i.e., do not have any locks), but
-        // are just about to delete the recovery unit. See SERVER-16031 for more information. Since
-        // shutting down the WT_CONNECTION will close all WT_SESSIONS, we shouldn't also try to
-        // directly close this session.
+        // There is a race condition with clean shutdown, where the storage engine is ripped
+        // from underneath OperationContexts, which are not "active" (i.e., do not have any
+        // locks), but are just about to delete the recovery unit. See SERVER-16031 for more
+        // information. Since shutting down the WT_CONNECTION will close all WT_SESSIONS, we
+        // shouldn't also try to directly close this session.
         session->dropSessionBeforeDeleting();
-        delete session;
         return;
     }
 
     invariant(session->cursorsOut() == 0);
+    session->detachOperationContext();
 
     {
-        WT_SESSION* ss = session->getSession();
         uint64_t range;
         // This checks that we are only caching idle sessions and not something which might hold
         // locks or otherwise prevent truncation.
-        invariantWTOK(ss->transaction_pinned_range(ss, &range), ss);
+        invariantWTOK(session->transaction_pinned_range(&range), *session);
         invariant(range == 0);
 
         // Release resources in the session we're about to cache.
         // If we are using hybrid caching, then close cursors now and let them
         // be cached at the WiredTiger level.
-        if (gWiredTigerCursorCacheSize.load() < 0) {
-            session->closeAllCursors("");
-        }
+        session->closeAllCursors("");
+        invariant(session->cachedCursors() == 0);
 
         session->resetSessionConfiguration();
-        invariantWTOK(ss->reset(ss), ss);
+        invariantWTOK(session->reset(), *session);
     }
 
     // Set the time this session got idle at.
     session->setIdleExpireTime(_clockSource->now());
     {
         stdx::lock_guard<stdx::mutex> lock(_cacheLock);
-        _sessions.push_back(session);
+        _sessions.emplace_back(std::move(session));
     }
 
     if (_engine) {
         _engine->sizeStorerPeriodicFlush();
     }
-}
-
-void WiredTigerConnection::WiredTigerSessionDeleter::operator()(WiredTigerSession* session) const {
-    session->_connection->_releaseSession(session);
-}
-
-WiredTigerSession* WiredTigerConnection::getSessionById(const SessionId& id) {
-    RegistryPartition& partition = _registry[id % numRegistryPartitions];
-    stdx::lock_guard<stdx::mutex> lock(partition.mtx);
-    return partition.map[id];
-}
-
-void WiredTigerConnection::_addSession(const SessionId& id, WiredTigerSession* session) {
-    RegistryPartition& partition = _registry[id % numRegistryPartitions];
-    stdx::lock_guard<stdx::mutex> lock(partition.mtx);
-    invariant(partition.map.insert({id, session}).second);
-}
-
-bool WiredTigerConnection::_removeSession(const SessionId& id) {
-    RegistryPartition& partition = _registry[id % numRegistryPartitions];
-    stdx::lock_guard<stdx::mutex> lock(partition.mtx);
-    return partition.map.erase(id);
 }
 
 WT_SESSION* WiredTigerConnection::_openSession(WiredTigerSession* session,
@@ -296,8 +265,9 @@ WT_SESSION* WiredTigerConnection::_openSessionInternal(WiredTigerSession* sessio
                                                        const char* config,
                                                        WT_CONNECTION* conn) {
     WT_SESSION* rawSession;
-    invariantWTOK(conn->open_session(conn, handler, config, &rawSession), nullptr);
-    // TODO(SERVER-99353): _addSession(id, session).
+    uassert(8268800,
+            "Failed to open a session",
+            conn->open_session(conn, handler, config, &rawSession) == 0);
     return rawSession;
 }
 

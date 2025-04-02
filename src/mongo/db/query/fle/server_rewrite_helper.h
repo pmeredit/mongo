@@ -53,14 +53,15 @@ namespace fle {
  */
 class RewriteBase {
 public:
-    virtual ~RewriteBase(){};
+    virtual ~RewriteBase() {};
 
     virtual void doRewrite(FLETagQueryInterface* queryImpl) = 0;
 
 protected:
     RewriteBase(boost::intrusive_ptr<ExpressionContext> expCtx,
                 const NamespaceString& nss,
-                const EncryptionInformation& encryptInfo);
+                const EncryptionInformation& encryptInfo,
+                bool allowEmptySchema);
 
     boost::intrusive_ptr<ExpressionContext> expCtx;
     const NamespaceString nssEsc;
@@ -81,7 +82,7 @@ public:
                   BSONObj toRewrite,
                   EncryptedCollScanModeAllowed mode);
 
-    ~FilterRewrite() override{};
+    ~FilterRewrite() override {};
 
     void doRewrite(FLETagQueryInterface* queryImpl) final;
 
@@ -100,7 +101,7 @@ public:
     PipelineRewrite(const NamespaceString& nss,
                     const EncryptionInformation& encryptInfo,
                     std::unique_ptr<Pipeline, PipelineDeleter> toRewrite);
-    ~PipelineRewrite() override{};
+    ~PipelineRewrite() override {};
 
     void doRewrite(FLETagQueryInterface* queryImpl) final;
 

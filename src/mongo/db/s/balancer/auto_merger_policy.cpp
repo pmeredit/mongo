@@ -63,9 +63,6 @@
 #include "mongo/db/s/sharding_config_server_parameters_gen.h"
 #include "mongo/db/s/sharding_logging.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/s/catalog/type_collection_gen.h"
@@ -272,11 +269,11 @@ AutoMergerPolicy::_getNamespacesWithMergeableChunksPerShard(OperationContext* op
         // Build an aggregation pipeline to get the collections with mergeable chunks placed on a
         // specific shard
 
-        StringMap<ResolvedNamespace> resolvedNamespaces;
-        resolvedNamespaces[NamespaceString::kConfigsvrChunksNamespace.coll()] = {
+        ResolvedNamespaceMap resolvedNamespaces;
+        resolvedNamespaces[NamespaceString::kConfigsvrChunksNamespace] = {
             NamespaceString::kConfigsvrChunksNamespace, std::vector<BSONObj>()};
-        resolvedNamespaces[CollectionType::ConfigNS.coll()] = {CollectionType::ConfigNS,
-                                                               std::vector<BSONObj>()};
+        resolvedNamespaces[CollectionType::ConfigNS] = {CollectionType::ConfigNS,
+                                                        std::vector<BSONObj>()};
 
         Pipeline::SourceContainer stages;
         auto expCtx = ExpressionContextBuilder{}
@@ -342,11 +339,8 @@ AutoMergerPolicy::_getNamespacesWithMergeableChunksPerShard(OperationContext* op
             expCtx));
 
         // 3. Unwind stage to get the list of collections with mergeable chunks
-        stages.emplace_back(
-            DocumentSourceUnwind::createFromBson(BSON("$unwind" << BSON("path"
-                                                                        << "$chunks"))
-                                                     .firstElement(),
-                                                 expCtx));
+        stages.emplace_back(DocumentSourceUnwind::createFromBson(
+            BSON("$unwind" << BSON("path" << "$chunks")).firstElement(), expCtx));
 
         auto pipeline = Pipeline::create(std::move(stages), expCtx);
         auto aggRequest =

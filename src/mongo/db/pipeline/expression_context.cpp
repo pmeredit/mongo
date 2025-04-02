@@ -39,6 +39,7 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
+#include "mongo/db/query/query_utils.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/stats/counters.h"
 
@@ -67,7 +68,7 @@ ExpressionContextBuilder& ExpressionContextBuilder::ns(NamespaceString ns) {
 }
 
 ExpressionContextBuilder& ExpressionContextBuilder::resolvedNamespace(
-    StringMap<ResolvedNamespace> resolvedNamespaces) {
+    ResolvedNamespaceMap resolvedNamespaces) {
     params.resolvedNamespaces = std::move(resolvedNamespaces);
     return *this;
 }
@@ -162,6 +163,21 @@ ExpressionContextBuilder& ExpressionContextBuilder::isParsingCollectionValidator
     return *this;
 }
 
+ExpressionContextBuilder& ExpressionContextBuilder::isIdHackQuery(bool isIdHackQuery) {
+    params.isIdHackQuery = isIdHackQuery;
+    return *this;
+}
+
+ExpressionContextBuilder& ExpressionContextBuilder::isFleQuery(bool isFleQuery) {
+    params.isFleQuery = isFleQuery;
+    return *this;
+}
+
+ExpressionContextBuilder& ExpressionContextBuilder::canBeRejected(bool canBeRejected) {
+    params.canBeRejected = canBeRejected;
+    return *this;
+}
+
 ExpressionContextBuilder& ExpressionContextBuilder::blankExpressionContext(
     bool blankExpressionContext) {
     params.blankExpressionContext = blankExpressionContext;
@@ -187,6 +203,12 @@ ExpressionContextBuilder& ExpressionContextBuilder::enabledCounters(bool enabled
 
 ExpressionContextBuilder& ExpressionContextBuilder::forcePlanCache(bool forcePlanCache) {
     params.forcePlanCache = forcePlanCache;
+    return *this;
+}
+
+ExpressionContextBuilder& ExpressionContextBuilder::allowGenericForeignDbLookup(
+    bool allowGenericForeignDbLookup) {
+    params.allowGenericForeignDbLookup = allowGenericForeignDbLookup;
     return *this;
 }
 
@@ -292,13 +314,13 @@ ExpressionContextBuilder& ExpressionContextBuilder::viewNS(
 }
 
 ExpressionContextBuilder& ExpressionContextBuilder::withReplicationResolvedNamespaces() {
-    StringMap<ResolvedNamespace> resolvedNamespaces;
+    ResolvedNamespaceMap resolvedNamespaces;
 
-    resolvedNamespaces[NamespaceString::kSessionTransactionsTableNamespace.coll()] = {
+    resolvedNamespaces[NamespaceString::kSessionTransactionsTableNamespace] = {
         NamespaceString::kSessionTransactionsTableNamespace, std::vector<BSONObj>()};
 
-    resolvedNamespaces[NamespaceString::kRsOplogNamespace.coll()] = {
-        NamespaceString::kRsOplogNamespace, std::vector<BSONObj>()};
+    resolvedNamespaces[NamespaceString::kRsOplogNamespace] = {NamespaceString::kRsOplogNamespace,
+                                                              std::vector<BSONObj>()};
 
     resolvedNamespace(std::move(resolvedNamespaces));
     return *this;
@@ -323,7 +345,7 @@ ExpressionContextBuilder& ExpressionContextBuilder::tailableMode(TailableModeEnu
 ExpressionContextBuilder& ExpressionContextBuilder::fromRequest(
     OperationContext* operationContext,
     const FindCommandRequest& request,
-    const CollatorInterface* collatorInterface,
+    const CollatorInterface* collectionCollator,
     bool useDisk) {
 
     opCtx(operationContext);
@@ -339,13 +361,30 @@ ExpressionContextBuilder& ExpressionContextBuilder::fromRequest(
     serializationContext(request.getSerializationContext());
 
     if (!request.getCollation().isEmpty()) {
-        collator(
+        auto requestCollator =
             uassertStatusOK(CollatorFactoryInterface::get(operationContext->getServiceContext())
-                                ->makeFromBSON(request.getCollation())));
-    } else if (collatorInterface) {
-        collator(collatorInterface->clone());
+                                ->makeFromBSON(request.getCollation()));
+
+        // If request collator equals to collection collator then check for IDHACK eligibility.
+        const bool haveMatchingCollators =
+            CollatorInterface::collatorsMatch(requestCollator.get(), collectionCollator);
+        if (haveMatchingCollators) {
+            isIdHackQuery(isIdHackEligibleQueryWithoutCollator(request));
+        }
+
+        collator(std::move(requestCollator));
+    } else {
+        if (collectionCollator) {
+            collator(collectionCollator->clone());
+        } else {
+            // If there is no collection or request collator we call
+            // isIdHackEligibleQueryWithoutCollator() in order to evaluate if 'request' is an
+            // IDHACK query.
+            isIdHackQuery(isIdHackEligibleQueryWithoutCollator(request));
+        }
     }
 
+    isFleQuery(request.getEncryptionInformation().has_value());
     return *this;
 }
 
@@ -382,7 +421,6 @@ ExpressionContextBuilder& ExpressionContextBuilder::fromRequest(
 ExpressionContextBuilder& ExpressionContextBuilder::fromRequest(
     OperationContext* operationContext, const AggregateCommandRequest& request, bool useDisk) {
     opCtx(operationContext);
-    explain(request.getExplain());
     fromRouter(aggregation_request_helper::getFromRouter(request));
     needsMerge(request.getNeedsMerge());
     allowDiskUse(request.getAllowDiskUse().value_or(useDisk));
@@ -393,6 +431,7 @@ ExpressionContextBuilder& ExpressionContextBuilder::fromRequest(
     runtimeConstants(request.getLegacyRuntimeConstants());
     letParameters(request.getLet());
     serializationContext(request.getSerializationContext());
+    isFleQuery(request.getEncryptionInformation().has_value());
     return *this;
 }
 
@@ -415,9 +454,9 @@ ExpressionContext::ExpressionContext(ExpressionContextParams&& params)
       _collator(std::move(_params.collator)),
       _documentComparator(_collator.getCollator()),
       _valueComparator(_collator.getCollator()),
-      _featureFlagStreams([] {
+      _featureFlagStreams([](const VersionContext& vCtx) {
           return gFeatureFlagStreams.isEnabledUseLastLTSFCVWhenUninitialized(
-              serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+              vCtx, serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
       }) {
 
     _params.timeZoneDatabase = mongo::getTimeZoneDatabase(_params.opCtx);
@@ -622,27 +661,8 @@ void ExpressionContext::initializeReferencedSystemVariables() {
     }
 }
 
-void ExpressionContext::throwIfFeatureFlagIsNotEnabledOnFCV(
-    StringData name, const boost::optional<FeatureFlag>& flag) {
-    if (!flag) {
-        return;
-    }
-
-    // If the FCV is not initialized yet, we check whether the feature flag is enabled on the last
-    // LTS FCV, which is the lowest FCV we can have on this server. If the FCV is set, then we
-    // should check if the flag is enabled on maxFeatureCompatibilityVersion or the current FCV. If
-    // both the FCV is uninitialized and maxFeatureCompatibilityVersion is set, to be safe, we
-    // should check the lowest FCV. We are guaranteed that maxFeatureCompatibilityVersion will
-    // always be greater than or equal to the last LTS. So we will check the last LTS.
-    const auto fcv = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
-    mongo::multiversion::FeatureCompatibilityVersion versionToCheck = fcv.getVersion();
-    if (!fcv.isVersionInitialized()) {
-        // (Generic FCV reference): This FCV reference should exist across LTS binary versions.
-        versionToCheck = multiversion::GenericFCV::kLastLTS;
-    } else if (_params.maxFeatureCompatibilityVersion) {
-        versionToCheck = *_params.maxFeatureCompatibilityVersion;
-    }
-
+void ExpressionContext::throwIfFeatureFlagIsNotEnabledOnFCV(StringData name,
+                                                            CheckableFeatureFlagRef flag) {
     uassert(ErrorCodes::QueryFeatureNotAllowed,
             // We would like to include the current version and the required minimum version in this
             // error message, but using FeatureCompatibilityVersion::toString() would introduce a
@@ -651,7 +671,26 @@ void ExpressionContext::throwIfFeatureFlagIsNotEnabledOnFCV(
                           << " is not allowed in the current feature compatibility version. See "
                           << feature_compatibility_version_documentation::compatibilityLink()
                           << " for more information.",
-            flag->isEnabledOnVersion(versionToCheck));
+            flag.isEnabled([&](auto& fcvGatedFlag) {
+                // If the FCV is not initialized yet, we check whether the feature flag is enabled
+                // on the last LTS FCV, which is the lowest FCV we can have on this server. If the
+                // FCV is set, then we should check if the flag is enabled on
+                // maxFeatureCompatibilityVersion or the current FCV. If both the FCV is
+                // uninitialized and maxFeatureCompatibilityVersion is set, to be safe, we should
+                // check the lowest FCV. We are guaranteed that maxFeatureCompatibilityVersion will
+                // always be greater than or equal to the last LTS. So we will check the last LTS.
+                const auto fcv = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+                mongo::multiversion::FeatureCompatibilityVersion versionToCheck = fcv.getVersion();
+                if (!fcv.isVersionInitialized()) {
+                    // (Generic FCV reference): This FCV reference should exist across LTS binary
+                    // versions.
+                    versionToCheck = multiversion::GenericFCV::kLastLTS;
+                } else if (_params.maxFeatureCompatibilityVersion) {
+                    versionToCheck = *_params.maxFeatureCompatibilityVersion;
+                }
+
+                return fcvGatedFlag.isEnabledOnVersion(versionToCheck);
+            }));
 }
 
 }  // namespace mongo

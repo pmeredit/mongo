@@ -5,15 +5,42 @@
 #pragma once
 
 #include <boost/optional.hpp>
-#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mongo/db/modules/enterprise/src/streams/exec/stages_gen.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/timer.h"
 
 namespace streams {
+
+// Target for collecting per collection/per topic input or output stats.
+struct Target {
+    std::string db;
+    std::string coll;
+
+    bool operator==(const Target& other) const {
+        return (db == other.db && coll == other.coll);
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const Target& t) {
+        return H::combine(std::move(h), t.db, t.coll);
+    }
+};
+
+struct PerTargetStats {
+    int64_t inputMessageCount{0};
+    int64_t inputMessageSize{0};
+    PerTargetStats& operator+=(const PerTargetStats& other) {
+        inputMessageCount += other.inputMessageCount;
+        inputMessageSize += other.inputMessageSize;
+        return *this;
+    }
+};
+
 /**
  * Calculates TimeSpent based on a decay factor.
  *   uses exponential decay based on elapsed time.  The decay is such that the readings older than 5
@@ -50,6 +77,8 @@ struct OperatorStats {
     mongo::Microseconds timeSpent{0};
     // lastTimeSpentUpdated timer to be able to decay previous value.
     mongo::Timer lastTimeSpentUpdated;
+    // Stats per target
+    mongo::stdx::unordered_map<Target, PerTargetStats> perTargetStats;
 
     // The minimum open window's start time. Only set in window assigning operator.
     boost::optional<mongo::Date_t> minOpenWindowStartTime;
@@ -81,6 +110,13 @@ struct OperatorStats {
             timeSpent =
                 calculateDecayTimeSpent(other.timeSpent.count(), timeSpent.count(), elapsed);
             lastTimeSpentUpdated.reset();
+        }
+        for (const auto& [target, stats] : other.perTargetStats) {
+            auto it = perTargetStats.find(target);
+            if (it == perTargetStats.end()) {
+                it = perTargetStats.insert(std::make_pair(target, PerTargetStats{})).first;
+            }
+            it->second += stats;
         }
         // watermark is not updated here intentionally.
         return *this;
@@ -115,6 +151,7 @@ struct StreamSummaryStats {
     int64_t watermark{-1};
     int64_t numDlqDocs{0};
     int64_t numDlqBytes{0};
+    mongo::Milliseconds avgTimeSpentMs{0};
 
     StreamSummaryStats& operator-=(const StreamSummaryStats& other) {
         numInputDocs -= other.numInputDocs;

@@ -39,9 +39,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/platform/process_id.h"
-#include "mongo/util/assert_util_core.h"
 #include "mongo/util/static_immortal.h"
 
 namespace mongo {

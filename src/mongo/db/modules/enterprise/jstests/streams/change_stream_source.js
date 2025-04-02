@@ -5,12 +5,14 @@
  *  featureFlagStreams,
  * ]
  */
+import {findMatchingLogLine} from "jstests/libs/log.js";
 import {Streams} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     getStats,
     listStreamProcessors,
     sampleUntil,
     stopStreamProcessor,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID,
     waitForCount
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -34,6 +36,13 @@ const writeCollThree = "writeToNewCollection";
 
 const writeDBOne = "writeToThisDB";
 const writeDBTwo = "writeToThisOtherDB";
+
+const operatorStatsFieldName = "operatorStats";
+const changeStreamConsumerOperatorFieldName = "ChangeStreamConsumerOperator";
+const inputMessageCountFieldName = "inputMessageCount";
+const targetStatsFieldName = "targetStats";
+const collFieldName = "coll";
+const dbFieldName = "db";
 
 // Utility to perform writes against a combination of the namespaces above. This should generate
 // some change events.
@@ -80,13 +89,107 @@ function performWrites() {
         {_id: 22, a: 33, otherTimeField: Date.now()},
         {_id: 23, a: 35, otherTimeField: Date.now()},
     ]));
+
+    // Write 1 more document to writeCollOne.
+    writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
+    assert.commandWorked(writeColl.insert({_id: 24, a: 88, otherTimeField: Date.now()}));
 }
 
 function clearState() {
     db.getSiblingDB(writeDBOne).dropDatabase();
     db.getSiblingDB(writeDBTwo).dropDatabase();
+    db.getSiblingDB("test").dropDatabase();
+    db.getSiblingDB("replace_with").dropDatabase();
+    db.getSiblingDB(outputDB).dropDatabase();
     outputColl.drop();
 }
+
+function changeStreamSourceCollectionStatsTest() {
+    clearState();
+
+    let sourceSpec = {
+        connectionName: connectionName,
+        config: {startAtOperationTime: db.hello().$clusterTime.clusterTime}
+    };
+
+    const processorName = "collectionStatsProcessor";
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {
+            $match: {
+                $or: [
+                    {operationType: "insert"},
+                    {operationType: "update"},
+                    {operationType: "delete"}
+                ]
+            }
+        },
+        {$emit: {connectionName: '__testMemory'}}
+    ]);
+
+    const processor = sp[processorName];
+    let startResult =
+        processor.start({featureFlags: {perTargetStats: true}, shouldStartSample: true});
+    assert.commandWorked(startResult);
+    const cursorId = startResult["sampleCursorId"];
+
+    performWrites();
+
+    sampleUntil(cursorId, 18, processorName);
+    waitForCount(db.getSiblingDB(writeDBOne)[writeCollOne], 2);
+    waitForCount(db.getSiblingDB(writeDBOne)[writeCollTwo], 2);
+    waitForCount(db.getSiblingDB(writeDBTwo)[writeCollOne], 5);
+    waitForCount(db.getSiblingDB(writeDBTwo)[writeCollTwo], 6);
+    waitForCount(db.getSiblingDB(writeDBTwo)[writeCollThree], 3);
+    let verboseStats = getStats(processorName);
+    assert(operatorStatsFieldName in verboseStats);
+    const operatorStats = verboseStats[operatorStatsFieldName];
+    assert(operatorStats.length > 0 &&
+           operatorStats[0]["name"] == changeStreamConsumerOperatorFieldName);
+    const changeStreamConsumerOperatorStats = operatorStats[0];
+
+    assert(targetStatsFieldName in changeStreamConsumerOperatorStats);
+    let collectionStats = changeStreamConsumerOperatorStats[targetStatsFieldName];
+    jsTestLog(`collectionStats for processor ${processorName} *********` + tojson(collectionStats));
+    assert.eq(collectionStats.length, 5);
+
+    for (const collectionStat of collectionStats) {
+        const collName = collectionStat[collFieldName];
+        const dbName = collectionStat[dbFieldName];
+        const inputMessageCount = collectionStat[inputMessageCountFieldName];
+        if (dbName == writeDBOne) {
+            assert.eq(inputMessageCount, 2);
+        }
+        if (dbName == writeDBTwo && collName == writeCollOne) {
+            assert.eq(inputMessageCount, 5);
+        }
+        if (dbName == writeDBTwo && collName == writeCollTwo) {
+            assert.eq(inputMessageCount, 6);
+        }
+        if (dbName == writeDBTwo && collName == writeCollThree) {
+            assert.eq(inputMessageCount, 3);
+        }
+    }
+    const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
+    assert.commandWorked(writeColl.updateOne({a: 88}, {$set: {a: 4}}));
+    assert.commandWorked(writeColl.deleteMany({}));
+    sampleUntil(cursorId, 2, processorName);
+    verboseStats = getStats(processorName);
+    collectionStats = verboseStats[operatorStatsFieldName][0][targetStatsFieldName];
+
+    for (const collectionStat of collectionStats) {
+        const collName = collectionStat[collFieldName];
+        const dbName = collectionStat[dbFieldName];
+        const inputMessageCount = collectionStat[inputMessageCountFieldName];
+        if (dbName == writeDBOne && collName == writeCollOne) {
+            assert.eq(inputMessageCount, 4);
+        }
+    }
+
+    assert.commandWorked(processor.stop());
+}
+
+changeStreamSourceCollectionStatsTest();
 
 function runChangeStreamSourceTest({
     expectedNumberOfDataMessages,
@@ -122,14 +225,21 @@ function runChangeStreamSourceTest({
     }
 
     const processorName = "changeStreamSourceProcessor";
-    sp.createStreamProcessor(processorName,
-                             [{$source: sourceSpec}, {$emit: {connectionName: '__testMemory'}}]);
+    let addFields = {};
+    addFields[streamMetaFieldName ? streamMetaFieldName : "_stream_meta"] = {$meta: "stream"};
+    addFields["_ts"] = {$meta: "stream.source.ts"};
+    sp.createStreamProcessor(processorName, [
+        {$source: sourceSpec},
+        {$addFields: addFields},
+        {$emit: {connectionName: '__testMemory'}}
+    ]);
 
     const processor = sp[processorName];
     let startResult = processor.start({featureFlags: {}, shouldStartSample: true});
     assert.commandWorked(startResult);
     const cursorId = startResult["sampleCursorId"];
 
+    const startTime = new Date();
     performWrites();
 
     let outputDocs = sampleUntil(cursorId, expectedNumberOfDataMessages, processorName);
@@ -137,7 +247,10 @@ function runChangeStreamSourceTest({
     // Get verbose stats.
     const verboseStats = getStats(processorName);
     jsTestLog(verboseStats);
+
+    assert(Math.abs(startTime.getTime() - verboseStats['lastMessageIn'].getTime()) <= 5000);
     assert.eq(verboseStats["ok"], 1);
+    assert(!(targetStatsFieldName in verboseStats));
     const startingPoint = verboseStats['changeStreamState'];
     assert(startingPoint);
     assert.commandWorked(processor.stop());
@@ -316,8 +429,12 @@ function runChangeStreamSourceTestWithFullDocumentOnly({
     }
 
     const processorName = "changeStreamFullDocument";
+    let addFields = {};
+    addFields["_stream_meta"] = {$meta: "stream"};
+    addFields["_ts"] = {$meta: "stream.source.ts"};
     sp.createStreamProcessor(processorName, [
         {$source: sourceSpec},
+        {$addFields: addFields},
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
     ]);
 
@@ -444,7 +561,7 @@ function testChangeStreamSourceWindowPipeline() {
     clearState();
     const processorName = "changeStreamSourceAndWindowProcessor";
     sp.createStreamProcessor(processorName, [
-        {$source: {connectionName: connectionName, db: writeDBOne}},
+        {$source: {connectionName: connectionName, db: writeDBOne, tsFieldName: "_ts"}},
         {
             $tumblingWindow: {
                 interval: {size: NumberInt(2), unit: "second"},
@@ -461,6 +578,7 @@ function testChangeStreamSourceWindowPipeline() {
                 ]
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {$merge: {into: {connectionName: connectionName, db: outputDB, coll: outputCollName}}}
     ]);
 
@@ -721,6 +839,7 @@ function testAfterInvalidate() {
         name: spName,
         processorId: spName,
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         pipeline: [
             {
                 $source: {
@@ -799,7 +918,8 @@ function testAfterInvalidateWithFullDocumentOnly() {
         streams_startStreamProcessor: '',
         name: spName,
         processorId: spName,
-        tenantId: "testTenant",
+        tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         pipeline: [
             {
                 $source: {
@@ -995,6 +1115,29 @@ function testChangeStreamSourceLagStat() {
 
 testChangeStreamSourceLagStat();
 
+function testChangeStreamIdleMarking() {
+    clearState();
+    db.setLogLevel(5, "streams");
+
+    const processorName = "changeStreamSourceProcessor";
+    createChangestreamSourceProcessor(processorName);
+
+    const processor = sp[processorName];
+    let startResult = processor.start({featureFlags: {}, shouldStartSample: true});
+    assert.commandWorked(startResult);
+
+    assert.soon(() => {
+        const log = assert.commandWorked(db.adminCommand({getLog: "global"})).log;
+        const line = findMatchingLogLine(log, {id: 9596400});
+        return line != null;
+    });
+
+    stopStreamProcessor(processorName);
+    clearState();
+}
+
+testChangeStreamIdleMarking();
+
 // TODO SERVER-77657: add a test that verifies that stop() works when a continuous
 //  stream of events is flowing through $source.
 
@@ -1092,25 +1235,61 @@ function testChangeStreamOnTimeseries() {
 
     const processorName = "changeStreamSourceProcessor";
     const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
-    const startResult = processor.start({featureFlags: {}, shouldStartSample: true}, false);
-    assert.commandFailedWithCode(startResult, ErrorCodes.StreamProcessorInvalidOptions);
-    assert.eq(startResult.errorLabels[0], "StreamProcessorUserError");
+    let res = processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert(res.hasOwnProperty("ok"));
+    if (res["ok"] == 0) {
+        // command failed.
+        assert.commandFailedWithCode(res, ErrorCodes.StreamProcessorInvalidOptions);
+    } else {
+        // command succeeded. So will have to confirm that SP eventually errs out
+        assert.soon(() => {
+            let listResult = listStreamProcessors();
+            assert.eq(listResult["ok"], 1, listResult);
+            if (listResult.hasOwnProperty("streamProcessors") &&
+                listResult.streamProcessors.length == 1) {
+                let mySp = listResult.streamProcessors[0];
+                assert.eq(mySp.name, processorName);
+                if (mySp.status == "error") {
+                    assert.eq(mySp.error.code, ErrorCodes.StreamProcessorInvalidOptions);
+                    assert.eq(mySp.error.userError, true);
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
 }
 
 testChangeStreamOnTimeseries();
 
-function runChangeStreamSourceTestFailOnStart(
-    sourceSpecOverrides, expectedErrCode, expectedErrLabels = []) {
+function runChangeStreamSourceTestFailOnStart(sourceSpecOverrides, expectedErrCode, isUserError) {
     clearState();
 
     const processorName = "changeStreamSourceProcessor";
     const processor = createChangestreamSourceProcessor(processorName, sourceSpecOverrides);
 
-    let startResult = processor.start({featureFlags: {}, shouldStartSample: true}, false);
-    assert.commandFailedWithCode(startResult, expectedErrCode);
-    assert.eq(startResult.errorLabels.length, expectedErrLabels.length);
-    for (const label of expectedErrLabels) {
-        startResult.errorLabels.includes(label);
+    let res = processor.start({featureFlags: {}, shouldStartSample: true}, false);
+    assert(res.hasOwnProperty("ok"));
+    if (res["ok"] == 0) {
+        // command failed.
+        assert.commandFailedWithCode(res, expectedErrCode);
+    } else {
+        // command succeeded. So will have to confirm that SP eventually errs out
+        assert.soon(() => {
+            let listResult = listStreamProcessors();
+            assert.eq(listResult["ok"], 1, listResult);
+            if (listResult.hasOwnProperty("streamProcessors") &&
+                listResult.streamProcessors.length == 1) {
+                let mySp = listResult.streamProcessors[0];
+                assert.eq(mySp.name, processorName);
+                if (mySp.status == "error") {
+                    assert.eq(mySp.error.code, expectedErrCode);
+                    assert.eq(mySp.error.userError, isUserError);
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 }
 
@@ -1118,14 +1297,14 @@ function runChangeStreamSourceTestFailOnStart(
 runChangeStreamSourceTestFailOnStart(
     {config: {pipeline: [{$someStageThatDoesNotExist: {}}]}},
     ErrorCodes.StreamProcessorInvalidOptions,
-    ["StreamProcessorUserError"],
+    true,
 );
 
 // Should fail due to empty stage specification in source's aggregation pipeline
 runChangeStreamSourceTestFailOnStart(
     {config: {pipeline: [{}]}},
     ErrorCodes.StreamProcessorInvalidOptions,
-    ["StreamProcessorUserError"],
+    true,
 );
 
 // Should fail due to stage specification having more than one field in source's aggregation
@@ -1140,7 +1319,14 @@ runChangeStreamSourceTestFailOnStart(
         }
     },
     ErrorCodes.StreamProcessorInvalidOptions,
-    ["StreamProcessorUserError"],
+    true,
+);
+
+// Should fail due to an invalid fieldPath
+runChangeStreamSourceTestFailOnStart(
+    {config: {pipeline: [{$addFields: {documentKey: "$documentKey.$thisIsInvalid"}}]}},
+    ErrorCodes.StreamProcessorInvalidOptions,
+    true,
 );
 
 function runChangeStreamSourceTestFailOnInsert(sourceSpecOverrides, expectedErrCode, isUserError) {
@@ -1171,3 +1357,71 @@ runChangeStreamSourceTestFailOnInsert(
     ErrorCodes.StreamProcessorInvalidOptions,
     true,
 );
+
+// Should fail on write due to invalid js
+runChangeStreamSourceTestFailOnInsert(
+    {
+        config: {
+            "pipeline": [{
+                "$addFields": {
+                    "foo": {
+                        "$function":
+                            {"args": [], "body": "function(doc) { return doc_typo; }", "lang": "js"}
+                    }
+                }
+            }]
+        }
+    },
+    ErrorCodes.StreamProcessorInvalidOptions,
+    true,
+);
+
+function testChangeStreamHandlesServerInterruptedAtShutdownError() {
+    clearState();
+
+    const processorName = "changeStreamSourceProcessor";
+    const processor = createChangestreamSourceProcessor(processorName, {
+        config: {
+            pipeline: [{
+                $addFields: {"someField": "someValue"},
+            }]
+        }
+    });
+    processor.start({featureFlags: {}, shouldStartSample: true});
+
+    const writeColl = db.getSiblingDB(writeDBOne)[writeCollOne];
+    for (let i = 0; i < 10; i++) {
+        assert.commandWorked(writeColl.insertOne({_id: i, a: 2 + i}));
+    }
+
+    assert.commandWorked(db.adminCommand({
+        'configureFailPoint': 'changestreamSourceServerInterruptedAtShutdownError',
+        'mode': 'alwaysOn'
+    }));
+
+    for (let i = 10; i < 20; i++) {
+        assert.commandWorked(writeColl.insertOne({_id: i, a: 2 + i}));
+    }
+
+    let spListResult;
+    assert.soon(() => {
+        let listResult = listStreamProcessors();
+        assert.eq(listResult["ok"], 1, listResult);
+        spListResult = listResult.streamProcessors.find((item) => item.name == processorName);
+        return spListResult.status == "error";
+    });
+
+    processor.stop();
+
+    assert.eq(spListResult?.error.code, ErrorCodes.StreamProcessorAtlasConnectionError);
+    assert.eq(spListResult?.error.userError, false);
+
+    clearState();
+
+    assert.commandWorked(db.adminCommand({
+        'configureFailPoint': 'changestreamSourceServerInterruptedAtShutdownError',
+        'mode': 'off'
+    }));
+}
+
+testChangeStreamHandlesServerInterruptedAtShutdownError();

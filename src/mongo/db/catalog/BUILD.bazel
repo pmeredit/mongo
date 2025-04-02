@@ -89,7 +89,6 @@ mongo_cc_library(
     ],
     deps = [
         "//src/mongo/db:server_base",  # TODO(SERVER-93876): Remove.
-        "//src/mongo/db:shard_role_api",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db:vector_clock_mutable",
         "//src/mongo/db/repl:optime",
         "//src/mongo/db/repl:repl_coordinator_interface",  # TODO(SERVER-93876): Remove.
@@ -120,7 +119,6 @@ mongo_cc_library(
         "//src/mongo/db:service_context",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db:shard_role_api_stor_ex",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db/collection_crud",
-        "//src/mongo/db/concurrency:lock_manager",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db/query/collation:collator_factory_interface",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db/query/query_stats",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db/storage:bson_collection_catalog_entry",
@@ -147,7 +145,6 @@ mongo_cc_library(
     ],
     deps = [
         "//src/mongo/db/query/plan_cache:query_plan_cache",
-        "//src/mongo/db:update_index_data",
         "//src/mongo/db:collection_index_usage_tracker",
         "//src/mongo/db/fts:base_fts",
         "//src/mongo/db/query:query_planner",
@@ -252,7 +249,7 @@ mongo_cc_library(
         "//src/mongo/idl:cluster_server_parameter_gen",
         "//src/mongo/idl:generic_argument_gen",
         "//src/mongo/rpc:topology_version_gen",
-        "//src/mongo/rpc/metadata:impersonated_user_metadata_gen",
+        "//src/mongo/rpc/metadata:audit_metadata_gen",
         "//src/mongo/s:chunk_version_gen",
         "//src/mongo/s:database_version_base_gen",
         "//src/mongo/s:gossiped_routing_cache_gen",
@@ -346,7 +343,6 @@ mongo_cc_library(
         "//src/mongo/db/index:index_access_method",
         "//src/mongo/db/query/collation:collator_factory_interface",
         "//src/mongo/db/storage:storage_options",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -362,7 +358,6 @@ mongo_cc_library(
         "//src/mongo/db/catalog/validate:validate_idl",
         "//src/mongo/db/index:index_access_method",
         "//src/mongo/db/query/query_stats",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util/concurrency:spin_lock",
     ],
 )
@@ -469,6 +464,7 @@ mongo_cc_library(
         "//src/mongo/db/stats:top",
         "//src/mongo/db/storage:index_entry_comparison",
         "//src/mongo/db/storage:record_store_base",
+        "//src/mongo/db/storage:storage_engine_common",
         "//src/mongo/db/storage:storage_options",
         "//src/mongo/db/storage/key_string",
         "//src/mongo/db/timeseries:catalog_helper",
@@ -545,6 +541,7 @@ mongo_cc_library(
         "collection_impl.cpp",
         "database_holder_impl.cpp",
         "database_impl.cpp",
+        "index_catalog_entry_helpers.cpp",
         "index_catalog_entry_impl.cpp",
         "index_catalog_impl.cpp",
         "virtual_collection_impl.cpp",
@@ -553,6 +550,7 @@ mongo_cc_library(
         "collection_impl.h",
         "database_holder_impl.h",
         "database_impl.h",
+        "index_catalog_entry_helpers.h",
         "index_catalog_entry_impl.h",
         "index_catalog_impl.h",
         "virtual_collection_impl.h",
@@ -561,7 +559,6 @@ mongo_cc_library(
         "catalog_helpers",
         "catalog_stats",
         "collection_options",
-        "collection_query_info",
         "document_validation",
         "health_log_interface",
         "index_catalog",
@@ -586,6 +583,7 @@ mongo_cc_library(
         "//src/mongo/db/collection_crud:capped_visibility",
         "//src/mongo/db/commands:server_status_core",
         "//src/mongo/db/index:index_access_method",
+        "//src/mongo/db/index:preallocated_container_pool",
         "//src/mongo/db/op_observer",
         "//src/mongo/db/query/query_stats",
         "//src/mongo/db/query/virtual_collection",
@@ -595,12 +593,10 @@ mongo_cc_library(
         "//src/mongo/db/stats:top",
         "//src/mongo/db/storage:capped_snapshots",
         "//src/mongo/db/storage:durable_catalog",
-        "//src/mongo/db/storage:execution_context",
         "//src/mongo/db/storage:record_store_base",
         "//src/mongo/db/storage:storage_engine_common",
         "//src/mongo/db/storage:storage_engine_impl",
         "//src/mongo/db/storage:storage_options",
-        "//src/mongo/db/storage:storage_util",
         "//src/mongo/db/storage/key_string",
         "//src/mongo/db/timeseries:timeseries_conversion_util",
         "//src/mongo/db/timeseries:timeseries_extended_range",
@@ -646,20 +642,6 @@ mongo_cc_library(
 )
 
 mongo_cc_library(
-    name = "health_log_mock",
-    srcs = [
-        "health_log_mock.cpp",
-    ],
-    hdrs = [
-        "health_log_mock.h",
-    ],
-    deps = [
-        ":health_log_interface",
-        "//src/mongo/db:server_base",
-    ],
-)
-
-mongo_cc_library(
     name = "collection_mock",
     hdrs = [
         "collection_mock.h",
@@ -694,6 +676,7 @@ mongo_cc_unit_test(
         "database_test.cpp",
         "drop_database_test.cpp",
         "historical_catalogid_tracker_test.cpp",
+        "index_catalog_entry_impl_test.cpp",
         "index_catalog_impl_test.cpp",
         "index_key_validate_test.cpp",
         "index_signature_test.cpp",
@@ -705,7 +688,7 @@ mongo_cc_unit_test(
         "//src/mongo/db/catalog/validate:index_consistency_test.cpp",
         "//src/mongo/db/catalog/validate:validate_results_test.cpp",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     target_compatible_with = select({
         "//bazel/config:use_wiredtiger_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -718,7 +701,6 @@ mongo_cc_unit_test(
         ":collection_catalog",
         ":collection_mock",
         ":collection_options",
-        ":collection_query_info",
         ":database_holder",
         ":index_key_validate",
         ":storage_engine_collection_options_flags_parser",
@@ -766,7 +748,6 @@ mongo_cc_unit_test(
         "//src/mongo/idl:server_parameter_test_util",
         "//src/mongo/unittest",
         "//src/mongo/util:clock_source_mock",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util:pcre_wrapper",
     ],
 )

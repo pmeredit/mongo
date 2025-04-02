@@ -4,15 +4,27 @@
 
 #include "streams/exec/util.h"
 
+#include <bsoncxx/exception/exception.hpp>
+#include <iostream>
+#include <limits>
+
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
+#include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/bson/bsontypes_util.h"
+#include "mongo/bson/json.h"
+#include "mongo/bson/oid.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/name_expression.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
+#include "mongo/util/hex.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/constants.h"
+#include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
 
@@ -22,12 +34,25 @@ using namespace mongo;
 
 namespace streams {
 
+namespace {
+constexpr StringData kPositiveInfinityValue = "Infinity"_sd;
+constexpr StringData kNegativeInfinityValue = "-Infinity"_sd;
+}  // namespace
+
 bool isSourceStage(mongo::StringData name) {
     return name == mongo::StringData(kSourceStageName);
 }
 
 bool isSinkStage(mongo::StringData name) {
+    return isSinkOnlyStage(name) || isMiddleAndSinkStage(name);
+}
+
+bool isSinkOnlyStage(mongo::StringData name) {
     return isEmitStage(name) || isMergeStage(name);
+}
+
+bool isMiddleAndSinkStage(mongo::StringData name) {
+    return isExternalFunctionStage(name);
 }
 
 bool isWindowStage(mongo::StringData name) {
@@ -44,31 +69,31 @@ bool hasWindow(const std::vector<BSONObj>& pipeline) {
     return false;
 }
 
-bool hasHttpsStage(const std::vector<mongo::BSONObj>& pipeline) {
+bool hasPayloadStage(const std::vector<mongo::BSONObj>& pipeline) {
     for (const auto& stage : pipeline) {
-        if (isHttpsStage(stage.firstElementFieldNameStringData())) {
+        if (isPayloadStage(stage.firstElementFieldNameStringData())) {
             return true;
         }
     }
     return false;
 }
 
-bool hasHttpsStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline) {
-    boost::optional<size_t> httpsStageIdx;
+bool hasPayloadStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline) {
+    boost::optional<size_t> payloadStageIdx;
     boost::optional<size_t> windowStageIdx;
     for (size_t idx = 0; idx < pipeline.size(); ++idx) {
         const auto& stage = pipeline[idx];
         auto name = stage.firstElementFieldNameStringData();
         if (isWindowStage(name)) {
             windowStageIdx = idx;
-        } else if (isHttpsStage(name)) {
-            httpsStageIdx = idx;
+        } else if (isPayloadStage(name)) {
+            payloadStageIdx = idx;
         }
     }
-    if (!httpsStageIdx || !windowStageIdx) {
+    if (!payloadStageIdx || !windowStageIdx) {
         return false;
     }
-    return *httpsStageIdx < *windowStageIdx;
+    return *payloadStageIdx < *windowStageIdx;
 }
 
 bool isLookUpStage(mongo::StringData name) {
@@ -81,6 +106,14 @@ bool isEmitStage(mongo::StringData name) {
 
 bool isMergeStage(mongo::StringData name) {
     return name == mongo::StringData(kMergeStageName);
+}
+
+bool isLimitStage(mongo::StringData name) {
+    return name == mongo::StringData(kLimitStageName);
+}
+
+bool isExternalFunctionStage(mongo::StringData name) {
+    return name == mongo::StringData(kExternalFunctionStageName);
 }
 
 bool isWindowAwareStage(mongo::StringData name) {
@@ -104,8 +137,8 @@ bool hasBlockingStage(const BSONPipeline& pipeline) {
     return false;
 }
 
-bool isHttpsStage(mongo::StringData name) {
-    return name == mongo::StringData(kHttpsStageName);
+bool isPayloadStage(mongo::StringData name) {
+    return name == mongo::StringData(kHttpsStageName) || isExternalFunctionStage(name);
 }
 
 // TODO(STREAMS-220)-PrivatePreview: Especially with units of day and year,
@@ -170,6 +203,13 @@ BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMe
     return objBuilder;
 }
 
+mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                           const StreamDocument& streamDoc,
+                                           const std::string& operatorName,
+                                           mongo::Status status) {
+    return toDeadLetterQueueMsg(streamMetaFieldName, streamDoc, operatorName, status.reason());
+}
+
 BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
                                     const StreamMeta& streamMeta,
                                     const Document& doc,
@@ -193,14 +233,14 @@ NamespaceString getNamespaceString(const std::string& dbStr, const std::string& 
 }
 
 NamespaceString getNamespaceString(const NameExpression& db, const NameExpression& coll) {
-    using namespace fmt::literals;
     tassert(8117400,
-            "Expected a static database name but got expression: {}"_format(db.toString()),
+            fmt::format("Expected a static database name but got expression: {}", db.toString()),
             db.isLiteral());
     auto dbStr = db.getLiteral();
-    tassert(8117401,
-            "Expected a static collection name but got expression: {}"_format(coll.toString()),
-            coll.isLiteral());
+    tassert(
+        8117401,
+        fmt::format("Expected a static collection name but got expression: {}", coll.toString()),
+        coll.isLiteral());
     auto collStr = coll.getLiteral();
     return getNamespaceString(dbStr, collStr);
 }
@@ -304,6 +344,40 @@ mongo::Document updateStreamMeta(const mongo::Value& streamMetaInDoc,
                           .ss.str()),
             Value(httpsMeta->getResponseTimeMs()));
     }
+    if (auto externalFunctionMeta = internalStreamMeta.getExternalFunction();
+        externalFunctionMeta) {
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kFunctionNameFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getFunctionName()));
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kExecutedVersionFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getExecutedVersion()));
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kStatusCodeFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getStatusCode()));
+
+        if (externalFunctionMeta->getFunctionError()) {
+            newStreamMeta.setNestedField(
+                FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                         << StreamMetaExternalFunction::kFunctionErrorFieldName)
+                              .ss.str()),
+                Value(*externalFunctionMeta->getFunctionError()));
+        }
+
+        newStreamMeta.setNestedField(
+            FieldPath((str::stream() << StreamMeta::kExternalFunctionFieldName << "."
+                                     << StreamMetaExternalFunction::kResponseTimeMsFieldName)
+                          .ss.str()),
+            Value(externalFunctionMeta->getResponseTimeMs()));
+    }
     return newStreamMeta.freeze();
 }
 
@@ -324,45 +398,199 @@ std::vector<StringData> getLoggablePipeline(const std::vector<BSONObj>& pipeline
     return stageNames;
 }
 
-std::string convertDateToISO8601(mongo::Date_t date) {
-    auto result = TimeZoneDatabase::utcZone().formatDate(kIsoFormatStringZ, date);
-    uassertStatusOK(result);
-    return result.getValue();
-}
-
-std::vector<mongo::Value> convertDateToISO8601(const std::vector<mongo::Value>& arr) {
-    std::vector<mongo::Value> result;
-    result.reserve(arr.size());
-    for (const auto& value : arr) {
-        auto type = value.getType();
-        if (type == BSONType::Date) {
-            result.push_back(Value(convertDateToISO8601(value.getDate())));
-        } else if (type == BSONType::Object) {
-            result.push_back(Value(convertDateToISO8601(value.getDocument())));
-        } else if (type == BSONType::Array) {
-            result.push_back(Value(convertDateToISO8601(value.getArray())));
-        } else {
-            result.push_back(value);
-        }
-    }
-    return result;
-}
-
-mongo::Document convertDateToISO8601(mongo::Document doc) {
+mongo::Document convertAllFields(
+    mongo::Document doc, const std::function<mongo::Value(const mongo::Value&)> convertFunc) {
     MutableDocument mut(doc);
     auto it = doc.fieldIterator();
     while (it.more()) {
         const auto& [fieldName, field] = it.next();
         auto type = doc[fieldName].getType();
-        if (type == BSONType::Date) {
-            mut.setField(fieldName, Value(convertDateToISO8601(field.getDate())));
-        } else if (type == BSONType::Object) {
-            mut.setField(fieldName, Value(convertDateToISO8601(field.getDocument())));
+        if (type == BSONType::Object) {
+            mut.setField(fieldName, Value(convertAllFields(field.getDocument(), convertFunc)));
         } else if (type == BSONType::Array) {
-            mut.setField(fieldName, Value(convertDateToISO8601(field.getArray())));
+            mut.setField(fieldName, Value(convertAllFields(field.getArray(), convertFunc)));
+        } else {
+            mut.setField(fieldName, convertFunc(field));
         }
     }
     return mut.freeze();
+}
+
+std::vector<mongo::Value> convertAllFields(
+    const std::vector<mongo::Value>& arr,
+    const std::function<mongo::Value(const mongo::Value&)> convertFunc) {
+    std::vector<mongo::Value> result;
+    result.reserve(arr.size());
+    for (const auto& value : arr) {
+        auto type = value.getType();
+        if (type == BSONType::Object) {
+            result.push_back(Value(convertAllFields(value.getDocument(), convertFunc)));
+        } else if (type == BSONType::Array) {
+            result.push_back(Value(convertAllFields(value.getArray(), convertFunc)));
+        } else {
+            result.push_back(convertFunc(value));
+        }
+    }
+    return result;
+}
+
+mongo::Value dateToISO8601(const mongo::Value& value) {
+    if (value.getType() != BSONType::Date) {
+        return value;
+    }
+    auto result = TimeZoneDatabase::utcZone().formatDate(kIsoFormatStringZ, value.getDate());
+    uassertStatusOK(result);
+    return Value(result.getValue());
+}
+
+mongo::Document convertDateToISO8601(mongo::Document doc) {
+    return convertAllFields(std::move(doc), dateToISO8601);
+}
+
+bool startsWithOpeningBrace(StringData s) {
+    for (char c : s) {
+        if (!std::isspace(c)) {
+            return c == '{';
+        }
+    }
+    return false;
+}
+
+bool startsWithOpeningBracket(StringData s) {
+    for (char c : s) {
+        if (!std::isspace(c)) {
+            return c == '[';
+        }
+    }
+    return false;
+}
+
+mongo::Value jsonStringsToJson(const mongo::Value& value) {
+    if (value.getType() != BSONType::String) {
+        return value;
+    }
+    auto jsonString = value.getStringData();
+
+    if (startsWithOpeningBracket(jsonString)) {
+        try {
+            std::string objectWrapper = fmt::format(R"({{"data":{}}})", jsonString);
+            auto responseView =
+                bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
+            auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+            return Value(responseAsBson.firstElement());
+        } catch (const bsoncxx::exception&) {
+            // If we fail to convert the string to json, just return the original value
+            return value;
+        }
+    }
+
+    if (startsWithOpeningBrace(jsonString)) {
+        try {
+            auto responseView = bsoncxx::stdx::string_view{jsonString.data(), jsonString.size()};
+            auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+            return Value(std::move(responseAsBson));
+        } catch (const bsoncxx::exception&) {
+            // If we fail to convert the string to json, just return the original value
+            return value;
+        }
+    }
+
+    return value;
+}
+
+mongo::Document convertJsonStringsToJson(mongo::Document doc) {
+    return convertAllFields(std::move(doc), jsonStringsToJson);
+}
+
+std::vector<mongo::Value> jsonStringToValue(const std::vector<mongo::Value>& arr) {
+    return convertAllFields(arr, jsonStringsToJson);
+}
+
+mongo::Value modifyValueForBasicJson(const mongo::Value& value) {
+    switch (value.getType()) {
+        case BSONType::jstOID:
+            return mongo::Value{value.getOid().toString()};
+        case BSONType::Date:
+            return mongo::Value{value.getDate().toMillisSinceEpoch()};
+        case BSONType::bsonTimestamp: {
+            auto timestamp = duration_cast<Milliseconds>(Seconds{value.getTimestamp().getSecs()});
+            return mongo::Value{static_cast<long long>(timestamp.count())};
+        }
+        case BSONType::NumberDecimal: {
+            return mongo::Value{value.getDecimal().toString()};
+        }
+        case BSONType::BinData: {
+            const auto& binValue = value.getBinData();
+            switch (value.getBinData().type) {
+                case BinDataType::newUUID:
+                    return mongo::Value{value.getUuid().toString()};
+                default:
+                    return mongo::Value{base64::encode(
+                        StringData(static_cast<const char*>(binValue.data), binValue.length))};
+            }
+            break;
+        }
+        case BSONType::NumberDouble: {
+            auto doubleValue = value.getDouble();
+            if (doubleValue == std::numeric_limits<double>::infinity()) {
+                return mongo::Value{kPositiveInfinityValue};
+            } else if (doubleValue == -std::numeric_limits<double>::infinity()) {
+                return mongo::Value{kNegativeInfinityValue};
+            }
+            break;
+        }
+        case BSONType::RegEx:
+            return mongo::Value{
+                BSON("pattern" << value.getRegex() << "options" << value.getRegexFlags())};
+        default:
+            break;
+    }
+    return value;
+}
+
+mongo::Document modifyDocumentForBasicJson(const mongo::Document& doc) {
+    return convertAllFields(doc, modifyValueForBasicJson);
+}
+
+std::string serializeJson(const BSONObj& bsonObj, JsonStringFormat format, bool pretty) {
+    switch (format) {
+        case JsonStringFormat::Canonical:
+            return tojson(bsonObj, mongo::ExtendedCanonicalV2_0_0, pretty);
+        case JsonStringFormat::Relaxed:
+            return tojson(bsonObj, mongo::ExtendedRelaxedV2_0_0, pretty);
+        case JsonStringFormat::Basic: {
+            auto modifiedDoc = modifyDocumentForBasicJson(mongo::Document{bsonObj});
+            return tojson(modifiedDoc.toBson(), mongo::ExtendedRelaxedV2_0_0, pretty);
+        }
+        default:
+            tasserted(9997603, "Received unsupported json string format");
+    }
+}
+
+mongo::Value parseAndDeserializeJsonResponse(StringData rawResponse, bool parseJsonStrings) {
+
+    // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
+    if (rawResponse.front() == '[') {
+        std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse);
+        auto responseView = bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
+        auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+        auto jsonResponse = Value(responseAsBson.firstElement());
+        if (!parseJsonStrings) {
+            return jsonResponse;
+        }
+        auto responseArray = jsonStringToValue(jsonResponse.getArray());
+        return Value(std::move(responseArray));
+    }
+
+    auto responseView = bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
+    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
+    auto jsonResponse = Value(std::move(responseAsBson));
+    if (!parseJsonStrings) {
+        return jsonResponse;
+    }
+
+    auto responseDocument = convertJsonStringsToJson(jsonResponse.getDocument());
+    return Value(std::move(responseDocument));
 }
 
 }  // namespace streams

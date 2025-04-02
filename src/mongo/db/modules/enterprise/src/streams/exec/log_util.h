@@ -4,14 +4,23 @@
 
 #pragma once
 
-#include "streams/exec/message.h"
 #include <fmt/format.h>
 
+#include "streams/exec/message.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
 
 struct Context;
+
+// LoggingContext is used for LOGV2 when you don't have access to a full Context.
+struct LoggingContext {
+    std::string streamProcessorName;
+    std::string streamProcessorId;
+    std::string tenantId;
+};
+
+mongo::BSONObj toBSON(const LoggingContext& loggingContext);
 
 // A convenience macro to assert during checkpoint read operations.
 // TODO(SERVER-78501): Add specific error codes in checkpoint assertions.
@@ -33,7 +42,7 @@ struct Context;
             assertion);
 
 // Get default labels for a specific streamProcessor's metrics.
-MetricManager::LabelsVec getDefaultMetricLabels(Context* context);
+Metric::LabelsVec getDefaultMetricLabels(Context* context);
 
 // Allows StreamDataMsg to be use in LOGV2 statements.
 mongo::BSONObj toBSON(const StreamDataMsg& msg);

@@ -38,13 +38,13 @@ selector:
     # enters a wait state. Additionally, since the AquireCollection is not even obtained,
     # the curOp (current operation) does not get logged.
     - jstests/core/administrative/current_op/currentop.js
-    - jstests/core/fsync.js
+    - jstests/core/administrative/fsync.js
     # When a transaction is in a prepared state, as seen in that test, it prevents the document edited
     # within it from being read by the dbcheck process. Therefore, if the test keeps the transaction
     # in a prepared state for an extended period, it will result in a timeout for the dbcheck process.
     - jstests/core/txns/prepare_conflict.js
     # Implicit collection creation not supported for certain commands that are run direct to shard.
-    - jstests/core/ddl/capped_convertToCapped1.js
+    - jstests/core/ddl/clone_collection_as_capped.js
     - jstests/core/query/collation/collation.js
     # Logical session cache for a config server replica set is not usable until there is a shard.
     - jstests/core/administrative/list_all_sessions.js
@@ -58,9 +58,9 @@ selector:
     # TODO SERVER-31242: findAndModify no-op retry should respect the fields option.
     - jstests/core/**/crud_api.js
     - jstests/core/**/find_and_modify.js
-    - jstests/core/**/find_and_modify2.js
+    - jstests/core/**/find_and_modify_fields.js
     - jstests/core/**/find_and_modify_pipeline_update.js
-    - jstests/core/**/find_and_modify_server6865.js
+    - jstests/core/**/find_and_modify_positional_new_remove.js
     - jstests/core/**/fts_find_and_modify.js
     - jstests/core/**/project_with_collation.js
     # These test run commands using legacy queries, which are not supported on sessions.
@@ -72,8 +72,8 @@ selector:
     - jstests/core/**/profile3.js
     - jstests/core/**/profile_findandmodify.js
     - jstests/core/**/query/top/top.js
-    - jstests/core/views/views_stats.js
-    - jstests/core/write/bulk/bulk_write_profile.js
+    - jstests/core/catalog/views/views_stats.js
+    - jstests/core/query/bulk/bulk_write_profile.js
     # This test makes the assumption that a command is run a certain number of times, but
     # the retryable writes suite overrides the runCommand to repeat commands.
     - jstests/core/**/failcommand_failpoint.js

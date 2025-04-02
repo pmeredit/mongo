@@ -1258,6 +1258,22 @@ class _CppHeaderFileWriter(_CppFileWriterBase):
             # Write InvocationBaseGen class.
             self.gen_invocation_base_class_declaration(command)
 
+    def _need_feature_flag_headers(self, spec):
+        # type: (ast.IDLAST) -> bool
+        for param in spec.server_parameters:
+            if param.feature_flag_phase is not None:
+                return True
+            elif param.condition and param.condition.feature_flag:
+                return True
+        return False
+
+    def _need_server_parameter_headers(self, spec):
+        # type: (ast.IDLAST) -> bool
+        for param in spec.server_parameters:
+            if param.condition and param.condition.min_fcv:
+                return True
+        return False
+
     def generate(self, spec):
         # type: (ast.IDLAST) -> None
         """Generate the C++ header to a stream."""
@@ -1305,17 +1321,10 @@ class _CppHeaderFileWriter(_CppFileWriterBase):
                 header_list.append("mongo/util/options_parser/environment.h")
 
         if spec.server_parameters:
-            if [
-                param
-                for param in spec.server_parameters
-                if param.feature_flag or (param.condition and param.condition.feature_flag)
-            ]:
+            if self._need_feature_flag_headers(spec):
                 header_list.append("mongo/db/feature_flag.h")
-            if [
-                param
-                for param in spec.server_parameters
-                if param.condition and param.condition.min_fcv
-            ]:
+                header_list.append("mongo/db/feature_flag_server_parameter.h")
+            if self._need_server_parameter_headers(spec):
                 header_list.append("mongo/db/feature_compatibility_version_parser.h")
             header_list.append("mongo/db/server_parameter.h")
             header_list.append("mongo/db/server_parameter_with_storage.h")
@@ -3268,10 +3277,10 @@ class _CppSourceFileWriter(_CppFileWriterBase):
     def _gen_server_parameter_with_storage(self, param):
         # type: (ast.ServerParameter) -> None
         """Generate a single IDLServerParameterWithStorage."""
-        if param.feature_flag:
+        if param.feature_flag_phase is not None:
             self._writer.write_line(
                 common.template_args(
-                    "auto ret = std::make_unique<FeatureFlagServerParameter>(${name}, ${storage});",
+                    "auto ret = std::make_unique<FeatureFlagServerParameter>(${name}, &${storage});",
                     storage=param.cpp_varname,
                     name=_encaps(param.name),
                 )
@@ -3375,7 +3384,7 @@ class _CppSourceFileWriter(_CppFileWriterBase):
                     if param.condition:
                         if param.condition.feature_flag:
                             self._writer.write_line(
-                                "scp_%d->setFeatureFlag(&%s);"
+                                "scp_%d->setFeatureFlag(%s);"
                                 % (param_no, param.condition.feature_flag)
                             )
                         if param.condition.min_fcv:
@@ -3486,7 +3495,9 @@ class _CppSourceFileWriter(_CppFileWriterBase):
         self.write_empty_line()
 
     def _gen_config_options_register(self, root_opts, sections, returns_status):
-        self._writer.write_line("namespace moe = ::mongo::optionenvironment;")
+        self._writer.write_line(
+            "namespace moe = ::mongo::optionenvironment;  // NOLINT(misc-unused-alias-decls)"
+        )
         self.write_empty_line()
 
         for opt in root_opts:
@@ -3514,7 +3525,9 @@ class _CppSourceFileWriter(_CppFileWriterBase):
 
     def _gen_config_options_store(self, configs, return_status):
         # Setup initializer for storing configured options in their variables.
-        self._writer.write_line("namespace moe = ::mongo::optionenvironment;")
+        self._writer.write_line(
+            "namespace moe = ::mongo::optionenvironment;  // NOLINT(misc-unused-alias-decls)"
+        )
         self.write_empty_line()
 
         for opt in configs:

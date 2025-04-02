@@ -74,11 +74,11 @@ def configure_loggers():
     """Configure the loggers and setup redirects."""
     _setup_redirects()
 
-    global ROOT_TESTS_LOGGER  # pylint: disable=global-statement
+    global ROOT_TESTS_LOGGER
     ROOT_TESTS_LOGGER = new_root_logger(TESTS_LOGGER_NAME)
-    global ROOT_FIXTURE_LOGGER  # pylint: disable=global-statement
+    global ROOT_FIXTURE_LOGGER
     ROOT_FIXTURE_LOGGER = new_root_logger(FIXTURE_LOGGER_NAME)
-    global ROOT_EXECUTOR_LOGGER  # pylint: disable=global-statement
+    global ROOT_EXECUTOR_LOGGER
     ROOT_EXECUTOR_LOGGER = new_root_logger(EXECUTOR_LOGGER_NAME)
 
     _write_evergreen_log_spec()
@@ -171,6 +171,11 @@ def new_testqueue_logger(test_kind):
 
 def configure_exception_capture(test_logger):
     """Configure the test logger to extract exceptions and return the exception extractors."""
+
+    # Capturing exceptions only makes sense for logs in plain format.
+    if config.LOG_FORMAT != "plain":
+        return []
+
     js_exception = ExceptionExtractor(
         start_regex=r"^uncaught exception:",
         end_regex=r"^exiting with code",
@@ -192,7 +197,7 @@ def configure_exception_capture(test_logger):
     return [js_exception, py_exception]
 
 
-def new_test_logger(test_shortname, test_basename, command, parent, job_num, test_id, job_logger):
+def new_test_logger(test_shortname, test_basename, parent, job_num, test_id, job_logger):
     """Create a new test logger that will be a child of the given parent."""
     name = "%s:%s" % (parent.name, test_shortname)
     logger = logging.Logger(name)
@@ -246,6 +251,10 @@ def _add_handler(logger, handler_info, formatter):
 
 def _get_formatter(logger_info):
     """Return formatter."""
+    if config.LOG_FORMAT == "json":
+        # Override existing configuration with predefined formatter.
+        return formatters.JsonLogFormatter()
+
     if "format" in logger_info:
         log_format = logger_info["format"]
     else:
@@ -309,9 +318,12 @@ def _add_evergreen_handler(logger, job_num, test_id=None, test_name=None):
         os.makedirs(os.path.dirname(fp), exist_ok=True)
 
         handler = BufferedFileHandler(fp)
-        handler.setFormatter(
-            formatters.EvergreenLogFormatter(fmt=logger_info.get("format", _DEFAULT_FORMAT))
-        )
+        if config.LOG_FORMAT == "json":
+            handler.setFormatter(formatters.EvergreenJsonLogFormatter())
+        else:
+            handler.setFormatter(
+                formatters.EvergreenLogFormatter(fmt=logger_info.get("format", _DEFAULT_FORMAT))
+            )
         logger.addHandler(handler)
 
         if test_id:

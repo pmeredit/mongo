@@ -359,12 +359,12 @@ void renameLocalReshardingMetadataCollections(
 
 std::vector<std::string> getLocalReshardingMetadataColls(OperationContext* opCtx) {
     DBDirectClient client(opCtx);
-    const auto filter = BSON(
-        "type"
-        << "collection"
-        << "name"
-        << BSON("$regex" << BSONRegEx("^(" + NamespaceString::kReshardingConflictStashPrefix + "|" +
-                                      NamespaceString::kReshardingLocalOplogBufferPrefix + ")")));
+    const auto filter =
+        BSON("type" << "collection"
+                    << "name"
+                    << BSON("$regex" << BSONRegEx(
+                                "^(" + NamespaceString::kReshardingConflictStashPrefix + "|" +
+                                NamespaceString::kReshardingLocalOplogBufferPrefix + ")")));
 
     const auto collInfos = client.getCollectionInfos(DatabaseName::kConfig, filter);
     std::vector<std::string> collectionNames;
@@ -466,6 +466,18 @@ void updateShardNameMetadata(OperationContext* opCtx,
                                                                      << dstShardName)),
                          Timestamp(0)},
                         std::vector<BSONObj>{BSON("src.id" << srcShardName)} /* arrayFilters */));
+
+            // Update primaryShard in config.system.sharding_ddl_coordinators for createDatabase
+            // operations.
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kShardingDDLCoordinatorsNamespace,
+                BSON("_id.operationType" << "createDatabase"
+                                         << "primaryShard" << srcShardName) /* query */,
+                {BSON("$set" << BSON("primaryShard" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(9928200, status);
+            }
         }
 
         if (isShard(restoreConfig)) {
@@ -529,9 +541,8 @@ void updateShardNameMetadata(OperationContext* opCtx,
             status = storageInterface->updateDocuments(
                 opCtx,
                 NamespaceString::kShardingDDLCoordinatorsNamespace,
-                BSON("_id.operationType"
-                     << "createCollection_V4"
-                     << "shardIds" << BSON("$exists" << true)) /* query */,
+                BSON("_id.operationType" << "createCollection_V4"
+                                         << "shardIds" << BSON("$exists" << true)) /* query */,
                 {BSON("$set" << BSON("shardIds.$[src]" << dstShardName)), Timestamp(0)},
                 std::vector<BSONObj>{BSON("src" << srcShardName)} /* arrayFilters */);
             if (status != ErrorCodes::NamespaceNotFound) {
@@ -543,9 +554,8 @@ void updateShardNameMetadata(OperationContext* opCtx,
             status = storageInterface->updateDocuments(
                 opCtx,
                 NamespaceString::kShardingDDLCoordinatorsNamespace,
-                BSON("_id.operationType"
-                     << "createCollection_V4"
-                     << "originalDataShard" << srcShardName) /* query */,
+                BSON("_id.operationType" << "createCollection_V4"
+                                         << "originalDataShard" << srcShardName) /* query */,
                 {BSON("$set" << BSON("originalDataShard" << dstShardName)), Timestamp(0)});
             if (status != ErrorCodes::NamespaceNotFound) {
                 fassert(8256802, status);
@@ -556,12 +566,34 @@ void updateShardNameMetadata(OperationContext* opCtx,
             status = storageInterface->updateDocuments(
                 opCtx,
                 NamespaceString::kShardingDDLCoordinatorsNamespace,
-                BSON("_id.operationType"
-                     << "movePrimary"
-                     << "toShardId" << srcShardName),
+                BSON("_id.operationType" << "movePrimary"
+                                         << "toShardId" << srcShardName),
                 {BSON("$set" << BSON("toShardId" << dstShardName)), Timestamp(0)});
             if (status != ErrorCodes::NamespaceNotFound) {
                 fassert(8256803, status);
+            }
+
+            // If a movePrimary operation has entered the critical section, update fields in the
+            // critical section document to reflect the new shard name.
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kCollectionCriticalSectionsNamespace,
+                BSON("reason.command" << "movePrimary"
+                                      << "reason.to" << srcShardName),
+                {BSON("$set" << BSON("reason.to" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(9031701, status);
+            }
+
+            // Update "primary" in documents of the config.shard.catalog.databases collection
+            // (authoritative database metadata).
+            status = storageInterface->updateDocuments(
+                opCtx,
+                NamespaceString::kConfigShardCatalogDatabasesNamespace,
+                BSON("primary" << srcShardName),
+                {BSON("$set" << BSON("primary" << dstShardName)), Timestamp(0)});
+            if (status != ErrorCodes::NamespaceNotFound) {
+                fassert(9979900, status);
             }
 
             renameLocalReshardingMetadataCollections(
@@ -577,9 +609,7 @@ mongo::ShardIdentity getShardIdentity(OperationContext* opCtx,
         fassert(8291407,
                 storageInterface->findById(opCtx,
                                            NamespaceString::kServerConfigurationNamespace,
-                                           BSON("_id"
-                                                << "shardIdentity")
-                                               .firstElement()));
+                                           BSON("_id" << "shardIdentity").firstElement()));
 
     // mongo::ShardIdentity::parse expects only the 3 fields below, removing others.
     auto fieldsToRemove = shardIdentity.getFieldNames<StringDataSet>();
@@ -595,12 +625,11 @@ void setBalancerSettingsStopped(OperationContext* opCtx,
                                 bool stopped) {
     LOGV2(8948800, "Setting 'stopped' field in balancer settings", "stopped"_attr = stopped);
     fassert(8756803,
-            storageInterface->updateSingleton(opCtx,
-                                              NamespaceString::kConfigSettingsNamespace,
-                                              BSON("_id"
-                                                   << "balancer"),
-                                              {BSON("$set" << BSON("stopped" << stopped)),
-                                               Timestamp(0)}));
+            storageInterface->updateSingleton(
+                opCtx,
+                NamespaceString::kConfigSettingsNamespace,
+                BSON("_id" << "balancer"),
+                {BSON("$set" << BSON("stopped" << stopped)), Timestamp(0)}));
 }
 
 // Create local.system.collections_to_restore.
@@ -686,26 +715,27 @@ void updateShardingMetadata(OperationContext* opCtx,
     mongo::ShardIdentity previousShardIdentity = getShardIdentity(opCtx, storageInterface);
 
     if (isConfig(restoreConfig)) {
-        // Acquire the collection lock in IX mode, in case we have to perform updates.
-        AutoGetCollection autoColl(
-            opCtx, NamespaceString::kConfigReshardingOperationsNamespace, MODE_IX);
-        if (autoColl.getCollection() && !autoColl->isEmpty(opCtx)) {
-            // Set the resharding state to "aborting" for any in-progress resharding operations. We
-            // do this regardless of if there is a shard rename.
-            LOGV2(87429, "Aborting any in-progress resharding operations.");
-            fassert(8756802,
-                    storageInterface->updateDocuments(
-                        opCtx,
-                        NamespaceString::kConfigReshardingOperationsNamespace,
-                        {BSON("state" << BSON("$ne"
-                                              << "committing"))} /* query */,
-                        {BSON("$set" << BSON("state"
-                                             << "aborting"
-                                             << "abortReason"
-                                             << BSON("code" << ErrorCodes::ReshardCollectionAborted
-                                                            << "errmsg"
-                                                            << "aborted by automated restore"))),
-                         Timestamp(0)}));
+        {
+            // Acquire the collection lock in IX mode, in case we have to perform updates.
+            AutoGetCollection autoColl(
+                opCtx, NamespaceString::kConfigReshardingOperationsNamespace, MODE_IX);
+            if (autoColl.getCollection() && !autoColl->isEmpty(opCtx)) {
+                // Set the resharding state to "aborting" for any in-progress resharding operations.
+                // We do this regardless of if there is a shard rename.
+                LOGV2(87429, "Aborting any in-progress resharding operations.");
+                fassert(8756802,
+                        storageInterface->updateDocuments(
+                            opCtx,
+                            NamespaceString::kConfigReshardingOperationsNamespace,
+                            {BSON("state" << BSON("$ne" << "committing"))} /* query */,
+                            {BSON("$set" << BSON(
+                                      "state" << "aborting"
+                                              << "abortReason"
+                                              << BSON("code" << ErrorCodes::ReshardCollectionAborted
+                                                             << "errmsg"
+                                                             << "aborted by automated restore"))),
+                             Timestamp(0)}));
+            }
         }
 
         // Drop config.placementHistory.
@@ -719,9 +749,7 @@ void updateShardingMetadata(OperationContext* opCtx,
         fassert(8291307,
                 storageInterface->deleteById(opCtx,
                                              NamespaceString::kServerConfigurationNamespace,
-                                             BSON("_id"
-                                                  << "shardIdentity")
-                                                 .firstElement()));
+                                             BSON("_id" << "shardIdentity").firstElement()));
     }
 
     const auto& newShardIdentity = restoreConfig.getShardIdentityDocument();
@@ -739,8 +767,7 @@ void updateShardingMetadata(OperationContext* opCtx,
             storageInterface->putSingleton(
                 opCtx,
                 NamespaceString::kServerConfigurationNamespace,
-                BSON("_id"
-                     << "shardIdentity"),
+                BSON("_id" << "shardIdentity"),
                 {BSON("$set" << BSON("clusterId"
                                      << shardIdentity.getClusterId() << "shardName"
                                      << shardIdentity.getShardName() << "configsvrConnectionString"
@@ -763,7 +790,7 @@ void updateShardingMetadata(OperationContext* opCtx,
     LOGV2(9106004, "Dropping config.cache.databases");
     fassert(
         8291411,
-        storageInterface->dropCollection(opCtx, NamespaceString::kShardConfigDatabasesNamespace));
+        storageInterface->dropCollection(opCtx, NamespaceString::kConfigCacheDatabasesNamespace));
 }
 
 void dropNonRestoredClusterParameters(OperationContext* opCtx,
@@ -787,8 +814,7 @@ Timestamp insertHigherTermNoOpOplogEntry(OperationContext* opCtx,
                                          BSONObj& lastOplogEntry,
                                          long long higherTerm) {
     LOGV2(8290807, "Inserting no-op oplog entry with higher term value");
-    const auto msgObj = BSON("msg"
-                             << "restore incrementing term");
+    const auto msgObj = BSON("msg" << "restore incrementing term");
 
     const auto lastOplogEntryTs = lastOplogEntry["ts"].timestamp();
     const auto termToInsert = std::max(higherTerm, lastOplogEntry["t"].numberLong());
@@ -958,9 +984,7 @@ void entryPoint(ServiceContext* svcCtx) {
         LOGV2(9106007, "Attempting to delete old shard identity document on replica set node");
         auto status = storageInterface->deleteById(opCtx.get(),
                                                    NamespaceString::kServerConfigurationNamespace,
-                                                   BSON("_id"
-                                                        << "shardIdentity")
-                                                       .firstElement());
+                                                   BSON("_id" << "shardIdentity").firstElement());
         if (status != ErrorCodes::NoSuchKey) {
             fassert(9106008, status);
         }

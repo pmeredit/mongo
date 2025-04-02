@@ -44,8 +44,7 @@
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/document_source_sort_by_count.h"
 #include "mongo/db/query/explain_options.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -91,16 +90,14 @@ public:
 };
 
 TEST_F(SortByCountReturnsGroupAndSort, ExpressionFieldPathSpec) {
-    BSONObj spec = BSON("$sortByCount"
-                        << "$x");
+    BSONObj spec = BSON("$sortByCount" << "$x");
     Value expectedGroupExplain =
         Value{Document{{"_id", "$x"_sd}, {"count", Document{{"$sum", Document{{"$const", 1}}}}}}};
     testCreateFromBsonResult(spec, expectedGroupExplain);
 }
 
 TEST_F(SortByCountReturnsGroupAndSort, ExpressionInObjectSpec) {
-    BSONObj spec = BSON("$sortByCount" << BSON("$floor"
-                                               << "$x"));
+    BSONObj spec = BSON("$sortByCount" << BSON("$floor" << "$x"));
     Value expectedGroupExplain =
         Value{Document{{"_id", Document{{"$floor", Value{BSON_ARRAY("$x")}}}},
                        {"count", Document{{"$sum", Document{{"$const", 1}}}}}}};
@@ -133,14 +130,12 @@ TEST_F(InvalidSortByCountSpec, NonObjectNonStringSpec) {
 }
 
 TEST_F(InvalidSortByCountSpec, NonExpressionInObjectSpec) {
-    BSONObj spec = BSON("$sortByCount" << BSON("field1"
-                                               << "$x"));
+    BSONObj spec = BSON("$sortByCount" << BSON("field1" << "$x"));
     ASSERT_THROWS_CODE(createSortByCount(spec), AssertionException, 40147);
 }
 
 TEST_F(InvalidSortByCountSpec, NonFieldPathStringSpec) {
-    BSONObj spec = BSON("$sortByCount"
-                        << "test");
+    BSONObj spec = BSON("$sortByCount" << "test");
     ASSERT_THROWS_CODE(createSortByCount(spec), AssertionException, 40148);
 }
 

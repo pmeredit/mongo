@@ -39,11 +39,7 @@
 #include <s2cellid.h>
 // IWYU pragma: no_include "ext/alloc_traits.h"
 #include <deque>
-#include <limits>
-#include <set>
 #include <string>
-#include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -54,17 +50,11 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/db/basic_types.h"
 #include "mongo/db/catalog/clustered_collection_options_gen.h"
-#include "mongo/db/exec/index_path_projection.h"
-#include "mongo/db/exec/projection_executor_utils.h"
 #include "mongo/db/index_names.h"
 #include "mongo/db/matcher/expression_algo.h"
-#include "mongo/db/matcher/expression_always_boolean.h"
-#include "mongo/db/matcher/expression_geo.h"
+#include "mongo/db/matcher/expression_hasher.h"
 #include "mongo/db/matcher/expression_text.h"
-#include "mongo/db/matcher/match_expression_dependencies.h"
-#include "mongo/db/pipeline/dependencies.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_internal_projection.h"
@@ -76,7 +66,6 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/field_path.h"
 #include "mongo/db/pipeline/search/search_helper.h"
-#include "mongo/db/query/bson/dotted_path_support.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/collation/collation_index_key.h"
 #include "mongo/db/query/collation/collator_interface.h"
@@ -103,15 +92,9 @@
 #include "mongo/db/query/search/mongot_cursor.h"
 #include "mongo/db/query/sort_pattern.h"
 #include "mongo/db/query/stage_types.h"
-#include "mongo/db/query/util/set_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
-#include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
-#include "mongo/util/string_map.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
@@ -182,6 +165,11 @@ Status tagOrChildAccordingToCache(const SolutionCacheData* branchCacheData,
     }
 
     return Status::OK();
+}
+
+size_t hashTaggedMatchExpression(MatchExpression* expr) {
+    const MatchExpressionHasher hash{MatchExpressionHashParams{HashValuesOrParams::kHashIndexTags}};
+    return hash(expr);
 }
 
 /**
@@ -280,8 +268,7 @@ StatusWith<std::unique_ptr<QuerySolution>> tryToBuildSearchQuerySolution(
 
         tassert(7816301,
                 "Pushing down $search into SBE but featureFlagSearchInSbe is disabled."_sd,
-                feature_flags::gFeatureFlagSearchInSbe.isEnabled(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+                feature_flags::gFeatureFlagSearchInSbe.isEnabled());
 
         // Build a SearchNode in order to retrieve the search info.
         auto searchNode = SearchNode::getSearchNode(query.cqPipeline().front().get());
@@ -730,8 +717,11 @@ StatusWith<std::unique_ptr<QuerySolution>> QueryPlanner::planFromCache(
     const CanonicalQuery& query,
     const QueryPlannerParams& params,
     const SolutionCacheData& solnCacheData) {
-    // A query not suitable for caching should not have made its way into the cache.
-    dassert(shouldCacheQuery(query));
+    // A query not suitable for caching should not have made its way into the cache. The exception
+    // is if `internalQueryDisablePlanCache` was enabled after a cache entry was made. This knob
+    // marks all entries as "should not cache", meaning we would end up in a state where a query
+    // should not be cached, but is in the cached. This is why we check the knob.
+    dassert(internalQueryDisablePlanCache.load() || shouldCacheQuery(query));
 
     if (SolutionCacheData::WHOLE_IXSCAN_SOLN == solnCacheData.solnType) {
         // The solution can be constructed by a scan over the entire index.
@@ -805,6 +795,10 @@ StatusWith<std::unique_ptr<QuerySolution>> QueryPlanner::planFromCache(
         return s;
     }
 
+    // Must be performed before nodes are sorted in prepareForAccessPlanning(). See
+    // QueryPlanner::plan() for details.
+    const auto taggedMatchExpressionHash = hashTaggedMatchExpression(clone.get());
+
     // The MatchExpression tree is in canonical order. We must order the nodes for access
     // planning.
     prepareForAccessPlanning(clone.get());
@@ -827,6 +821,8 @@ StatusWith<std::unique_ptr<QuerySolution>> QueryPlanner::planFromCache(
                       str::stream() << "Failed to analyze plan from cache. Query: "
                                     << query.toStringShortForErrorMsg());
     }
+
+    soln->taggedMatchExpressionHash = taggedMatchExpressionHash;
 
     LOGV2_DEBUG(20966,
                 5,
@@ -964,7 +960,11 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
                 "query"_attr = redact(query.toString()));
 
     if (auto scoped = queryPlannerAlwaysFails.scoped(); MONGO_unlikely(scoped.isActive())) {
-        tasserted(9656400, "Hit queryPlannerAlwaysFails fail point");
+        if (!scoped.getData().hasField("namespace") ||
+            scoped.getData().getStringField("namespace") ==
+                NamespaceStringUtil::serialize(query.nss(), SerializationContext::stateDefault())) {
+            tasserted(9656400, "Hit queryPlannerAlwaysFails fail point");
+        }
     }
 
     for (size_t i = 0; i < params.mainCollectionInfo.indexes.size(); ++i) {
@@ -1279,6 +1279,14 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
                 cacheData = std::move(statusWithCacheData.getValue());
             }
 
+            // We must hash the tagged MatchExpression tree before sorting it in
+            // 'prepareForAccessPlanning()' to be able to distinguish some plans. E.g. {a: 1, a: 2}
+            // will be sorted such that the tagged comparison is always in the same place, and since
+            // both comparisons have the same type and are on the same path, {(tag)a: 1, a: 2} and
+            // {(tag)a: 2, a: 1} will get the same hash when constants are ignored.
+            const size_t taggedMatchExpressionHash =
+                hashTaggedMatchExpression(nextTaggedTree.get());
+
             // We have already cached the tree in canonical order, so now we can order the nodes
             // for access planning.
             prepareForAccessPlanning(nextTaggedTree.get());
@@ -1293,6 +1301,7 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
 
             auto soln = QueryPlannerAnalysis::analyzeDataAccess(query, params, std::move(solnRoot));
             if (soln) {
+                soln->taggedMatchExpressionHash = taggedMatchExpressionHash;
                 soln->_enumeratorExplainInfo.merge(planEnumerator._explainInfo);
                 LOGV2_DEBUG(20978,
                             5,
@@ -1327,6 +1336,18 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
         }
     }
 
+    // Past this point, if an EOF solution is _possible_, it will be
+    // used regardless of sort, project, skip, or limit. We explicitly
+    // do this before considering a hint. Missing the opportunity for
+    // an EOF plan may result in an unbounded index scan where all
+    // fetched documents are filtered out by something like
+    // $alwaysFalse.
+    if (auto soln = tryEofSoln(query)) {
+        // A query with a trivially false primary match expression will never have any
+        // results, so a simple EOF is all that is required.
+        return singleSolution(std::move(soln));
+    }
+
     // An index was hinted. If there are any solutions, they use the hinted index.  If not, we
     // scan the entire index to provide results and output that as our plan.  This is the
     // desired behavior when an index is hinted that is not relevant to the query. In the case
@@ -1354,15 +1375,6 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
         }
         return Status(ErrorCodes::NoQueryExecutionPlans,
                       "Failed to build whole-index solution for $hint");
-    }
-
-    // Past this point, if an EOF solution is _possible_, it will be used regardless of sort,
-    // project, skip, or limit. Only a hinted index would prevent this, and that has been checked
-    // already.
-    if (auto soln = tryEofSoln(query)) {
-        // A query with a trivially false primary match expression will never have any
-        // results, so a simple EOF is all that is required.
-        return singleSolution(std::move(soln));
     }
 
     // If a sort order is requested, there may be an index that provides it, even if that
@@ -1580,14 +1592,19 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
     }
 
     // If CanonicalQuery is distinct-like and we haven't generated a plan that features
-    // a DISTINCT_SCAN, we should use SBE instead.
-    if (isDistinctMultiplanningEnabled && query.isSbeCompatible() && query.getDistinct()) {
-        const bool noDistinctScans = std::none_of(out.begin(), out.end(), [](const auto& soln) {
-            return soln->hasNode(STAGE_DISTINCT_SCAN);
-        });
-        if (noDistinctScans) {
-            return Status(ErrorCodes::NoDistinctScansForDistinctEligibleQuery,
-                          "No DISTINCT_SCAN plans available");
+    // a DISTINCT_SCAN, we should use SBE or subplanning if possible instead.
+    if (isDistinctMultiplanningEnabled && query.getDistinct()) {
+        const bool canSubplan =
+            MatchExpression::OR == query.getPrimaryMatchExpression()->matchType() &&
+            query.getPrimaryMatchExpression()->numChildren() > 0;
+        if (query.isSbeCompatible() || canSubplan) {
+            const bool noDistinctScans = std::none_of(out.begin(), out.end(), [](const auto& soln) {
+                return soln->hasNode(STAGE_DISTINCT_SCAN);
+            });
+            if (noDistinctScans) {
+                return Status(ErrorCodes::NoDistinctScansForDistinctEligibleQuery,
+                              "No DISTINCT_SCAN plans available");
+            }
         }
     }
 
@@ -1607,8 +1624,9 @@ StatusWith<QueryPlanner::CostBasedRankerResult> QueryPlanner::planWithCostBasedR
 
     auto cbrMode = query.getExpCtx()->getQueryKnobConfiguration().getPlanRankerMode();
     EstimateMap estimates;
-    CardinalityEstimator cardEstimator(
-        params.mainCollectionInfo, samplingEstimator, estimates, cbrMode);
+    const auto& collInfo = params.mainCollectionInfo;
+    tassert(9969001, "CBR received incomplete catalog statistics", collInfo.collStats != nullptr);
+    CardinalityEstimator cardEstimator(collInfo, samplingEstimator, estimates, cbrMode);
     CostEstimator costEstimator(estimates);
 
     std::vector<std::unique_ptr<QuerySolution>> allSoln =
@@ -1627,8 +1645,11 @@ StatusWith<QueryPlanner::CostBasedRankerResult> QueryPlanner::planWithCostBasedR
         auto ceRes = cardEstimator.estimatePlan(*soln);
         if (!ceRes.isOK()) {
             // This plan's cardinality cannot be estimated.
-            if (cbrMode == QueryPlanRankerModeEnum::kAutomaticCE) {
-                // In automatic CE mode fallback to multi-planning for inestimable plans.
+            if (cbrMode == QueryPlanRankerModeEnum::kAutomaticCE ||
+                ceRes.getStatus().code() == ErrorCodes::UnsupportedCbrNode) {
+                // We'll fallback to multi-planning for an inestimable plan if either:
+                // * We are in automatic CE mode
+                // * The reason for the inestimable plan was an unsupported node
                 acceptedSoln.push_back(std::move(soln));
             } else {
                 // All other CE modes are considered "strict", that is, when a CE method couldn't
@@ -1936,6 +1957,11 @@ StatusWith<std::unique_ptr<QuerySolution>> QueryPlanner::choosePlanForSubqueries
         }
     }
 
+    // We must hash the tagged MatchExpression tree before sorting it in
+    // 'prepareForAccessPlanning()' to be able to distinguish some plans.
+    const size_t taggedMatchExpressionHash =
+        hashTaggedMatchExpression(planningResult.orExpression.get());
+
     // Must do this before using the planner functionality.
     prepareForAccessPlanning(planningResult.orExpression.get());
 
@@ -1960,6 +1986,8 @@ StatusWith<std::unique_ptr<QuerySolution>> QueryPlanner::choosePlanForSubqueries
         ss << "Failed to analyze subplanned query";
         return Status(ErrorCodes::NoQueryExecutionPlans, ss);
     }
+
+    compositeSolution->taggedMatchExpressionHash = taggedMatchExpressionHash;
 
     LOGV2_DEBUG(20603,
                 5,

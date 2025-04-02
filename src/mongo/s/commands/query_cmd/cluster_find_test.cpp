@@ -42,19 +42,16 @@
 #include "mongo/db/query/client_cursor/cursor_response.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/s/commands/cluster_command_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
 
 class ClusterFindTest : public ClusterCommandTestFixture {
 protected:
-    const BSONObj kFindCmdScatterGather = BSON("find"
-                                               << "coll");
-    const BSONObj kFindCmdTargeted = BSON("find"
-                                          << "coll"
-                                          << "filter" << BSON("_id" << 0));
+    const BSONObj kFindCmdScatterGather = BSON("find" << "coll");
+    const BSONObj kFindCmdTargeted = BSON("find" << "coll"
+                                                 << "filter" << BSON("_id" << 0));
 
     // The index of the shard expected to receive the response is used to prevent different shards
     // from returning documents with the same shard key. This is expected to be 0 for queries

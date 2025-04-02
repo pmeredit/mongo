@@ -50,11 +50,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/executor/connection_pool_stats.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/logv2/log_severity_suppressor.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/cancellation.h"
@@ -66,8 +62,6 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
 
-
-using namespace fmt::literals;
 
 // One interesting implementation note herein concerns how setup() and
 // refresh() are invoked outside of the global lock, but setTimeout is not.
@@ -95,20 +89,20 @@ auto makeSeveritySuppressor() {
 }
 
 template <typename Map, typename Key>
-auto& getOrInvariant(Map&& map, const Key& key) noexcept {
-    auto it = std::forward<Map>(map).find(key);
-    invariant(it != std::forward<Map>(map).end(), "Unable to find key in map");
+auto& getOrInvariant(Map&& map, const Key& key) {
+    auto it = map.find(key);
+    invariant(it != map.end(), "Unable to find key in map");
 
     return it->second;
 }
 
 template <typename Map, typename... Args>
-void emplaceOrInvariant(Map&& map, Args&&... args) noexcept {
+void emplaceOrInvariant(Map&& map, Args&&... args) {
     auto ret = std::forward<Map>(map).emplace(std::forward<Args>(args)...);
     invariant(ret.second, "Element already existed in map/set");
 }
 
-bool shouldInvariantOnPoolCorrectness() noexcept {
+bool shouldInvariantOnPoolCorrectness() {
     return kDebugBuild;
 }
 
@@ -120,7 +114,7 @@ void ConnectionPool::ConnectionInterface::indicateUsed() {
     // It is illegal to attempt to use a connection after calling indicateFailure().
     invariant(_status.isOK() || _status == ConnectionPool::kConnectionStateUnknown);
     _lastUsed = now();
-    _timesUsed++;
+    _timesUsed.fetchAndAddRelaxed(1);
 }
 
 void ConnectionPool::ConnectionInterface::indicateSuccess() {
@@ -136,7 +130,7 @@ Date_t ConnectionPool::ConnectionInterface::getLastUsed() const {
 }
 
 size_t ConnectionPool::ConnectionInterface::getTimesUsed() const {
-    return _timesUsed;
+    return _timesUsed.loadRelaxed();
 }
 
 const Status& ConnectionPool::ConnectionInterface::getStatus() const {
@@ -163,12 +157,19 @@ void ConnectionPool::ControllerInterface::init(ConnectionPool* pool) {
 }
 
 std::string ConnectionPool::ConnectionControls::toString() const {
-    return "{{ maxPending: {}, target: {}, }}"_format(maxPendingConnections, targetConnections);
+    return fmt::format(
+        "{{ maxPending: {}, target: {}, }}", maxPendingConnections, targetConnections);
 }
 
 std::string ConnectionPool::HostState::toString() const {
-    return "{{ requests: {}, ready: {}, pending: {}, active: {}, leased: {}, isExpired: {} }}"_format(
-        requests, ready, pending, active, leased, health.isExpired);
+    return fmt::format(
+        "{{ requests: {}, ready: {}, pending: {}, active: {}, leased: {}, isExpired: {} }}",
+        requests,
+        ready,
+        pending,
+        active,
+        leased,
+        health.isExpired);
 }
 
 /**
@@ -243,7 +244,7 @@ protected:
 };
 
 
-auto ConnectionPool::makeLimitController() noexcept -> std::shared_ptr<ControllerInterface> {
+auto ConnectionPool::makeLimitController() -> std::shared_ptr<ControllerInterface> {
     return std::make_shared<LimitController>();
 }
 
@@ -487,12 +488,6 @@ private:
      * Establishes connections until the ControllerInterface's target is met.
      */
     void spawnConnections(WithLock lk);
-
-    /**
-     * Moves the connection into the processing pool and begins a refresh on it. The connection
-     * should not be present in any other pool upon calling.
-     */
-    void refreshConnection(stdx::unique_lock<stdx::mutex>& lk, OwnedConnection conn);
 
     void finishRefresh(stdx::unique_lock<stdx::mutex>& lk,
                        ConnectionInterface* connPtr,
@@ -1044,29 +1039,6 @@ ConnectionPool::ConnectionHandle ConnectionPool::SpecificPool::tryGetConnection(
     return {};
 }
 
-void ConnectionPool::SpecificPool::refreshConnection(stdx::unique_lock<stdx::mutex>& lk,
-                                                     OwnedConnection conn) {
-    auto controls = _parent->_controller->getControls(_id);
-    if (openConnections(lk) >= controls.targetConnections) {
-        // If we already have minConnections, just let the connection lapse
-        LOGV2(22567,
-              "Ending idle connection because the pool meets constraints",
-              "hostAndPort"_attr = _hostAndPort,
-              "numOpenConns"_attr = openConnections(lk));
-        return;
-    }
-
-    auto connPtr = conn.get();
-    _processingPool[connPtr] = std::move(conn);
-
-    LOGV2_DEBUG(
-        22568, kDiagnosticLogLevel, "Refreshing connection", "hostAndPort"_attr = _hostAndPort);
-    connPtr->refresh(_parent->_controller->pendingTimeout(),
-                     guardCallback([this](auto& lk, auto conn, auto status) {
-                         finishRefresh(lk, std::move(conn), std::move(status));
-                     }));
-}
-
 void ConnectionPool::SpecificPool::finishRefresh(stdx::unique_lock<stdx::mutex>& lk,
                                                  ConnectionInterface* connPtr,
                                                  Status status) {
@@ -1172,11 +1144,6 @@ void ConnectionPool::SpecificPool::returnConnection(stdx::unique_lock<stdx::mute
         return;
     }
 
-    if (_parent->_options.singleUseConnections) {
-        // If singleUseConnections is configured, we don't return the connection to the ready pool.
-        return;
-    }
-
     // If we need to refresh this connection
     bool shouldRefreshConnection = needsRefreshTP <= _parent->_factory->now();
 
@@ -1186,7 +1153,25 @@ void ConnectionPool::SpecificPool::returnConnection(stdx::unique_lock<stdx::mute
     }
 
     if (shouldRefreshConnection) {
-        refreshConnection(lk, std::move(conn));
+        auto controls = _parent->_controller->getControls(_id);
+        if (openConnections(lk) >= controls.targetConnections) {
+            // If we already have minConnections, just let the connection lapse
+            LOGV2(22567,
+                  "Ending idle connection because the pool meets constraints",
+                  "hostAndPort"_attr = _hostAndPort,
+                  "numOpenConns"_attr = openConnections(lk));
+            return;
+        }
+
+        _processingPool[connPtr] = std::move(conn);
+
+        LOGV2_DEBUG(
+            22568, kDiagnosticLogLevel, "Refreshing connection", "hostAndPort"_attr = _hostAndPort);
+        connPtr->refresh(_parent->_controller->pendingTimeout(),
+                         guardCallback([this](auto& lk, auto conn, auto status) {
+                             finishRefresh(lk, std::move(conn), std::move(status));
+                         }));
+
         return;
     }
 
@@ -1207,7 +1192,10 @@ void ConnectionPool::SpecificPool::addToReady(WithLock, OwnedConnection conn) {
     // This makes the connection the new most-recently-used connection.
     _readyPool.add(connPtr, std::move(conn));
 
-    auto refreshConnectionFunc = guardCallback([this, connPtr](auto& lk) {
+    // Our strategy for refreshing connections is to check them out and
+    // immediately check them back in (which kicks off the refresh logic in
+    // returnConnection
+    auto returnConnectionFunc = guardCallback([this, connPtr](auto& lk) {
         LOGV2_DEBUG(22570,
                     kDiagnosticLogLevel,
                     "Triggered refresh timeout",
@@ -1222,15 +1210,13 @@ void ConnectionPool::SpecificPool::addToReady(WithLock, OwnedConnection conn) {
         if (_health.isShutdown)
             return;
 
-        // If the connection is from an older generation, just return.
-        if (conn->getGeneration() != _generation)
-            return;
+        _checkedOutPool[connPtr] = std::move(conn);
 
         connPtr->indicateSuccess();
 
-        refreshConnection(lk, std::move(conn));
+        returnConnection(lk, connPtr, false);
     });
-    connPtr->setTimeout(_parent->_controller->toRefreshTimeout(), std::move(refreshConnectionFunc));
+    connPtr->setTimeout(_parent->_controller->toRefreshTimeout(), std::move(returnConnectionFunc));
 }
 
 bool ConnectionPool::SpecificPool::initiateShutdown(WithLock) {

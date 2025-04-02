@@ -84,9 +84,8 @@ function runNumericTypeTests(field, invalidTypes) {
     assert.commandFailedWithCode(runExpr({$gte: [fp(field), ISODate("2019-01-30T07:30:10.957Z")]}),
                                  6720002);
 
-    invalidTypes.forEach(type => {
-        assert.commandFailedWithCode(runExpr({$gte: [fp(field), type]}), 6742002);
-    });
+    invalidTypes.forEach(
+        type => { assert.commandFailedWithCode(runExpr({$gte: [fp(field), type]}), 6742002); });
 }
 // Verify all types but long and integer errors for long/integer range indexes.
 runNumericTypeTests("age", [NumberDecimal(25.6), Number(25.6)]);
@@ -101,9 +100,8 @@ runNumericTypeTests("salary", [NumberInt(25), NumberLong(-1000), NumberDecimal(2
 // Verify that any other type but date errors for date range index.
 let invalidTypes =
     [true, NumberDecimal(25.6), NumberLong(100), NumberInt(-12), "hello", Number(104.131)];
-invalidTypes.forEach(type => {
-    assert.commandFailedWithCode(runExpr({$lte: ["$birthdate", type]}), 6720002);
-});
+invalidTypes.forEach(
+    type => { assert.commandFailedWithCode(runExpr({$lte: ["$birthdate", type]}), 6720002); });
 
 // Verify that range query without an encrypted range index fails.
 assert.commandFailedWithCode(runExpr({$lte: ["$zipcode", NumberInt(10)]}), 6331102);
@@ -121,9 +119,8 @@ assert.commandFailedWithCode(runExpr({$in: ["$zipcode", [NumberInt(5), "string"]
 assert.commandFailedWithCode(runExpr({$in: ["$age", [NumberDecimal(22), "string"]]}), 6742002);
 
 // Verify unsupported operators errors.
-["age", "savings", "birthdate", "debt", "salary"].forEach(field => {
-    assert.commandFailedWithCode(runExpr({$add: [fp(field), "$hi"]}), 6331102);
-});
+["age", "savings", "birthdate", "debt", "salary"].forEach(
+    field => { assert.commandFailedWithCode(runExpr({$add: [fp(field), "$hi"]}), 6331102); });
 
 /* -------------------------- Bounds Tests ---------------------------- */
 // Verify that open range errors when given a value greater than the bounds.

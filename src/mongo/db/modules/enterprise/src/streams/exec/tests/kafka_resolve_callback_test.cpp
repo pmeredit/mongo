@@ -2,11 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc.
  */
 
+#include "streams/exec/kafka_resolve_callback.h"
+
 #include <arpa/inet.h>
 
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
-#include "streams/exec/kafka_resolve_callback.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/tests/test_utils.h"
 
 using namespace mongo;
@@ -53,7 +53,7 @@ TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetHost) {
     std::string node{"foobarnode"};
     std::string service{"foobarservice"};
 
-    struct addrinfo hints {};
+    struct addrinfo hints{};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
@@ -80,7 +80,7 @@ TEST_F(KafkaResolveCallbackTest, EnsureResolverWorksWithValidTargetIP) {
     std::string node{"foobarnode"};
     std::string service{"foobarservice"};
 
-    struct addrinfo hints {};
+    struct addrinfo hints{};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;

@@ -19,7 +19,7 @@ namespace {
 class SchemaTracker {
 public:
     explicit SchemaTracker(bool outputIsCompared, FleVersion schemaVersion)
-        : schemaVersion(schemaVersion), _outputIsCompared(outputIsCompared){};
+        : schemaVersion(schemaVersion), _outputIsCompared(outputIsCompared) {};
 
     /**
      * Exits the current evaluation state. If exitting the outermost evaluated expression, then this
@@ -160,9 +160,6 @@ public:
     void visit(const ExpressionCeil*) override {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(const ExpressionCoerceToBool*) override {
-        _tracker.enterEvaluateOrCompare();
-    }
     void visit(const ExpressionCompare*) override {
         _tracker.enterEvaluateOrCompare();
     }
@@ -255,6 +252,15 @@ public:
         _tracker.enterEvaluateOrCompare();
     }
     void visit(const ExpressionInternalFLEBetween*) override {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncStrStartsWith*) override {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncStrEndsWith*) override {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncStrContains*) override {
         _tracker.enterEvaluateOrCompare();
     }
     void visit(const ExpressionInternalRawSortKey*) override {
@@ -576,7 +582,6 @@ public:
 
             FieldRef path{expr->getFieldPathWithoutCurrentPrefix().fullPath()};
 
-            // TODO SERVER-41337 Support field paths which are prefixes of encrypted fields.
             uassert(31129,
                     "Referencing a prefix of an encrypted field is not supported",
                     _schema.getEncryptionMetadataForPath(path) ||
@@ -609,6 +614,10 @@ public:
 
         // We enter an evaluate subtree here to avoid reconciling the schemas of each of the
         // object's fields.
+        _tracker.enterEvaluateOrCompare();
+    }
+
+    void visit(const ExpressionUUID*) override {
         _tracker.enterEvaluateOrCompare();
     }
 
@@ -646,7 +655,6 @@ public:
     void visit(const ExpressionArrayToObject*) override {}
     void visit(const ExpressionBsonSize*) override {}
     void visit(const ExpressionCeil*) override {}
-    void visit(const ExpressionCoerceToBool*) override {}
     void visit(const ExpressionCompare*) override {}
     void visit(const ExpressionConcat*) override {}
     void visit(const ExpressionConcatArrays*) override {}
@@ -680,6 +688,9 @@ public:
     void visit(const ExpressionLog10*) override {}
     void visit(const ExpressionInternalFLEEqual*) override {}
     void visit(const ExpressionInternalFLEBetween*) override {}
+    void visit(const ExpressionEncStrStartsWith*) override {}
+    void visit(const ExpressionEncStrEndsWith*) override {}
+    void visit(const ExpressionEncStrContains*) override {}
     void visit(const ExpressionInternalRawSortKey*) override {}
     void visit(const ExpressionMap*) override {}
     void visit(const ExpressionMeta*) override {}
@@ -778,6 +789,7 @@ public:
     void visit(const ExpressionInternalOwningShard*) override {}
     void visit(const ExpressionInternalIndexKey*) override {}
     void visit(const ExpressionInternalKeyStringValue*) override {}
+    void visit(const ExpressionUUID*) override {}
 
 
     void visit(const ExpressionCond*) override {
@@ -877,9 +889,6 @@ public:
     void visit(const ExpressionCeil*) override {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(const ExpressionCoerceToBool*) override {
-        _tracker.exitEvaluateOrCompare();
-    }
     void visit(const ExpressionCompare*) override {
         _tracker.exitEvaluateOrCompare();
     }
@@ -969,6 +978,15 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionInternalFLEBetween*) override {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncStrStartsWith*) override {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncStrContains*) override {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionEncStrEndsWith*) override {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionInternalRawSortKey*) override {
@@ -1257,6 +1275,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionInternalKeyStringValue*) override {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionUUID*) override {
         _tracker.exitEvaluateOrCompare();
     }
 

@@ -59,8 +59,7 @@
 #include "mongo/db/query/query_solution.h"
 #include "mongo/db/record_id.h"
 #include "mongo/db/service_context.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -71,7 +70,7 @@ namespace {
 IndexEntry buildSimpleIndexEntry(const BSONObj& kp, const std::string& indexName) {
     return {kp,
             IndexNames::nameToType(IndexNames::findPluginName(kp)),
-            IndexDescriptor::kLatestIndexVersion,
+            IndexConfig::kLatestIndexVersion,
             false,
             {},
             {},
@@ -420,7 +419,7 @@ TEST_F(QueryPlannerTest, ShardFilterCollScan) {
     assertNumSolutions(1U);
     assertSolutionExists(
         "{sharding_filter: {node: "
-        "{cscan: {dir: 1}}}}}}}");
+        "{cscan: {dir: 1}}}}");
 }
 
 TEST_F(QueryPlannerTest, ShardFilterBasicIndex) {
@@ -496,10 +495,8 @@ TEST_F(QueryPlannerTest, ShardFilterNestedProjCovered) {
 
 TEST_F(QueryPlannerTest, ShardFilterHashProjNotCovered) {
     params.mainCollectionInfo.options = QueryPlannerParams::INCLUDE_SHARD_FILTER;
-    params.shardKey = BSON("a"
-                           << "hashed");
-    addIndex(BSON("a"
-                  << "hashed"));
+    params.shardKey = BSON("a" << "hashed");
+    addIndex(BSON("a" << "hashed"));
 
     runQuerySortProj(fromjson("{a: 1}"), BSONObj(), fromjson("{_id : 0, a : 1}"));
 
@@ -527,8 +524,7 @@ TEST_F(QueryPlannerTest, ShardFilterKeyPrefixIndexCovered) {
 
 TEST_F(QueryPlannerTest, ShardFilterNoIndexNotCovered) {
     params.mainCollectionInfo.options = QueryPlannerParams::INCLUDE_SHARD_FILTER;
-    params.shardKey = BSON("a"
-                           << "hashed");
+    params.shardKey = BSON("a" << "hashed");
     addIndex(BSON("b" << 1));
 
     runQuerySortProj(fromjson("{b: 1}"), BSONObj(), fromjson("{_id : 0, a : 1}"));

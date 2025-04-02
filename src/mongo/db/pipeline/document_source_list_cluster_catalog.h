@@ -61,7 +61,9 @@ static constexpr StringData kStageName = "$listClusterCatalog"_sd;
 
 class LiteParsed final : public LiteParsedDocumentSource {
 public:
-    static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss, const BSONElement& spec) {
+    static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
+                                             const BSONElement& spec,
+                                             const LiteParserOptions& options) {
         return std::make_unique<LiteParsed>(spec.fieldName(), nss);
     }
 
@@ -101,6 +103,16 @@ public:
 
     bool generatesOwnDataOnce() const final {
         return true;
+    }
+
+    ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
+                                                 bool isImplicitDefault) const override {
+        // The listCollections command that runs under the hood only accepts 'local' read concern.
+        return onlyReadConcernLocalSupported(kStageName, level, isImplicitDefault);
+    }
+
+    void assertSupportsMultiDocumentTransaction() const override {
+        transactionNotSupported(kStageName);
     }
 
 private:

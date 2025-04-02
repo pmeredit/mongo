@@ -11,6 +11,7 @@ import {
     sanitizeDoc,
     startSample,
     stopStreamProcessor,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID,
     verifyInputEqualsOutput
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
@@ -40,6 +41,7 @@ assert.gt(value.length, 0);
 let startCmd = {
     streams_startStreamProcessor: '',
     tenantId: TEST_TENANT_ID,
+    projectId: TEST_PROJECT_ID,
     name: 'sampleTest',
     processorId: 'sampleTest1',
     pipeline:

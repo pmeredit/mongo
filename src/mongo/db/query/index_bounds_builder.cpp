@@ -38,7 +38,6 @@
 #include <cmath>
 #include <limits>
 #include <memory>
-#include <set>
 #include <vector>
 
 #include "mongo/base/string_data.h"
@@ -63,9 +62,6 @@
 #include "mongo/db/query/index_multikey_helpers.h"
 #include "mongo/db/query/indexability.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"

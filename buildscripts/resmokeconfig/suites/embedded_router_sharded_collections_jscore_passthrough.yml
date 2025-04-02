@@ -20,9 +20,7 @@ selector:
     - jstests/core/**/fsync.js # uses fsync.
     - jstests/core/**/geo_s2cursorlimitskip.js # profiling.
     - jstests/core/**/geo_update_btree2.js # notablescan.
-    - jstests/core/**/index9.js # "local" database.
     - jstests/core/**/queryoptimizera.js # "local" database.
-    - jstests/core/**/stages*.js # stageDebug.
     - jstests/core/**/startup_log.js # "local" database.
     - jstests/core/**/query/top/top.js # top.
     - jstests/core/**/explain_missing_database.js # Behavior with no db different on mongos.
@@ -60,8 +58,8 @@ selector:
 
     # Embedded router doesn't support correct UpdateMetrics yet.
     # TODO SERVER-82303 Remove this once we have role-aware metrics.
-    - jstests/core/write/update/update_metrics.js
-    - jstests/core/write/find_and_modify/find_and_modify_metrics.js
+    - jstests/core/query/update/update_metrics.js
+    - jstests/core/query/find_and_modify/find_and_modify_metrics.js
     # Embedded router doesn't support getClusterParameter on router yet.
     - src/mongo/db/modules/enterprise/jstests/audit/cluster_server_parameters.js
     - src/mongo/db/modules/enterprise/jstests/audit/audit_config_upgrade_downgrade.js

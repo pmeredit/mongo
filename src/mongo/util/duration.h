@@ -272,9 +272,8 @@ public:
      */
     /** Implicitly convertible if `FromPeriod` is a multiple of `period`. */
     template <typename FromPeriod>
-    requires(std::ratio_divide<FromPeriod, period>::den ==
-             1) constexpr Duration(const Duration<FromPeriod>& from)
-        : Duration(duration_cast<Duration>(from)) {
+    requires(std::ratio_divide<FromPeriod, period>::den == 1)
+    constexpr Duration(const Duration<FromPeriod>& from) : Duration(duration_cast<Duration>(from)) {
         MONGO_STATIC_ASSERT_MSG(
             !isLowerPrecisionThan<Duration<FromPeriod>>(),
             "Use duration_cast to convert from higher precision Duration types to lower "
@@ -507,6 +506,11 @@ StringBuilderImpl<Allocator>& operator<<(StringBuilderImpl<Allocator>& os, Durat
     MONGO_STATIC_ASSERT_MSG(!Duration<Period>::unit_short().empty(),
                             "Only standard Durations can logged");
     return streamPut(os, dp);
+}
+
+template <typename Period>
+auto format_as(const Duration<Period>& dur) {
+    return dur.toString();
 }
 
 /**

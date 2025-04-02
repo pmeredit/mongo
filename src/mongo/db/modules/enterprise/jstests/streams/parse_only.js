@@ -3,7 +3,10 @@
  *  featureFlagStreams,
  * ]
  */
-import {TEST_TENANT_ID} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
+import {
+    TEST_PROJECT_ID,
+    TEST_TENANT_ID
+} from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
 const uri = 'mongodb://' + db.getMongo().host;
 const connectionRegistry = [
@@ -27,6 +30,7 @@ function test({pipeline, dlq, expectedConnectionNames}) {
     const command = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: 'test_name',
         pipeline: pipeline,
         connections: connectionRegistry,
@@ -88,7 +92,7 @@ test({
         { name: "conn3", stage: "$lookup" },
         { name: "conn4", stage: "$lookup" },
         { name: "conn2", stage: "$merge" },
-        { name: "conn6" }
+        { name: "conn6", stage: "dlq" }
     ]
 });
 
@@ -148,8 +152,11 @@ test({
         db: dbName,
         coll: dlqCollName,
     },
-    expectedConnectionNames:
-        [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
+    expectedConnectionNames: [
+        {name: "conn1", stage: "$source"},
+        {name: "conn2", stage: "$merge"},
+        {name: "conn6", stage: "dlq"}
+    ]
 });
 
 test({
@@ -178,14 +185,18 @@ test({
         db: dbName,
         coll: dlqCollName,
     },
-    expectedConnectionNames:
-        [{name: "conn1", stage: "$source"}, {name: "conn2", stage: "$merge"}, {name: "conn6"}]
+    expectedConnectionNames: [
+        {name: "conn1", stage: "$source"},
+        {name: "conn2", stage: "$merge"},
+        {name: "conn6", stage: "dlq"}
+    ]
 });
 
 function missingConnectionName() {
     const command = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: 'test_name',
         pipeline: [
             {$source: {topic: "foo"}},
@@ -207,6 +218,7 @@ function badSourceSpec() {
     const command = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: 'test_name',
         pipeline: [
             {$source: "foo"},

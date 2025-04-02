@@ -39,8 +39,7 @@
 #include "mongo/db/catalog/index_key_validate.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -121,9 +120,7 @@ TEST(IndexKeyValidateTest, KeyElementValueNegativeFloatingPointSucceeds) {
 
 TEST(IndexKeyValidateTest, KeyElementValueOfBadPluginStringFails) {
     for (auto indexVersion : getSupportedIndexVersions()) {
-        auto status = validateKeyPattern(BSON("x"
-                                              << "foobar"),
-                                         indexVersion);
+        auto status = validateKeyPattern(BSON("x" << "foobar"), indexVersion);
         ASSERT_NOT_OK(status);
         ASSERT_EQ(status, ErrorCodes::CannotCreateIndex);
     }
@@ -135,18 +132,16 @@ TEST(IndexKeyValidateTest, KeyElementBooleanValueFailsForV2Indexes) {
     ASSERT_EQ(ErrorCodes::CannotCreateIndex,
               validateKeyPattern(BSON("x" << false), IndexVersion::kV2));
     ASSERT_EQ(ErrorCodes::CannotCreateIndex,
-              validateKeyPattern(BSON("a"
-                                      << "2dsphere"
-                                      << "b" << true),
+              validateKeyPattern(BSON("a" << "2dsphere"
+                                          << "b" << true),
                                  IndexVersion::kV2));
 }
 
 TEST(IndexKeyValidateTest, KeyElementBooleanValueSucceedsForV1Indexes) {
     ASSERT_OK(validateKeyPattern(BSON("x" << true), IndexVersion::kV1));
     ASSERT_OK(validateKeyPattern(BSON("x" << false), IndexVersion::kV1));
-    ASSERT_OK(validateKeyPattern(BSON("a"
-                                      << "2dsphere"
-                                      << "b" << true),
+    ASSERT_OK(validateKeyPattern(BSON("a" << "2dsphere"
+                                          << "b" << true),
                                  IndexVersion::kV1));
 }
 
@@ -278,16 +273,12 @@ TEST(IndexKeyValidateTest, KeyElementNameWildcardFailsOnIncorrectValue) {
 }
 
 TEST(IndexKeyValidateTest, KeyElementNameWildcardFailsWhenValueIsPluginNameWithInvalidKeyName) {
-    auto status = validateKeyPattern(BSON("a"
-                                          << "wildcard"),
-                                     IndexVersion::kV2);
+    auto status = validateKeyPattern(BSON("a" << "wildcard"), IndexVersion::kV2);
     ASSERT_NOT_OK(status);
 }
 
 TEST(IndexKeyValidateTest, KeyElementNameWildcardFailsWhenValueIsPluginNameWithValidKeyName) {
-    auto status = validateKeyPattern(BSON("$**"
-                                          << "wildcard"),
-                                     IndexVersion::kV2);
+    auto status = validateKeyPattern(BSON("$**" << "wildcard"), IndexVersion::kV2);
     ASSERT_NOT_OK(status);
     ASSERT_EQ(status, ErrorCodes::CannotCreateIndex);
 }

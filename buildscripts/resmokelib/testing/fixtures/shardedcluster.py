@@ -205,7 +205,14 @@ class ShardedClusterFixture(interface.Fixture, interface._DockerComposeInterface
             # These mongot parameters are popped from shard.mongod_options when mongod is launched in above
             # setup() call. As such, the final values can't be cleanly copied over from mongod_options, but
             # need to be recreated here.
-            self.mongotHost = "localhost:" + str(self.shards[-1].mongot_port)
+            if self.mongos[0].mongos_options["set_parameters"].get("useGrpcForSearch"):
+                # If mongos & mongod are configured to use egress gRPC for search, then set the
+                # `mongotHost` parameter to the mongot listening address expecting communication via
+                # the MongoDB gRPC protocol (which we configured in setup_mongot_params).
+                self.mongotHost = "localhost:" + str(self.shards[-1].mongot_grpc_port)
+            else:
+                self.mongotHost = "localhost:" + str(self.shards[-1].mongot_port)
+
             self.searchIndexManagementHostAndPort = self.mongotHost
 
             for mongos in self.mongos:
@@ -300,7 +307,7 @@ class ShardedClusterFixture(interface.Fixture, interface._DockerComposeInterface
         # Ensure that the sessions collection gets auto-sharded by the config server
         if self.configsvr is not None:
             primary_mongo_client = self.configsvr.get_primary().mongo_client()
-            refresh_logical_session_cache_with_retry(primary_mongo_client)
+            refresh_logical_session_cache_with_retry(primary_mongo_client, self.configsvr)
 
         for shard in self.shards:
             self.refresh_logical_session_cache(shard)
@@ -439,11 +446,11 @@ class ShardedClusterFixture(interface.Fixture, interface._DockerComposeInterface
 
         return ",".join([mongos.get_internal_connection_string() for mongos in self.mongos])
 
-    def get_shell_connection_string(self):
+    def get_shell_connection_string(self, use_grpc=False):
         if self.mongos is None:
             raise ValueError("Must call setup() before calling get_shell_connection_string()")
 
-        return ",".join([mongos.get_shell_connection_string() for mongos in self.mongos])
+        return ",".join([mongos.get_shell_connection_string(use_grpc) for mongos in self.mongos])
 
     def _get_replica_set_endpoint(self):
         # The replica set endpoint would only become active after the replica set has become a
@@ -984,8 +991,8 @@ class _MongoSFixture(interface.Fixture, interface._DockerComposeInterface):
         """Return the internal connection string."""
         return f"{self._get_hostname()}:{self.port}"
 
-    def get_shell_connection_string(self):
-        port = self.port if not self.config.SHELL_GRPC else self.grpcPort
+    def get_shell_connection_string(self, use_grpc=False):
+        port = self.port if not (self.config.SHELL_GRPC or use_grpc) else self.grpcPort
         return f"{self._get_hostname()}:{port}"
 
     def get_shell_connection_url(self):

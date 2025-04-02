@@ -26,9 +26,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 namespace mongo::auth {
-using namespace fmt::literals;
 using SharedIdentityProvider = IDPManager::SharedIdentityProvider;
-using namespace fmt::literals;
 
 namespace {
 
@@ -153,21 +151,24 @@ void IDPManager::_flushIDPSJWKS() {
 
 Status IDPManager::refreshAllIDPs(OperationContext* opCtx,
                                   RefreshOption option,
-                                  bool invalidateOnFailure) {
-    return _doRefreshIDPs(opCtx, boost::none, option, invalidateOnFailure);
+                                  bool invalidateOnFailure,
+                                  bool ignoreQuiescePeriod) {
+    return _doRefreshIDPs(opCtx, boost::none, option, invalidateOnFailure, ignoreQuiescePeriod);
 }
 
 Status IDPManager::refreshIDPs(OperationContext* opCtx,
                                const std::set<StringData>& issuerNames,
                                RefreshOption option,
-                               bool invalidateOnFailure) {
-    return _doRefreshIDPs(opCtx, issuerNames, option, invalidateOnFailure);
+                               bool invalidateOnFailure,
+                               bool ignoreQuiescePeriod) {
+    return _doRefreshIDPs(opCtx, issuerNames, option, invalidateOnFailure, ignoreQuiescePeriod);
 }
 
 Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
                                   const boost::optional<std::set<StringData>>& issuerNames,
                                   RefreshOption option,
-                                  bool invalidateOnFailure) {
+                                  bool invalidateOnFailure,
+                                  bool ignoreQuiescePeriod) {
     std::vector<std::pair<StringData, Status>> statuses;
 
     ScopeGuard userInvalidation([&] {
@@ -183,8 +184,8 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
             continue;
         }
 
-        auto swInvalidate =
-            providers.begin()->second->getKeyRefresher()->refreshKeys(*_typeFactory, option);
+        auto swInvalidate = providers.begin()->second->getKeyRefresher()->refreshKeys(
+            *_typeFactory, option, ignoreQuiescePeriod);
         if (!swInvalidate.isOK()) {
             statuses.emplace_back(issuer, swInvalidate.getStatus());
 
@@ -206,7 +207,8 @@ Status IDPManager::_doRefreshIDPs(OperationContext* opCtx,
     if (!statuses.empty()) {
         if (statuses.size() == 1) {
             auto& [issuer, status] = statuses.front();
-            return status.withContext("Failed to refresh IdentityProvider '{}'"_format(issuer));
+            return status.withContext(
+                fmt::format("Failed to refresh IdentityProvider '{}'", issuer));
         }
 
         StringBuilder msg;
@@ -275,16 +277,16 @@ StatusWith<SharedIdentityProvider> IDPManager::getIDP(StringData issuerName,
 
     auto issLookupItr = catalog->providersByIssuerAndAudience.find(issuerName);
     uassert(ErrorCodes::NoSuchKey,
-            "Unknown Identity Provider '{}'"_format(issuerName),
+            fmt::format("Unknown Identity Provider '{}'", issuerName),
             issLookupItr != catalog->providersByIssuerAndAudience.end());
 
     auto& providersByAudience = issLookupItr->second;
     auto audLookupItr = providersByAudience.find(audienceName);
 
-    uassert(
-        ErrorCodes::NoSuchKey,
-        "Unknown audience name '{}' for Identity Provider '{}'"_format(audienceName, issuerName),
-        audLookupItr != providersByAudience.end());
+    uassert(ErrorCodes::NoSuchKey,
+            fmt::format(
+                "Unknown audience name '{}' for Identity Provider '{}'", audienceName, issuerName),
+            audLookupItr != providersByAudience.end());
 
     return audLookupItr->second;
 } catch (const DBException& ex) {
@@ -377,8 +379,11 @@ void uassertValidAuthNamePrefix(const IDPConfiguration& idp) {
     uassertNonEmptyString(idp, prefix, fieldName);
     for (const auto ch : prefix) {
         uassert(ErrorCodes::BadValue,
-                "Field '{}' for issuer '{}' must contain only alphanumerics, hyphens, "
-                "and/or underscores. Encountered '{}'"_format(fieldName, idp.getIssuer(), ch),
+                fmt::format("Field '{}' for issuer '{}' must contain only alphanumerics, hyphens, "
+                            "and/or underscores. Encountered '{}'",
+                            fieldName,
+                            idp.getIssuer(),
+                            ch),
                 std::isalnum(ch) || (ch == '-') || (ch == '_'));
     }
 }
@@ -397,15 +402,16 @@ void uassertSameIssuerConfigsAreValid(std::vector<IDPConfiguration>& configs) {
         StringDataSet audiences = {first->getAudience()};
 
         for (auto itr = groupedConfigs.begin() + 1; itr != groupedConfigs.end(); ++itr) {
-            uassert(
-                ErrorCodes::BadValue,
-                "IDP configurations with issuer '{}' must have the same JWKSPollSecs value"_format(
-                    first->getIssuer()),
-                (*itr)->getJWKSPollSecs() == first->getJWKSPollSecs());
+            uassert(ErrorCodes::BadValue,
+                    fmt::format(
+                        "IDP configurations with issuer '{}' must have the same JWKSPollSecs value",
+                        first->getIssuer()),
+                    (*itr)->getJWKSPollSecs() == first->getJWKSPollSecs());
 
             uassert(ErrorCodes::BadValue,
-                    "Duplicate configuration for issuer-audience pair ('{}', '{}')"_format(
-                        (*itr)->getIssuer(), (*itr)->getAudience()),
+                    fmt::format("Duplicate configuration for issuer-audience pair ('{}', '{}')",
+                                (*itr)->getIssuer(),
+                                (*itr)->getAudience()),
                     audiences.insert((*itr)->getAudience()).second);
         }
     }
@@ -457,8 +463,6 @@ Status setConfigFromBSONObj(BSONArray config) try {
 }  // namespace
 
 std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray config) {
-    using namespace fmt::literals;
-
     std::vector<IDPConfiguration> parsedObjects;
     parsedObjects.reserve(config.nFields());
     for (const auto& elem : config) {
@@ -477,8 +481,6 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
 
     bool observedLastMatchPattern = false;
     for (auto& idp : parsedObjects) {
-        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
-
         uassertNonEmptyString(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
         uassertValidURL(idp, idp.getIssuer(), IDPConfiguration::kIssuerFieldName);
         uassertNonEmptyString(idp, idp.getAudience(), IDPConfiguration::kAudienceFieldName);
@@ -491,13 +493,12 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
         uassert(ErrorCodes::BadValue,
                 "Unrecognized field 'useAuthorizationClaim'",
                 idp.getUseAuthorizationClaim() ||
-                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
+                    gFeatureFlagOIDCInternalAuthorization.isEnabled());
 
         // If the OIDC internal authorization feature flag is disabled, then authorizationClaim must
         // be specified. Otherwise, authorizationClaim must be specified if useAuthorizationClaim is
         // true.
-        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
-            idp.getUseAuthorizationClaim()) {
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled() || idp.getUseAuthorizationClaim()) {
             uassertNonEmptyString(
                 idp, idp.getAuthorizationClaim(), IDPConfiguration::kAuthorizationClaimFieldName);
         }
@@ -505,14 +506,12 @@ std::vector<IDPConfiguration> IDPManager::parseConfigFromBSONObj(BSONArray confi
         // supportsHumanFlows cannot be set to false if the feature flag is disabled.
         uassert(ErrorCodes::BadValue,
                 "Unrecognized field 'supportsHumanFlows'",
-                idp.getSupportsHumanFlows() ||
-                    gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot));
+                idp.getSupportsHumanFlows() || gFeatureFlagOIDCInternalAuthorization.isEnabled());
 
         // If the OIDC internal authorization feature flag is disabled, then clientId must
         // be specified. Otherwise, clientId must be specified if supportsHumanFlows is
         // true.
-        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled(fcvSnapshot) ||
-            idp.getSupportsHumanFlows()) {
+        if (!gFeatureFlagOIDCInternalAuthorization.isEnabled() || idp.getSupportsHumanFlows()) {
             uassertNonEmptyString(idp, idp.getClientId(), IDPConfiguration::kClientIdFieldName);
         }
 

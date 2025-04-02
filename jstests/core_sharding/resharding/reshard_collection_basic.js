@@ -4,6 +4,8 @@
  *  uses_atclustertime,
  *  # Stepdown test coverage is already provided by the resharding FSM suites.
  *  does_not_support_stepdowns,
+ *  # This test performs explicit calls to shardCollection
+ *  assumes_unsharded_collection,
  * ]
  */
 
@@ -23,6 +25,9 @@ const numInitialDocs = 500;
 
 const reshardCmdTest = new ReshardCollectionCmdTest(
     {mongos, dbName, collName, numInitialDocs, skipDirectShardChecks: true});
+
+const newZoneName = 'x2';
+assert.commandWorked(db.adminCommand({addShardToZone: shardNames[0], zone: newZoneName}));
 
 /**
  * Fail cases
@@ -113,6 +118,17 @@ assert.commandFailedWithCode(db.adminCommand({
 }),
                              ErrorCodes.BadValue);
 
+assert.commandFailedWithCode(db.adminCommand({
+    reshardCollection: ns,
+    key: {newKey: 1},
+    forceRedistribution: true,
+    zones: [
+        {zone: newZoneName, min: {newKey: 'MinKey'}, max: {newKey: '0'}},
+        {zone: newZoneName, min: {newKey: '0'}, max: {field: 'MaxKey'}}
+    ]
+}),
+                             ErrorCodes.BadValue);
+
 // TODO SERVER-87189 remove this test case since a user-created unsharded collection is now always
 // tracked. A temporary db.system.resharding.collection must now exist as unsplittable as well
 // to support moveCollection.
@@ -176,8 +192,6 @@ reshardCmdTest.assertReshardCollOkWithPreset(
 
 jsTest.log("Succeed if the zone provided is assigned to a shard but not a range for the source" +
            " collection.");
-const newZoneName = 'x2';
-assert.commandWorked(db.adminCommand({addShardToZone: shardNames[0], zone: newZoneName}));
 reshardCmdTest.assertReshardCollOk({
     reshardCollection: ns,
     key: {newKey: 1},

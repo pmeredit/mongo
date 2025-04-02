@@ -34,9 +34,8 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/query/index_entry.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -49,7 +48,7 @@ IndexEntry makeIndexEntry(BSONObj keyPattern, MultikeyPaths multiKeyPaths) {
 
     return {keyPattern,
             IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-            IndexDescriptor::kLatestIndexVersion,
+            IndexConfig::kLatestIndexVersion,
             multiKey,
             multiKeyPaths,
             {},

@@ -4,10 +4,6 @@
 
 #pragma once
 
-#include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/pipeline/document_source_change_stream_gen.h"
-#include "streams/exec/util.h"
-#include "streams/util/metrics.h"
 #include <mongocxx/change_stream.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
@@ -17,9 +13,10 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/timestamp.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
-#include "mongo/util/chunked_memory_aggregator.h"
+#include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -29,6 +26,9 @@
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/unflushed_state_container.h"
+#include "streams/exec/util.h"
+#include "streams/util/chunked_memory_aggregator.h"
+#include "streams/util/metrics.h"
 
 namespace streams {
 /**
@@ -65,11 +65,14 @@ public:
         mongo::FullDocumentBeforeChangeModeEnum fullDocumentBeforeChangeMode{
             mongo::FullDocumentBeforeChangeModeEnum::kOff};
 
-        // The pipeline to pushdown for the change stream server to process.
+        // The user pipeline to pushdown for the change stream server to process.
         std::vector<mongo::BSONObj> pipeline;
+
+        // Used to push down a $match that follows a changestream $source.
+        boost::optional<mongo::BSONObj> internalPredicate;
     };
 
-    const SourceOperator::Options& getOptions() const override {
+    const ChangeStreamSourceOperator::Options& getOptions() const override {
         return _options;
     }
 
@@ -86,6 +89,11 @@ public:
     // obtained resume token from the change stream. This function is called once per loop by the
     // executor thread
     mongo::Seconds getChangeStreamLag() const;
+    static void incPerCollectionStats(
+        mongo::stdx::unordered_map<Target, PerTargetStats>& changeStreamCollectionStats,
+        const Target& target,
+        int64_t inputBytes);
+    static constexpr auto kChangeStreamConsumerOperatorName = "ChangeStreamConsumerOperator";
 
 private:
     struct DocBatch {
@@ -111,12 +119,20 @@ private:
         int64_t byteSize{0};
     };
 
+    struct ChangeStreamEventTimestamp {
+        // Wall time from the change stream event.
+        mongo::Date_t wallTimeOrOperationTime;
+        // Assigned timestamp for the event, depends on $source.timeField and
+        // window processing time versus event time.
+        mongo::Date_t assignedTimestamp;
+    };
+
     void doStart() override;
     void doStop() override;
     void doOnControlMsg(int32_t inputIdx, StreamControlMsg controlMsg) override;
 
     std::string doGetName() const override {
-        return "ChangeStreamConsumerOperator";
+        return kChangeStreamConsumerOperatorName;
     }
 
     int64_t doRunOnce() final;
@@ -133,8 +149,8 @@ private:
     DocBatch getDocuments();
 
     // Utility to obtain a timestamp from 'changeEventObj'.
-    mongo::Date_t getTimestamp(const mongo::Document& changeEventObj,
-                               const mongo::Document& fullDocument);
+    ChangeStreamEventTimestamp getTimestamp(const mongo::Document& changeEventObj,
+                                            const mongo::Document& fullDocument);
 
     // Utility to convert 'changeStreamObj' into a StreamDocument.
     boost::optional<StreamDocument> processChangeEvent(mongo::BSONObj changeStreamObj);
@@ -155,6 +171,10 @@ private:
     OperatorStats doGetStats() override;
 
     void registerMetrics(MetricManager* metricManager) override;
+
+    mongo::Timestamp getLatestOplogTime(mongocxx::database* database,
+                                        mongocxx::client* client,
+                                        bool shouldUseWatchToInitClusterChangestream);
 
     Options _options;
 
@@ -237,7 +257,7 @@ private:
     bool _resumeTokenAdvancedSinceLastCheckpoint{false};
 
     // This is the resume token corresponding to the point where we are in the change stream.
-    boost::optional<std::variant<mongo::BSONObj, mongo::Timestamp>> _latestResumeToken;
+    boost::optional<mongo::BSONObj> _latestResumeToken;
     // This is the timestamp of the last event in the oplog in the server. This is updated
     // from the auxiliary event fetching thread each time we get a new event on the change stream.
     mongo::Atomic<mongo::Seconds> _changestreamOperationTime;

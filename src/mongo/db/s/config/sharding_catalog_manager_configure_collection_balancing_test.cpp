@@ -54,8 +54,7 @@
 #include "mongo/s/catalog/type_tags.h"
 #include "mongo/s/chunk_constraints.h"
 #include "mongo/s/chunk_version.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
@@ -64,7 +63,6 @@
 namespace mongo {
 namespace {
 
-using executor::RemoteCommandRequest;
 using unittest::assertGet;
 
 class ConfigureCollectionBalancingTest : public ConfigServerTestFixture {
@@ -112,7 +110,7 @@ protected:
                                       boost::optional<int32_t> chunkSizeMB,
                                       boost::optional<bool> defragmentCollection,
                                       boost::optional<bool> enableAutoMerger,
-                                      boost::optional<bool> noBalance) {
+                                      boost::optional<bool> enableBalancing) {
         auto future = launchAsync([&] {
             ThreadClient client(getServiceContext()->getService());
             auto opCtx = cc().makeOperationContext();
@@ -122,7 +120,7 @@ protected:
                                                chunkSizeMB,
                                                defragmentCollection,
                                                enableAutoMerger,
-                                               noBalance);
+                                               enableBalancing);
         });
 
         // mock response to _flushRoutingTableCacheUpdatesWithWriteConcern
@@ -240,13 +238,13 @@ TEST_F(ConfigureCollectionBalancingTest, SettingEnableAutoMerger) {
     ASSERT_TRUE(configDoc[CollectionType::kEnableAutoMergeFieldName].Bool());
 }
 
-TEST_F(ConfigureCollectionBalancingTest, SettingNoBalance) {
-    // noBalance starts as false
+TEST_F(ConfigureCollectionBalancingTest, SettingEnableBalancing) {
+    // kNoBalanceFieldName starts as false.
     auto configDoc = getCollectionDocument(_nss);
     ASSERT_FALSE(configDoc[CollectionType::kNoBalanceFieldName].Bool());
 
-    // set noBalance to true
-    configureCollectionBalancing(_nss, boost::none, boost::none, boost::none, true);
+    // Set enableBalancing to false which results in kNoBalanceFieldName to be set to true.
+    configureCollectionBalancing(_nss, boost::none, boost::none, boost::none, false);
     configDoc = getCollectionDocument(_nss);
 
     ASSERT_TRUE(configDoc[CollectionType::kNoBalanceFieldName].Bool());

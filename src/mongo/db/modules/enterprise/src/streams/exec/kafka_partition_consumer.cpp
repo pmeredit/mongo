@@ -2,7 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "streams/exec/kafka_utils.h"
+#include "streams/exec/kafka_partition_consumer.h"
+
 #include <chrono>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
@@ -18,10 +19,11 @@
 #include "mongo/util/debug_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/str.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
 #include "streams/exec/event_deserializer.h"
 #include "streams/exec/kafka_event_callback.h"
-#include "streams/exec/kafka_partition_consumer.h"
+#include "streams/exec/kafka_utils.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/stream_stats.h"
@@ -40,7 +42,6 @@ using namespace mongo;
 // allowed sink configurations that you may need to synchronize with as well.
 // The UI logic was added in this PR https://github.com/10gen/mms/pull/117213
 mongo::stdx::unordered_set<std::string> allowedSourcePartitionConfigurations = {
-    "max.poll.records",
     "max.poll.interval.ms",
     "fetch.min.bytes",
     "fetch.max.bytes",
@@ -49,7 +50,6 @@ mongo::stdx::unordered_set<std::string> allowedSourcePartitionConfigurations = {
     "client.dns.lookup",
     "max.partition.fetch.bytes",
     "connections.max.idle.ms",
-    "exclude.internal.topics",
     "request.timeout.ms",
     // configurations shared with allowedSourceConfigurations
     "session.timeout.ms",
@@ -169,7 +169,9 @@ KafkaPartitionConsumer::KafkaPartitionConsumer(Context* context, Options options
     : KafkaPartitionConsumerBase(context, std::move(options)),
       _memoryUsageHandle(_context->memoryAggregator->createUsageHandle()) {
     _eventCallback = std::make_unique<KafkaEventCallback>(
-        _context, fmt::format("KafkaPartitionConsumer-{}", _options.partition));
+        _context,
+        fmt::format("KafkaPartitionConsumer-{}", _options.partition),
+        (bool)_options.gwproxyEndpoint);
 }
 
 void KafkaPartitionConsumer::doInit() {
@@ -705,14 +707,17 @@ KafkaSourceDocument KafkaPartitionConsumer::processMessagePayload(RdKafka::Messa
             sourceDoc.headers.emplace_back(std::move(header));
         }
     }
-    // TODO: https://jira.mongodb.org/browse/STREAMS-245
-    // We should clarify the behavior here later. For now,
-    // we let either MSG_TIMESTAMP_CREATE_TIME or MSG_TIMESTAMP_LOG_APPEND_TIME
-    // take the sourceDoc.logAppendTimeMs, and thus the official _ts of the document.
+
     if (message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_LOG_APPEND_TIME ||
         message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_CREATE_TIME) {
         sourceDoc.logAppendTimeMs = message.timestamp().timestamp;
+    } else {
+        // Fall back to processor wall time in this case.
+        // We have yet to see this case in prod or elsewhere.
+        dassert(message.timestamp().type == RdKafka::MessageTimestamp::MSG_TIMESTAMP_NOT_AVAILABLE);
+        sourceDoc.logAppendTimeMs = curTimeMillis64();
     }
+
     return sourceDoc;
 }
 

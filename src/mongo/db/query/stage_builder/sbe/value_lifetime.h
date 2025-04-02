@@ -76,11 +76,17 @@ public:
 
     ValueType operator()(optimizer::ABT& n, optimizer::Let& let);
 
+    ValueType operator()(optimizer::ABT& n, optimizer::MultiLet& multiLet);
+
     ValueType operator()(optimizer::ABT& n, optimizer::BinaryOp& op);
+
+    ValueType operator()(optimizer::ABT& n, optimizer::NaryOp& op);
 
     ValueType operator()(optimizer::ABT& n, optimizer::FunctionCall& op);
 
     ValueType operator()(optimizer::ABT& n, optimizer::If& op);
+
+    ValueType operator()(optimizer::ABT& n, optimizer::Switch& op);
 
     bool modified() const {
         return _changed;

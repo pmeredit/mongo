@@ -57,12 +57,9 @@
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/summation.h"
@@ -131,68 +128,6 @@ Value valueFromBson(BSONObj obj) {
 }
 
 /* ------------------------- Old-style tests -------------------------- */
-
-namespace CoerceToBool {
-
-/** Dependencies forwarded from nested expression. */
-class Dependencies {
-public:
-    void run() {
-        auto expCtx = ExpressionContextForTest{};
-        intrusive_ptr<Expression> nested = ExpressionFieldPath::deprecatedCreate(&expCtx, "a.b");
-        intrusive_ptr<Expression> expression = ExpressionCoerceToBool::create(&expCtx, nested);
-        DepsTracker dependencies;
-        expression::addDependencies(expression.get(), &dependencies);
-        ASSERT_EQUALS(1U, dependencies.fields.size());
-        ASSERT_EQUALS(1U, dependencies.fields.count("a.b"));
-        ASSERT_EQUALS(false, dependencies.needWholeDocument);
-        ASSERT_EQUALS(false, dependencies.getNeedsAnyMetadata());
-    }
-};
-
-/** Output to BSONObj. */
-class AddToBsonObj {
-public:
-    void run() {
-        auto expCtx = ExpressionContextForTest{};
-        intrusive_ptr<Expression> expression = ExpressionCoerceToBool::create(
-            &expCtx, ExpressionFieldPath::deprecatedCreate(&expCtx, "foo"));
-
-        // serialized as $and because CoerceToBool isn't an ExpressionNary
-        ASSERT_BSONOBJ_BINARY_EQ(fromjson("{field:{$and:['$foo']}}"), toBsonObj(expression));
-    }
-
-private:
-    static BSONObj toBsonObj(const intrusive_ptr<Expression>& expression) {
-        return BSON("field" << expression->serialize());
-    }
-};
-
-/** Output to BSONArray. */
-class AddToBsonArray {
-public:
-    void run() {
-        auto expCtx = ExpressionContextForTest{};
-        intrusive_ptr<Expression> expression = ExpressionCoerceToBool::create(
-            &expCtx, ExpressionFieldPath::deprecatedCreate(&expCtx, "foo"));
-
-        // serialized as $and because CoerceToBool isn't an ExpressionNary
-        ASSERT_BSONOBJ_BINARY_EQ(BSON_ARRAY(fromjson("{$and:['$foo']}")), toBsonArray(expression));
-    }
-
-private:
-    static BSONArray toBsonArray(const intrusive_ptr<Expression>& expression) {
-        BSONArrayBuilder bab;
-        bab << expression->serialize();
-        return bab.arr();
-    }
-};
-
-// TODO Test optimize(), difficult because a CoerceToBool cannot be output as
-// BSON.
-
-}  // namespace CoerceToBool
-
 namespace Constant {
 
 /** No optimization is performed. */
@@ -257,9 +192,7 @@ private:
 TEST(ExpressionConstantTest, ConstantOfValueMissingSerializesToRemoveSystemVar) {
     auto expCtx = ExpressionContextForTest{};
     intrusive_ptr<Expression> expression = ExpressionConstant::create(&expCtx, Value());
-    ASSERT_BSONOBJ_BINARY_EQ(BSON("field"
-                                  << "$$REMOVE"),
-                             BSON("field" << expression->serialize()));
+    ASSERT_BSONOBJ_BINARY_EQ(BSON("field" << "$$REMOVE"), BSON("field" << expression->serialize()));
 }
 
 TEST(ExpressionConstantTest, ConstantRedaction) {
@@ -724,9 +657,7 @@ TEST(ParseExpression, ShouldRejectUnknownExpression) {
 }
 
 TEST(ParseExpression, ShouldRejectExpressionArgumentsWhichAreNotInArray) {
-    ASSERT_THROWS(parseExpression(BSON("$strcasecmp"
-                                       << "foo")),
-                  AssertionException);
+    ASSERT_THROWS(parseExpression(BSON("$strcasecmp" << "foo")), AssertionException);
 }
 
 TEST(ParseExpression, ShouldRejectExpressionWithWrongNumberOfArguments) {
@@ -744,8 +675,7 @@ TEST(ParseExpression, ShouldRejectExpressionIfItsNotTheOnlyField) {
 }
 
 TEST(ParseExpression, ShouldParseExpressionWithMultipleArguments) {
-    auto resultExpression = parseExpression(BSON("$strcasecmp" << BSON_ARRAY("foo"
-                                                                             << "FOO")));
+    auto resultExpression = parseExpression(BSON("$strcasecmp" << BSON_ARRAY("foo" << "FOO")));
     auto strCaseCmpExpression = dynamic_cast<ExpressionStrcasecmp*>(resultExpression.get());
     ASSERT_TRUE(strCaseCmpExpression);
     vector<Value> arguments = {Value(Document{{"$const", "foo"_sd}}),
@@ -819,24 +749,21 @@ intrusive_ptr<Expression> parseOperand(BSONObj specification) {
 }
 
 TEST(ParseOperand, ShouldRecognizeFieldPath) {
-    auto resultExpression = parseOperand(BSON(""
-                                              << "$field"));
+    auto resultExpression = parseOperand(BSON("" << "$field"));
     auto fieldPathExpression = dynamic_cast<ExpressionFieldPath*>(resultExpression.get());
     ASSERT_TRUE(fieldPathExpression);
     ASSERT_VALUE_EQ(fieldPathExpression->serialize(), Value("$field"_sd));
 }
 
 TEST(ParseOperand, ShouldRecognizeStringLiteral) {
-    auto resultExpression = parseOperand(BSON(""
-                                              << "foo"));
+    auto resultExpression = parseOperand(BSON("" << "foo"));
     auto constantExpression = dynamic_cast<ExpressionConstant*>(resultExpression.get());
     ASSERT_TRUE(constantExpression);
     ASSERT_VALUE_EQ(constantExpression->serialize(), Value(Document{{"$const", "foo"_sd}}));
 }
 
 TEST(ParseOperand, ShouldRecognizeNestedArray) {
-    auto resultExpression = parseOperand(BSON("" << BSON_ARRAY("foo"
-                                                               << "$field")));
+    auto resultExpression = parseOperand(BSON("" << BSON_ARRAY("foo" << "$field")));
     auto arrayExpression = dynamic_cast<ExpressionArray*>(resultExpression.get());
     ASSERT_TRUE(arrayExpression);
     vector<Value> expectedSerializedArray = {Value(Document{{"$const", "foo"_sd}}),
@@ -869,18 +796,14 @@ TEST(BuiltinRemoveVariableTest, RemoveSerializesCorrectly) {
     auto expCtx = ExpressionContextForTest{};
     VariablesParseState vps = expCtx.variablesParseState;
     auto expression = ExpressionFieldPath::parse(&expCtx, "$$REMOVE", vps);
-    ASSERT_BSONOBJ_EQ(BSON("foo"
-                           << "$$REMOVE"),
-                      BSON("foo" << expression->serialize()));
+    ASSERT_BSONOBJ_EQ(BSON("foo" << "$$REMOVE"), BSON("foo" << expression->serialize()));
 }
 
 TEST(BuiltinRemoveVariableTest, RemoveSerializesCorrectlyWithTrailingPath) {
     auto expCtx = ExpressionContextForTest{};
     VariablesParseState vps = expCtx.variablesParseState;
     auto expression = ExpressionFieldPath::parse(&expCtx, "$$REMOVE.a.b", vps);
-    ASSERT_BSONOBJ_EQ(BSON("foo"
-                           << "$$REMOVE.a.b"),
-                      BSON("foo" << expression->serialize()));
+    ASSERT_BSONOBJ_EQ(BSON("foo" << "$$REMOVE.a.b"), BSON("foo" << expression->serialize()));
 }
 
 TEST(BuiltinRemoveVariableTest, RemoveSerializesCorrectlyAfterOptimization) {
@@ -889,9 +812,7 @@ TEST(BuiltinRemoveVariableTest, RemoveSerializesCorrectlyAfterOptimization) {
     auto expression = ExpressionFieldPath::parse(&expCtx, "$$REMOVE.a.b", vps);
     auto optimizedExpression = expression->optimize();
     ASSERT(dynamic_cast<ExpressionConstant*>(optimizedExpression.get()));
-    ASSERT_BSONOBJ_EQ(BSON("foo"
-                           << "$$REMOVE"),
-                      BSON("foo" << optimizedExpression->serialize()));
+    ASSERT_BSONOBJ_EQ(BSON("foo" << "$$REMOVE"), BSON("foo" << optimizedExpression->serialize()));
 }
 
 }  // namespace BuiltinRemoveVariable
@@ -1066,7 +987,7 @@ TEST(GetComputedPathsTest, ExpressionMapNotConsideredRenameWithWrongVariableNoEx
 
 TEST(GetComputedPathsTest, ExpressionMapNotConsideredRenameWithDottedInputPath) {
     auto expCtx = ExpressionContextForTest{};
-    auto specObject = fromjson("{$map: {input: '$a.b', as: 'iter', in: {c: '$$iter.d'}}}}");
+    auto specObject = fromjson("{$map: {input: '$a.b', as: 'iter', in: {c: '$$iter.d'}}}");
     auto expr = Expression::parseObject(&expCtx, specObject, expCtx.variablesParseState);
     ASSERT(dynamic_cast<ExpressionMap*>(expr.get()));
     auto computedPaths = expr->getComputedPaths("e");
@@ -1117,28 +1038,6 @@ TEST(ExpressionMetaTest, ExpressionMetaScoreDetailsAPIStrict) {
     ASSERT_THROWS_CODE(ExpressionMeta::parse(&expCtx, expr.firstElement(), vps),
                        AssertionException,
                        ErrorCodes::APIStrictError);
-}
-
-TEST(ExpressionMetaTest, ExpressionMetaScoreFFNotEnabled) {
-    auto expCtx = ExpressionContextForTest{};
-    APIParameters::get(expCtx.getOperationContext()).setAPIStrict(false);
-    VariablesParseState vps = expCtx.variablesParseState;
-    BSONObj expr = fromjson("{$meta: \"score\"}");
-    // Should throw because 'featureFlagRankFusionFull' is not enabled.
-    ASSERT_THROWS_CODE(ExpressionMeta::parse(&expCtx, expr.firstElement(), vps),
-                       AssertionException,
-                       ErrorCodes::FailedToParse);
-}
-
-TEST(ExpressionMetaTest, ExpressionMetaScoreDetailsFFNotEnabled) {
-    auto expCtx = ExpressionContextForTest{};
-    APIParameters::get(expCtx.getOperationContext()).setAPIStrict(false);
-    VariablesParseState vps = expCtx.variablesParseState;
-    BSONObj expr = fromjson("{$meta: \"scoreDetails\"}");
-    // Should throw because 'featureFlagRankFusionFull' is not enabled.
-    ASSERT_THROWS_CODE(ExpressionMeta::parse(&expCtx, expr.firstElement(), vps),
-                       AssertionException,
-                       ErrorCodes::FailedToParse);
 }
 
 TEST(ExpressionMetaTest, ExpressionMetasearchHighlightsAPIStrict) {
@@ -1241,10 +1140,6 @@ public:
     All() : OldStyleSuiteSpecification("expression") {}
 
     void setupTests() override {
-        add<CoerceToBool::Dependencies>();
-        add<CoerceToBool::AddToBsonObj>();
-        add<CoerceToBool::AddToBsonArray>();
-
         add<Constant::Optimize>();
         add<Constant::Dependencies>();
         add<Constant::AddToBsonObj>();
@@ -1258,8 +1153,7 @@ namespace ExpressionToHashedIndexKeyTest {
 
 TEST(ExpressionToHashedIndexKeyTest, DoesAddInputDependencies) {
     auto expCtx = ExpressionContextForTest{};
-    const BSONObj obj = BSON("$toHashedIndexKey"
-                             << "$someValue");
+    const BSONObj obj = BSON("$toHashedIndexKey" << "$someValue");
     auto expression = Expression::parseExpression(&expCtx, obj, expCtx.variablesParseState);
 
     DepsTracker deps;
@@ -1710,10 +1604,9 @@ TEST(ExpressionGetFieldTest, GetFieldSerializesAndRedactsCorrectly) {
     auto expCtx = ExpressionContextForTest{};
     VariablesParseState vps = expCtx.variablesParseState;
 
-    BSONObj expressionBSON = BSON("$getField" << BSON("field"
-                                                      << "a"
-                                                      << "input"
-                                                      << "$b"));
+    BSONObj expressionBSON = BSON("$getField" << BSON("field" << "a"
+                                                              << "input"
+                                                              << "$b"));
 
     auto expression = ExpressionGetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -1721,8 +1614,7 @@ TEST(ExpressionGetFieldTest, GetFieldSerializesAndRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Test the shorthand syntax.
-    expressionBSON = BSON("$getField"
-                          << "a");
+    expressionBSON = BSON("$getField" << "a");
 
     expression = ExpressionGetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -1730,8 +1622,7 @@ TEST(ExpressionGetFieldTest, GetFieldSerializesAndRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Test a field with '.' characters.
-    expressionBSON = BSON("$getField"
-                          << "a.b.c");
+    expressionBSON = BSON("$getField" << "a.b.c");
 
     expression = ExpressionGetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -1746,8 +1637,7 @@ TEST(ExpressionGetFieldTest, GetFieldSerializesAndRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Test a field with a '$' character.
-    expressionBSON = BSON("$getField"
-                          << "a.$b.c");
+    expressionBSON = BSON("$getField" << "a.$b.c");
 
     expression = ExpressionGetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -1762,8 +1652,7 @@ TEST(ExpressionGetFieldTest, GetFieldSerializesAndRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Test a field with a trailing '.' character (invalid FieldPath).
-    expressionBSON = BSON("$getField"
-                          << "a.b.c.");
+    expressionBSON = BSON("$getField" << "a.b.c.");
 
     expression = ExpressionGetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -1784,12 +1673,11 @@ TEST(ExpressionSetFieldTest, SetFieldRedactsCorrectly) {
     VariablesParseState vps = expCtx.variablesParseState;
 
     // Test that a set field redacts properly.
-    BSONObj expressionBSON = BSON("$setField" << BSON("field"
-                                                      << "a"
-                                                      << "input"
-                                                      << "$b"
-                                                      << "value"
-                                                      << "$c"));
+    BSONObj expressionBSON = BSON("$setField" << BSON("field" << "a"
+                                                              << "input"
+                                                              << "$b"
+                                                              << "value"
+                                                              << "$c"));
     auto expression = ExpressionSetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
@@ -1804,9 +1692,9 @@ TEST(ExpressionSetFieldTest, SetFieldRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Object as input.
-    expressionBSON = BSON("$setField" << BSON("field"
-                                              << "a"
-                                              << "input" << BSON("a" << true) << "value" << 10));
+    expressionBSON =
+        BSON("$setField" << BSON("field" << "a"
+                                         << "input" << BSON("a" << true) << "value" << 10));
     expression = ExpressionSetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
@@ -1821,10 +1709,9 @@ TEST(ExpressionSetFieldTest, SetFieldRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Nested object as input.
-    expressionBSON =
-        BSON("$setField" << BSON("field"
-                                 << "a"
-                                 << "input" << BSON("a" << BSON("b" << 5)) << "value" << 10));
+    expressionBSON = BSON("$setField" << BSON("field" << "a"
+                                                      << "input" << BSON("a" << BSON("b" << 5))
+                                                      << "value" << 10));
     expression = ExpressionSetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
@@ -1839,12 +1726,9 @@ TEST(ExpressionSetFieldTest, SetFieldRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Object with field path in input.
-    expressionBSON = BSON("$setField" << BSON("field"
-                                              << "a"
-                                              << "input"
-                                              << BSON("a"
-                                                      << "$field")
-                                              << "value" << 10));
+    expressionBSON =
+        BSON("$setField" << BSON("field" << "a"
+                                         << "input" << BSON("a" << "$field") << "value" << 10));
     expression = ExpressionSetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
@@ -1861,14 +1745,9 @@ TEST(ExpressionSetFieldTest, SetFieldRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Object with field path in value.
-    expressionBSON = BSON("$setField" << BSON("field"
-                                              << "a"
-                                              << "input"
-                                              << BSON("a"
-                                                      << "b")
-                                              << "value"
-                                              << BSON("c"
-                                                      << "$d")));
+    expressionBSON = BSON("$setField" << BSON("field" << "a"
+                                                      << "input" << BSON("a" << "b") << "value"
+                                                      << BSON("c" << "$d")));
     expression = ExpressionSetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
@@ -1885,10 +1764,10 @@ TEST(ExpressionSetFieldTest, SetFieldRedactsCorrectly) {
         BSON("field" << expression->serialize(options)));
 
     // Array as input.
-    expressionBSON = BSON("$setField" << BSON("field"
-                                              << "a"
-                                              << "input" << BSON("a" << BSON_ARRAY(3 << 4 << 5))
-                                              << "value" << 10));
+    expressionBSON =
+        BSON("$setField" << BSON("field" << "a"
+                                         << "input" << BSON("a" << BSON_ARRAY(3 << 4 << 5))
+                                         << "value" << 10));
     expression = ExpressionSetField::parse(&expCtx, expressionBSON.firstElement(), vps);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
         R"({
@@ -1908,13 +1787,11 @@ TEST(ExpressionSetFieldTest, SetFieldSerializesCorrectly) {
     VariablesParseState vps = expCtx.variablesParseState;
     BSONObj expr = fromjson("{$meta: {\"field\": \"foo\", \"input\": {a: 1}, \"value\": 24}}");
     auto expression = ExpressionSetField::parse(&expCtx, expr.firstElement(), vps);
-    ASSERT_BSONOBJ_EQ(
-        BSON("ignoredField" << BSON("$setField"
-                                    << BSON("field" << BSON("$const"
-                                                            << "foo")
-                                                    << "input" << BSON("a" << BSON("$const" << 1))
-                                                    << "value" << BSON("$const" << 24)))),
-        BSON("ignoredField" << expression->serialize()));
+    ASSERT_BSONOBJ_EQ(BSON("ignoredField" << BSON(
+                               "$setField" << BSON("field" << BSON("$const" << "foo") << "input"
+                                                           << BSON("a" << BSON("$const" << 1))
+                                                           << "value" << BSON("$const" << 24)))),
+                      BSON("ignoredField" << expression->serialize()));
 }
 
 TEST(ExpressionSetFieldTest, SetFieldRejectsNullCharInFieldArgument) {
@@ -2165,48 +2042,7 @@ TEST(ExpressionParseParenthesisExpressionObjTest, EmptyObject) {
     ASSERT_EQ(expr->serialize().toString(), "{$const: {}}");
 }
 
-/**
- * This helper allows the manual registration of the $sigmoid expression to add it to the parserMap
- * without guarding it behind a feature flag (note the boost::none argument below). This is required
- * for some unit tests. Normally, expressions are added at server startup time via macros and the
- * manual registration is not necessary. However, $sigmoid is gated behind a feature flag and does
- * not get put into the map as the flag is off by default. Changing the value of the feature flag
- * with RAIIServerParameterControllerForTest() does not solve the issue because the registration
- * logic is not re-hit.
- *
- * TODO SERVER-94570: delete this manual registration of the $sigmoid expression and any callers
- * once the feature flag is enabled. Should also be able to delete the ExpressionSigmoidTest class.
- *
- * TODO SERVER-93426: delete this manual registration of the $sigmoid expression and any callers.
- * Should be able to use RAIIServerParameterControllerForTest as a private member of
- * ExpressionSigmoidTest to enable the feature flag. Even if we unconditionally register the
- * expression, we currently cannot use RAIIServerParameterControllerForTest here because that
- * enables a different instance of the feature flag than the one that is found inside the parse map
- * (and the parse map instance is checked during parsing to see if the feature is allowed).
- */
-void registerSigmoidExpression() {
-    try {
-        Expression::registerExpression("$sigmoid",
-                                       ExpressionSigmoid::parseExpressionSigmoid,
-                                       AllowedWithApiStrict::kNeverInVersion1,
-                                       AllowedWithClientType::kAny,
-                                       boost::none);
-    } catch (...) {
-        // registerSigmoidExpression() will throw if a duplicate registration is attempted. We catch
-        // and ignore this here. This is so that we can add registerSigmoidExpression() to each test
-        // that could require it, so that we don't rely on the ordering of the tests to ensure the
-        // expression is registered.
-    }
-}
-
-class ExpressionSigmoidTest : public unittest::Test {
-public:
-    void setUp() override {
-        registerSigmoidExpression();
-    }
-};
-
-TEST_F(ExpressionSigmoidTest, RoundTripSerialization) {
+TEST(ExpressionSigmoidTest, RoundTripSerialization) {
     auto expCtx = ExpressionContextForTest{};
 
     auto spec = BSON("$sigmoid" << 100);
@@ -2226,7 +2062,7 @@ TEST_F(ExpressionSigmoidTest, RoundTripSerialization) {
     ASSERT_VALUE_EQ(roundTrip, serialized);
 }
 
-TEST_F(ExpressionSigmoidTest, CorrectRedaction) {
+TEST(ExpressionSigmoidTest, CorrectRedaction) {
     auto expCtx = ExpressionContextForTest{};
 
     auto spec = BSON("$sigmoid" << 100);
@@ -2281,6 +2117,433 @@ TEST(ExpressionFilterTest, CorrectRedactionWithLimit) {
         "{$filter: {input: \"$HASH<a>\", as: \"HASH<x>\", cond: {$gt: [\"$$HASH<x>\", "
         "\"?number\"]}, limit: \"?number\"}}",
         serialized);
+}
+
+// This test fails since featureFlagQETextSearchPreview is disabled by default.
+// TODO SERVER-65769: Remove when feature flag is enabled by default.
+TEST(ExpressionFLEStartsWithTest, FeatureFlagDisabled) {
+
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    {
+        auto expr = fromjson("{$encStrStartsWith: 12}");
+        ASSERT_THROWS_CODE(Parse::Object::parseObject(expr), DBException, 168);
+    }
+}
+
+TEST(ExpressionFLEStartsWithTest, ParseAssertConstraints) {
+
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrStartsWith: 12}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrStartsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            10065);
+    }
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrStartsWith: {input: {}}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrStartsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            14);
+    }
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrStartsWith: {input: 2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrStartsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            14);
+    }
+
+    // Error, missing input field.
+    {
+        auto exprInvalidBson = fromjson("{$encStrStartsWith: {prefix: 2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrStartsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            40414);
+    }
+
+    // Error, input must be a field path expression.
+    {
+        auto exprInvalidBson = fromjson("{$encStrStartsWith: {input: \"foo\", prefix:\"test\"}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrStartsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            16873);
+    }
+
+    // Error, prefix must be string or bindata.
+    {
+        auto exprInvalidBson = fromjson("{$encStrStartsWith: {input: \"$foo\", prefix:2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrStartsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            10111802);
+    }
+
+    // Success with string prefix.
+    {
+        auto exprBson = fromjson("{$encStrStartsWith: {input: \"$foo\", prefix:\"test\"}}");
+        auto parsedExpr = ExpressionEncStrStartsWith::parse(&expCtx, exprBson.firstElement(), vps);
+
+        auto* startsWith = dynamic_cast<ExpressionEncStrStartsWith*>(parsedExpr.get());
+        ASSERT_NE(startsWith, nullptr);
+    }
+
+    // Success with BinData prefix payload.
+    {
+        auto exprBson = fromjson(R"(
+            {$encStrStartsWith: {
+                input: "$foo", 
+                prefix: {
+                    "$binary" : {
+                        base64:
+                             "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                        subType: "6"
+                    }
+                }
+            }})");
+        auto parsedExpr = ExpressionEncStrStartsWith::parse(&expCtx, exprBson.firstElement(), vps);
+
+        auto* startsWith = dynamic_cast<ExpressionEncStrStartsWith*>(parsedExpr.get());
+        ASSERT_NE(startsWith, nullptr);
+    }
+}
+
+TEST(ExpressionFLEStartsWithTest, ParseStringPayloadRoundtrip) {
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    auto exprBson = fromjson("{$encStrStartsWith: {input: \"$foo\", prefix:\"test\"}}");
+
+    auto exprFle = ExpressionEncStrStartsWith::parse(&expCtx, exprBson.firstElement(), vps);
+    auto value = exprFle->serialize();
+    auto roundTripExpr =
+        fromjson("{$encStrStartsWith: {input: \"$foo\", prefix: {$const:\"test\"}}}");
+
+    ASSERT_BSONOBJ_EQ(value.getDocument().toBson(), roundTripExpr);
+}
+
+TEST(ExpressionFLEStartsWithTest, ParseBinDataPayloadRoundtrip) {
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    auto exprBson = fromjson(R"(
+        {$encStrStartsWith: {
+            input: "$foo", 
+            prefix: {
+                "$binary" : {
+                    base64:
+                         "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                    subType: "6"
+                }
+            }
+        }})");
+    auto exprFle = ExpressionEncStrStartsWith::parse(&expCtx, exprBson.firstElement(), vps);
+    auto value = exprFle->serialize();
+
+    auto roundTripExpr = fromjson(R"(
+        {$encStrStartsWith: {
+            input: "$foo", 
+            prefix: {
+               "$const": {
+                "$binary" : {
+                    base64:
+                         "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                    subType: "6"
+                }
+    }}
+        }})");
+
+    ASSERT_BSONOBJ_EQ(value.getDocument().toBson(), roundTripExpr);
+}
+
+// This test fails since featureFlagQETextSearchPreview is disabled by default.
+// TODO SERVER-65769: Remove when feature flag is enabled by default.
+TEST(ExpressionFLEEndsWithTest, FeatureFlagDisabled) {
+
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    {
+        auto expr = fromjson("{$encStrEndsWith: 12}");
+        ASSERT_THROWS_CODE(Parse::Object::parseObject(expr), DBException, 168);
+    }
+}
+
+TEST(ExpressionFLEEndsWithTest, ParseAssertConstraints) {
+
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrEndsWith: 12}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrEndsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            10065);
+    }
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrEndsWith: {input: {}}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrEndsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            14);
+    }
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrEndsWith: {input: 2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrEndsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            14);
+    }
+
+    // Error, missing input field.
+    {
+        auto exprInvalidBson = fromjson("{$encStrEndsWith: {suffix: 2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrEndsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            40414);
+    }
+
+    // Error, input must be a field path expression.
+    {
+        auto exprInvalidBson = fromjson("{$encStrEndsWith: {input: \"foo\", suffix:\"test\"}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrEndsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            16873);
+    }
+
+    // Error, suffix must be string or bindata.
+    {
+        auto exprInvalidBson = fromjson("{$encStrEndsWith: {input: \"$foo\", suffix:2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrEndsWith::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            10111802);
+    }
+
+    // Success with string suffix.
+    {
+        auto exprBson = fromjson("{$encStrEndsWith: {input: \"$foo\", suffix:\"test\"}}");
+        auto parsedExpr = ExpressionEncStrEndsWith::parse(&expCtx, exprBson.firstElement(), vps);
+
+        auto* endsWith = dynamic_cast<ExpressionEncStrEndsWith*>(parsedExpr.get());
+        ASSERT_NE(endsWith, nullptr);
+    }
+
+    // Success with BinData suffix payload.
+    {
+        auto exprBson = fromjson(R"(
+            {$encStrEndsWith: {
+                input: "$foo", 
+                suffix: {
+                    "$binary" : {
+                        base64:
+                             "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                        subType: "6"
+                    }
+                }
+            }})");
+        auto parsedExpr = ExpressionEncStrEndsWith::parse(&expCtx, exprBson.firstElement(), vps);
+
+        auto* endsWith = dynamic_cast<ExpressionEncStrEndsWith*>(parsedExpr.get());
+        ASSERT_NE(endsWith, nullptr);
+    }
+}
+
+TEST(ExpressionFLEEndsWithTest, ParseStringPayloadRoundtrip) {
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    auto exprBson = fromjson("{$encStrEndsWith: {input: \"$foo\", suffix:\"test\"}}");
+
+    auto exprFle = ExpressionEncStrEndsWith::parse(&expCtx, exprBson.firstElement(), vps);
+    auto value = exprFle->serialize();
+    auto roundTripExpr =
+        fromjson("{$encStrEndsWith: {input: \"$foo\", suffix: {$const:\"test\"}}}");
+
+    ASSERT_BSONOBJ_EQ(value.getDocument().toBson(), roundTripExpr);
+}
+
+TEST(ExpressionFLEEndsWithTest, ParseBinDataPayloadRoundtrip) {
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    auto exprBson = fromjson(R"(
+        {$encStrEndsWith: {
+            input: "$foo", 
+            suffix: {
+                "$binary" : {
+                    base64:
+                         "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                    subType: "6"
+                }
+            }
+        }})");
+    auto exprFle = ExpressionEncStrEndsWith::parse(&expCtx, exprBson.firstElement(), vps);
+    auto value = exprFle->serialize();
+
+    auto roundTripExpr = fromjson(R"(
+        {$encStrEndsWith: {
+            input: "$foo", 
+            suffix: {
+               "$const": {
+                "$binary" : {
+                    base64:
+                         "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                    subType: "6"
+                }
+    }}
+        }})");
+
+    ASSERT_BSONOBJ_EQ(value.getDocument().toBson(), roundTripExpr);
+}
+
+// This test fails since featureFlagQETextSearchPreview is disabled by default.
+// TODO SERVER-65769: Remove when feature flag is enabled by default.
+TEST(ExpressionFLEStrContainsTest, FeatureFlagDisabled) {
+
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    {
+        auto expr = fromjson("{$encStrContains: 12}");
+        ASSERT_THROWS_CODE(Parse::Object::parseObject(expr), DBException, 168);
+    }
+}
+
+TEST(ExpressionFLEStrContainsTest, ParseAssertConstraints) {
+
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrContains: 12}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrContains::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            10065);
+    }
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrContains: {input: {}}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrContains::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            14);
+    }
+
+    {
+        auto exprInvalidBson = fromjson("{$encStrContains: {input: 2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrContains::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            14);
+    }
+
+    // Error, missing input field.
+    {
+        auto exprInvalidBson = fromjson("{$encStrContains: {substring: 2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrContains::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            40414);
+    }
+
+    // Error, input must be a field path expression.
+    {
+        auto exprInvalidBson = fromjson("{$encStrContains: {input: \"foo\", substring:\"test\"}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrContains::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            16873);
+    }
+
+    // Error, substring must be string or bindata.
+    {
+        auto exprInvalidBson = fromjson("{$encStrContains: {input: \"$foo\", substring:2}}");
+        ASSERT_THROWS_CODE(
+            ExpressionEncStrContains::parse(&expCtx, exprInvalidBson.firstElement(), vps),
+            DBException,
+            10111802);
+    }
+
+    // Success with string substring.
+    {
+        auto exprBson = fromjson("{$encStrContains: {input: \"$foo\", substring:\"test\"}}");
+        auto parsedExpr = ExpressionEncStrContains::parse(&expCtx, exprBson.firstElement(), vps);
+
+        auto* exprContains = dynamic_cast<ExpressionEncStrContains*>(parsedExpr.get());
+        ASSERT_NE(exprContains, nullptr);
+    }
+
+    // Success with BinData substring payload.
+    {
+        auto exprBson = fromjson(R"(
+            {$encStrContains: {
+                input: "$foo", 
+                substring: {
+                    "$binary" : {
+                        base64:
+                             "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                        subType: "6"
+                    }
+                }
+            }})");
+        auto parsedExpr = ExpressionEncStrContains::parse(&expCtx, exprBson.firstElement(), vps);
+
+        auto* contains = dynamic_cast<ExpressionEncStrContains*>(parsedExpr.get());
+        ASSERT_NE(contains, nullptr);
+    }
+}
+
+TEST(ExpressionFLEStrContainsTest, ParseStringPayloadRoundtrip) {
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    auto exprBson = fromjson("{$encStrContains: {input: \"$foo\", substring:\"test\"}}");
+
+    auto exprFle = ExpressionEncStrContains::parse(&expCtx, exprBson.firstElement(), vps);
+    auto value = exprFle->serialize();
+    auto roundTripExpr =
+        fromjson("{$encStrContains: {input: \"$foo\", substring: {$const:\"test\"}}}");
+
+    ASSERT_BSONOBJ_EQ(value.getDocument().toBson(), roundTripExpr);
+}
+
+TEST(ExpressionFLEStrContainsTest, ParseBinDataPayloadRoundtrip) {
+    auto expCtx = ExpressionContextForTest();
+    auto vps = expCtx.variablesParseState;
+    auto exprBson = fromjson(R"(
+        {$encStrContains: {
+            input: "$foo", 
+            substring: {
+                "$binary" : {
+                    base64:
+                         "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                    subType: "6"
+                }
+            }
+        }})");
+    auto exprFle = ExpressionEncStrContains::parse(&expCtx, exprBson.firstElement(), vps);
+    auto value = exprFle->serialize();
+
+    auto roundTripExpr = fromjson(R"(
+        {$encStrContains: {
+            input: "$foo", 
+            substring: {
+               "$const": {
+                "$binary" : {
+                    base64:
+                         "BxI0VngSNJh2EjQSNFZ4kBIQ0JE8aMUFkPk5sSTVqfdNNfjqUfQQ1Uoj0BBcthrWoe9wyU3cN6zmWaQBPJ97t0ZPbecnMsU736yXre6cBO4Zdt/wThtY+v5+7vFgNnWpgRP0e+vam6QPmLvbBrO0LdsvAPTGW4yqwnzCIXCoEg7QPGfbfAXKPDTNenBfRlawiblmTOhO/6ljKotWsMp22q/rpHrn9IEIeJmecwuuPIJ7EA+XYQ3hOKVccYf2ogoK73+8xD/Vul83Qvr84Q8afc4QUMVs8A==",
+                    subType: "6"
+                }}}}})");
+
+    ASSERT_BSONOBJ_EQ(value.getDocument().toBson(), roundTripExpr);
 }
 
 }  // namespace ExpressionTests

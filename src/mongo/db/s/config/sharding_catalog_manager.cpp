@@ -84,7 +84,6 @@
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/repl_client_info.h"
 #include "mongo/db/repl/replication_coordinator.h"
-#include "mongo/db/resource_yielder.h"
 #include "mongo/db/s/config/index_on_config.h"
 #include "mongo/db/s/config/placement_history_cleaner.h"
 #include "mongo/db/s/sharding_util.h"
@@ -96,27 +95,20 @@
 #include "mongo/executor/inline_executor.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
-#include "mongo/logv2/redaction.h"
-#include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
-#include "mongo/rpc/metadata/impersonated_user_metadata.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/analyze_shard_key_documents_gen.h"
-#include "mongo/s/async_requests_sender.h"
 #include "mongo/s/balancer_configuration.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/catalog/type_collection.h"
-#include "mongo/s/catalog/type_collection_gen.h"
 #include "mongo/s/catalog/type_config_version_gen.h"
 #include "mongo/s/catalog/type_namespace_placement_gen.h"
 #include "mongo/s/catalog/type_shard.h"
 #include "mongo/s/catalog/type_tags.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/grid.h"
+#include "mongo/s/request_types/sharded_ddl_commands_gen.h"
 #include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/s/write_ops/batched_command_request.h"
 #include "mongo/s/write_ops/batched_command_response.h"
@@ -127,12 +119,10 @@
 #include "mongo/util/fail_point.h"
 #include "mongo/util/future.h"
 #include "mongo/util/future_impl.h"
-#include "mongo/util/intrusive_counter.h"
 #include "mongo/util/log_and_backoff.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/out_of_line_executor.h"
 #include "mongo/util/scopeguard.h"
-#include "mongo/util/string_map.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
@@ -359,10 +349,10 @@ public:
                     std::vector<NamespaceString>&& resolvedNamespaces)
         : _expCtx{ExpressionContextBuilder{}.opCtx(opCtx).ns(nss).build()} {
 
-        StringMap<ResolvedNamespace> resolvedNamespacesMap;
+        ResolvedNamespaceMap resolvedNamespacesMap;
 
         for (const auto& collNs : resolvedNamespaces) {
-            resolvedNamespacesMap[collNs.coll()] = {collNs, std::vector<BSONObj>() /* pipeline */};
+            resolvedNamespacesMap[collNs] = {collNs, std::vector<BSONObj>() /* pipeline */};
         }
 
         _expCtx->setResolvedNamespaces(resolvedNamespacesMap);
@@ -506,13 +496,11 @@ AggregateCommandRequest createInitPlacementHistoryAggregationRequest(
     // Stage 1. Join config.collections and config.chunks using the collection UUID to create the
     // placement-by-shard info documents
     {
-        auto lookupPipelineObj = PipelineBuilder(pipeline.getExpCtx())
-                                     .addStage<Group>(BSON("_id"
-                                                           << "$shard"
-                                                           << "value"
-                                                           << BSON("$max"
-                                                                   << "$onCurrentShardSince")))
-                                     .buildAsBson();
+        auto lookupPipelineObj =
+            PipelineBuilder(pipeline.getExpCtx())
+                .addStage<Group>(BSON("_id" << "$shard"
+                                            << "value" << BSON("$max" << "$onCurrentShardSince")))
+                .buildAsBson();
 
         pipeline.addStage<Lookup>(BSON("from" << NamespaceString::kConfigsvrChunksNamespace.coll()
                                               << "localField" << CollectionType::kUuidFieldName
@@ -526,10 +514,8 @@ AggregateCommandRequest createInitPlacementHistoryAggregationRequest(
     {
         // Get the most recent collection placement timestamp among all the shards: if not found,
         // apply initTimestamp as a fallback.
-        const auto placementTimestampExpr =
-            BSON("$ifNull" << BSON_ARRAY(BSON("$max"
-                                              << "$timestampByShard.value")
-                                         << initTimestamp));
+        const auto placementTimestampExpr = BSON(
+            "$ifNull" << BSON_ARRAY(BSON("$max" << "$timestampByShard.value") << initTimestamp));
 
         pipeline.addStage<Project>(BSON("_id" << 0 << kNss << "$_id" << kShards
                                               << "$timestampByShard._id" << kUuid << 1 << kTimestamp
@@ -680,7 +666,6 @@ ShardingCatalogManager::ShardingCatalogManager(
       _executorForAddShard(std::move(addShardExecutor)),
       _localConfigShard(std::move(localConfigShard)),
       _localCatalogClient(std::move(localCatalogClient)),
-      _kAddRemoveShardLock("addRemoveShardLock"),
       _kShardMembershipLock("shardMembershipLock"),
       _kClusterCardinalityParameterLock("clusterCardinalityParameterLock"),
       _kChunkOpLock("chunkOpLock"),
@@ -814,6 +799,7 @@ Status ShardingCatalogManager::_initConfigIndexes(OperationContext* opCtx) {
     }
 
     if (feature_flags::gGlobalIndexesShardingCatalog.isEnabled(
+            VersionContext::getDecoration(opCtx),
             serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         result = sharding_util::createShardingIndexCatalogIndexes(
             opCtx, NamespaceString::kConfigsvrIndexCatalogNamespace);
@@ -946,6 +932,49 @@ Status ShardingCatalogManager::setFeatureCompatibilityVersionOnShards(OperationC
     return Status::OK();
 }
 
+Status ShardingCatalogManager::runCloneAuthoritativeMetadataOnShards(OperationContext* opCtx) {
+    // No shards should be added until we have forwarded the clone command to all shards.
+    Lock::SharedLock lk(opCtx, _kShardMembershipLock);
+
+    // We do a direct read of the shards collection with local readConcern so no shards are missed,
+    // but don't go through the ShardRegistry to prevent it from caching data that may be rolled
+    // back.
+    const auto opTimeWithShards = uassertStatusOK(
+        _localCatalogClient->getAllShards(opCtx, repl::ReadConcernLevel::kLocalReadConcern));
+
+    for (const auto& shardType : opTimeWithShards.value) {
+        const auto shardStatus =
+            Grid::get(opCtx)->shardRegistry()->getShard(opCtx, shardType.getName());
+        if (!shardStatus.isOK()) {
+            continue;
+        }
+        const auto shard = shardStatus.getValue();
+
+        ShardsvrCloneAuthoritativeMetadata request;
+        request.setWriteConcern(generic_argument_util::kMajorityWriteConcern);
+        request.setDbName(DatabaseName::kAdmin);
+
+        auto response = shard->runCommandWithFixedRetryAttempts(
+            opCtx,
+            ReadPreferenceSetting{ReadPreference::PrimaryOnly},
+            DatabaseName::kAdmin,
+            request.toBSON(),
+            Shard::RetryPolicy::kIdempotent);
+
+        if (!response.isOK()) {
+            return response.getStatus();
+        }
+        if (!response.getValue().commandStatus.isOK()) {
+            return response.getValue().commandStatus;
+        }
+        if (!response.getValue().writeConcernStatus.isOK()) {
+            return response.getValue().writeConcernStatus;
+        }
+    }
+
+    return Status::OK();
+}
+
 StatusWith<bool> ShardingCatalogManager::_isShardRequiredByZoneStillInUse(
     OperationContext* opCtx,
     const ReadPreferenceSetting& readPref,
@@ -1000,104 +1029,6 @@ StatusWith<bool> ShardingCatalogManager::_isShardRequiredByZoneStillInUse(
     }
 
     return false;
-}
-
-Status ShardingCatalogManager::_notifyClusterOnNewDatabases(
-    OperationContext* opCtx, const DatabasesAdded& event, const std::vector<ShardId>& recipients) {
-    if (MONGO_unlikely(shardingCatalogManagerSkipNotifyClusterOnNewDatabases.shouldFail()) ||
-        event.getNames().empty() || recipients.empty()) {
-        // Nothing to be notified.
-        return Status::OK();
-    }
-    try {
-        // Setup an AlternativeClientRegion and a non-interruptible Operation Context to ensure that
-        // the notification may be also sent out while the node is stepping down.
-        //
-        // TODO(SERVER-74658): Please revisit if this thread could be made killable.
-        auto altClient = opCtx->getServiceContext()
-                             ->getService(ClusterRole::ShardServer)
-                             ->makeClient("_notifyClusterOnNewDatabases",
-                                          Client::noSession(),
-                                          ClientOperationKillableByStepdown{false});
-        AlternativeClientRegion acr(altClient);
-        auto altOpCtxHolder = cc().makeOperationContext();
-        auto altOpCtx = altOpCtxHolder.get();
-
-        // Compose the request and decorate it with the needed write concern and auth parameters.
-        ShardsvrNotifyShardingEventRequest request(notify_sharding_event::kDatabasesAdded,
-                                                   event.toBSON());
-        request.setWriteConcern(generic_argument_util::kMajorityWriteConcern);
-        BSONObjBuilder bob;
-        request.serialize(&bob);
-        rpc::writeAuthDataToImpersonatedUserMetadata(altOpCtx, &bob);
-
-        // send cmd
-        auto executor = Grid::get(altOpCtx)->getExecutorPool()->getFixedExecutor();
-        auto responses = sharding_util::sendCommandToShards(altOpCtx,
-                                                            DatabaseName::kAdmin,
-                                                            bob.obj(),
-                                                            recipients,
-                                                            executor,
-                                                            false /*throwOnError*/);
-
-        size_t successfulNotifications = 0, incompatibleRecipients = 0, retriableFailures = 0;
-        for (const auto& cmdResponse : responses) {
-            const auto responseStatus = [&cmdResponse] {
-                if (!cmdResponse.swResponse.isOK()) {
-                    return cmdResponse.swResponse.getStatus();
-                }
-
-                const auto& remoteCmdResponse = cmdResponse.swResponse.getValue().data;
-                if (auto remoteResponseStatus = getStatusFromCommandResult(remoteCmdResponse);
-                    !remoteResponseStatus.isOK()) {
-                    return remoteResponseStatus;
-                }
-
-                return getWriteConcernStatusFromCommandResult(remoteCmdResponse);
-            }();
-
-            if (responseStatus.isOK()) {
-                ++successfulNotifications;
-            } else {
-                LOGV2_WARNING(7175401,
-                              "Failed to send sharding event notification",
-                              "recipient"_attr = cmdResponse.shardId,
-                              "error"_attr = responseStatus);
-                if (responseStatus == ErrorCodes::CommandNotFound) {
-                    ++incompatibleRecipients;
-                } else if (ErrorCodes::isA<ErrorCategory::RetriableError>(responseStatus.code())) {
-                    ++retriableFailures;
-                }
-            }
-        }
-
-        /*
-         * The notification is considered succesful when at least one instantiation of the command
-         * is succesfully completed, assuming that:
-         * - each recipient of the notification is reacting with the emission of an entry in its
-         * oplog before returning an OK status
-         * - other processes interested in events of new database creations (e.g, a mongos that
-         * serves a change stream targeting the namespace being created) are tailing the oplogs of
-         * all the shards of the cluster.
-         *
-         * If all the failures reported by the remote nodes are classified as retryable, an error
-         * code of the same category will be returned back to the caller of this function to allow
-         * the re-execution of the original request.
-         *
-         * (Failures caused by recipients running a legacy FCV are ignored).
-         */
-        if (successfulNotifications != 0 || incompatibleRecipients == recipients.size()) {
-            return Status::OK();
-        }
-
-        auto errorCode = successfulNotifications + retriableFailures + incompatibleRecipients ==
-                recipients.size()
-            ? ErrorCodes::HostNotFound
-            : ErrorCodes::InternalError;
-        return Status(errorCode, "Unable to notify any shard on new database additions");
-    } catch (const DBException& e) {
-        return e.toStatus();
-    }
 }
 
 BSONObj ShardingCatalogManager::writeToConfigDocumentInTxn(OperationContext* opCtx,
@@ -1616,10 +1547,8 @@ void ShardingCatalogManager::cleanUpPlacementHistory(OperationContext* opCtx,
                                     {NamespaceString::kConfigsvrPlacementHistoryNamespace});
 
     pipeline.addStage<DocumentSourceGroup>(
-        BSON("_id"
-             << "$" + NamespacePlacementType::kNssFieldName << "mostRecentTimestamp"
-             << BSON("$max"
-                     << "$" + NamespacePlacementType::kTimestampFieldName)));
+        BSON("_id" << "$" + NamespacePlacementType::kNssFieldName << "mostRecentTimestamp"
+                   << BSON("$max" << "$" + NamespacePlacementType::kTimestampFieldName)));
     pipeline.addStage<DocumentSourceMatch>(
         BSON("_id" << BSON("$ne" << NamespaceStringUtil::serialize(
                                ShardingCatalogClient::kConfigPlacementHistoryInitializationMarker,

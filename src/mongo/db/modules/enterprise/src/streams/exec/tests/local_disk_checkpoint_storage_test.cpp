@@ -2,17 +2,18 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
+
+#include <vector>
+
 #include "mongo/bson/bsonobj.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/mutable_bson/document.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/checkpoint/file_util.h"
-#include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/context.h"
 #include "streams/exec/tests/test_utils.h"
-#include <vector>
 
 using namespace mongo;
 using fspath = std::filesystem::path;

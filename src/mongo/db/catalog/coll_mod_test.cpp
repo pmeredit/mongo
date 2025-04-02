@@ -65,8 +65,7 @@
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -191,8 +190,8 @@ TEST_F(CollModTest, CollModTimeseriesWithFixedBucket) {
         opCtx.get(), curNss, collModCmd, true, &result));
     {
         AutoGetCollectionForRead bucketsCollForRead(opCtx.get(), bucketsColl);
-        ASSERT_TRUE(bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
-        ASSERT_FALSE(*bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
+        // TODO(SERVER-101611): Set *timeseriesBucketingParametersHaveChanged to false on create
+        ASSERT_FALSE(bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
     }
 
     // Run collMod which changes the bucket span and validate that the
@@ -210,7 +209,7 @@ TEST_F(CollModTest, CollModTimeseriesWithFixedBucket) {
         ASSERT_TRUE(*bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
     }
 
-    // Test that both backwards compatibles option and legacy parameter have been properly set
+    // Test that the backwards compatible option has been properly set
     auto coll =
         CollectionCatalog::get(opCtx.get())->lookupCollectionByNamespace(opCtx.get(), bucketsColl);
     auto catalogEntry =
@@ -221,7 +220,6 @@ TEST_F(CollModTest, CollModTimeseriesWithFixedBucket) {
         backwards_compatible_collection_options::kTimeseriesBucketingParametersHaveChanged);
     ASSERT_TRUE(optBackwardsCompatibleFlag);
     ASSERT_TRUE(*optBackwardsCompatibleFlag);
-    ASSERT_TRUE(metadata->timeseriesBucketingParametersHaveChanged);
 }
 
 TEST_F(CollModTest, TimeseriesBucketingParameterChanged) {
@@ -257,6 +255,45 @@ TEST_F(CollModTest, TimeseriesBucketingParameterChanged) {
     ASSERT_FALSE(bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
 }
 
+TEST_F(CollModTest, TimeseriesLegacyBucketingParameterChangedRemoval) {
+    NamespaceString curNss = NamespaceString::createNamespaceString_forTest("test.curColl");
+    auto bucketsColl =
+        NamespaceString::createNamespaceString_forTest("test.system.buckets.curColl");
+
+    auto opCtx = makeOpCtx();
+    CreateCommand cmd = CreateCommand(curNss);
+    cmd.setTimeseries(TimeseriesOptions("t"));
+    uassertStatusOK(createCollection(opCtx.get(), cmd));
+
+    auto catalogId = CollectionCatalog::get(opCtx.get())
+                         ->lookupCollectionByNamespace(opCtx.get(), bucketsColl)
+                         ->getCatalogId();
+
+    // Set the `md.timeseriesBucketingParametersHaveChanged` field through the durable catalog
+    // (as this option is deprecated and can't be set anymore through other means).
+    {
+        WriteUnitOfWork wuow{opCtx.get()};
+        auto durableCatalog = DurableCatalog::get(opCtx.get());
+        auto catalogEntry = durableCatalog->getParsedCatalogEntry(opCtx.get(), catalogId);
+        catalogEntry->metadata->timeseriesBucketingParametersHaveChanged_DO_NOT_USE = false;
+        durableCatalog->putMetaData(opCtx.get(), catalogId, *catalogEntry->metadata);
+        wuow.commit();
+    }
+
+    // The command must be sent to the buckets collection directly (no time-series translation).
+    // This is acceptable since this is an internal parameter.
+    CollMod collModCmd(bucketsColl);
+    collModCmd.set_removeLegacyTimeseriesBucketingParametersHaveChanged(true);
+    BSONObjBuilder result;
+    uassertStatusOK(processCollModCommand(opCtx.get(), bucketsColl, collModCmd, nullptr, &result));
+
+    {
+        auto catalogEntry =
+            DurableCatalog::get(opCtx.get())->getParsedCatalogEntry(opCtx.get(), catalogId);
+        ASSERT_FALSE(catalogEntry->metadata->timeseriesBucketingParametersHaveChanged_DO_NOT_USE);
+    }
+}
+
 TEST_F(CollModTest, CollModTimeseriesMixedSchemaData) {
     NamespaceString curNss = NamespaceString::createNamespaceString_forTest("test.curColl");
     auto bucketsColl =
@@ -277,8 +314,10 @@ TEST_F(CollModTest, CollModTimeseriesMixedSchemaData) {
         opCtx.get(), curNss, collModCmd, true, &result));
     {
         AutoGetCollectionForRead bucketsCollForRead(opCtx.get(), bucketsColl);
-        ASSERT_TRUE(bucketsCollForRead->getTimeseriesBucketsMayHaveMixedSchemaData());
-        ASSERT_TRUE(*bucketsCollForRead->getTimeseriesBucketsMayHaveMixedSchemaData());
+        auto mixedSchemaState = bucketsCollForRead->getTimeseriesMixedSchemaBucketsState();
+        ASSERT_TRUE(mixedSchemaState.isValid());
+        ASSERT_TRUE(mixedSchemaState.mustConsiderMixedSchemaBucketsInReads());
+        ASSERT_TRUE(mixedSchemaState.canStoreMixedSchemaBucketsSafely());
     }
 
     // Test that both backwards compatibles option and legacy parameter have been properly set

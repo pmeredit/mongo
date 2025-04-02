@@ -96,9 +96,7 @@ function runInsertTests(conn, sharded) {
     client.assertEncryptedCollectionCounts(collName, 7, 6, 6);
 
     print("INSERT: single insert with unsatisfiable WC and duplicate _id");
-    // TODO: SERVER-84081 TXN API abort handling does not expose the WCE to FLE2 CRUD,
-    // so WCEs are not reported in FLE2 responses alongside write errors.
-    runCommandsAndCompareResults(dupIdCmd, plainDb, fleDb, ErrorCodes.DuplicateKey, 0, 1, true);
+    runCommandsAndCompareResults(dupIdCmd, plainDb, fleDb, ErrorCodes.DuplicateKey, 0, 1);
     client.assertEncryptedCollectionCounts(collName, 7, 6, 6);
 
     // The following FLE2 tests get a WCE along with the DuplicateKey write error because
@@ -237,10 +235,7 @@ function runUpdateTests(conn, sharded) {
     client.assertEncryptedCollectionCounts(collName, 6, 8, 8);
 
     print("UPDATE: modification of immutable field with unsatisfiable WC");
-    // TODO: SERVER-84081 TXN API abort handling does not expose the WCE to FLE2 CRUD,
-    // so WCEs are not reported in FLE2 responses alongside write errors.
-    runCommandsAndCompareResults(
-        cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, 0, 0, 1, true);
+    runCommandsAndCompareResults(cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, 0, 0, 1);
     client.assertEncryptedCollectionCounts(collName, 6, 8, 8);
 }
 
@@ -296,17 +291,13 @@ function runFindAndModifyTests(conn, sharded) {
     };
 
     function runCommandsAndCompareResults(
-        command, pdb, edb, errorCode, lastErrorObject, expectedOk = 1, fleWCEMasked = false) {
+        command, pdb, edb, errorCode, lastErrorObject, expectedOk = 1) {
         let pres = assert.commandFailedWithCode(pdb.runCommand(command), errorCode);
         let eres = assert.commandFailedWithCode(edb.erunCommand(command), errorCode);
         print("Unencrypted result: " + tojson(pres));
         print("Encrypted result: " + tojson(eres));
         checkHasWCE(pres, ErrorCodes.UnsatisfiableWriteConcern);
-        if (!fleWCEMasked) {
-            checkHasWCE(eres, ErrorCodes.UnsatisfiableWriteConcern);
-        } else {
-            assert(!eres.hasOwnProperty("writeConcernError"));
-        }
+        checkHasWCE(eres, ErrorCodes.UnsatisfiableWriteConcern);
         if (lastErrorObject !== undefined) {
             assert.eq(pres.lastErrorObject.n, lastErrorObject.n);
             assert.eq(eres.lastErrorObject.n, lastErrorObject.n);
@@ -364,9 +355,8 @@ function runFindAndModifyTests(conn, sharded) {
     client.assertEncryptedCollectionCounts(collName, 5, 8, 8);
 
     print("FINDANDMODIFY: modification of immutable field with unsatisfiable WC");
-    // TODO: SERVER-84081 encrypted findAndModify masks the WCE in both mongos and mongod
     runCommandsAndCompareResults(
-        cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, undefined, 0, true);
+        cmdModifyId, plainDb, fleDb, ErrorCodes.ImmutableField, undefined, 0);
     client.assertEncryptedCollectionCounts(collName, 5, 8, 8);
 }
 

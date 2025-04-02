@@ -33,6 +33,7 @@
 #include "mongo/bson/bson_utf8.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/catalog/validate/validate_options.h"
 #include "mongo/util/namespace_string_util.h"
 
 namespace mongo {
@@ -100,11 +101,26 @@ void ValidateResults::addMissingIndexEntry(BSONObj entry) {
     }
 }
 
+void ValidateResults::setRepairMode(CollectionValidation::RepairMode mode) {
+    switch (mode) {
+        case CollectionValidation::RepairMode::kNone:
+            _repairMode = "None";
+            break;
+        case CollectionValidation::RepairMode::kFixErrors:
+            _repairMode = "FixErrors";
+            break;
+        case CollectionValidation::RepairMode::kAdjustMultikey:
+            _repairMode = "AdjustMultikey";
+            break;
+    }
+}
+
 void ValidateResults::appendToResultObj(BSONObjBuilder* resultObj,
                                         bool debugging,
                                         const SerializationContext& sc) const {
     resultObj->appendBool("valid", isValid());
     resultObj->appendBool("repaired", getRepaired());
+    resultObj->append("repairMode", getRepairMode());
     if (getReadTimestamp()) {
         resultObj->append("readTimestamp", getReadTimestamp().value());
     }
@@ -186,6 +202,7 @@ void ValidateResults::appendToResultObj(BSONObjBuilder* resultObj,
     for (auto& [indexName, ivr] : getIndexResultsMap()) {
         BSONObjBuilder bob(indexDetails.subobjStart(indexName));
         bob.appendBool("valid", ivr.isValid());
+        bob.append("spec", ivr.getSpec());
 
         if (!ivr.getWarnings().empty()) {
             buildFixedSizedArray(bob, "warnings", ivr.getWarnings(), maxSizePerEntry);

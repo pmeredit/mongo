@@ -22,14 +22,14 @@ selector:
     - jstests/core/**/profile3.js
     - jstests/core/**/profile_findandmodify.js
     - jstests/core/**/query/top/top.js
-    - jstests/core/views/views_stats.js
+    - jstests/core/catalog/views/views_stats.js
 
     # TODO SERVER-31242: findAndModify no-op retry should respect the fields option.
     - jstests/core/**/crud_api.js
     - jstests/core/**/find_and_modify.js
-    - jstests/core/**/find_and_modify2.js
+    - jstests/core/**/find_and_modify_fields.js
     - jstests/core/**/find_and_modify_pipeline_update.js
-    - jstests/core/**/find_and_modify_server6865.js
+    - jstests/core/**/find_and_modify_positional_new_remove.js
     - jstests/core/**/project_with_collation.js
 
     # These test run commands using legacy queries, which are not supported on sessions.
@@ -60,7 +60,7 @@ selector:
     - jstests/core/**/connection_string_validation.js # Does not expect a replica set connection string.
     - jstests/core/**/list_collections_filter.js # Temporary collections are dropped on failover.
     - jstests/core/**/query/top/top.js # Tests read commands (including getMore) against the secondary
-    - jstests/core/**/drop3.js # getMore is not causally consistent if collection is dropped
+    - jstests/core/**/drop_collection_cursors.js # getMore is not causally consistent if collection is dropped
     - jstests/core/**/list_collections_filter.js # Temporary collections are dropped on failover.
     - jstests/core/**/explain_large_bounds.js # Stepdown can timeout waiting for global lock.
 
@@ -75,7 +75,7 @@ selector:
     # Inserts enough data that recovery takes more than 8 seconds, so we never get a working primary.
     - jstests/core/**/geo_s2ordering.js
     # This test may fail due to network errors and does not test server behavior, so exclude it.
-    - jstests/core/mixed_version_replica_set.js
+    - jstests/core/testing/mixed_version_replica_set.js
 
   exclude_with_any_tags:
     - assumes_standalone_mongod

@@ -4,10 +4,10 @@
 
 #include "streams/exec/checkpoint/manifest_builder.h"
 
-#include "mongo/bson/json.h"
 #include "mongo/logv2/log.h"
 #include "streams/exec/checkpoint/file_util.h"
 #include "streams/exec/context.h"
+#include "streams/exec/util.h"
 
 using fspath = std::filesystem::path;
 using namespace mongo;
@@ -102,7 +102,7 @@ void ManifestBuilder::writeToDisk(CheckpointMetadata metadata) {
                   fmt::format("Could not write file: {}, msg: {}, context:{}",
                               shadowFilePath,
                               e.what(),
-                              tojson(_context->toBSON())));
+                              serializeJson(_context->toBSON())));
     }
     try {
         // Rename to original name
@@ -114,7 +114,7 @@ void ManifestBuilder::writeToDisk(CheckpointMetadata metadata) {
                               shadowFilePath,
                               _manifestFilePath.native(),
                               e.what(),
-                              tojson(_context->toBSON())));
+                              serializeJson(_context->toBSON())));
     }
 }
 

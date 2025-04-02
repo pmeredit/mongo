@@ -55,9 +55,7 @@
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 namespace mongo {
@@ -309,7 +307,7 @@ protected:
 IndexEntry makeIndexEntry(BSONObj keyPattern) {
     return {keyPattern,
             IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-            IndexDescriptor::kLatestIndexVersion,
+            IndexConfig::kLatestIndexVersion,
             false /* multiKey */,
             {{}, {}} /* multiKeyPaths */,
             {} /* multikeyPathSet */,
@@ -519,6 +517,10 @@ TEST_F(GoldenSbeStageBuilderTest, TestMatch) {
 }
 
 TEST_F(GoldenSbeStageBuilderTest, TestOr) {
+    // Create a dummy collection so that we can test collection metadata in the stage builder, even
+    // though this test only uses virtualscan stage.
+    createCollection({fromjson("{_id: 0}")}, boost::none);
+
     auto docs = std::vector<BSONArray>{BSON_ARRAY(int64_t{0} << BSON("a" << 1 << "b" << 2)),
                                        BSON_ARRAY(int64_t{1} << BSON("a" << 2 << "b" << 2)),
                                        BSON_ARRAY(int64_t{2} << BSON("a" << 3 << "b" << 2))};
@@ -633,31 +635,25 @@ TEST_F(GoldenSbeStageBuilderTest, TestTextMatch) {
     createCollection({fromjson("{_id: 0, a: 'this is test'}"),
                       fromjson("{_id: 1, a: 'a test'}"),
                       fromjson("{_id: 2, a: 'hello'}")},
-                     BSON("a"
-                          << "text"));
+                     BSON("a" << "text"));
     TextMatchExpression textExpr(operationContext(),
                                  _nss,
                                  TextMatchExpressionBase::TextParams{.query = "test",
                                                                      .language = "english",
                                                                      .caseSensitive = true});
-    auto textNode = std::make_unique<TextMatchNode>(makeIndexEntry(BSON("a"
-                                                                        << "text")),
-                                                    textExpr.getFTSQuery().clone(),
-                                                    false);
-    auto indexScanNode = std::make_unique<IndexScanNode>(makeIndexEntry(BSON("a"
-                                                                             << "text")));
+    auto textNode = std::make_unique<TextMatchNode>(
+        makeIndexEntry(BSON("a" << "text")), textExpr.getFTSQuery().clone(), false);
+    auto indexScanNode = std::make_unique<IndexScanNode>(makeIndexEntry(BSON("a" << "text")));
     IndexBounds bounds{};
     OrderedIntervalList oil("a");
-    oil.intervals.emplace_back(BSON(""
-                                    << "a"
-                                    << ""
-                                    << "z"),
+    oil.intervals.emplace_back(BSON("" << "a"
+                                       << ""
+                                       << "z"),
                                true,
                                true);
     bounds.fields.emplace_back(std::move(oil));
     indexScanNode->bounds = std::move(bounds);
-    indexScanNode->sortSet = ProvidedSortSet{BSON("a"
-                                                  << "text")};
+    indexScanNode->sortSet = ProvidedSortSet{BSON("a" << "text")};
     textNode->children.push_back(std::make_unique<FetchNode>(std::move(indexScanNode)));
     runTest(std::move(textNode),
             BSON_ARRAY(BSON("_id" << 0 << "a"
@@ -816,10 +812,9 @@ TEST_F(SearchSbeStageBuilderTest, TestSearch) {
         _gctx->outStream() << "SearchMeta Test" << std::endl;
         auto node =
             std::make_unique<SearchNode>(true /* isSearchMeta */,
-                                         BSON("query"
-                                              << "test"
-                                              << "path"
-                                              << "a"),
+                                         BSON("query" << "test"
+                                                      << "path"
+                                                      << "a"),
                                          boost::none /* limit */,
                                          boost::none /* sortSpec */,
                                          kCursorIdResult /* remoteCursorId */,
@@ -830,10 +825,9 @@ TEST_F(SearchSbeStageBuilderTest, TestSearch) {
     {
         _gctx->outStream() << "Search NonStoredSource Test" << std::endl;
         auto node = std::make_unique<SearchNode>(false /* isSearchMeta */,
-                                                 BSON("query"
-                                                      << "test"
-                                                      << "path"
-                                                      << "a"),
+                                                 BSON("query" << "test"
+                                                              << "path"
+                                                              << "a"),
                                                  boost::none /* limit */,
                                                  boost::none /* sortSpec */,
                                                  kCursorIdResult /* remoteCursorId */,
@@ -845,11 +839,10 @@ TEST_F(SearchSbeStageBuilderTest, TestSearch) {
     {
         _gctx->outStream() << "Search NonStoredSource Test" << std::endl;
         auto node = std::make_unique<SearchNode>(false /* isSearchMeta */,
-                                                 BSON("query"
-                                                      << "test"
-                                                      << "path"
-                                                      << "a"
-                                                      << "returnStoredSource" << true),
+                                                 BSON("query" << "test"
+                                                              << "path"
+                                                              << "a"
+                                                              << "returnStoredSource" << true),
                                                  1 /* limit */,
                                                  boost::none /* sortSpec */,
                                                  kCursorIdStoredSource /* remoteCursorId */,

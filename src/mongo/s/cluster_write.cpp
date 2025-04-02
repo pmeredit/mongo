@@ -35,8 +35,9 @@
 
 #include "mongo/db/fle_crud.h"
 #include "mongo/db/not_primary_error_tracker.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/cluster_write.h"
 #include "mongo/s/collection_routing_info_targeter.h"
 #include "mongo/s/ns_targeter.h"
@@ -68,6 +69,16 @@ void write(OperationContext* opCtx,
         &NotPrimaryErrorTracker::get(opCtx->getClient()));
 
     CollectionRoutingInfoTargeter targeter(opCtx, request.getNS(), targetEpoch);
+
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics(
+        "ShardKeyDiagnostics",
+        diagnostic_printers::ShardKeyDiagnosticPrinter{
+            targeter.isTargetedCollectionSharded()
+                ? targeter.getRoutingInfo().getChunkManager().getShardKeyPattern().toBSON()
+                : BSONObj()});
+
     if (nss) {
         *nss = targeter.getNS();
     }

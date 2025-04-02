@@ -63,8 +63,6 @@
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/repl/optime.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/reply_interface.h"
@@ -72,10 +70,8 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/future.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/integration_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/ssl_options.h"
@@ -118,20 +114,18 @@ void initTestCollection(DBClientBase* conn) {
 }
 
 void setWaitWithPinnedCursorDuringGetMoreBatchFailpoint(DBClientBase* conn, bool enable) {
-    auto cmdObj = BSON("configureFailPoint"
-                       << "waitWithPinnedCursorDuringGetMoreBatch"
-                       << "mode" << (enable ? "alwaysOn" : "off") << "data"
-                       << BSON("shouldContinueOnInterrupt" << true));
+    auto cmdObj = BSON("configureFailPoint" << "waitWithPinnedCursorDuringGetMoreBatch"
+                                            << "mode" << (enable ? "alwaysOn" : "off") << "data"
+                                            << BSON("shouldContinueOnInterrupt" << true));
     auto reply = conn->runCommand(OpMsgRequestBuilder::create(
         auth::ValidatedTenancyScope::kNotRequired, DatabaseName::kAdmin, cmdObj));
     ASSERT_OK(getStatusFromCommandResult(reply->getCommandReply()));
 }
 
 void setWaitAfterCommandFinishesExecutionFailpoint(DBClientBase* conn, bool enable) {
-    auto cmdObj = BSON("configureFailPoint"
-                       << "waitAfterCommandFinishesExecution"
-                       << "mode" << (enable ? "alwaysOn" : "off") << "data"
-                       << BSON("ns" << testNSS.toString_forTest()));
+    auto cmdObj = BSON("configureFailPoint" << "waitAfterCommandFinishesExecution"
+                                            << "mode" << (enable ? "alwaysOn" : "off") << "data"
+                                            << BSON("ns" << testNSS.toString_forTest()));
     auto reply = conn->runCommand(OpMsgRequestBuilder::create(
         auth::ValidatedTenancyScope::kNotRequired, DatabaseName::kAdmin, cmdObj));
     ASSERT_OK(getStatusFromCommandResult(reply->getCommandReply()));
@@ -139,9 +133,9 @@ void setWaitAfterCommandFinishesExecutionFailpoint(DBClientBase* conn, bool enab
 
 void setWaitBeforeUnpinningOrDeletingCursorAfterGetMoreBatchFailpoint(DBClientBase* conn,
                                                                       bool enable) {
-    auto cmdObj = BSON("configureFailPoint"
-                       << "waitBeforeUnpinningOrDeletingCursorAfterGetMoreBatch"
-                       << "mode" << (enable ? "alwaysOn" : "off"));
+    auto cmdObj =
+        BSON("configureFailPoint" << "waitBeforeUnpinningOrDeletingCursorAfterGetMoreBatch"
+                                  << "mode" << (enable ? "alwaysOn" : "off"));
     auto reply = conn->runCommand(OpMsgRequestBuilder::create(
         auth::ValidatedTenancyScope::kNotRequired, DatabaseName::kAdmin, cmdObj));
     ASSERT_OK(getStatusFromCommandResult(reply->getCommandReply()));
@@ -398,9 +392,8 @@ void testClientDisconnect(bool disconnectAfterGetMoreBatch) {
     setWaitWithPinnedCursorDuringGetMoreBatchFailpoint(conn.get(), false);
     setWaitBeforeUnpinningOrDeletingCursorAfterGetMoreBatchFailpoint(conn.get(), false);
 
-    curOpMatch = BSON("type"
-                      << "idleCursor"
-                      << "cursor.cursorId" << queryCursorId);
+    curOpMatch = BSON("type" << "idleCursor"
+                             << "cursor.cursorId" << queryCursorId);
     // Confirm that the cursor was cleaned up and does not appear in the $currentOp idleCursor
     // output.
     ASSERT(confirmCurrentOpContents(conn.get(), curOpMatch, expectEmptyResult));

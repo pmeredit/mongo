@@ -52,13 +52,13 @@
 #include "mongo/db/client.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_metadata_fields.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/exec/mutable_bson/document.h"
 #include "mongo/db/exec/projection_executor.h"
 #include "mongo/db/exec/projection_executor_builder.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/field_ref_set.h"
 #include "mongo/db/matcher/expression_with_placeholder.h"
-#include "mongo/db/matcher/match_details.h"
 #include "mongo/db/matcher/matcher.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/expression_context.h"
@@ -196,7 +196,7 @@ struct stitch_support_v1_matcher {
                      .collator(collator ? collator->collator->clone() : nullptr)
                      .ns(mongo::kDummyNamespaceStr)
                      .build()),
-          matcher(filterBSON.getOwned(), expCtx){};
+          matcher(filterBSON.getOwned(), expCtx) {};
 
     mongo::ServiceContext::UniqueClient client;
     mongo::ServiceContext::UniqueOperationContext opCtx;
@@ -536,7 +536,7 @@ int MONGO_API_CALL stitch_support_v1_check_match(stitch_support_v1_matcher* matc
                                                  stitch_support_v1_status* status) {
     return enterCXX(mongo::getStatusImpl(status), [&]() {
         mongo::BSONObj document(mongo::fromInterfaceType(documentBSON));
-        *isMatch = matcher->matcher.matches(document, nullptr);
+        *isMatch = mongo::exec::matcher::matches(&matcher->matcher, document, nullptr);
     });
 }
 
@@ -603,7 +603,8 @@ stitch_support_v1_update_apply(stitch_support_v1_update* const update,
 
             mongo::MatchDetails matchDetails;
             matchDetails.requestElemMatchKey();
-            bool isMatch = update->matcher->matcher.matches(document, &matchDetails);
+            bool isMatch =
+                mongo::exec::matcher::matches(&update->matcher->matcher, document, &matchDetails);
             invariant(isMatch);
             if (matchDetails.hasElemMatchKey()) {
                 matchedField = matchDetails.elemMatchKey();
@@ -719,7 +720,7 @@ const char* MONGO_API_CALL stitch_support_v1_update_details_path(
 
 void MONGO_API_CALL stitch_support_v1_bson_free(uint8_t* bson) {
     mongo::StitchSupportStatusImpl* nullStatus = nullptr;
-    static_cast<void>(enterCXX(nullStatus, [=]() { delete[](bson); }));
+    static_cast<void>(enterCXX(nullStatus, [=]() { delete[] (bson); }));
 }
 
 }  // extern "C"

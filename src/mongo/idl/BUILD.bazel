@@ -36,11 +36,12 @@ idl_generator(
         "//src/mongo/client:read_preference_setting_gen",
         "//src/mongo/db:basic_types_gen",
         "//src/mongo/db:vector_clock_gen",
+        "//src/mongo/db:version_context_gen",
         "//src/mongo/db:write_concern_options_gen",
         "//src/mongo/db/repl:read_concern_args_gen",
         "//src/mongo/db/repl:read_concern_gen",
         "//src/mongo/db/session:logical_session_id_gen",
-        "//src/mongo/rpc/metadata:impersonated_user_metadata_gen",
+        "//src/mongo/rpc/metadata:audit_metadata_gen",
         "//src/mongo/s:gossiped_routing_cache_gen",
         "//src/mongo/s:sharding_types_gen",
     ],
@@ -143,15 +144,15 @@ mongo_cc_library(
     ],
     hdrs = [
         "idl_parser.h",
+        "//src/mongo:core_headers",
     ],
     header_deps = [
         "//src/mongo/db/auth:cluster_auth_mode",
-        "//src/mongo/db/concurrency:flow_control_ticketholder",
-        "//src/mongo/db/exec/sbe:query_sbe_plan_stats",
         "//src/mongo/db/fts:fts_query_noop",
     ],
     deps = [
         "//src/mongo:base",
+        "//src/mongo/db:cluster_role",
     ],
 )
 
@@ -263,9 +264,7 @@ mongo_cc_unit_test(
         "cluster_server_parameter_test_util.h",
         ":cluster_server_parameter_test_gen",
     ],
-    tags = [
-        "mongo_unittest_second_group",
-    ],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         ":cluster_parameter_synchronization_helpers",
         ":cluster_server_parameter",
@@ -282,7 +281,7 @@ mongo_cc_unit_test(
         "//src/mongo/db/op_observer",
         "//src/mongo/db/op_observer:op_observer_util",
         "//src/mongo/db/query/client_cursor:cursor_response_idl",
-        "//src/mongo/db/query/query_settings:manager",
+        "//src/mongo/db/query/query_settings:query_settings_service",
         "//src/mongo/db/repl:oplog",
         "//src/mongo/db/repl:oplog_interface_local",
         "//src/mongo/db/repl:replmocks",
@@ -319,7 +318,7 @@ mongo_cc_unit_test(
         "//src/mongo/util/cmdline_utils:censor_cmdline_test.h",
     ],
     tags = [
-        "mongo_unittest_third_group",
+        "mongo_unittest_fifth_group",
         "server-programmability",
     ],
     deps = [
@@ -348,6 +347,7 @@ mongo_cc_benchmark(
     ],
     deps = [
         ":idl_parser",
+        "//src/mongo/db:api_parameters",  # TODO(SERVER-93876): Remove.
         "//src/mongo/db/auth:authprivilege",
         "//src/mongo/db/concurrency:lock_manager",
         "//src/mongo/db/query:query_request",

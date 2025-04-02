@@ -40,7 +40,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/client/connection_string.h"
 #include "mongo/client/mongo_uri.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/stdx/mutex.h"
 
 namespace mongo {
@@ -125,6 +124,8 @@ enum class NormalizationOpts : uint32_t {
     kNormalizeNumerics = 1 << 3,
     // Set this bit to treat null and missing as the same value.
     kConflateNullAndMissing = 1 << 4,
+    // Set this bit to round floating points to 15 digits of precision.
+    kRoundFloatingPointNumerics = 1 << 5,
 };
 using NormalizationOptsSet = NormalizationOpts;
 

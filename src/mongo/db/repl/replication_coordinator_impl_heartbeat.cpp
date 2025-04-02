@@ -84,8 +84,6 @@
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/metadata/repl_set_metadata.h"
 #include "mongo/stdx/mutex.h"
@@ -111,6 +109,7 @@ MONGO_FAIL_POINT_DEFINE(blockHeartbeatReconfigFinish);
 MONGO_FAIL_POINT_DEFINE(hangAfterTrackingNewHandleInHandleHeartbeatResponseForTest);
 MONGO_FAIL_POINT_DEFINE(waitForPostActionCompleteInHbReconfig);
 MONGO_FAIL_POINT_DEFINE(pauseInHandleHeartbeatResponse);
+MONGO_FAIL_POINT_DEFINE(hangHeartbeatReconfigStore);
 
 }  // namespace
 
@@ -719,6 +718,12 @@ void ReplicationCoordinatorImpl::_heartbeatReconfigStore(
               "configuration was not persisted but was used",
               "newConfig"_attr = newConfig.toBSON());
         return;
+    }
+
+    if (MONGO_unlikely(hangHeartbeatReconfigStore.shouldFail())) {
+        LOGV2(10142900,
+              "hangHeartbeatReconfigStore failpoint set, hanging while failpoint is active");
+        hangHeartbeatReconfigStore.pauseWhileSet();
     }
 
     auto rsc = _getReplSetConfig();

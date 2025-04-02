@@ -91,8 +91,6 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
@@ -351,22 +349,12 @@ Status renameCollectionWithinDB(OperationContext* opCtx,
     invariant(source.isEqualDb(target));
     DisableDocumentValidation validationDisabler(opCtx);
 
-    AutoGetDb autoDb(opCtx, source.dbName(), MODE_IX);
-
-    boost::optional<Lock::CollectionLock> sourceLock;
-    boost::optional<Lock::CollectionLock> targetLock;
-    // To prevent deadlock, always lock system.views collection in the end because concurrent
-    // view-related operations always lock system.views in the end.
-    if (!source.isSystemDotViews() &&
-        (target.isSystemDotViews() ||
-         ResourceId(RESOURCE_COLLECTION, source) < ResourceId(RESOURCE_COLLECTION, target))) {
-        // To prevent deadlock, always lock source and target in ascending resourceId order.
-        sourceLock.emplace(opCtx, source, MODE_X);
-        targetLock.emplace(opCtx, target, MODE_X);
-    } else {
-        targetLock.emplace(opCtx, target, MODE_X);
-        sourceLock.emplace(opCtx, source, MODE_X);
-    }
+    CollectionOrViewAcquisitionRequests acquisitionRequests = {
+        CollectionOrViewAcquisitionRequest::fromOpCtx(
+            opCtx, source, AcquisitionPrerequisites::OperationType::kWrite),
+        CollectionOrViewAcquisitionRequest::fromOpCtx(
+            opCtx, target, AcquisitionPrerequisites::OperationType::kWrite)};
+    auto acquisitions = acquireCollectionsOrViews(opCtx, acquisitionRequests, LockMode::MODE_X);
 
     auto db = DatabaseHolder::get(opCtx)->getDb(opCtx, source.dbName());
     auto catalog = CollectionCatalog::get(opCtx);
@@ -963,22 +951,18 @@ void validateNamespacesForRenameCollection(OperationContext* opCtx,
                         ActionType::setUserWriteBlockMode));
     }
 
-    if (gFeatureFlagDisallowBucketCollectionWithoutTimeseriesOptions.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        uassert(ErrorCodes::IllegalOperation,
-                str::stream() << "Cannot rename non timeseries buckets collection '"
-                              << source.toStringForErrorMsg()
-                              << "' to a timeseries buckets namespace '"
-                              << target.toStringForErrorMsg() << "'.",
-                source.isTimeseriesBucketsCollection() || !target.isTimeseriesBucketsCollection());
+    uassert(ErrorCodes::IllegalOperation,
+            str::stream() << "Cannot rename non timeseries buckets collection '"
+                          << source.toStringForErrorMsg() << "' to a timeseries buckets namespace '"
+                          << target.toStringForErrorMsg() << "'.",
+            source.isTimeseriesBucketsCollection() || !target.isTimeseriesBucketsCollection());
 
-        uassert(ErrorCodes::IllegalOperation,
-                str::stream() << "Cannot rename timeseries buckets collection '"
-                              << source.toStringForErrorMsg()
-                              << "' to a non timeseries buckets namespace '"
-                              << target.toStringForErrorMsg() << "'.",
-                !source.isTimeseriesBucketsCollection() || target.isTimeseriesBucketsCollection());
-    }
+    uassert(ErrorCodes::IllegalOperation,
+            str::stream() << "Cannot rename timeseries buckets collection '"
+                          << source.toStringForErrorMsg()
+                          << "' to a non timeseries buckets namespace '"
+                          << target.toStringForErrorMsg() << "'.",
+            !source.isTimeseriesBucketsCollection() || target.isTimeseriesBucketsCollection());
 }
 
 void validateAndRunRenameCollection(OperationContext* opCtx,
@@ -1024,6 +1008,8 @@ Status renameCollection(OperationContext* opCtx,
     if (source.isEqualDb(target))
         return renameCollectionWithinDB(opCtx, source, target, options);
     else {
+        // TODO SERVER-99621: Remove this line once renames take locks in proper order.
+        DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
         return renameCollectionAcrossDatabases(opCtx, source, target, options);
     }
 }
@@ -1110,6 +1096,8 @@ Status renameCollectionForApplyOps(OperationContext* opCtx,
 
         // Downgrade renameCollection to dropCollection.
         if (dropTargetNss) {
+            // TODO SERVER-99621: Remove this line once renames take locks in proper order.
+            DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
             return dropCollectionForApplyOps(
                 opCtx,
                 *dropTargetNss,
@@ -1137,6 +1125,8 @@ Status renameCollectionForApplyOps(OperationContext* opCtx,
         return renameCollectionWithinDBForApplyOps(
             opCtx, sourceNss, targetNss, uuidToDrop, renameOpTime, options);
     } else {
+        // TODO SERVER-99621: Remove this line once renames take locks in proper order.
+        DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
         return renameCollectionAcrossDatabases(opCtx, sourceNss, targetNss, options);
     }
 }

@@ -42,8 +42,7 @@
 #include "mongo/s/catalog/type_shard.h"
 #include "mongo/s/catalog_cache_test_fixture.h"
 #include "mongo/s/shard_key_pattern_query_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 
 namespace mongo {
@@ -142,7 +141,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithRangePrefix
     shard_key_pattern_query_util::QueryTargetingInfo info;
 
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(request, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(request, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
 
     ASSERT_EQUALS(shardIds.size(), 2);
     ASSERT_TRUE(shardIds.contains(ShardId("3")));
@@ -158,12 +161,16 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithRangePrefix
 
     // When update targets using query.
     auto requestAndSet = buildUpdate(kNss,
-                                     fromjson("{$and: [{'a.b': {$gte : 0}}, {'a.b': {$lt: 99}}]}}"),
+                                     fromjson("{$and: [{'a.b': {$gte : 0}}, {'a.b': {$lt: 99}}]}"),
                                      fromjson("{$set: {p : 1}}"),
                                      false);
 
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(requestAndSet, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(requestAndSet, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
 
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("3")));
@@ -177,7 +184,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithRangePrefix
     auto requestLT =
         buildUpdate(kNss, fromjson("{'a.b': {$lt : -101}}"), fromjson("{a: {b: 111}}"), false);
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(requestLT, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(requestLT, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("1")));
     ASSERT_EQUALS(info.chunkRanges.size(), 1);
@@ -191,7 +202,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithRangePrefix
     auto requestOpUpdate =
         buildUpdate(kNss, fromjson("{_id: 1}"), fromjson("{$set: {p: 111}}"), false);
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(requestOpUpdate, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(requestOpUpdate, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 5);
     ASSERT_EQUALS(info.chunkRanges.size(), 5);
     auto itRange = info.chunkRanges.cbegin();
@@ -215,9 +230,13 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithRangePrefix
     // For replacement style updates, query on _id uses replacement doc to target. If the
     // replacement doc doesn't have shard key fields, then update should be routed to the shard
     // holding 'null' shard key documents.
-    auto requestReplUpdate = buildUpdate(kNss, fromjson("{_id: 1}"), fromjson("{p: 111}}"), false);
+    auto requestReplUpdate = buildUpdate(kNss, fromjson("{_id: 1}"), fromjson("{p: 111}"), false);
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(requestReplUpdate, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(requestReplUpdate, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 5);
     ASSERT_EQUALS(info.chunkRanges.size(), 5);
     info.chunkRanges.clear();
@@ -227,7 +246,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithRangePrefix
     auto requestFullKey =
         buildUpdate(kNss, fromjson("{'a.b':  100}"), fromjson("{a: {b: -111}}"), true);
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(requestFullKey, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(requestFullKey, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("4")));
     ASSERT_EQUALS(info.chunkRanges.size(), 1);
@@ -241,7 +264,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithRangePrefix
     auto requestSuccess =
         buildUpdate(kNss, fromjson("{'a.b': 100, 'c.d': 'val'}"), fromjson("{a: {b: -111}}"), true);
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(requestSuccess, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(requestSuccess, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("4")));
     ASSERT_EQUALS(info.chunkRanges.size(), 1);
@@ -258,13 +285,12 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithHashedPrefi
     std::vector<BSONObj> splitPoints = {
         BSON("a.b" << -(1LL << 62)), BSON("a.b" << 0LL), BSON("a.b" << (1LL << 62))};
 
-    auto cri = prepare(BSON("a.b"
-                            << "hashed"
-                            << "c.d" << 1),
+    auto cri = prepare(BSON("a.b" << "hashed"
+                                  << "c.d" << 1),
                        splitPoints);
 
     auto findChunk = [&](BSONElement elem) {
-        return cri.cm.findIntersectingChunkWithSimpleCollation(
+        return cri.getChunkManager().findIntersectingChunkWithSimpleCollation(
             BSON("a.b" << BSONElementHasher::hash64(elem, BSONElementHasher::DEFAULT_HASH_SEED)));
     };
 
@@ -277,7 +303,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithHashedPrefi
         // 'updateQueryObj'.
         auto request = buildUpdate(kNss, updateQueryObj, fromjson("{$set: {p: 1}}"), false);
         getShardIdsAndChunksForCanonicalQuery(
-            *makeCQUpdate(request, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+            *makeCQUpdate(request, fromjson("{}"), cri.getChunkManager()),
+            cri.getChunkManager(),
+            &shardIds,
+            &info,
+            false);
         ASSERT_EQUALS(shardIds.size(), 1);
         auto chunk = findChunk(updateQueryObj["a"]["b"]);
         ASSERT_TRUE(shardIds.contains(chunk.getShardId()));
@@ -293,7 +323,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksUpdateWithHashedPrefi
     const auto updateObj = fromjson("{a: {b: -1}}");
     auto requestUpdate = buildUpdate(kNss, fromjson("{'a.b': {$gt : 101}}"), updateObj, false);
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQUpdate(requestUpdate, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQUpdate(requestUpdate, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 4);
     ASSERT_EQUALS(info.chunkRanges.size(), 4);
 }
@@ -307,7 +341,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithExactId() {
 
     auto requestId = buildDelete(kNss, fromjson("{_id: 68755000}"));
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(requestId, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(requestId, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 5);
     ASSERT_TRUE(shardIds.contains(ShardId("0")));
     ASSERT_EQUALS(info.chunkRanges.size(), 5);
@@ -343,7 +381,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithRangePrefix
     // Can delete wih partial shard key in the query if the query only targets one shard.
     auto requestPartialKey = buildDelete(kNss, fromjson("{'a.b': {$gt : 101}}"));
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(requestPartialKey, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(requestPartialKey, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("4")));
     ASSERT_EQUALS(info.chunkRanges.size(), 1);
@@ -356,7 +398,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithRangePrefix
     // Test delete with range query.
     auto requestPartialKey2 = buildDelete(kNss, fromjson("{'a.b': {$gt: 0}}"));
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(requestPartialKey2, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(requestPartialKey2, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 2);
     ASSERT_TRUE(shardIds.contains(ShardId("3")));
     ASSERT_TRUE(shardIds.contains(ShardId("4")));
@@ -371,7 +417,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithRangePrefix
     // Test delete with no shard key.
     auto requestNoShardKey = buildDelete(kNss, fromjson("{'k': 0}"));
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(requestNoShardKey, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(requestNoShardKey, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 5);
     ASSERT_EQUALS(info.chunkRanges.size(), 5);
     shardIds.clear();
@@ -380,7 +430,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithRangePrefix
     // Delete targeted correctly with full shard key in query.
     auto requestFullKey = buildDelete(kNss, fromjson("{'a.b': -101, 'c.d': 5}"));
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(requestFullKey, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(requestFullKey, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("1")));
     ASSERT_EQUALS(info.chunkRanges.size(), 1);
@@ -394,7 +448,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithRangePrefix
     auto requestMinKey =
         buildDelete(kNss, BSONObjBuilder().appendMinKey("a.b").append("c.d", 4).obj());
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(requestMinKey, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(requestMinKey, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("0")));
     ASSERT_EQUALS(info.chunkRanges.size(), 1);
@@ -407,7 +465,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithRangePrefix
 
     auto requestMinKey2 = buildDelete(kNss, fromjson("{'a.b':  0, 'c.d': 5}"));
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(requestMinKey2, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(requestMinKey2, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 1);
     ASSERT_TRUE(shardIds.contains(ShardId("3")));
     ASSERT_EQUALS(info.chunkRanges.size(), 1);
@@ -424,13 +486,12 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithHashedPrefi
     // [-2^62, 0), '2' has chunk ['0', 2^62) and '3' has chunk [2^62, MaxKey).
     std::vector<BSONObj> splitPoints = {
         BSON("a.b" << -(1LL << 62)), BSON("a.b" << 0LL), BSON("a.b" << (1LL << 62))};
-    auto cri = prepare(BSON("a.b"
-                            << "hashed"
-                            << "c.d" << 1),
+    auto cri = prepare(BSON("a.b" << "hashed"
+                                  << "c.d" << 1),
                        splitPoints);
 
     auto findChunk = [&](BSONElement elem) {
-        return cri.cm.findIntersectingChunkWithSimpleCollation(
+        return cri.getChunkManager().findIntersectingChunkWithSimpleCollation(
             BSON("a.b" << BSONElementHasher::hash64(elem, BSONElementHasher::DEFAULT_HASH_SEED)));
     };
 
@@ -440,7 +501,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithHashedPrefi
         // 'queryObj'.
         auto request = buildDelete(kNss, queryObj);
         getShardIdsAndChunksForCanonicalQuery(
-            *makeCQDelete(request, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+            *makeCQDelete(request, fromjson("{}"), cri.getChunkManager()),
+            cri.getChunkManager(),
+            &shardIds,
+            &info,
+            false);
         ASSERT_EQUALS(shardIds.size(), 1);
         auto chunk = findChunk(queryObj["a"]["b"]);
         ASSERT_TRUE(shardIds.contains(chunk.getShardId()));
@@ -455,7 +520,11 @@ void ShardKeyPatternQueryUtilTest::testGetShardIdsAndChunksDeleteWithHashedPrefi
     // Range queries on hashed field can target using the two phase write protocol.
     auto request = buildDelete(kNss, fromjson("{'a.b': {$gt : 101}}"));
     getShardIdsAndChunksForCanonicalQuery(
-        *makeCQDelete(request, fromjson("{}"), cri.cm), cri.cm, &shardIds, &info, false);
+        *makeCQDelete(request, fromjson("{}"), cri.getChunkManager()),
+        cri.getChunkManager(),
+        &shardIds,
+        &info,
+        false);
     ASSERT_EQUALS(shardIds.size(), 4);
     ASSERT_EQUALS(info.chunkRanges.size(), 4);
 }

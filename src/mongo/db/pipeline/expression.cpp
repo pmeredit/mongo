@@ -70,6 +70,7 @@
 #include "mongo/db/query/bson/dotted_path_support.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/util/make_data_structure.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/platform/atomic_word.h"
@@ -81,7 +82,6 @@ namespace mongo {
 using Parser = Expression::Parser;
 
 using boost::intrusive_ptr;
-using std::move;
 using std::pair;
 using std::string;
 using std::vector;
@@ -98,9 +98,8 @@ Value ExpressionConstant::serializeConstant(const SerializationOptions& opts,
     // constant arguments (e.g. variadic expressions - SERVER-84159).
     // Debug shapes never wrap constants in $const to reduce shape size (and because re-parsing
     // support is not a consideration there).
-    if ((opts.literalPolicy == LiteralSerializationPolicy::kUnchanged) ||
-        (wrapRepresentativeValue &&
-         opts.literalPolicy == LiteralSerializationPolicy::kToRepresentativeParseableValue)) {
+    if (opts.isKeepingLiteralsUnchanged() ||
+        (wrapRepresentativeValue && opts.isReplacingLiteralsWithRepresentativeValues())) {
         return Value(DOC("$const" << opts.serializeLiteral(val)));
     }
 
@@ -143,7 +142,7 @@ struct ParserRegistration {
     Parser parser;
     AllowedWithApiStrict allowedWithApiStrict;
     AllowedWithClientType allowedWithClientType;
-    boost::optional<FeatureFlag> featureFlag;
+    CheckableFeatureFlagRef featureFlag;
 };
 
 StringMap<ParserRegistration> parserMap;
@@ -153,7 +152,7 @@ void Expression::registerExpression(string key,
                                     Parser parser,
                                     AllowedWithApiStrict allowedWithApiStrict,
                                     AllowedWithClientType allowedWithClientType,
-                                    boost::optional<FeatureFlag> featureFlag) {
+                                    CheckableFeatureFlagRef featureFlag) {
     auto op = parserMap.find(key);
     massert(17064,
             str::stream() << "Duplicate expression (" << key << ") registered.",
@@ -449,18 +448,6 @@ intrusive_ptr<Expression> ExpressionAnd::optimize() {
     }
 
     /*
-      If we got here, the final operand was true, so we don't need it
-      anymore.  If there was only one other operand, we don't need the
-      conjunction either.  Note we still need to keep the promise that
-      the result will be a boolean.
-     */
-    if (n == 2) {
-        intrusive_ptr<Expression> pFinal(
-            ExpressionCoerceToBool::create(getExpressionContext(), std::move(pAnd->_children[0])));
-        return pFinal;
-    }
-
-    /*
       Remove the final "true" value, and return the new expression.
 
       CW TODO:
@@ -498,8 +485,7 @@ Value ExpressionArray::evaluate(const Document& root, Variables* variables) cons
 }
 
 Value ExpressionArray::serialize(const SerializationOptions& options) const {
-    if (options.literalPolicy != LiteralSerializationPolicy::kUnchanged &&
-        selfAndChildrenAreConstant()) {
+    if (!options.isKeepingLiteralsUnchanged() && selfAndChildrenAreConstant()) {
         return ExpressionConstant::serializeConstant(
             options, evaluate(Document{}, &(getExpressionContext()->variables)));
     }
@@ -618,44 +604,6 @@ const char* ExpressionCeil::getOpName() const {
     return "$ceil";
 }
 
-/* -------------------- ExpressionCoerceToBool ------------------------- */
-
-intrusive_ptr<ExpressionCoerceToBool> ExpressionCoerceToBool::create(
-    ExpressionContext* const expCtx, intrusive_ptr<Expression> pExpression) {
-    return new ExpressionCoerceToBool(expCtx, std::move(pExpression));
-}
-
-ExpressionCoerceToBool::ExpressionCoerceToBool(ExpressionContext* const expCtx,
-                                               intrusive_ptr<Expression> pExpression)
-    : Expression(expCtx, {std::move(pExpression)}) {
-    expCtx->setSbeCompatibility(SbeCompatibility::notCompatible);
-}
-
-intrusive_ptr<Expression> ExpressionCoerceToBool::optimize() {
-    /* optimize the operand */
-    _children[_kExpression] = _children[_kExpression]->optimize();
-
-    /* if the operand already produces a boolean, then we don't need this */
-    /* LATER - Expression to support a "typeof" query? */
-    Expression* pE = _children[_kExpression].get();
-    if (dynamic_cast<ExpressionAnd*>(pE) || dynamic_cast<ExpressionOr*>(pE) ||
-        dynamic_cast<ExpressionNot*>(pE) || dynamic_cast<ExpressionCoerceToBool*>(pE))
-        return _children[_kExpression];
-
-    return intrusive_ptr<Expression>(this);
-}
-
-Value ExpressionCoerceToBool::evaluate(const Document& root, Variables* variables) const {
-    return exec::expression::evaluate(*this, root, variables);
-}
-
-Value ExpressionCoerceToBool::serialize(const SerializationOptions& options) const {
-    // When not explaining, serialize to an $and expression. When parsed, the $and expression
-    // will be optimized back into a ExpressionCoerceToBool.
-    const char* name = options.verbosity ? "$coerceToBool" : "$and";
-    return Value(DOC(name << DOC_ARRAY(_children[_kExpression]->serialize(options))));
-}
-
 /* ----------------------- ExpressionCompare --------------------------- */
 
 namespace {
@@ -682,10 +630,9 @@ intrusive_ptr<Expression> ExpressionCompare::parse(ExpressionContext* const expC
                                                    BSONElement bsonExpr,
                                                    const VariablesParseState& vps,
                                                    CmpOp op) {
-    intrusive_ptr<ExpressionCompare> expr = new ExpressionCompare(expCtx, op);
     ExpressionVector args = parseArguments(expCtx, bsonExpr, vps);
-    expr->validateArguments(args);
-    expr->_children = std::move(args);
+    intrusive_ptr<ExpressionCompare> expr = new ExpressionCompare(expCtx, op, std::move(args));
+    expr->validateChildren();
     return expr;
 }
 
@@ -767,12 +714,14 @@ boost::intrusive_ptr<Expression> ExpressionCond::create(ExpressionContext* const
                                                         boost::intrusive_ptr<Expression> ifExp,
                                                         boost::intrusive_ptr<Expression> elseExpr,
                                                         boost::intrusive_ptr<Expression> thenExpr) {
-    intrusive_ptr<ExpressionCond> ret = new ExpressionCond(expCtx);
-    ret->_children.resize(3);
+    ExpressionVector children;
+    children.resize(3);
+    children[0] = ifExp;
+    children[1] = elseExpr;
+    children[2] = thenExpr;
 
-    ret->_children[0] = ifExp;
-    ret->_children[1] = elseExpr;
-    ret->_children[2] = thenExpr;
+    intrusive_ptr<ExpressionCond> ret = new ExpressionCond(expCtx, std::move(children));
+
     return ret;
 }
 
@@ -784,26 +733,28 @@ intrusive_ptr<Expression> ExpressionCond::parse(ExpressionContext* const expCtx,
     }
     MONGO_verify(expr.fieldNameStringData() == "$cond");
 
-    intrusive_ptr<ExpressionCond> ret = new ExpressionCond(expCtx);
-    ret->_children.resize(3);
+    ExpressionVector children;
+    children.resize(3);
 
     const BSONObj args = expr.embeddedObject();
     for (auto&& arg : args) {
         if (arg.fieldNameStringData() == "if") {
-            ret->_children[0] = parseOperand(expCtx, arg, vps);
+            children[0] = parseOperand(expCtx, arg, vps);
         } else if (arg.fieldNameStringData() == "then") {
-            ret->_children[1] = parseOperand(expCtx, arg, vps);
+            children[1] = parseOperand(expCtx, arg, vps);
         } else if (arg.fieldNameStringData() == "else") {
-            ret->_children[2] = parseOperand(expCtx, arg, vps);
+            children[2] = parseOperand(expCtx, arg, vps);
         } else {
             uasserted(17083,
                       str::stream() << "Unrecognized parameter to $cond: " << arg.fieldName());
         }
     }
 
-    uassert(17080, "Missing 'if' parameter to $cond", ret->_children[0]);
-    uassert(17081, "Missing 'then' parameter to $cond", ret->_children[1]);
-    uassert(17082, "Missing 'else' parameter to $cond", ret->_children[2]);
+    uassert(17080, "Missing 'if' parameter to $cond", children[0]);
+    uassert(17081, "Missing 'then' parameter to $cond", children[1]);
+    uassert(17082, "Missing 'else' parameter to $cond", children[2]);
+
+    intrusive_ptr<ExpressionCond> ret = new ExpressionCond(expCtx, std::move(children));
 
     return ret;
 }
@@ -1596,8 +1547,7 @@ bool ExpressionObject::selfAndChildrenAreConstant() const {
 }
 
 Value ExpressionObject::serialize(const SerializationOptions& options) const {
-    if (options.literalPolicy != LiteralSerializationPolicy::kUnchanged &&
-        selfAndChildrenAreConstant()) {
+    if (!options.isKeepingLiteralsUnchanged() && selfAndChildrenAreConstant()) {
         return ExpressionConstant::serializeConstant(options, Value(Document{}));
     }
     MutableDocument outputDoc;
@@ -1695,8 +1645,7 @@ intrusive_ptr<Expression> ExpressionFieldPath::optimize() {
         return ExpressionConstant::create(getExpressionContext(), Value());
     }
 
-    const bool sbeFullEnabled = feature_flags::gFeatureFlagSbeFull.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+    const bool sbeFullEnabled = feature_flags::gFeatureFlagSbeFull.isEnabled();
     if (sbeFullEnabled &&
         (_variable == Variables::kNowId || _variable == Variables::kClusterTimeId ||
          _variable == Variables::kUserRolesId)) {
@@ -2039,7 +1988,7 @@ REGISTER_EXPRESSION_CONDITIONALLY(meta,
                                   ExpressionMeta::parse,
                                   AllowedWithApiStrict::kConditionally,
                                   AllowedWithClientType::kAny,
-                                  boost::none,
+                                  kDoesNotRequireFeatureFlag,
                                   true);
 
 void ExpressionMeta::_assertMetaFieldCompatibleWithStrictAPI(ExpressionContext* const expCtx,
@@ -2174,8 +2123,7 @@ REGISTER_EXPRESSION_CONDITIONALLY(
     ExpressionInternalRawSortKey::parse,
     AllowedWithApiStrict::kInternal,
     AllowedWithClientType::kInternal,
-    // No feature flag.
-    boost::none,
+    kDoesNotRequireFeatureFlag,
     true);  // The 'condition' is always true - we just wanted to restrict to internal.
 
 intrusive_ptr<Expression> ExpressionInternalRawSortKey::parse(ExpressionContext* const expCtx,
@@ -2192,7 +2140,7 @@ Value ExpressionInternalRawSortKey::serialize(const SerializationOptions& option
 }
 
 Value ExpressionInternalRawSortKey::evaluate(const Document& root, Variables* variables) const {
-    return root.metadata().getSortKey();
+    return exec::expression::evaluate(*this, root, variables);
 }
 
 /* ----------------------- ExpressionMod ---------------------------- */
@@ -2220,10 +2168,10 @@ const char* ExpressionMultiply::getOpName() const {
 
 /* ----------------------- ExpressionIfNull ---------------------------- */
 
-void ExpressionIfNull::validateArguments(const ExpressionVector& args) const {
+void ExpressionIfNull::validateChildren() const {
     uassert(1257300,
-            str::stream() << "$ifNull needs at least two arguments, had: " << args.size(),
-            args.size() >= 2);
+            str::stream() << "$ifNull needs at least two arguments, had: " << _children.size(),
+            _children.size() >= 2);
 }
 
 Value ExpressionIfNull::evaluate(const Document& root, Variables* variables) const {
@@ -2689,18 +2637,6 @@ intrusive_ptr<Expression> ExpressionOr::optimize() {
     }
 
     /*
-      If we got here, the final operand was false, so we don't need it
-      anymore.  If there was only one other operand, we don't need the
-      conjunction either.  Note we still need to keep the promise that
-      the result will be a boolean.
-     */
-    if (n == 2) {
-        intrusive_ptr<Expression> pFinal(
-            ExpressionCoerceToBool::create(getExpressionContext(), std::move(pOr->_children[0])));
-        return pFinal;
-    }
-
-    /*
       Remove the final "false" value, and return the new expression.
     */
     pOr->_children.resize(n - 1);
@@ -2989,10 +2925,10 @@ const char* ExpressionSetDifference::getOpName() const {
 
 /* ----------------------- ExpressionSetEquals ---------------------------- */
 
-void ExpressionSetEquals::validateArguments(const ExpressionVector& args) const {
+void ExpressionSetEquals::validateChildren() const {
     uassert(17045,
-            str::stream() << "$setEquals needs at least two arguments had: " << args.size(),
-            args.size() >= 2);
+            str::stream() << "$setEquals needs at least two arguments had: " << _children.size(),
+            _children.size() >= 2);
 }
 
 Value ExpressionSetEquals::evaluate(const Document& root, Variables* variables) const {
@@ -3761,7 +3697,8 @@ boost::intrusive_ptr<Expression> ExpressionConvert::create(
         nullptr,
         byteOrder ? ExpressionConstant::create(expCtx, Value(toStringData(*byteOrder))) : nullptr,
         checkBinDataConvertAllowed(),
-        checkBinDataConvertNumericAllowed());
+        checkBinDataConvertNumericAllowed(
+            VersionContext::getDecoration(expCtx->getOperationContext())));
 }
 
 ExpressionConvert::ExpressionConvert(ExpressionContext* const expCtx,
@@ -3794,7 +3731,8 @@ intrusive_ptr<Expression> ExpressionConvert::parse(ExpressionContext* const expC
             expr.type() == BSONType::Object);
 
     const bool allowBinDataConvert = checkBinDataConvertAllowed();
-    const bool allowBinDataConvertNumeric = checkBinDataConvertNumericAllowed();
+    const bool allowBinDataConvertNumeric = checkBinDataConvertNumericAllowed(
+        VersionContext::getDecoration(expCtx->getOperationContext()));
 
     boost::intrusive_ptr<Expression> input;
     boost::intrusive_ptr<Expression> to;
@@ -3930,7 +3868,7 @@ Value ExpressionConvert::serialize(const SerializationOptions& options) const {
     Value toField = Value();
     if (!constExpr) {
         toField = _children[_kTo]->serialize(options);
-    } else if (options.literalPolicy == LiteralSerializationPolicy::kToDebugTypeString) {
+    } else if (options.isSerializingLiteralsAsDebugTypes()) {
         toField = constExpr->getValue();
     } else {
         toField = Value(DOC("$const" << constExpr->getValue()));
@@ -3984,9 +3922,9 @@ bool ExpressionConvert::checkBinDataConvertAllowed() {
         serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
 }
 
-bool ExpressionConvert::checkBinDataConvertNumericAllowed() {
+bool ExpressionConvert::checkBinDataConvertNumericAllowed(const VersionContext& vCtx) {
     return feature_flags::gFeatureFlagBinDataConvertNumeric.isEnabledUseLatestFCVWhenUninitialized(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+        vCtx, serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
 }
 
 namespace {
@@ -4203,9 +4141,8 @@ REGISTER_EXPRESSION_WITH_FEATURE_FLAG(currentDate,
                                       AllowedWithClientType::kAny,
                                       feature_flags::gFeatureFlagCurrentDate);
 
-ExpressionCurrentDate::ExpressionCurrentDate(ExpressionContext* const expCtx) : Expression(expCtx) {
-    expCtx->setSbeCompatibility(SbeCompatibility::notCompatible);
-}
+ExpressionCurrentDate::ExpressionCurrentDate(ExpressionContext* const expCtx)
+    : Expression(expCtx) {}
 
 intrusive_ptr<Expression> ExpressionCurrentDate::parse(ExpressionContext* const expCtx,
                                                        BSONElement exprElement,
@@ -4224,15 +4161,8 @@ const char* ExpressionCurrentDate::getOpName() const {
     return "$currentDate";
 }
 
-MONGO_FAIL_POINT_DEFINE(sleepBeforeCurrentDateEvaluation);
-
 Value ExpressionCurrentDate::evaluate(const Document& root, Variables* variables) const {
-    if (MONGO_unlikely(sleepBeforeCurrentDateEvaluation.shouldFail())) {
-        sleepBeforeCurrentDateEvaluation.execute(
-            [&](const BSONObj& data) { sleepmillis(data["ms"].numberInt()); });
-    }
-
-    return Value(Date_t::now());
+    return exec::expression::evaluate(*this, root, variables);
 }
 
 intrusive_ptr<Expression> ExpressionCurrentDate::optimize() {
@@ -4626,8 +4556,7 @@ Value ExpressionGetField::serialize(const SerializationOptions& options) const {
         // However, if we are serializing for a debug string and the string looks like a field
         // reference, it should be wrapped in $const to make it unambiguous with actual field
         // references.
-        if (options.literalPolicy != LiteralSerializationPolicy::kToDebugTypeString ||
-            strPath[0] == '$') {
+        if (!options.isSerializingLiteralsAsDebugTypes() || strPath[0] == '$') {
             maybeRedactedPath = Value(Document{{"$const"_sd, maybeRedactedPath}});
         }
         fieldValue = maybeRedactedPath;
@@ -4708,7 +4637,7 @@ Value ExpressionSetField::serialize(const SerializationOptions& options) const {
     // means that it:
     //  - should be redacted (if that option is set).
     //  - should *not* be wrapped in $const iff we are serializing for a debug string
-    if (options.literalPolicy != LiteralSerializationPolicy::kToDebugTypeString) {
+    if (!options.isSerializingLiteralsAsDebugTypes()) {
         maybeRedactedPath = Value(Document{{"$const"_sd, maybeRedactedPath}});
     }
 
@@ -4851,6 +4780,45 @@ Value ExpressionInternalKeyStringValue::evaluate(const Document& root, Variables
     return exec::expression::evaluate(*this, root, variables);
 }
 
+/* -------------------------- ExpressionUUID ------------------------------ */
+REGISTER_EXPRESSION_WITH_FEATURE_FLAG(uuid,
+                                      ExpressionUUID::parse,
+                                      AllowedWithApiStrict::kNeverInVersion1,
+                                      AllowedWithClientType::kAny,
+                                      feature_flags::gFeatureFlagUUIDExpression);
+
+ExpressionUUID::ExpressionUUID(ExpressionContext* const expCtx) : Expression(expCtx) {
+    expCtx->setSbeCompatibility(SbeCompatibility::notCompatible);
+}
+
+intrusive_ptr<Expression> ExpressionUUID::parse(ExpressionContext* const expCtx,
+                                                BSONElement exprElement,
+                                                const VariablesParseState& vps) {
+    uassert(10081900,
+            "$uuid not allowed inside collection validators",
+            !expCtx->getIsParsingCollectionValidator());
+
+    uassert(10081901, "$uuid does not accept arguments", exprElement.Obj().isEmpty());
+
+    return new ExpressionUUID(expCtx);
+}
+
+const char* ExpressionUUID::getOpName() const {
+    return "$uuid";
+}
+
+Value ExpressionUUID::evaluate(const Document& root, Variables* variables) const {
+    return Value(UUID::gen());
+}
+
+intrusive_ptr<Expression> ExpressionUUID::optimize() {
+    return intrusive_ptr<Expression>(this);
+}
+
+Value ExpressionUUID::serialize(const SerializationOptions& options) const {
+    return Value(DOC(getOpName() << Document()));
+}
+
 /* --------------------------------- Parenthesis --------------------------------------------- */
 
 REGISTER_STABLE_EXPRESSION(expr, parseParenthesisExprObj);
@@ -4858,6 +4826,193 @@ static intrusive_ptr<Expression> parseParenthesisExprObj(ExpressionContext* cons
                                                          BSONElement bsonExpr,
                                                          const VariablesParseState& vpsIn) {
     return Expression::parseOperand(expCtx, bsonExpr, vpsIn);
+}
+
+ExpressionEncTextSearch::ExpressionEncTextSearch(ExpressionContext* const expCtx,
+                                                 boost::intrusive_ptr<Expression> input,
+                                                 boost::intrusive_ptr<Expression> textOperand)
+    : Expression(expCtx, {std::move(input), std::move(textOperand)}) {
+    // This code block serves to assert the constraints of the expression as well as to initialize
+    // our encrypted predicate evaluator.
+    const auto& fieldPathExpression = getInput();
+    const auto& constant = getText();
+
+    // At this point, we know we have a constant, so let's figure out if the value is a String or
+    // BinData. If we have a BinData payload, we are running in the context of the server and the
+    // expression can be evaluated. Otherwise, we are running in the context of query analysis, and
+    // the expression can't be evaluated directly.
+    auto value = constant.getValue();
+    auto encryptedBinDataType = getEncryptedBinDataType(value);
+    if (encryptedBinDataType) {
+        // TODO SERVER-101128: Implement ParsedFindTextSearchPayload once SPM-2880 delivers the
+        // FLE2FindTextPayload. Initialize _evaluatorV2 with the zerosTokens.
+    } else {
+        uassert(10111802,
+                "Unexpected value type found on encrypted text search on field '" +
+                    fieldPathExpression.getFieldPathWithoutCurrentPrefix().fullPath() + "'.",
+                value.getType() == String);
+    }
+
+    expCtx->setSbeCompatibility(SbeCompatibility::notCompatible);
+}
+
+const ExpressionFieldPath& ExpressionEncTextSearch::getInput() const {
+    const auto* fieldPathExpression =
+        dynamic_cast<const ExpressionFieldPath*>(_children[_kInput].get());
+    uassert(10111800,
+            "ExpressionEncTextSearch expects a valid field path expression as its input.",
+            fieldPathExpression);
+    return *fieldPathExpression;
+}
+
+const ExpressionConstant& ExpressionEncTextSearch::getText() const {
+    const auto* constant = dynamic_cast<const ExpressionConstant*>(_children[_kTextOperand].get());
+    uassert(10111801, "ExpressionEncTextSearch expects a constant literal.", constant);
+    return *constant;
+}
+
+bool ExpressionEncTextSearch::canBeEvaluated() const {
+    return getEncryptedBinDataType(getText().getValue()) != boost::none;
+}
+
+/* --------------------------------- encStrStartsWith ------------------------------------------- */
+REGISTER_EXPRESSION_WITH_FEATURE_FLAG(encStrStartsWith,
+                                      ExpressionEncStrStartsWith::parse,
+                                      AllowedWithApiStrict::kNeverInVersion1,
+                                      AllowedWithClientType::kAny,
+                                      gFeatureFlagQETextSearchPreview);
+
+ExpressionEncStrStartsWith::ExpressionEncStrStartsWith(ExpressionContext* const expCtx,
+                                                       boost::intrusive_ptr<Expression> input,
+                                                       boost::intrusive_ptr<Expression> prefix)
+    : ExpressionEncTextSearch(expCtx, std::move(input), std::move(prefix)) {}
+
+constexpr auto kEncStrStartsWith = "$encStrStartsWith"_sd;
+boost::intrusive_ptr<Expression> ExpressionEncStrStartsWith::parse(ExpressionContext* const expCtx,
+                                                                   BSONElement expr,
+                                                                   const VariablesParseState& vps) {
+
+    IDLParserContext ctx(kEncStrStartsWith);
+
+    auto fleEncStartsWith = EncStrStartsWithStruct::parse(ctx, expr.Obj());
+
+    auto inputExpr =
+        ExpressionFieldPath::parse(expCtx, fleEncStartsWith.getInput().toString(), vps);
+
+    auto prefixExpr =
+        Expression::parseOperand(expCtx, fleEncStartsWith.getPrefix().getElement(), vps);
+
+    return new ExpressionEncStrStartsWith(expCtx, std::move(inputExpr), std::move(prefixExpr));
+}
+
+Value ExpressionEncStrStartsWith::serialize(const SerializationOptions& options) const {
+    return Value(Document{{kEncStrStartsWith,
+                           Document{{"input", _children[_kInput]->serialize(options)},
+                                    {"prefix", _children[_kTextOperand]->serialize(options)}}}});
+}
+
+const char* ExpressionEncStrStartsWith::getOpName() const {
+    return kEncStrStartsWith.rawData();
+}
+
+Value ExpressionEncStrStartsWith::evaluate(const Document& root, Variables* variables) const {
+    uassert(10111803,
+            "ExpressionEncStrStartsWith can't be evaluated without binary payload",
+            canBeEvaluated());
+    return exec::expression::evaluate(*this, root, variables);
+}
+
+/* --------------------------------- encStrEndsWith ------------------------------------------- */
+REGISTER_EXPRESSION_WITH_FEATURE_FLAG(encStrEndsWith,
+                                      ExpressionEncStrEndsWith::parse,
+                                      AllowedWithApiStrict::kNeverInVersion1,
+                                      AllowedWithClientType::kAny,
+                                      gFeatureFlagQETextSearchPreview);
+
+ExpressionEncStrEndsWith::ExpressionEncStrEndsWith(ExpressionContext* const expCtx,
+                                                   boost::intrusive_ptr<Expression> input,
+                                                   boost::intrusive_ptr<Expression> suffix)
+    : ExpressionEncTextSearch(expCtx, std::move(input), std::move(suffix)) {}
+
+constexpr auto kEncStrEndsWith = "$encStrEndsWith"_sd;
+boost::intrusive_ptr<Expression> ExpressionEncStrEndsWith::parse(ExpressionContext* const expCtx,
+                                                                 BSONElement expr,
+                                                                 const VariablesParseState& vps) {
+
+    IDLParserContext ctx(kEncStrEndsWith);
+
+    auto fleEncEndsWith = EncStrEndsWithStruct::parse(ctx, expr.Obj());
+
+    auto inputExpr = ExpressionFieldPath::parse(expCtx, fleEncEndsWith.getInput().toString(), vps);
+
+    auto suffixExpr =
+        Expression::parseOperand(expCtx, fleEncEndsWith.getSuffix().getElement(), vps);
+
+    return new ExpressionEncStrEndsWith(expCtx, std::move(inputExpr), std::move(suffixExpr));
+}
+
+Value ExpressionEncStrEndsWith::serialize(const SerializationOptions& options) const {
+    return Value(Document{{kEncStrEndsWith,
+                           Document{{"input", _children[_kInput]->serialize(options)},
+                                    {"suffix", _children[_kTextOperand]->serialize(options)}}}});
+}
+
+const char* ExpressionEncStrEndsWith::getOpName() const {
+    return kEncStrEndsWith.rawData();
+}
+
+Value ExpressionEncStrEndsWith::evaluate(const Document& root, Variables* variables) const {
+    uassert(10120900,
+            "ExpressionEncStrEndsWith can't be evaluated without binary payload",
+            canBeEvaluated());
+    return exec::expression::evaluate(*this, root, variables);
+}
+
+/* --------------------------------- encStrContains------------------------------------------- */
+REGISTER_EXPRESSION_WITH_FEATURE_FLAG(encStrContains,
+                                      ExpressionEncStrContains::parse,
+                                      AllowedWithApiStrict::kNeverInVersion1,
+                                      AllowedWithClientType::kAny,
+                                      gFeatureFlagQETextSearchPreview);
+
+ExpressionEncStrContains::ExpressionEncStrContains(ExpressionContext* const expCtx,
+                                                   boost::intrusive_ptr<Expression> input,
+                                                   boost::intrusive_ptr<Expression> substring)
+    : ExpressionEncTextSearch(expCtx, std::move(input), std::move(substring)) {}
+
+constexpr auto kEncStrContains = "$encStrContains"_sd;
+boost::intrusive_ptr<Expression> ExpressionEncStrContains::parse(ExpressionContext* const expCtx,
+                                                                 BSONElement expr,
+                                                                 const VariablesParseState& vps) {
+
+    IDLParserContext ctx(kEncStrContains);
+
+    auto fleEncStrContains = EncStrContainsStruct::parse(ctx, expr.Obj());
+
+    auto inputExpr =
+        ExpressionFieldPath::parse(expCtx, fleEncStrContains.getInput().toString(), vps);
+
+    auto substringExpr =
+        Expression::parseOperand(expCtx, fleEncStrContains.getSubstring().getElement(), vps);
+
+    return new ExpressionEncStrContains(expCtx, std::move(inputExpr), std::move(substringExpr));
+}
+
+Value ExpressionEncStrContains::serialize(const SerializationOptions& options) const {
+    return Value(Document{{kEncStrContains,
+                           Document{{"input", _children[_kInput]->serialize(options)},
+                                    {"substring", _children[_kTextOperand]->serialize(options)}}}});
+}
+
+const char* ExpressionEncStrContains::getOpName() const {
+    return kEncStrContains.rawData();
+}
+
+Value ExpressionEncStrContains::evaluate(const Document& root, Variables* variables) const {
+    uassert(10208800,
+            "ExpressionEncStrContains can't be evaluated without binary payload",
+            canBeEvaluated());
+    return exec::expression::evaluate(*this, root, variables);
 }
 
 }  // namespace mongo

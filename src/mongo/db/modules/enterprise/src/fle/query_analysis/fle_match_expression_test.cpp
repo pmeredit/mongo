@@ -16,7 +16,6 @@
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
@@ -685,8 +684,7 @@ TEST_F(FLE2MatchExpressionRangeTest, TopLevelClosedRangeWithUnencryptedField) {
         "age"_sd, 23, true, 35, true, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
     auto stub = buildRangeStub("age"_sd, 0, Fle2RangeOperator::kGte, Fle2RangeOperator::kLte);
     auto expected =
-        BSON("$and" << BSON_ARRAY(BSON("ssn" << BSON("$eq"
-                                                     << "ABC123"))
+        BSON("$and" << BSON_ARRAY(BSON("ssn" << BSON("$eq" << "ABC123"))
                                   << BSON("age" << BSON("$gte" << marking.firstElement() << "$lte"
                                                                << stub.firstElement()))));
     auto actual = markMatchExpression(kAgeFields, match);
@@ -804,8 +802,7 @@ TEST_F(FLE2MatchExpressionRangeTest, UnencryptedPredicateInsideClosedRange) {
                  << BSON("$or" << BSON_ARRAY(
                              BSON("$and" << BSON_ARRAY(BSON("level" << BSON("$gte" << 1))
                                                        << BSON("level" << BSON("$lte" << 5))))
-                             << BSON("name" << BSON("$eq"
-                                                    << "dev"))))));
+                             << BSON("name" << BSON("$eq" << "dev"))))));
     auto actual = markMatchExpression(kAgeAndSalaryFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, normalizeMatchExpression(expected));
@@ -842,8 +839,7 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedRangeInsideOtherClosedRange) {
                  << BSON("$or" << BSON_ARRAY(
                              BSON("salary" << BSON("$gte" << salaryMarking.firstElement() << "$lte"
                                                           << salaryStub.firstElement()))
-                             << BSON("name" << BSON("$eq"
-                                                    << "dev"))))));
+                             << BSON("name" << BSON("$eq" << "dev"))))));
     auto actual = markMatchExpression(kAgeAndSalaryFields, match);
 
     ASSERT_BSONOBJ_EQ(actual, normalizeMatchExpression(expected));
@@ -893,6 +889,50 @@ TEST_F(FLE2MatchExpressionRangeTest, ClosedPredicateOverMaxBoundFails) {
             ASSERT_THROWS_CODE(markMatchExpression(kAgeFields, match), AssertionException, 6747902);
         }
     }
+}
+
+using FLE2MatchExpressionTextTest = FLE2TestFixture;
+
+DEATH_TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithFailsWithoutFle2, "10112205") {
+    auto match = fromjson("{$expr: {$encStrStartsWith: {input: \"$prefixField\", prefix:\"21\"}}}");
+    ASSERT_THROWS_CODE(markMatchExpression(kTextFields, match, FLE2FieldRefExpr::disallowed),
+                       AssertionException,
+                       10112205);
+}
+
+TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithMarksElementAsEncrypted) {
+    auto match = fromjson("{$expr: {$encStrStartsWith: {input: \"$prefixField\", prefix:\"21\"}}}");
+    auto encryptedObj = buildTextSearchEncryptElem(
+        "prefixField"_sd, "21", EncryptionPlaceholderContext::kTextPrefixComparison);
+
+    auto actual = markMatchExpression(kTextFields, match, FLE2FieldRefExpr::allowed);
+    auto expected = BSON(
+        "$expr" << BSON("$encStrStartsWith" << BSON(
+                            "input" << "$prefixField"
+                                    << "prefix" << BSON("$const" << encryptedObj.firstElement()))));
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithMarksNestedElementAsEncrypted) {
+    auto match =
+        fromjson("{$expr: {$encStrStartsWith: {input: \"$nested.prefixField\", prefix:\"31\"}}}");
+    auto encryptedObj = buildTextSearchEncryptElem(
+        "nested.prefixField"_sd, "31", EncryptionPlaceholderContext::kTextPrefixComparison);
+
+    auto actual = markMatchExpression(kTextFields, match, FLE2FieldRefExpr::allowed);
+    auto expected = BSON(
+        "$expr" << BSON("$encStrStartsWith" << BSON(
+                            "input" << "$nested.prefixField"
+                                    << "prefix" << BSON("$const" << encryptedObj.firstElement()))));
+    ASSERT_BSONOBJ_EQ(actual, expected);
+}
+
+TEST_F(FLE2MatchExpressionTextTest, EncStrStartsWithUnencryptedFieldFails) {
+    auto match =
+        fromjson("{$expr: {$encStrStartsWith: {input: \"$notAPrefixField\", prefix:\"21\"}}}");
+    ASSERT_THROWS_CODE(markMatchExpression(kTextFields, match, FLE2FieldRefExpr::allowed),
+                       AssertionException,
+                       10112204);
 }
 
 }  // namespace

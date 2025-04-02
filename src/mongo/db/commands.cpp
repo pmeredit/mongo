@@ -50,20 +50,18 @@
 #include "mongo/db/cluster_role.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/curop.h"
+#include "mongo/db/curop_diagnostic_printer.h"
 #include "mongo/db/error_labels.h"
 #include "mongo/db/exec/mutable_bson/algorithm.h"
 #include "mongo/db/exec/mutable_bson/document.h"
 #include "mongo/db/generic_argument_util.h"
 #include "mongo/db/namespace_string.h"
-#include "mongo/db/query/command_diagnostic_printer.h"
 #include "mongo/db/tenant_id.h"
+#include "mongo/db/version_context.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/idl/command_generic_argument.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/metadata/client_metadata.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
@@ -89,7 +87,6 @@ const std::set<std::string> kNoApiVersions = {};
 const std::set<std::string> kApiVersions1 = {"1"};
 
 namespace {
-using namespace fmt::literals;
 
 const int kFailedFindCommandDebugLevel = 3;
 
@@ -131,6 +128,21 @@ bool checkAuthorizationImplPreParse(
                 (validatedTenancyScope && validatedTenancyScope->hasAuthenticatedUser()));
 
     return false;
+}
+
+void checkAuthForRawData(OperationContext* opCtx,
+                         const GenericArguments& genArg,
+                         const OpMsgRequest& request) {
+    if (!genArg.getRawData())
+        return;
+    auto ns = NamespaceStringUtil::deserialize(request.parseDbName(),
+                                               request.body.firstElement().valueStringDataSafe());
+    auto authSession = AuthorizationSession::get(opCtx->getClient());
+    uassert(
+        ErrorCodes::Unauthorized,
+        "Not authorized to run command with rawData",
+        authSession->isAuthorizedForActionsOnNamespace(ns, ActionType::performRawDataOperations) ||
+            authSession->isAuthorizedForActionsOnNamespace(ns, ActionType::internal));
 }
 
 auto getCommandInvocationHooks =
@@ -247,7 +259,7 @@ void CommandHelpers::runCommandInvocation(OperationContext* opCtx,
     // these diagnostics is done lazily during failure handling. This line just creates an RAII
     // object which holds references to objects on this stack frame, which will be used to print
     // diagnostics in the event of a failure.
-    ScopedDebugInfo cmdDiagnostics("commandDiagnostics", command_diagnostics::Printer{opCtx});
+    ScopedDebugInfo cmdDiagnostics("curOpDiagnostics", diagnostic_printers::CurOpPrinter{opCtx});
 
     invocation->run(opCtx, response);
 
@@ -390,16 +402,32 @@ ResourcePattern CommandHelpers::resourcePatternForNamespace(const NamespaceStrin
     return ResourcePattern::forExactNamespace(ns);
 }
 
-bool CommandHelpers::appendCommandStatusNoThrow(BSONObjBuilder& result, const Status& status) {
+bool CommandHelpers::appendCommandStatusNoThrow(BSONObjBuilder& result,
+                                                const Status& originalStatus) {
+    auto status = originalStatus;
+    boost::optional<WriteConcernErrorDetail> writeConcernErrorDetail;
+    if (originalStatus.code() == ErrorCodes::ErrorWithWriteConcernError) {
+        auto errorWithWriteConcernError =
+            originalStatus.extraInfo<ErrorWithWriteConcernErrorInfo>();
+
+        status = errorWithWriteConcernError->getMainStatus();
+        writeConcernErrorDetail.emplace(errorWithWriteConcernError->getWriteConcernErrorDetail());
+    }
+
     appendSimpleCommandStatus(result, status.isOK(), status.reason());
-    BSONObj tmp = result.asTempObj();
-    if (!status.isOK() && !tmp.hasField("code")) {
+    if (!status.isOK() && !result.asTempObj().hasField("code")) {
         result.append("code", status.code());
         result.append("codeName", ErrorCodes::errorString(status.code()));
     }
+
     if (auto extraInfo = status.extraInfo()) {
         extraInfo->serialize(&result);
     }
+
+    if (writeConcernErrorDetail && !result.asTempObj().hasField(kWriteConcernErrorFieldName)) {
+        result.append(kWriteConcernErrorFieldName, writeConcernErrorDetail->toBSON());
+    }
+
     // If the command has errored, assert that it satisfies the IDL-defined requirements on a
     // command error reply.
     // Only validate error reply in test mode so that we don't expose users to errors if we
@@ -462,7 +490,7 @@ Status CommandHelpers::extractOrAppendOkAndGetStatus(BSONObjBuilder& reply) {
 void CommandHelpers::appendCommandWCStatus(BSONObjBuilder& result,
                                            const Status& awaitReplicationStatus,
                                            const WriteConcernResult& wcResult) {
-    if (!awaitReplicationStatus.isOK() && !result.hasField("writeConcernError")) {
+    if (!awaitReplicationStatus.isOK() && !result.hasField(kWriteConcernErrorFieldName)) {
         WriteConcernErrorDetail wcError;
         wcError.setStatus(awaitReplicationStatus);
         BSONObjBuilder errInfoBuilder;
@@ -471,7 +499,7 @@ void CommandHelpers::appendCommandWCStatus(BSONObjBuilder& result,
         }
         errInfoBuilder.append(kWriteConcernField, wcResult.wcUsed.toBSON());
         wcError.setErrInfo(errInfoBuilder.obj());
-        result.append("writeConcernError", wcError.toBSON());
+        result.append(kWriteConcernErrorFieldName, wcError.toBSON());
     }
 }
 
@@ -575,8 +603,9 @@ bool CommandHelpers::uassertShouldAttemptParse(OperationContext* opCtx,
 void CommandHelpers::uassertCommandRunWithMajority(StringData commandName,
                                                    const WriteConcernOptions& writeConcern) {
     uassert(ErrorCodes::InvalidOptions,
-            "\"{}\" must be called with majority writeConcern, got: {} "_format(
-                commandName, writeConcern.toBSON().toString()),
+            fmt::format("\"{}\" must be called with majority writeConcern, got: {} ",
+                        commandName,
+                        writeConcern.toBSON().toString()),
             writeConcern.isMajority());
 }
 
@@ -744,20 +773,26 @@ void CommandHelpers::evaluateFailCommandFailPoint(OperationContext* opCtx,
             }
 
             if (blockConnection) {
-                long long blockTimeMS = 0;
-                uassert(ErrorCodes::InvalidOptions,
-                        "must specify 'blockTimeMS' when 'blockConnection' is true",
-                        data.hasField("blockTimeMS") &&
+                if (data.hasField("blockTimeMS")) {
+                    long long blockTimeMS = 0;
+                    uassert(ErrorCodes::InvalidOptions,
+                            "Failed to parse 'blockTimeMS'",
                             bsonExtractIntegerField(data, "blockTimeMS", &blockTimeMS).isOK());
-                uassert(ErrorCodes::InvalidOptions,
-                        "'blockTimeMS' must be non-negative",
-                        blockTimeMS >= 0);
+                    uassert(ErrorCodes::InvalidOptions,
+                            "'blockTimeMS' must be non-negative",
+                            blockTimeMS >= 0);
 
-                LOGV2(20432,
-                      "Blocking command via 'failCommand' failpoint",
-                      "command"_attr = cmd->getName(),
-                      "blockTime"_attr = Milliseconds{blockTimeMS});
-                opCtx->sleepFor(Milliseconds{blockTimeMS});
+                    LOGV2(20432,
+                          "Blocking command via 'failCommand' failpoint",
+                          "command"_attr = cmd->getName(),
+                          "blockTime"_attr = Milliseconds{blockTimeMS});
+                    opCtx->sleepFor(Milliseconds{blockTimeMS});
+                } else {
+                    LOGV2(10303900,
+                          "Blocking command via 'failCommand' failpoint until failpoint is unset",
+                          "command"_attr = cmd->getName());
+                    failCommand.pauseWhileSet(opCtx);
+                }
                 LOGV2(20433,
                       "Unblocking command via 'failCommand' failpoint",
                       "command"_attr = cmd->getName());
@@ -910,6 +945,7 @@ void CommandInvocation::checkAuthorization(OperationContext* opCtx,
             // Blanket authorization: don't need to check anything else.
         } else {
             try {
+                checkAuthForRawData(opCtx, getGenericArguments(), request);
                 doCheckAuthorization(opCtx);
             } catch (const ExceptionFor<ErrorCodes::Unauthorized>&) {
                 namespace mmb = mutablebson;
@@ -989,6 +1025,10 @@ private:
     ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
                                                  bool isImplicitDefault) const override {
         return _command->supportsReadConcern(cmdObj(), level, isImplicitDefault);
+    }
+
+    bool supportsRawData() const override {
+        return _command->supportsRawData();
     }
 
     bool isSubjectToIngressAdmissionControl() const override {
@@ -1072,7 +1112,7 @@ void Command::initializeClusterRole(ClusterRole role) {
              std::pair{&_commandsFailed, "failed"},
              std::pair{&_commandsRejected, "rejected"},
          })
-        *ptr = &*MetricBuilder<Counter64>{"commands.{}.{}"_format(_name, stat)}.setRole(role);
+        *ptr = &*MetricBuilder<Counter64>{fmt::format("commands.{}.{}", _name, stat)}.setRole(role);
     doInitializeClusterRole(role);
 }
 
@@ -1148,7 +1188,7 @@ void CommandRegistry::registerCommand(Command* command) {
     auto ep = std::make_unique<Entry>();
     ep->command = command;
     auto [cIt, cOk] = _commands.emplace(command, std::move(ep));
-    invariant(cOk, "Command identity collision: {}"_format(name));
+    invariant(cOk, fmt::format("Command identity collision: {}", name));
 
     // When a `Command*` is introduced to `_commands`, its names are introduced
     // to `_commandNames`.
@@ -1157,7 +1197,7 @@ void CommandRegistry::registerCommand(Command* command) {
         if (key.empty())
             continue;
         auto [nIt, nOk] = _commandNames.try_emplace(key, command);
-        invariant(nOk, "Command name collision: {}"_format(key));
+        invariant(nOk, fmt::format("Command name collision: {}", key));
     }
 }
 
@@ -1193,7 +1233,7 @@ BSONObj toBSON(const CommandConstructionPlan::Entry& e) {
     bob.append("expr", e.expr);
     bob.append("roles", toString(e.roles.value_or(ClusterRole::None)));
     if (e.location)
-        bob.append("loc", "{}:{}"_format(e.location->file_name(), e.location->line()));
+        bob.append("loc", fmt::format("{}:{}", e.location->file_name(), e.location->line()));
     return bob.obj();
 }
 
@@ -1201,14 +1241,16 @@ void CommandConstructionPlan::execute(CommandRegistry* registry,
                                       Service* service,
                                       const std::function<bool(const Entry&)>& pred) const {
     LOGV2_DEBUG(8043400, 3, "Constructing Command objects from specs");
+    StringMap<boost::optional<SourceLocation>> dupCheck;
     for (auto&& entry : entries()) {
         if (entry->testOnly && !getTestCommandsEnabled()) {
             LOGV2_DEBUG(8043401, 3, "Skipping test-only command", "entry"_attr = *entry);
             continue;
         }
-        if (entry->featureFlag &&
-            !entry->featureFlag->isEnabledUseLatestFCVWhenUninitialized(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        // (Ignore FCV check): Skip only if the flag is disabled. (see requiresFeatureFlag
+        // documentation).
+        if (!entry->featureFlag.isEnabled(
+                [](auto& fcvGatedFlag) { return fcvGatedFlag.isEnabledAndIgnoreFCVUnsafe(); })) {
             LOGV2_DEBUG(8043402, 3, "Skipping FeatureFlag gated command", "entry"_attr = *entry);
             continue;
         }
@@ -1217,6 +1259,19 @@ void CommandConstructionPlan::execute(CommandRegistry* registry,
             continue;
         }
         auto c = entry->construct();
+        {
+            const std::string& name = c->getName();
+            auto&& loc = entry->location;
+            if (auto dup = dupCheck.find(name); dup != dupCheck.end()) {
+                LOGV2_FATAL(10205200,
+                            "Duplicate command",
+                            "name"_attr = name,
+                            "role"_attr = service->role(),
+                            "location"_attr = loc,
+                            "dupLocation"_attr = dup->second);
+            }
+            dupCheck.insert({c->getName(), loc});
+        }
         c->initializeClusterRole(service ? service->role() : ClusterRole{});
         LOGV2_DEBUG(8043404, 3, "Created", "command"_attr = c->getName(), "entry"_attr = *entry);
         registry->registerCommand(&*c);

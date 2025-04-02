@@ -34,6 +34,14 @@ idl_generator(
     ],
 )
 
+idl_generator(
+    name = "ftdc_feature_flag_gen",
+    src = "ftdc_feature_flag.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+    ],
+)
+
 mongo_cc_library(
     name = "ftdc",
     srcs = [
@@ -48,6 +56,7 @@ mongo_cc_library(
         "metadata_compressor.cpp",
         "util.cpp",
         "varint.cpp",
+        ":ftdc_feature_flag_gen",
     ],
     hdrs = [
         "block_compressor.h",
@@ -190,7 +199,7 @@ mongo_cc_unit_test(
         "metadata_compressor_test.cpp",
         "varint_test.cpp",
     ],
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         ":ftdc",
         "//src/mongo/db:service_context_non_d",

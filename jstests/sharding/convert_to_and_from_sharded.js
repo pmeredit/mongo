@@ -1,8 +1,16 @@
 /**
  * Test that a replica set member can process basic CRUD and DDL operations while switching from
  * being a shardsvr and back to non shardsvr.
- * @tags: [requires_persistence]
+ * @tags: [
+ *   requires_persistence,
+ *   # TODO (SERVER-100403): Enable this once addShard registers dbs in the shard catalog
+ *   incompatible_with_authoritative_shards,
+ *   # This test is incompatible with 'config shard' as it creates a cluster with 0 shards in order
+ *   # to be able to add shard with data on it (which is only allowed on the first shard).
+ *   config_shard_incompatible,
+ * ]
  */
+
 /* global retryOnRetryableError */
 import {Thread} from "jstests/libs/parallelTester.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
@@ -290,7 +298,7 @@ const nodeOptions = {
         featureFlagTrackUnshardedCollectionsUponCreation: false
     }
 };
-const numShards = TestData.configShard ? 1 : 0;
+const numShards = 0;
 
 const st = new ShardingTest({
     shards: numShards,

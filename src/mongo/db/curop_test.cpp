@@ -43,7 +43,9 @@
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/transport/transport_layer_mock.h"
 #include "mongo/unittest/assert.h"
+#include "mongo/unittest/death_test.h"
 #include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/tick_source_mock.h"
 
 namespace mongo {
@@ -94,6 +96,10 @@ TEST(CurOpTest, AddingAdditiveMetricsObjectsTogetherShouldAddFieldsTogether) {
     additiveMetricsToAdd.executionTime = Microseconds{80};
     currentAdditiveMetrics.writeConflicts.store(7);
     additiveMetricsToAdd.writeConflicts.store(0);
+    currentAdditiveMetrics.clusterWorkingTime = Milliseconds{30};
+    additiveMetricsToAdd.clusterWorkingTime = Milliseconds{10};
+    currentAdditiveMetrics.cpuNanos = Nanoseconds{1000};
+    additiveMetricsToAdd.cpuNanos = Nanoseconds{21};
 
     // Save the current AdditiveMetrics object before adding.
     OpDebug::AdditiveMetrics additiveMetricsBeforeAdd;
@@ -128,6 +134,11 @@ TEST(CurOpTest, AddingAdditiveMetricsObjectsTogetherShouldAddFieldsTogether) {
     ASSERT_EQ(currentAdditiveMetrics.writeConflicts.load(),
               additiveMetricsBeforeAdd.writeConflicts.load() +
                   additiveMetricsToAdd.writeConflicts.load());
+    ASSERT_EQ(*currentAdditiveMetrics.clusterWorkingTime,
+              *additiveMetricsBeforeAdd.clusterWorkingTime +
+                  *additiveMetricsToAdd.clusterWorkingTime);
+    ASSERT_EQ(*currentAdditiveMetrics.cpuNanos,
+              *additiveMetricsBeforeAdd.cpuNanos + *additiveMetricsToAdd.cpuNanos);
 }
 
 TEST(CurOpTest, AddingUninitializedAdditiveMetricsFieldsShouldBeTreatedAsZero) {
@@ -147,6 +158,7 @@ TEST(CurOpTest, AddingUninitializedAdditiveMetricsFieldsShouldBeTreatedAsZero) {
     additiveMetricsToAdd.keysDeleted = 2;
     currentAdditiveMetrics.writeConflicts.store(7);
     additiveMetricsToAdd.writeConflicts.store(0);
+    additiveMetricsToAdd.cpuNanos = Nanoseconds(1);
 
     // Save the current AdditiveMetrics object before adding.
     OpDebug::AdditiveMetrics additiveMetricsBeforeAdd;
@@ -190,6 +202,10 @@ TEST(CurOpTest, AddingUninitializedAdditiveMetricsFieldsShouldBeTreatedAsZero) {
     ASSERT_EQ(currentAdditiveMetrics.writeConflicts.load(),
               additiveMetricsBeforeAdd.writeConflicts.load() +
                   additiveMetricsToAdd.writeConflicts.load());
+
+    // The 'cpuNanos' field for the current AdditiveMetrics object was not initialized, so it
+    // should be treated as zero.
+    ASSERT_EQ(*currentAdditiveMetrics.cpuNanos, *additiveMetricsToAdd.cpuNanos);
 }
 
 TEST(CurOpTest, AdditiveMetricsFieldsShouldIncrementByN) {
@@ -199,7 +215,6 @@ TEST(CurOpTest, AdditiveMetricsFieldsShouldIncrementByN) {
     additiveMetrics.writeConflicts.store(1);
     additiveMetrics.keysInserted = 2;
     additiveMetrics.nreturned = 3;
-    additiveMetrics.executionTime = Microseconds{160};
 
     // Increment the fields.
     additiveMetrics.incrementWriteConflicts(1);
@@ -209,7 +224,6 @@ TEST(CurOpTest, AdditiveMetricsFieldsShouldIncrementByN) {
     additiveMetrics.incrementNUpserted(6);
     additiveMetrics.incrementNreturned(2);
     additiveMetrics.incrementNBatches();
-    additiveMetrics.incrementExecutionTime(Microseconds{120});
 
     ASSERT_EQ(additiveMetrics.writeConflicts.load(), 2);
     ASSERT_EQ(*additiveMetrics.keysInserted, 7);
@@ -218,7 +232,6 @@ TEST(CurOpTest, AdditiveMetricsFieldsShouldIncrementByN) {
     ASSERT_EQ(*additiveMetrics.nUpserted, 6);
     ASSERT_EQ(*additiveMetrics.nreturned, 5);
     ASSERT_EQ(*additiveMetrics.nBatches, 1);
-    ASSERT_EQ(*additiveMetrics.executionTime, Microseconds{280});
 }
 
 TEST(CurOpTest, AdditiveMetricsShouldAggregateCursorMetrics) {
@@ -231,6 +244,7 @@ TEST(CurOpTest, AdditiveMetricsShouldAggregateCursorMetrics) {
     additiveMetrics.bytesRead = 5;
     additiveMetrics.hasSortStage = false;
     additiveMetrics.usedDisk = false;
+    additiveMetrics.cpuNanos = Nanoseconds(8);
 
     CursorMetrics cursorMetrics(3 /* keysExamined */,
                                 4 /* docsExamined */,
@@ -240,7 +254,8 @@ TEST(CurOpTest, AdditiveMetricsShouldAggregateCursorMetrics) {
                                 true /* hasSortStage */,
                                 false /* usedDisk */,
                                 true /* fromMultiPlanner */,
-                                false /* fromPlanCache */);
+                                false /* fromPlanCache */,
+                                9 /* cpuNanos */);
 
     additiveMetrics.aggregateCursorMetrics(cursorMetrics);
 
@@ -251,6 +266,28 @@ TEST(CurOpTest, AdditiveMetricsShouldAggregateCursorMetrics) {
     ASSERT_EQ(*additiveMetrics.bytesRead, 15);
     ASSERT_EQ(additiveMetrics.hasSortStage, true);
     ASSERT_EQ(additiveMetrics.usedDisk, false);
+    ASSERT_EQ(additiveMetrics.cpuNanos, Nanoseconds(17));
+}
+
+TEST(CurOpTest, AdditiveMetricsShouldAggregateNegativeCpuNanos) {
+    // CPU time can be negative -1 if the platform doesn't support collecting cpu time.
+    OpDebug::AdditiveMetrics additiveMetrics;
+
+    additiveMetrics.cpuNanos = Nanoseconds(-1);
+
+    CursorMetrics cursorMetrics(1 /* keysExamined */,
+                                2 /* docsExamined */,
+                                3 /* bytesRead */,
+                                10 /* workingTimeMillis */,
+                                11 /* readingTimeMicros */,
+                                true /* hasSortStage */,
+                                false /* usedDisk */,
+                                true /* fromMultiPlanner */,
+                                false /* fromPlanCache */,
+                                -1 /* cpuNanos */);
+
+    additiveMetrics.aggregateCursorMetrics(cursorMetrics);
+    ASSERT_EQ(additiveMetrics.cpuNanos, Nanoseconds(-2));
 }
 
 TEST(CurOpTest, AdditiveMetricsAggregateCursorMetricsTreatsNoneAsZero) {
@@ -268,7 +305,8 @@ TEST(CurOpTest, AdditiveMetricsAggregateCursorMetricsTreatsNoneAsZero) {
                                 true /* hasSortStage */,
                                 false /* usedDisk */,
                                 true /* fromMultiPlanner */,
-                                false /* fromPlanCache */);
+                                false /* fromPlanCache */,
+                                10 /* cpuNanos */);
 
     additiveMetrics.aggregateCursorMetrics(cursorMetrics);
 
@@ -285,6 +323,7 @@ TEST(CurOpTest, AdditiveMetricsShouldAggregateDataBearingNodeMetrics) {
     additiveMetrics.clusterWorkingTime = Milliseconds(3);
     additiveMetrics.hasSortStage = false;
     additiveMetrics.usedDisk = false;
+    additiveMetrics.cpuNanos = Nanoseconds(5);
 
     query_stats::DataBearingNodeMetrics remoteMetrics;
     remoteMetrics.keysExamined = 3;
@@ -292,6 +331,7 @@ TEST(CurOpTest, AdditiveMetricsShouldAggregateDataBearingNodeMetrics) {
     remoteMetrics.clusterWorkingTime = Milliseconds(5);
     remoteMetrics.hasSortStage = true;
     remoteMetrics.usedDisk = false;
+    remoteMetrics.cpuNanos = Nanoseconds(6);
 
     additiveMetrics.aggregateDataBearingNodeMetrics(remoteMetrics);
 
@@ -300,6 +340,7 @@ TEST(CurOpTest, AdditiveMetricsShouldAggregateDataBearingNodeMetrics) {
     ASSERT_EQ(additiveMetrics.clusterWorkingTime, Milliseconds(8));
     ASSERT_EQ(additiveMetrics.hasSortStage, true);
     ASSERT_EQ(additiveMetrics.usedDisk, false);
+    ASSERT_EQ(additiveMetrics.cpuNanos, Nanoseconds(11));
 }
 
 TEST(CurOpTest, AdditiveMetricsAggregateDataBearingNodeMetricsTreatsNoneAsZero) {
@@ -396,6 +437,76 @@ TEST(CurOpTest, OptionalAdditiveMetricsNotDisplayedIfUninitialized) {
 
     // Append should include only the basic fields when just initialized.
     ASSERT_EQ(static_cast<size_t>(bs.nFields()), basicFields.size());
+}
+
+TEST(CurOpTest, ShouldUpdateMemoryStats) {
+    QueryTestServiceContext serviceContext;
+    auto opCtx = serviceContext.makeOperationContext();
+    auto curop = CurOp::get(*opCtx);
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagQueryMemoryTracking",
+                                                               true);
+
+    ASSERT_EQ(0, curop->getInUseMemoryBytes());
+    ASSERT_EQ(0, curop->getMaxUsedMemoryBytes());
+
+    curop->setMemoryTrackingStats(10 /* inUseMemoryBytes */, 15 /* maxUsedMemoryBytes */);
+    ASSERT_EQ(10, curop->getInUseMemoryBytes());
+    ASSERT_EQ(15, curop->getMaxUsedMemoryBytes());
+
+    // The max memory usage is updated if the new max is greater than the current max.
+    curop->setMemoryTrackingStats(21 /*currentMemoryBytes*/, 20 /*maxUsedMemoryBytes*/);
+    ASSERT_EQ(21, curop->getInUseMemoryBytes());
+    ASSERT_EQ(20, curop->getMaxUsedMemoryBytes());
+
+    // The max memory usage is not updated if the new max is not greater than the current max.
+    curop->setMemoryTrackingStats(31 /*currentMemoryBytes*/, 15 /*maxUsedMemoryBytes*/);
+    ASSERT_EQ(31, curop->getInUseMemoryBytes());
+    ASSERT_EQ(20, curop->getMaxUsedMemoryBytes());
+}
+
+DEATH_TEST(CurOpTest, RequireFeatureFlagEnabledToUpdateMemoryStats, "tassert") {
+    QueryTestServiceContext serviceContext;
+    auto opCtx = serviceContext.makeOperationContext();
+    auto curop = CurOp::get(*opCtx);
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagQueryMemoryTracking",
+                                                               false);
+
+    ASSERT_EQ(0, curop->getInUseMemoryBytes());
+    ASSERT_EQ(0, curop->getMaxUsedMemoryBytes());
+    curop->setMemoryTrackingStats(10 /* inUseMemoryBytes */, 15 /* maxUsedMemoryBytes */);
+}
+
+/**
+ * When featureFlagQueryMemoryTracking is enabled, non-zero memory tracking stats should appear in
+ * the profiler.
+ */
+TEST(CurOpTest, MemoryStatsDisplayedIfNonZero) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagQueryMemoryTracking",
+                                                               true);
+
+    QueryTestServiceContext serviceContext;
+    auto opCtx = serviceContext.makeOperationContext();
+
+    auto curop = CurOp::get(*opCtx);
+    const OpDebug& opDebug = curop->debug();
+    SingleThreadedLockStats ls;
+
+    BSONObjBuilder bob;
+    opDebug.append(opCtx.get(), ls, {}, {}, true /*omitCommand*/, bob);
+
+    // If the memory tracker has not updated CurOp, the memory tracking stat should not appear in
+    // the profiler output.
+    auto res = bob.done();
+    ASSERT_EQ(0, curop->getMaxUsedMemoryBytes());
+    ASSERT_FALSE(res.hasField("maxUsedMemBytes"));
+
+    curop->setMemoryTrackingStats(10 /*inUseMemoryBytes*/, 15 /*maxUsedMemoryBytes*/);
+    BSONObjBuilder bobWithMemStats;
+    opDebug.append(opCtx.get(), ls, {}, {}, true /*omitCommand*/, bobWithMemStats);
+    res = bobWithMemStats.done();
+
+    ASSERT_EQ(15, curop->getMaxUsedMemoryBytes());
+    ASSERT_EQ(15, res.getIntField("maxUsedMemBytes"));
 }
 
 TEST(CurOpTest, ShouldNotReportFailpointMsgIfNotSet) {
@@ -528,6 +639,75 @@ TEST(CurOpTest, GetCursorMetricsProducesValidObject) {
     auto curop = CurOp::get(*opCtx);
     auto metrics = curop->debug().getCursorMetrics();
     ASSERT_DOES_NOT_THROW(metrics.toBSON());
+}
+
+TEST(CurOpTest, KilledOperationReportsLatency) {
+    QueryTestServiceContext serviceContext(std::make_unique<TickSourceMock<Nanoseconds>>());
+    auto opCtx = serviceContext.makeOperationContext();
+    auto tickSourcePtr = dynamic_cast<TickSourceMock<Nanoseconds>*>(
+        serviceContext.getServiceContext()->getTickSource());
+
+    tickSourcePtr->advance(Nanoseconds(3));
+    const int killLatency = 32;
+
+    opCtx->markKilled();
+    ASSERT_FALSE(opCtx->checkForInterruptNoAssert().isOK());
+    tickSourcePtr->advance(Nanoseconds(killLatency));
+
+    auto curop = CurOp::get(*opCtx);
+    const OpDebug& opDebug = curop->debug();
+    SingleThreadedLockStats ls;
+
+    BSONObjBuilder bob;
+    opDebug.append(opCtx.get(), ls, {}, {}, true /*omitCommand*/, bob);
+
+    auto res = bob.done();
+    ASSERT_TRUE(res.hasField("interruptLatencyNanos")) << res.toString();
+    ASSERT_EQ(killLatency, res.getIntField("interruptLatencyNanos"));
+}
+
+TEST(CurOpTest, SlowLogFinishesWithDuration) {
+    // Best effort test to try and verify that durationMillis is the last field reported by
+    // report(). This doesn't populate every possible fields but makes some attempt to ensure
+    // that there are a few.
+
+    QueryTestServiceContext serviceContext;
+    auto opCtx = serviceContext.makeOperationContext();
+    auto curop = CurOp::get(*opCtx);
+
+    // Create dummy command.
+    BSONObj command = BSON("a" << 3);
+    TenantId tid = TenantId(OID::gen());
+
+    {
+        stdx::lock_guard<Client> clientLock(*opCtx->getClient());
+        curop->setGenericOpRequestDetails(
+            clientLock,
+            NamespaceString::createNamespaceString_forTest(tid, "testDb.coll"),
+            nullptr,
+            command,
+            NetworkOp::dbQuery);
+    }
+
+    const OpDebug& opDebug = curop->debug();
+    SingleThreadedLockStats lockStats;
+    ResourceConsumption::OperationMetrics opMetrics;
+    opMetrics.readMetrics.docsRead.observeOne(255);
+
+    SingleThreadedStorageMetrics storageStats;
+    storageStats.incrementPrepareReadConflicts(3);
+
+    curop->ensureStarted();
+    curop->done();
+    curop->calculateCpuTime();
+
+    auto pattrs = std::make_unique<logv2::DynamicAttributes>();
+    opDebug.report(opCtx.get(), &lockStats, &opMetrics, storageStats, pattrs.get());
+
+    logv2::TypeErasedAttributeStorage attrs{*pattrs};
+    ASSERT_GTE(attrs.size(), 1);
+    std::string lastName = (attrs.end() - 1)->name;
+    ASSERT_EQ("durationMillis", lastName);
 }
 
 }  // namespace

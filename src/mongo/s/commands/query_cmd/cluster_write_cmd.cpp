@@ -48,21 +48,16 @@
 #include "mongo/db/fle_crud.h"
 #include "mongo/db/generic_argument_util.h"
 #include "mongo/db/internal_transactions_feature_flag_gen.h"
-#include "mongo/db/pipeline/lite_parsed_pipeline.h"
 #include "mongo/db/query/write_ops/write_ops_parsers.h"
-#include "mongo/db/repl/read_concern_args.h"
-#include "mongo/db/repl/read_concern_level.h"
-#include "mongo/db/resource_yielder.h"
+#include "mongo/db/raw_data_operation.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage/duplicate_key_error_info.h"
 #include "mongo/db/transaction/transaction_api.h"
-#include "mongo/db/write_concern_options.h"
 #include "mongo/executor/inline_executor.h"
-#include "mongo/executor/remote_command_response.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/write_concern_error_detail.h"
@@ -77,7 +72,6 @@
 #include "mongo/s/grid.h"
 #include "mongo/s/multi_statement_transaction_requests_sender.h"
 #include "mongo/s/request_types/cluster_commands_without_shard_key_gen.h"
-#include "mongo/s/session_catalog_router.h"
 #include "mongo/s/transaction_router.h"
 #include "mongo/s/transaction_router_resource_yielder.h"
 #include "mongo/s/would_change_owning_shard_exception.h"
@@ -307,6 +301,31 @@ UpdateShardKeyResult handleWouldChangeOwningShardErrorTransaction(
     return UpdateShardKeyResult{sharedBlock->updatedShardKey, std::move(upsertedId)};
 }
 
+static BSONObj translateCmdObjForRawData(OperationContext* opCtx,
+                                         const BatchedCommandRequest& batchedRequest,
+                                         const BSONObj& cmdObj,
+                                         NamespaceString& ns) {
+    if (!isRawDataOperation(opCtx) ||
+        !CollectionRoutingInfoTargeter{opCtx, ns}.timeseriesNamespaceNeedsRewrite(ns)) {
+        return cmdObj;
+    }
+
+    ns = ns.makeTimeseriesBucketsNamespace();
+    switch (batchedRequest.getBatchType()) {
+        case BatchedCommandRequest::BatchType_Insert:
+            return rewriteCommandForRawDataOperation<write_ops::InsertCommandRequest>(cmdObj,
+                                                                                      ns.coll());
+        case BatchedCommandRequest::BatchType_Update:
+            return rewriteCommandForRawDataOperation<write_ops::UpdateCommandRequest>(cmdObj,
+                                                                                      ns.coll());
+        case BatchedCommandRequest::BatchType_Delete:
+            return rewriteCommandForRawDataOperation<write_ops::DeleteCommandRequest>(cmdObj,
+                                                                                      ns.coll());
+    }
+
+    MONGO_UNREACHABLE;
+}
+
 }  // namespace
 
 bool ClusterWriteCmd::handleWouldChangeOwningShardError(OperationContext* opCtx,
@@ -326,6 +345,7 @@ bool ClusterWriteCmd::handleWouldChangeOwningShardError(OperationContext* opCtx,
     boost::optional<BSONObj> upsertedId;
 
     if (feature_flags::gFeatureFlagUpdateDocumentShardKeyUsingTransactionApi.isEnabled(
+            VersionContext::getDecoration(opCtx),
             serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         if (txnRouter) {
             auto updateResult = handleWouldChangeOwningShardErrorTransaction(
@@ -431,6 +451,7 @@ void ClusterWriteCmd::commandOpWrite(OperationContext* opCtx,
 
     // Assemble requests
     std::vector<AsyncRequestsSender::Request> requests;
+    requests.reserve(endpoints.size());
     for (const auto& endpoint : endpoints) {
         BSONObj cmdObjWithVersions = BSONObj(command);
         if (endpoint.databaseVersion) {
@@ -440,7 +461,7 @@ void ClusterWriteCmd::commandOpWrite(OperationContext* opCtx,
         if (endpoint.shardVersion) {
             cmdObjWithVersions = appendShardVersion(cmdObjWithVersions, *endpoint.shardVersion);
         }
-        requests.emplace_back(endpoint.shardName, cmdObjWithVersions);
+        requests.emplace_back(endpoint.shardName, std::move(cmdObjWithVersions));
     }
 
     // Send the requests.
@@ -461,7 +482,7 @@ void ClusterWriteCmd::commandOpWrite(OperationContext* opCtx,
 
         // If the response status was OK, the response must contain which host was targeted.
         invariant(response.shardHostAndPort);
-        results->push_back(response);
+        results->push_back(std::move(response));
     }
 }
 
@@ -489,9 +510,12 @@ bool ClusterWriteCmd::runExplainWithoutShardKey(OperationContext* opCtx,
             collation = deleteOp->getCollation().value_or(BSONObj());
         }
 
+        auto translatedNs = nss;
+        auto translatedReqBSON = translateCmdObjForRawData(opCtx, req, req.toBSON(), translatedNs);
+
         if (!isMultiWrite &&
             write_without_shard_key::useTwoPhaseProtocol(opCtx,
-                                                         nss,
+                                                         translatedNs,
                                                          true /* isUpdateOrDelete */,
                                                          isUpsert,
                                                          query,
@@ -504,11 +528,11 @@ bool ClusterWriteCmd::runExplainWithoutShardKey(OperationContext* opCtx,
             auto vts = auth::ValidatedTenancyScope::get(opCtx);
             auto clusterQueryWithoutShardKeyExplainRes = [&] {
                 ClusterQueryWithoutShardKey clusterQueryWithoutShardKeyCommand(
-                    ClusterExplain::wrapAsExplain(req.toBSON(), verbosity));
+                    ClusterExplain::wrapAsExplain(translatedReqBSON, verbosity));
                 const auto explainClusterQueryWithoutShardKeyCmd = ClusterExplain::wrapAsExplain(
                     clusterQueryWithoutShardKeyCommand.toBSON(), verbosity);
                 auto opMsg = OpMsgRequestBuilder::create(
-                    vts, nss.dbName(), explainClusterQueryWithoutShardKeyCmd);
+                    vts, translatedNs.dbName(), explainClusterQueryWithoutShardKeyCmd);
                 return CommandHelpers::runCommandDirectly(opCtx, opMsg).getOwned();
             }();
 
@@ -525,7 +549,7 @@ bool ClusterWriteCmd::runExplainWithoutShardKey(OperationContext* opCtx,
                     clusterWriteWithoutShardKeyCommand.toBSON(), verbosity);
 
                 auto opMsg = OpMsgRequestBuilder::create(
-                    vts, nss.dbName(), explainClusterWriteWithoutShardKeyCmd);
+                    vts, translatedNs.dbName(), explainClusterWriteWithoutShardKeyCmd);
                 return CommandHelpers::runCommandDirectly(opCtx, opMsg).getOwned();
             }();
 
@@ -552,9 +576,9 @@ void ClusterWriteCmd::executeWriteOpExplain(OperationContext* opCtx,
     }
 
     auto nss = req ? req->getNS() : batchedRequest.getNS();
-    auto requestBSON = req ? req->toBSON() : requestObj;
     auto requestPtr = req ? req.get() : &batchedRequest;
     auto bodyBuilder = result->getBodyBuilder();
+    auto originalRequestBSON = req ? req->toBSON() : requestObj;
 
     // If we aren't running an explain for updateOne or deleteOne without shard key, continue and
     // run the original explain path.
@@ -562,6 +586,7 @@ void ClusterWriteCmd::executeWriteOpExplain(OperationContext* opCtx,
         return;
     }
 
+    auto requestBSON = translateCmdObjForRawData(opCtx, batchedRequest, originalRequestBSON, nss);
     const auto explainCmd = ClusterExplain::wrapAsExplain(requestBSON, verbosity);
 
     // We will time how long it takes to run the commands on the shards.
@@ -570,13 +595,13 @@ void ClusterWriteCmd::executeWriteOpExplain(OperationContext* opCtx,
     // Target the command to the shards based on the singleton batch item.
     BatchItemRef targetingBatchItem(requestPtr, 0);
     std::vector<AsyncRequestsSender::Response> shardResponses;
-    commandOpWrite(opCtx, nss, explainCmd, targetingBatchItem, &shardResponses);
+    commandOpWrite(opCtx, nss, explainCmd, std::move(targetingBatchItem), &shardResponses);
     uassertStatusOK(ClusterExplain::buildExplainResult(
         ExpressionContext::makeBlankExpressionContext(opCtx, nss),
         shardResponses,
         ClusterExplain::kWriteOnShards,
         timer.millis(),
-        requestBSON,
+        originalRequestBSON,
         &bodyBuilder));
 }
 

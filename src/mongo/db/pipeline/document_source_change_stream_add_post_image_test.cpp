@@ -55,8 +55,7 @@
 #include "mongo/db/pipeline/resume_token.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/db/tenant_id.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/uuid.h"
 
 namespace mongo {
@@ -106,8 +105,7 @@ public:
 TEST_F(DocumentSourceChangeStreamAddPostImageTest,
        CannotCreateStageFromBsonWithUnrecognizedFullDocumentMode) {
     auto expCtx = getExpCtx();
-    auto spec = BSON("$changeStream: " << BSON("fullDocument"
-                                               << "banana"));
+    auto spec = BSON("$changeStream: " << BSON("fullDocument" << "banana"));
     ASSERT_THROWS_CODE(
         DocumentSourceChangeStreamAddPostImage::createFromBson(spec.firstElement(), expCtx),
         AssertionException,

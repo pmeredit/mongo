@@ -172,8 +172,7 @@ void DbCheckTest::insertExtraIndexKeys(OperationContext* opCtx,
                                        int numDocs,
                                        const std::vector<std::string>& fieldNames) {
     FailPointEnableBlock skipIndexFp("skipUnindexingDocumentWhenDeleted",
-                                     BSON("indexName"
-                                          << "a_1"));
+                                     BSON("indexName" << "a_1"));
     // Insert then delete docs. The failpoint will cause the docs' keystrings to remain in the index
     // table, creating dangling keystrings.
     insertDocs(opCtx, startIDNum, numDocs, fieldNames);
@@ -188,7 +187,7 @@ void DbCheckTest::createIndex(OperationContext* opCtx, const BSONObj& indexKey) 
     ASSERT(collection);
 
     ASSERT_EQ(1, indexKey.nFields()) << kNss.toStringForErrorMsg() << "/" << indexKey;
-    auto spec = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey << "name"
+    auto spec = BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
                          << (indexKey.firstElementFieldNameStringData() + "_1"));
 
     auto indexBuildsCoord = IndexBuildsCoordinator::get(opCtx);
@@ -229,7 +228,7 @@ Status DbCheckTest::runHashForCollectionCheck(
     Date_t deadlineOnSecondary) {
     const DbCheckAcquisition acquisition(
         opCtx, kNss, {RecoveryUnit::ReadSource::kNoTimestamp}, PrepareConflictBehavior::kEnforce);
-    const auto& collection = acquisition.coll.getCollectionPtr();
+    const auto& collection = acquisition.collection().getCollectionPtr();
     // Disable throttling for testing.
     DataThrottle dataThrottle(opCtx, []() { return 0; });
     auto hasher = DbCheckHasher(opCtx,
@@ -256,7 +255,7 @@ Status DbCheckTest::runHashForExtraIndexKeysCheck(
     Date_t deadlineOnSecondary) {
     const DbCheckAcquisition acquisition(
         opCtx, kNss, {RecoveryUnit::ReadSource::kNoTimestamp}, PrepareConflictBehavior::kEnforce);
-    const auto& collection = acquisition.coll.getCollectionPtr();
+    const auto& collection = acquisition.collection().getCollectionPtr();
     // Disable throttling for testing.
     DataThrottle dataThrottle(opCtx, []() { return 0; });
     auto hasher = DbCheckHasher(opCtx,

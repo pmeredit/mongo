@@ -49,20 +49,3 @@ mongo_cc_binary(
         "//src/mongo/db/query:query_test_service_context",
     ],
 )
-
-mongo_cc_binary(
-    name = "streams_merge_operator_main",
-    srcs = [
-        "merge_operator_main.cpp",
-    ],
-    copts = MONGOCXX_COPTS,
-    linkopts = SASL_SYSDEP,
-    tags = ["mongo_binary_unittest"],
-    deps = [
-        "//src/mongo:base",
-        "//src/mongo/db/auth:authmocks",
-        "//src/mongo/db/modules/enterprise/src/streams/exec:streams_operators",
-        "//src/mongo/db/modules/enterprise/src/streams/exec/tests:streams_test_utils",
-        "//src/mongo/db/query:query_test_service_context",
-    ],
-)

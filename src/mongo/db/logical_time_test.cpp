@@ -42,9 +42,7 @@
 #include "mongo/db/logical_time.h"
 #include "mongo/db/signed_logical_time.h"
 #include "mongo/db/time_proof_service.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -131,23 +129,20 @@ TEST(LogicalTime, appendAsOperationTime) {
 }
 
 TEST(LogicalTime, fromOperationTime) {
-    const auto actualTime =
-        LogicalTime::fromOperationTime(BSON("someOtherCommandParameter"
-                                            << "Value"
-                                            << "operationTime" << Timestamp(1)));
+    const auto actualTime = LogicalTime::fromOperationTime(
+        BSON("someOtherCommandParameter" << "Value"
+                                         << "operationTime" << Timestamp(1)));
     ASSERT_EQ(LogicalTime(Timestamp(1)), actualTime);
 }
 
 TEST(LogicalTime, fromOperationTimeMissingOperationTime) {
-    ASSERT_THROWS_CODE(LogicalTime::fromOperationTime(BSON("someOtherCommandParameter"
-                                                           << "Value")),
+    ASSERT_THROWS_CODE(LogicalTime::fromOperationTime(BSON("someOtherCommandParameter" << "Value")),
                        DBException,
                        ErrorCodes::FailedToParse);
 }
 
 TEST(LogicalTime, fromOperationTimeBadType) {
-    ASSERT_THROWS_CODE(LogicalTime::fromOperationTime(BSON("operationTime"
-                                                           << "BadStringValue")),
+    ASSERT_THROWS_CODE(LogicalTime::fromOperationTime(BSON("operationTime" << "BadStringValue")),
                        DBException,
                        ErrorCodes::BadValue);
 }

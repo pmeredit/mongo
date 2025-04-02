@@ -44,9 +44,8 @@
 #include "mongo/s/async_requests_sender.h"
 #include "mongo/s/catalog/type_shard.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -113,15 +112,9 @@ TEST_F(AsyncRequestsSenderTest, HandlesExceptionWhenYielding) {
     };
 
     std::vector<AsyncRequestsSender::Request> requests;
-    requests.emplace_back(kTestShardIds[0],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[1],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[2],
-                          BSON("find"
-                               << "bar"));
+    requests.emplace_back(kTestShardIds[0], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[1], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[2], BSON("find" << "bar"));
 
     auto ars = AsyncRequestsSender(operationContext(),
                                    executor(),
@@ -175,15 +168,9 @@ TEST_F(AsyncRequestsSenderTest, HandlesExceptionWhenUnyielding) {
     };
 
     std::vector<AsyncRequestsSender::Request> requests;
-    requests.emplace_back(kTestShardIds[0],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[1],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[2],
-                          BSON("find"
-                               << "bar"));
+    requests.emplace_back(kTestShardIds[0], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[1], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[2], BSON("find" << "bar"));
     std::set<ShardId> pendingShardIds{kTestShardIds[0], kTestShardIds[1], kTestShardIds[2]};
 
     auto ars = AsyncRequestsSender(operationContext(),
@@ -256,9 +243,7 @@ TEST_F(AsyncRequestsSenderTest, ExceptionWhileWaitingDoesNotSkipUnyield) {
     };
 
     std::vector<AsyncRequestsSender::Request> requests;
-    requests.emplace_back(kTestShardIds[0],
-                          BSON("find"
-                               << "bar"));
+    requests.emplace_back(kTestShardIds[0], BSON("find" << "bar"));
 
     auto yielder = std::make_unique<CountingResourceYielder>();
     auto yielderPointer = yielder.get();
@@ -290,15 +275,9 @@ TEST_F(AsyncRequestsSenderTest, ExceptionWhileWaitingDoesNotSkipUnyield) {
 
 TEST_F(AsyncRequestsSenderTest, DesignatedHostChosen) {
     std::vector<AsyncRequestsSender::Request> requests;
-    requests.emplace_back(kTestShardIds[0],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[1],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[2],
-                          BSON("find"
-                               << "bar"));
+    requests.emplace_back(kTestShardIds[0], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[1], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[2], BSON("find" << "bar"));
 
     AsyncRequestsSender::ShardHostMap designatedHosts;
 
@@ -357,15 +336,9 @@ TEST_F(AsyncRequestsSenderTest, DesignatedHostChosen) {
 
 TEST_F(AsyncRequestsSenderTest, DesignatedHostMustBeInShard) {
     std::vector<AsyncRequestsSender::Request> requests;
-    requests.emplace_back(kTestShardIds[0],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[1],
-                          BSON("find"
-                               << "bar"));
-    requests.emplace_back(kTestShardIds[2],
-                          BSON("find"
-                               << "bar"));
+    requests.emplace_back(kTestShardIds[0], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[1], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[2], BSON("find" << "bar"));
 
     AsyncRequestsSender::ShardHostMap designatedHosts;
     designatedHosts[kTestShardIds[1]] = HostAndPort("HostNotInShard", 12345);
@@ -393,18 +366,9 @@ TEST_F(AsyncRequestsSenderTest, PreLoadedShardIsUsedForInitialRequest) {
     // Intentionally provide ShardIds mismatched with Shard types to prove the Shard given in the
     // request is used for the initial attempt.
     std::vector<AsyncRequestsSender::Request> requests;
-    requests.emplace_back(kTestShardIds[0],
-                          BSON("find"
-                               << "bar"),
-                          shard1);
-    requests.emplace_back(kTestShardIds[1],
-                          BSON("find"
-                               << "bar"),
-                          shard2);
-    requests.emplace_back(kTestShardIds[2],
-                          BSON("find"
-                               << "bar"),
-                          shard0);
+    requests.emplace_back(kTestShardIds[0], BSON("find" << "bar"), shard1);
+    requests.emplace_back(kTestShardIds[1], BSON("find" << "bar"), shard2);
+    requests.emplace_back(kTestShardIds[2], BSON("find" << "bar"), shard0);
 
     auto ars = AsyncRequestsSender(operationContext(),
                                    executor(),
@@ -469,6 +433,80 @@ TEST_F(AsyncRequestsSenderTest, PreLoadedShardIsUsedForInitialRequest) {
         ASSERT_EQ(request.target, kTestShardHosts[2]);
         return CursorResponse(kTestNss, 0LL, {BSON("x" << 3)})
             .toBSON(CursorResponse::ResponseType::InitialResponse);
+    });
+
+    future.default_timed_get();
+}
+
+TEST_F(AsyncRequestsSenderTest, MultipleRetriesReceivedInconclusiveError) {
+    auto shardRegistry = Grid::get(operationContext())->shardRegistry();
+    auto shard0 = uassertStatusOK(shardRegistry->getShard(operationContext(), kTestShardIds[0]));
+    auto shard1 = uassertStatusOK(shardRegistry->getShard(operationContext(), kTestShardIds[1]));
+    auto shard2 = uassertStatusOK(shardRegistry->getShard(operationContext(), kTestShardIds[2]));
+
+    std::vector<AsyncRequestsSender::Request> requests;
+    requests.emplace_back(kTestShardIds[0], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[1], BSON("find" << "bar"));
+    requests.emplace_back(kTestShardIds[2], BSON("find" << "bar"));
+
+    const BSONObj writeConcernError = BSON("code" << ErrorCodes::HostUnreachable << "errmsg"
+                                                  << "Third mock network error");
+    BSONObj resWithWriteConcernError = BSON("ok" << 1 << "writeConcernError" << writeConcernError);
+
+    auto ars = AsyncRequestsSender(operationContext(),
+                                   executor(),
+                                   kTestNss.dbName(),
+                                   requests,
+                                   ReadPreferenceSetting{ReadPreference::PrimaryOnly},
+                                   Shard::RetryPolicy::kIdempotent,
+                                   nullptr,
+                                   {});
+
+    auto future = launchAsync([&]() {
+        auto response = ars.next();
+        ASSERT(response.swResponse.getStatus().isOK());
+
+        response = ars.next();
+        ASSERT(response.swResponse.getStatus().isOK());
+
+        response = ars.next();
+        ASSERT(response.swResponse.getStatus().isOK());
+        ASSERT_BSONOBJ_EQ(response.swResponse.getValue().data, resWithWriteConcernError);
+    });
+
+    onCommand([&](const auto& request) {
+        ASSERT(request.cmdObj["find"]);
+        return CursorResponse(kTestNss, 0LL, {BSON("x" << 1)})
+            .toBSON(CursorResponse::ResponseType::InitialResponse);
+    });
+
+    onCommand([&](const auto& request) {
+        ASSERT(request.cmdObj["find"]);
+        return CursorResponse(kTestNss, 0LL, {BSON("x" << 2)})
+            .toBSON(CursorResponse::ResponseType::InitialResponse);
+    });
+
+    onCommand([&](const auto& request) {
+        ASSERT(request.cmdObj["find"]);
+        return Status(ErrorCodes::HostUnreachable, "Mock network error");
+    });
+
+    onCommand([&](const auto& request) {
+        ASSERT(request.cmdObj["find"]);
+        BSONObj res = BSON("ok" << 1 << "writeConcernError"
+                                << BSON("code" << ErrorCodes::HostUnreachable << "errmsg"
+                                               << "Second mock network error"));
+        return res;
+    });
+
+    onCommand([&](const auto& request) {
+        ASSERT(request.cmdObj["find"]);
+        return resWithWriteConcernError;
+    });
+
+    onCommand([&](const auto& request) {
+        ASSERT(request.cmdObj["find"]);
+        return Status(ErrorCodes::NotWritablePrimary, "NotWritablePrimary error");
     });
 
     future.default_timed_get();

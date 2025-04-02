@@ -46,9 +46,8 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
 namespace mongo {
@@ -64,9 +63,9 @@ TEST_F(CreateCommandTest, CreateFailsWithEncryptionOptions) {
 
     DBDirectClient client(opCtx);
 
-    auto cmd = BSON("create" << nss.coll() << "storageEngine"
-                             << BSON("wiredTiger" << BSON("configString"
-                                                          << "encryption=(keyid=key)")));
+    auto cmd =
+        BSON("create" << nss.coll() << "storageEngine"
+                      << BSON("wiredTiger" << BSON("configString" << "encryption=(keyid=key)")));
     BSONObj result;
     // This should fail since config.system.indexBuilds does not exist.
     ASSERT_FALSE(client.runCommand(nss.dbName(), cmd, result)) << result;
@@ -84,9 +83,9 @@ TEST_F(CreateCommandTest, LegacyCreateSucceedsWithEncryptionOptions) {
 
     DBDirectClient client(opCtx);
 
-    auto cmd = BSON("create" << nss.coll() << "storageEngine"
-                             << BSON("wiredTiger" << BSON("configString"
-                                                          << "encryption=(keyid=key)")));
+    auto cmd =
+        BSON("create" << nss.coll() << "storageEngine"
+                      << BSON("wiredTiger" << BSON("configString" << "encryption=(keyid=key)")));
     BSONObj result;
     // This should fail since config.system.indexBuilds does not exist.
     ASSERT_TRUE(client.runCommand(nss.dbName(), cmd, result)) << result;

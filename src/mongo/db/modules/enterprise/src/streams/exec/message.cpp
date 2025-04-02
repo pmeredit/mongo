@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/message.h"
+
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/document_value/document_comparator.h"
@@ -51,6 +52,8 @@ BSONObj StreamDataMsg::toBSONForLogging() const {
         BSONObjBuilder docBuilder;
         docBuilder.append("doc", doc.doc.toBson());
         docBuilder.append("meta", doc.streamMeta.toBSON());
+        docBuilder.append("eventTime", Date_t::fromMillisSinceEpoch(doc.minDocTimestampMs));
+        docBuilder.append("sourceTime", Date_t::fromMillisSinceEpoch(doc.sourceTimestampMs));
         auto obj = docBuilder.obj();
         size += obj.objsize();
         if (size > maxLogSize) {

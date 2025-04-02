@@ -44,8 +44,7 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace ExpressionTests {
@@ -231,8 +230,6 @@ class ConstantNonConstantTrue : public OptimizeBase {
     BSONObj expectedOptimized() override {
         return BSON("$and" << BSON_ARRAY("$a"));
     }
-    // note: using $and as serialization of ExpressionCoerceToBool rather than
-    // ExpressionAnd
 };
 
 class ConstantNonConstantFalse : public OptimizeBase {
@@ -267,20 +264,17 @@ class NonConstantZero : public OptimizeBase {
 /** An expression with two field paths and '1'. */
 class NonConstantNonConstantOne : public OptimizeBase {
     BSONObj spec() override {
-        return BSON("$and" << BSON_ARRAY("$a"
-                                         << "$b" << 1));
+        return BSON("$and" << BSON_ARRAY("$a" << "$b" << 1));
     }
     BSONObj expectedOptimized() override {
-        return BSON("$and" << BSON_ARRAY("$a"
-                                         << "$b"));
+        return BSON("$and" << BSON_ARRAY("$a" << "$b"));
     }
 };
 
 /** An expression with two field paths and '0'. */
 class NonConstantNonConstantZero : public OptimizeBase {
     BSONObj spec() override {
-        return BSON("$and" << BSON_ARRAY("$a"
-                                         << "$b" << 0));
+        return BSON("$and" << BSON_ARRAY("$a" << "$b" << 0));
     }
     BSONObj expectedOptimized() override {
         return BSON("$const" << false);
@@ -314,8 +308,7 @@ class Nested : public OptimizeBase {
                                            << "$b"));
     }
     BSONObj expectedOptimized() override {
-        return BSON("$and" << BSON_ARRAY("$a"
-                                         << "$b"));
+        return BSON("$and" << BSON_ARRAY("$a" << "$b"));
     }
 };
 

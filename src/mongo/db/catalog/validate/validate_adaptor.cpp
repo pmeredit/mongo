@@ -60,6 +60,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/curop.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index_names.h"
 #include "mongo/db/matcher/expression.h"
@@ -76,8 +77,6 @@
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/object_check.h"  // IWYU pragma: keep
 #include "mongo/util/assert_util.h"
@@ -166,10 +165,7 @@ Status _validateTimeseriesCount(const BSONObj& control,
                                 bool shouldDecompressBSON) {
     // Skips the check if a bucket is compressed, but we are not in a validate mode that will
     // decompress the bucket to actually go through the measurements.
-    if (version == timeseries::kTimeseriesControlUncompressedVersion ||
-        ((version == timeseries::kTimeseriesControlCompressedSortedVersion ||
-          timeseries::kTimeseriesControlCompressedUnsortedVersion) &&
-         !shouldDecompressBSON)) {
+    if (version == timeseries::kTimeseriesControlUncompressedVersion || !shouldDecompressBSON) {
         return Status::OK();
     }
     long long controlCount;
@@ -216,9 +212,12 @@ Status _validateTimeSeriesIdTimestamp(OperationContext* opCtx,
 }
 
 /**
- * Checks the value of the bucket's version.
+ * Checks the bucket's 'control' field to make sure the version is valid and the min max timestamps
+ * respect the bucket max span.
  */
-Status _validateTimeseriesControlVersion(const BSONObj& recordBson, int bucketVersion) {
+Status _validateTimeseriesControlField(const CollectionPtr& collection,
+                                       const BSONObj& controlField) {
+    int bucketVersion = controlField.getIntField(timeseries::kBucketControlVersionFieldName);
     if (bucketVersion != timeseries::kTimeseriesControlUncompressedVersion &&
         bucketVersion != timeseries::kTimeseriesControlCompressedSortedVersion &&
         bucketVersion != timeseries::kTimeseriesControlCompressedUnsortedVersion) {
@@ -227,6 +226,28 @@ Status _validateTimeseriesControlVersion(const BSONObj& recordBson, int bucketVe
             fmt::format("Invalid value for 'control.version'. Expected 1, 2, or 3, but got {}.",
                         bucketVersion));
     }
+
+    const auto& timeseriesOptions = collection->getTimeseriesOptions();
+    const auto& minTimestamp = controlField.getField(timeseries::kBucketControlMinFieldName)
+                                   .Obj()
+                                   .getField(timeseriesOptions->getTimeField())
+                                   .Date();
+    const auto& maxTimestamp = controlField.getField(timeseries::kBucketControlMaxFieldName)
+                                   .Obj()
+                                   .getField(timeseriesOptions->getTimeField())
+                                   .Date();
+    const auto& bucketMaxSpanSeconds = timeseriesOptions->getBucketMaxSpanSeconds();
+    if (maxTimestamp - minTimestamp >= Seconds(*bucketMaxSpanSeconds)) {
+        return Status(
+            ErrorCodes::BadValue,
+            fmt::format(
+                "Bucket's timestamps in 'control.min' and 'control.max' fields do not respect the "
+                "bucket max span. Min time: {}. Max time: {}. Bucket max span seconds: {}",
+                minTimestamp.toString(),
+                maxTimestamp.toString(),
+                *bucketMaxSpanSeconds));
+    }
+
     return Status::OK();
 }
 
@@ -670,17 +691,15 @@ Status _validateTimeSeriesBucketRecord(OperationContext* opCtx,
                                        const BSONObj& recordBson,
                                        ValidateResults* results,
                                        bool shouldDecompressBSON) {
-    int bucketVersion = recordBson.getField(timeseries::kBucketControlFieldName)
-                            .Obj()
-                            .getIntField(timeseries::kBucketControlVersionFieldName);
+    const auto& controlField = recordBson.getField(timeseries::kBucketControlFieldName).Obj();
+    int bucketVersion = controlField.getIntField(timeseries::kBucketControlVersionFieldName);
 
     if (Status status = _validateTimeSeriesIdTimestamp(opCtx, collection, recordBson);
         !status.isOK()) {
         return status;
     }
 
-    if (Status status = _validateTimeseriesControlVersion(recordBson, bucketVersion);
-        !status.isOK()) {
+    if (Status status = _validateTimeseriesControlField(collection, controlField); !status.isOK()) {
         return status;
     }
 
@@ -739,7 +758,8 @@ Status ValidateAdaptor::validateRecord(OperationContext* opCtx,
         const IndexDescriptor* descriptor =
             coll->getIndexCatalog()->findIndexByIdent(opCtx, indexIdent);
         if ((descriptor->isPartial() &&
-             !descriptor->getEntry()->getFilterExpression()->matchesBSON(recordBson)) ||
+             !exec::matcher::matchesBSON(descriptor->getEntry()->getFilterExpression(),
+                                         recordBson)) ||
             !results->getIndexValidateResult(descriptor->indexName()).continueValidation()) {
             continue;
         }
@@ -919,8 +939,8 @@ void ValidateAdaptor::traverseRecordStore(OperationContext* opCtx,
                                               containsMixedSchemaDataResponse.getStatus());
                 } else if (containsMixedSchemaDataResponse.isOK() &&
                            containsMixedSchemaDataResponse.getValue()) {
-                    bool mixedSchemaAllowed =
-                        coll->getTimeseriesBucketsMayHaveMixedSchemaData().get();
+                    bool mixedSchemaAllowed = coll->getTimeseriesMixedSchemaBucketsState()
+                                                  .canStoreMixedSchemaBucketsSafely();
                     if (mixedSchemaAllowed &&
                         results->addWarning(kExpectedMixedSchemaTimeseriesWarning)) {
                         LOGV2_WARNING_OPTIONS(8469901,

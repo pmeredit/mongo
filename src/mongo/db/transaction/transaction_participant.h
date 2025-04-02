@@ -83,6 +83,8 @@
 
 namespace mongo {
 
+class TickSource;
+
 /**
  * Reason a transaction was terminated.
  */
@@ -207,6 +209,8 @@ class TransactionParticipant {
 
 public:
     static inline MutableObserverRegistry<int32_t> observeTransactionLifetimeLimitSeconds;
+    static inline MutableObserverRegistry<int32_t> observeCachePressureQueryPeriodMilliseconds;
+
 
     TransactionParticipant();
 
@@ -270,7 +274,7 @@ public:
             return _readConcernArgs;
         }
 
-        void setNoEvictionAfterRollback();
+        void setNoEvictionAfterCommitOrRollback();
 
     private:
         bool _released = false;
@@ -341,6 +345,11 @@ public:
          * Returns whether the transaction has exceeded its expiration time.
          */
         bool expiredAsOf(Date_t when) const;
+
+        /**
+         * Returns the duration of the transaction.
+         */
+        Microseconds getDuration(TickSource* tickSource) const;
 
         /**
          * Returns if this TransactionParticipant instance can be reaped. Always true unless there
@@ -676,7 +685,7 @@ public:
         /*
          * Aborts the transaction, releasing transaction resources.
          */
-        void abortTransaction(OperationContext* opCtx);
+        void abortTransaction(OperationContext* opCtx, Status overwrittenStatus = Status::OK());
 
         /**
          * Adds a stored operation to the list of stored operations for the current multi-document
@@ -802,32 +811,11 @@ public:
         // concurrency control rules.
         //
 
-        std::string getTransactionInfoForLogForTest(
-            OperationContext* opCtx,
-            const SingleThreadedLockStats* lockStats,
-            bool committed,
-            const APIParameters& apiParameters,
-            const repl::ReadConcernArgs& readConcernArgs) const {
-
-            TerminationCause terminationCause =
-                committed ? TerminationCause::kCommitted : TerminationCause::kAborted;
-            return _transactionInfoForLog(
-                opCtx, lockStats, terminationCause, apiParameters, readConcernArgs);
-        }
-
-        BSONObj getTransactionInfoBSONForLogForTest(
-            OperationContext* opCtx,
-            const SingleThreadedLockStats* lockStats,
-            bool committed,
-            const APIParameters& apiParameters,
-            const repl::ReadConcernArgs& readConcernArgs) const {
-
-            TerminationCause terminationCause =
-                committed ? TerminationCause::kCommitted : TerminationCause::kAborted;
-            return _transactionInfoBSONForLog(
-                opCtx, lockStats, terminationCause, apiParameters, readConcernArgs);
-        }
-
+        BSONObj getTransactionInfoForLogForTest(OperationContext* opCtx,
+                                                const SingleThreadedLockStats* lockStats,
+                                                bool committed,
+                                                const APIParameters& apiParameters,
+                                                const repl::ReadConcernArgs& readConcernArgs) const;
 
         SingleTransactionStats& getSingleTransactionStatsForTest() {
             return _tp->_o.transactionMetricsObserver.getSingleTransactionStats();
@@ -929,8 +917,6 @@ public:
         // sessions.
         boost::optional<repl::OpTime> _checkStatementExecutedSelf(StmtId stmtId) const;
 
-        UpdateRequest _makeUpdateRequest(const SessionTxnRecord& sessionTxnRecord) const;
-
         void _registerUpdateCacheOnCommit(OperationContext* opCtx,
                                           std::vector<StmtId> stmtIdsWritten,
                                           const repl::OpTime& lastStmtIdWriteTs);
@@ -1006,35 +992,20 @@ public:
             const std::string& cmdName) const;
 
         // Logs the transaction information if it has run slower than the global parameter slowMS.
-        // The transaction must be committed or aborted when this function is called.
+        // The transaction must be committed or aborted when this function is called. Defers logging
+        // details to `_transactionInfoForLog`.
         void _logSlowTransaction(OperationContext* opCtx,
                                  const SingleThreadedLockStats* lockStats,
                                  TerminationCause terminationCause,
                                  APIParameters apiParameters,
                                  repl::ReadConcernArgs readConcernArgs);
 
-        // This method returns a string with information about a slow transaction. The format of the
-        // logging string produced should match the format used for slow operation logging. A
-        // transaction must be completed (committed or aborted) and a valid LockStats reference must
-        // be passed in order for this method to be called.
-        std::string _transactionInfoForLog(OperationContext* opCtx,
-                                           const SingleThreadedLockStats* lockStats,
-                                           TerminationCause terminationCause,
-                                           APIParameters apiParameters,
-                                           repl::ReadConcernArgs readConcernArgs) const;
-
         void _transactionInfoForLog(OperationContext* opCtx,
                                     const SingleThreadedLockStats* lockStats,
                                     TerminationCause terminationCause,
                                     APIParameters apiParameters,
                                     repl::ReadConcernArgs readConcernArgs,
-                                    logv2::DynamicAttributes* pAttrs) const;
-
-        BSONObj _transactionInfoBSONForLog(OperationContext* opCtx,
-                                           const SingleThreadedLockStats* lockStats,
-                                           TerminationCause terminationCause,
-                                           APIParameters apiParameters,
-                                           repl::ReadConcernArgs readConcernArgs) const;
+                                    logv2::DynamicAttributes& attrs) const;
 
         // Bumps up the transaction number and transaction retry counter of this transaction and
         // performs the necessary cleanup.
@@ -1303,6 +1274,9 @@ private:
         // operation context onto the transaction participant when the session is checked-in so that
         // locks can automatically get freed.
         bool inShutdown{false};
+
+        // Overrides the thrown status in '_checkIsCommandValidWithTxnState' if not-OK.
+        Status overwrittenStatus{Status::OK()};
 
         // Holds oplog data for operations which have been applied in the current multi-document
         // transaction.

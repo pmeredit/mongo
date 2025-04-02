@@ -4,7 +4,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include "mongo/unittest/bson_test_util.h"
 #include <string>
 
 #include "aggregate_expression_intender_range.h"
@@ -67,8 +66,7 @@ bool unorderedDisjunctionComparison(ExpressionOr* correct, ExpressionOr* testRes
 
 TEST_F(RangedAggregateExpressionIntender, SingleLeafExpressions) {
     // Constant.
-    auto identityExprBSON = BSON("$const"
-                                 << "hello");
+    auto identityExprBSON = BSON("$const" << "hello");
     auto serializedExpr =
         markAggExpressionForRangeAndSerialize(identityExprBSON, false, Intention::NotMarked);
 
@@ -212,9 +210,8 @@ TEST_F(RangedAggregateExpressionIntender, LetForbidsBindingToEncryptedValue) {
     auto eqLetExpr =
         BSON("$eq" << BSON_ARRAY(
                  "$unencrypted" << BSON(
-                     "$let" << BSON("vars" << BSON("hello"
-                                                   << "$age")
-                                           << "in" << BSON("$gt" << BSON_ARRAY("$age" << 25))))));
+                     "$let" << BSON("vars" << BSON("hello" << "$age") << "in"
+                                           << BSON("$gt" << BSON_ARRAY("$age" << 25))))));
     ASSERT_THROWS_CODE(
         markAggExpressionForRangeAndSerialize(eqLetExpr, false, Intention::NotMarked),
         AssertionException,
@@ -262,8 +259,7 @@ TEST_F(RangedAggregateExpressionIntender, NestedComparisonExpressions) {
 }
 
 TEST_F(RangedAggregateExpressionIntender, CompareFailsWithNonConstant) {
-    auto cmpExprBSON = BSON("$gt" << BSON_ARRAY("$age"
-                                                << "$unencrypted"));
+    auto cmpExprBSON = BSON("$gt" << BSON_ARRAY("$age" << "$unencrypted"));
     ASSERT_THROWS_CODE(
         markAggExpressionForRangeAndSerialize(cmpExprBSON, false, Intention::NotMarked),
         AssertionException,
@@ -460,10 +456,9 @@ TEST_F(RangedAggregateExpressionIntender, InFailsToRewriteEncryptedComparedToInv
         markAggExpressionForRangeAndSerialize(inExprBSON, false, Intention::NotMarked),
         AssertionException,
         6334105);
-    inExprBSON =
-        BSON("$in" << BSON_ARRAY(
-                 "$age" << BSON_ARRAY(BSON_ARRAY(1) << BSON("$gt" << BSON_ARRAY("$age"
-                                                                                << "150000")))));
+    inExprBSON = BSON(
+        "$in" << BSON_ARRAY(
+            "$age" << BSON_ARRAY(BSON_ARRAY(1) << BSON("$gt" << BSON_ARRAY("$age" << "150000")))));
     ASSERT_THROWS_CODE(
         markAggExpressionForRangeAndSerialize(inExprBSON, false, Intention::NotMarked),
         AssertionException,

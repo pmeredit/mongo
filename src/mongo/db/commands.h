@@ -57,7 +57,6 @@
 #include "mongo/db/database_name.h"
 #include "mongo/db/exec/mutable_bson/element.h"
 #include "mongo/db/feature_flag.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/multitenancy_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
@@ -897,6 +896,14 @@ public:
     }
 
     /**
+     * Returns whether this invocation supports the rawData command parameter. See
+     * raw_data_operation.h for more information.
+     */
+    virtual bool supportsRawData() const {
+        return false;
+    }
+
+    /**
      * Returns if this invocation can be mirrored to secondaries
      */
     virtual bool supportsReadMirroring() const {
@@ -1082,7 +1089,7 @@ public:
     /**
      * Checks if the client associated with the given OperationContext is authorized to run this
      * command.
-     * Command imlpementations MUST provide a method here, even if no authz checks are required.
+     * Command implementations MUST provide a method here, even if no authz checks are required.
      * Such commands should return Status::OK(), with a comment stating "No auth required".
      */
     virtual Status checkAuthForOperation(OperationContext* opCtx,
@@ -1119,6 +1126,14 @@ public:
             ErrorCodes::InvalidOptions, "cluster wide default read concern not permitted"};
         return {{level != repl::ReadConcernLevel::kLocalReadConcern, kReadConcernNotSupported},
                 {kDefaultReadConcernNotPermitted}};
+    }
+
+    /**
+     * Returns whether this command supports the rawData parameter. See raw_data_operation.h for
+     * more information.
+     */
+    virtual bool supportsRawData() const {
+        return false;
     }
 
     /**
@@ -1455,6 +1470,62 @@ class TypedCommand<Derived>::MinimalInvocationBase : public InvocationBaseIntern
     using InvocationBaseInternal::InvocationBaseInternal;
 };
 
+/**
+ * Mix-in base for requests containing a `GenericArguments`.
+ * Fills some of the requirements for use as a `TypedCommand`'s `Request` type.
+ */
+class GenericArgumentsTypedRequest {
+public:
+    explicit GenericArgumentsTypedRequest(const OpMsgRequest& req) : _args{_parseArgs(req)} {}
+
+    const GenericArguments& getGenericArguments() const {
+        return _args;
+    }
+    GenericArguments& getGenericArguments() {
+        return _args;
+    }
+    void setGenericArguments(GenericArguments args) {
+        _args = std::move(args);
+    }
+
+private:
+    static GenericArguments _parseArgs(const OpMsgRequest& req) {
+        IDLParserContext ctx("GenericArguments",
+                             req.validatedTenancyScope,
+                             req.getValidatedTenantId(),
+                             req.getSerializationContext());
+        return GenericArguments::parse(ctx, req.body);
+    }
+
+    GenericArguments _args;
+};
+
+/**
+ * Mix-in base for Requests containing a DatabaseName.
+ * Fills some of the requirements for use as a `TypedCommand`'s `Request` type.
+ */
+class DbNameTypedRequest {
+public:
+    explicit DbNameTypedRequest(const OpMsgRequest& req) : _dbName{req.parseDbName()} {}
+
+    const DatabaseName& getDbName() const {
+        return _dbName;
+    }
+
+private:
+    DatabaseName _dbName;
+};
+
+/**
+ * Base for Requests having a `GenericArguments` and a `DatabaseName`.
+ * Fills the `TypedCommand` `Request` requirements.
+ */
+class BasicTypedRequest : public GenericArgumentsTypedRequest, public DbNameTypedRequest {
+public:
+    explicit BasicTypedRequest(const OpMsgRequest& req)
+        : GenericArgumentsTypedRequest{req}, DbNameTypedRequest{req} {}
+};
+
 /*
  * Classes derived from TypedCommand::InvocationBase must:
  *
@@ -1581,7 +1652,7 @@ class CommandConstructionPlan {
 public:
     struct Entry {
         std::function<std::unique_ptr<Command>()> construct;
-        const FeatureFlag* featureFlag = nullptr;
+        CheckableFeatureFlagRef featureFlag = kDoesNotRequireFeatureFlag;
         bool testOnly = false;
         boost::optional<ClusterRole> roles;
         const std::type_info* typeInfo = nullptr;
@@ -1640,7 +1711,7 @@ CommandConstructionPlan& globalCommandConstructionPlan();
  * Example:
  *
  *   auto dum = *CommandConstructionPlan::EntryBuilder::make<CmdType>()
- *       .requiresFeatureFlag(&myFeatureFlag)
+ *       .requiresFeatureFlag(myFeatureFlag)
  *       .testOnly();
  */
 class CommandConstructionPlan::EntryBuilder {
@@ -1695,7 +1766,7 @@ public:
      * A command object will be created only if the featureFlag is enabled,
      * regardless of the current FCV.
      */
-    EntryBuilder requiresFeatureFlag(const FeatureFlag* featureFlag) && {
+    EntryBuilder requiresFeatureFlag(CheckableFeatureFlagRef featureFlag) && {
         _entry->featureFlag = featureFlag;
         return std::move(*this);
     }
@@ -1750,6 +1821,6 @@ private:
     static auto MONGO_COMMAND_DUMMY_ID_(mongoRegisterCommand_dummy_, __LINE__) = \
         *::mongo::CommandConstructionPlan::EntryBuilder::make<__VA_ARGS__>()     \
              .expr(#__VA_ARGS__)                                                 \
-             .location(MONGO_SOURCE_LOCATION_NO_FUNC())
+             .location(MONGO_SOURCE_LOCATION())
 
 }  // namespace mongo

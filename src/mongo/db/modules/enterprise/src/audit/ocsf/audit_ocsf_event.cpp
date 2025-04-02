@@ -4,11 +4,13 @@
 
 #include "audit/ocsf/audit_ocsf.h"
 
+#include "audit/ocsf/ocsf_constants.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
 #include "mongo/rpc/metadata/audit_client_attrs.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/transport/asio/asio_session_impl.h"
 #include "mongo/util/processinfo.h"
 
@@ -116,21 +118,25 @@ void AuditOCSF::AuditEventOCSF::_init(const TryLogEventParamsOCSF& tryLogParams)
     AuditInterface::AuditEvent::_obj = builder.obj<BSONObj::LargeSizeTrait>();
 }
 
-void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client, BSONObjBuilder* builder) {
+void AuditOCSF::AuditEventOCSF::_buildNetwork(Client* client,
+                                              BSONObjBuilder* builder,
+                                              bool shouldLogDst) {
     invariant(client);
 
     if (auto attrs = rpc::AuditClientAttrs::get(client)) {
         {
             // Serialize the dst_endpoint field
-            BSONObjBuilder dstBuilder = builder->subobjStart(kDestinationEndpointField);
-            serializeHostAndPortToBSONOCSF(attrs->getLocal(), &dstBuilder);
+            if (shouldLogDst) {
+                BSONObjBuilder dstBuilder = builder->subobjStart(kDestinationEndpointField);
+                serializeHostAndPortToBSONOCSF(attrs->getLocal(), &dstBuilder);
+            }
         }
 
         {
             // Serialize the src_endpoint field
             BSONObjBuilder srcBuilder = builder->subobjStart(kSourceEndpointField);
             serializeHostAndPortToBSONOCSF(attrs->getRemote(), &srcBuilder);
-            if (auto intermediates = attrs->getProxiedEndpoints(); !intermediates.empty()) {
+            if (auto intermediates = attrs->getProxies(); !intermediates.empty()) {
                 BSONArrayBuilder intermediatesBuilder(
                     srcBuilder.subarrayStart(kIntermediateEndpointsField));
                 for (const auto& intermediate : intermediates) {
@@ -192,22 +198,15 @@ void AuditOCSF::AuditEventOCSF::_buildUser(BSONObjBuilder* builder, Client* clie
         return;
     }
 
-    if (AuthorizationSession::exists(client)) {
-        auto as = AuthorizationSession::get(client);
-        auto userName = as->getImpersonatedUserName();
-        RoleNameIterator roleNames;
-
-        if (userName) {
-            roleNames = as->getImpersonatedRoleNames();
-        } else {
-            userName = as->getAuthenticatedUserName();
-            roleNames = as->getAuthenticatedRoleNames();
-        }
-
-        if (userName) {
-            _buildUser(builder, *userName, roleNames);
-        }
+    if (auto auditUserAttrs = rpc::AuditUserAttrs::get(client)) {
+        _buildUser(builder, auditUserAttrs->getUser(), auditUserAttrs->getRoles());
+        return;
     }
+
+    // If there is no authenticated user, and this isn't from a system connection, this is an
+    // unauthed regular user.
+    BSONObjBuilder user(builder->subobjStart(kUserField));
+    user.append(kTypeIDField, ocsf::kUserTypeIdRegularUser);
 }
 
 void AuditOCSF::AuditEventOCSF::_buildProcess(BSONObjBuilder* builder) {

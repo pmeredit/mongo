@@ -30,7 +30,7 @@ selector:
     - jstests/core/**/list_all_sessions.js
     - jstests/core/txns/timestamped_reads_wait_for_prepare_oplog_visibility.js
     # cursor.close() calls killCursors command which is not allowed with security token.
-    - jstests/core/**/list_collections1.js
+    - jstests/core/catalog/list_collections.js
     - jstests/core/**/list_indexes.js
     # collection.getPlanCache().* calls planCache* commands which are not allowed with security token.
     - jstests/core/**/cached_plan_trial_does_not_discard_work.js
@@ -51,6 +51,7 @@ selector:
     - jstests/core/query/sbe/sbe_plan_cache_autoparameterize_collscan.js
     - jstests/core/timeseries/query/bucket_unpacking_with_sort_plan_cache.js
     - jstests/core/**/wildcard_index_cached_plans.js
+    - jstests/aggregation/sources/agg_stages_basic_behavior_pbt.js
     # defaultPrompt() calls buildInfo command which is not allowed with security token.
     - jstests/core/txns/shell_prompt_in_transaction.js
     # Cannot test the user is not allowed to create indexes in config.transactions as the

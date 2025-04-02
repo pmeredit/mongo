@@ -49,11 +49,8 @@
 #include "mongo/db/service_context.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/future_impl.h"
@@ -161,9 +158,8 @@ TEST_F(FaultManagerTest, HealthCheckRunsPeriodically) {
     resetManager(std::make_unique<FaultManagerConfig>());
     RAIIServerParameterControllerForTest _intervalController{
         "healthMonitoringIntervals",
-        BSON("values" << BSON_ARRAY(BSON("type"
-                                         << "test"
-                                         << "interval" << 1)))};
+        BSON("values" << BSON_ARRAY(BSON("type" << "test"
+                                                << "interval" << 1)))};
     auto faultFacetType = FaultFacetType::kMock1;
     AtomicWord<Severity> severity{Severity::kOk};
     registerMockHealthObserver(faultFacetType, [&severity] { return severity.load(); });
@@ -200,9 +196,8 @@ TEST_F(FaultManagerTest,
     resetManager(std::make_unique<FaultManagerConfig>());
     RAIIServerParameterControllerForTest _intervalController{
         "healthMonitoringIntervals",
-        BSON("values" << BSON_ARRAY(BSON("type"
-                                         << "test"
-                                         << "interval" << 1)))};
+        BSON("values" << BSON_ARRAY(BSON("type" << "test"
+                                                << "interval" << 1)))};
     RAIIServerParameterControllerForTest _serverParamController{"activeFaultDurationSecs", 5};
 
     AtomicWord<bool> shouldBlock{true};

@@ -1,7 +1,7 @@
 /**
  * Tests the dbCheckSecondaryBatchMaxTimeMs parameter.
  * @tags: [
- *   requires_fcv_81
+ *   requires_fcv_80
  * ]
  */
 import {ReplSetTest} from "jstests/libs/replsettest.js";
@@ -17,7 +17,7 @@ import {
 const dbName = jsTestName();
 const collName = jsTestName();
 
-const nDocs = 10000;
+const nDocs = 5000;
 const maxBatchTimeMillis = 20000;
 
 function runTest(validateMode) {

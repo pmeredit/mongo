@@ -69,6 +69,26 @@ structs:
             userError:
                 description: True if this error is a user error.
                 type: bool
+    TargetStats:
+        description: Per target stats.
+        strict: false
+        fields: 
+            db:
+                description: Database name
+                type: string
+                optional: true
+            coll:
+                description: Collection name
+                type: string
+                optional: true
+            inputMessageCount: 
+                description: Total number of input messages read for this collection, including messages that were rejected.
+                type: safeInt64
+                optional: true
+            inputMessageSize:
+                description: Total number of input bytes read for this collection, including docs that were rejected.
+                type: safeInt64
+                optional: true
 
     # This struct is meant for user-facing commands only, and the field names in this struct are
     # based on the product spec.
@@ -85,6 +105,10 @@ structs:
             inputMessageSize:
                 description: Total number of input bytes read, including docs that were rejected.
                 type: safeDouble
+            targetStats:
+                description: Per target stats.
+                type: array<TargetStats>
+                optional: true
             outputMessageCount:
                 description: Total number of output messages emitted.
                 type: safeInt64
@@ -106,8 +130,8 @@ structs:
             executionTimeMillis:
                 description: Total execution time of the operator (in seconds).
                 type: milliseconds 
-            timeSpentMillis:
-                description: Total timeSpent in the operator (in milliseconds)
+            avgTimeSpentMs:
+                description: Average recent time an input document spends in an operator (in milliseconds)
                 type: milliseconds
                 optional: true
             minOpenWindowStartTime:
@@ -255,6 +279,18 @@ structs:
                     If all available events have been read, then lag becomes 0
                 type: seconds
                 optional: true
+            avgTimeSpentMs:
+                description: Average recent time a document spends in all operators in the pipeline (in milliseconds)
+                type: milliseconds
+                optional: true
+            lastMessageIn:
+                description: The timestamp of the last document processed
+                type: date
+                optional: true
+            lastCheckpoint:
+                description: Data related to the last checkpoint committed
+                type: LastCheckpointState
+                optional: true
 
     StopStreamProcessorReply:
         description: "Response message for streams_stopStreamProcessor command"
@@ -363,8 +399,15 @@ structs:
                 type: array<HistogramMetricValue>
                 optional: true
 
+#        description: "Response message for streams_dumpStackTraces command"
+#        is_command_reply: true
+
     UpdateFeatureFlagsReply:
         description: "Response message for UpdateFeatureFlagsCommand."
+        is_command_reply: true
+
+    UpdateConnectionReply:
+        description: "Response message for UpdateConnections."
         is_command_reply: true
 
     CheckpointFlushedReply:
@@ -522,6 +565,10 @@ commands:
             tenantId:
                 description: "Tenant id."
                 type: string
+            projectId:
+                description: "Project id."
+                type: string
+                optional: true
             name:
                 description: "Stream processor name."
                 type: string
@@ -790,6 +837,17 @@ commands:
                 type: bool
                 default: false
 
+#    streams_dumpStackTraces:
+#        description: "Command to get mongostreams to log a stack trace of all threads. This command currently has some issues and so must be used only as a last resort means."
+#        strict: false
+#        cpp_name: DumpStackTracesCommand
+#        command_name: streams_dumpStackTraces
+#        api_version: ""
+#        namespace: ignored
+#        reply_type: DumpStackTracesReply
+#        access_check:
+#            none: true
+
     streams_sendEvent:
         description: "Called by the streams Agent to notify mongostream of an important event."
         strict: false
@@ -811,6 +869,10 @@ commands:
                 description: "A checkpoint flushed event."
                 type: CheckpointFlushedEvent
                 optional: true
+            dumpStackTrace:
+                description: "Get mongostreams to log stack trace of all threads"
+                type: bool
+                optional: true
 
     streams_updateFeatureFlags:
         description: "Update feature flags for the stream processing instance."
@@ -819,6 +881,8 @@ commands:
         api_version: ""
         namespace: ignored
         reply_type: UpdateFeatureFlagsReply
+        access_check:
+            none: true
         fields:
             tenantId:
                 description: "Tenant id."
@@ -826,8 +890,29 @@ commands:
             featureFlags:
                 description: "Bson object containing all feature flags for this instance."
                 type: object
+
+    streams_updateConnection:
+        description: "Command to update connection details for stream processors running"
+        cpp_name: UpdateConnectionCommand
+        command_name: streams_updateConnection
+        api_version: ""
+        namespace: ignored
+        reply_type: UpdateConnectionReply
         access_check:
             none: true
+        fields:
+            tenantId:
+                description: "Tenant id."
+                type: string
+            processorName:
+                description: "Name of the stream processor."
+                type: string
+            processorId:
+                description: "Unique stream processor id."
+                type: string
+            connection:
+                description: "Connection to be updated."
+                type: Connection
 
     streams_testOnlyGetFeatureFlags:
         description: "get feature flags for the stream processing instance"
@@ -836,6 +921,8 @@ commands:
         api_version: ""
         namespace: ignored
         reply_type: GetFeatureFlagsReply
+        access_check:
+            none: true
         fields:
             tenantId:
                 description: "Tenant id."
@@ -843,5 +930,3 @@ commands:
             name:
                 description: "Name of the stream processor."
                 type: string
-        access_check:
-            none: true

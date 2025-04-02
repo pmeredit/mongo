@@ -75,6 +75,7 @@ public:
     static ShardingDDLCoordinatorService* getService(OperationContext* opCtx);
 
     using repl::PrimaryOnlyService::getAllInstances;
+    using FCV = multiversion::FeatureCompatibilityVersion;
 
     StringData getServiceName() const override {
         return kServiceName;
@@ -106,6 +107,10 @@ public:
 
     std::shared_ptr<executor::TaskExecutor> getInstanceCleanupExecutor() const;
 
+    void waitForCoordinatorsOfGivenOfcvToComplete(
+        OperationContext* opCtx, std::function<bool(boost::optional<FCV>)> pred) const;
+
+    // TODO SERVER-99655: remove once gSnapshotFCVInDDLCoordinators is enabled on last LTS
     void waitForCoordinatorsOfGivenTypeToComplete(OperationContext* opCtx,
                                                   DDLCoordinatorTypeEnum type) const;
 
@@ -122,6 +127,9 @@ public:
 
     void waitForRecovery(OperationContext* opCtx) const override;
 
+    bool areAllCoordinatorsOfTypeFinished(OperationContext* opCtx,
+                                          DDLCoordinatorTypeEnum coordinatorType);
+
 private:
     friend class ShardingDDLCoordinatorServiceTest;
 
@@ -130,9 +138,14 @@ private:
 
     void _onServiceInitialization() override;
     void _onServiceTermination() override;
+
+    size_t _countActiveCoordinators(
+        std::function<bool(DDLCoordinatorTypeEnum, boost::optional<FCV>)> pred) const;
     size_t _countCoordinatorDocs(OperationContext* opCtx);
 
     void _transitionToRecovered(WithLock lk, OperationContext* opCtx);
+
+    void _waitForRecovery(OperationContext* opCtx, std::unique_lock<stdx::mutex>& lock) const;
 
     mutable stdx::mutex _mutex;
 
@@ -150,11 +163,13 @@ private:
 
     mutable stdx::condition_variable _recoveredOrCoordinatorCompletedCV;
 
-    // This counter is set up at stepUp and reprensent the number of coordinator instances
+    // This counter is set up at stepUp and represent the number of coordinator instances
     // that needs to be recovered from disk.
     size_t _numCoordinatorsToWait{0};
 
-    stdx::unordered_map<DDLCoordinatorTypeEnum, size_t> _numActiveCoordinatorsPerType;
+    // TODO SERVER-99655: make the 'FCV' key non-optional
+    stdx::unordered_map<std::pair<DDLCoordinatorTypeEnum, boost::optional<FCV>>, size_t>
+        _numActiveCoordinatorsPerTypeAndOfcv;
 
     std::unique_ptr<ShardingDDLCoordinatorExternalStateFactory> _externalStateFactory;
 };

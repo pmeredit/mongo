@@ -49,19 +49,19 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/executor/connection_pool_stats.h"
+#include "mongo/executor/executor_integration_test_connection_stats.h"
 #include "mongo/executor/network_interface.h"
 #include "mongo/executor/network_interface_factory.h"
 #include "mongo/executor/network_interface_thread_pool.h"
+#include "mongo/executor/network_interface_tl.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/transport/grpc_connection_stats_gen.h"
 #include "mongo/unittest/integration_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/fail_point.h"
@@ -73,13 +73,47 @@
 namespace mongo {
 namespace executor {
 namespace {
+constexpr auto kNetworkInterfaceInstanceName = "TaskExecutorCursorTest"_sd;
+
+std::pair<int, int> getCreatedAndOpenConnectionStats(std::shared_ptr<TaskExecutor> executor,
+                                                     StringData subObjName,
+                                                     const HostAndPort& remote,
+                                                     bool collectGRPCStats) {
+    int created = 0;
+    int open = 0;
+
+    if (collectGRPCStats) {
+        BSONObjBuilder bob;
+        executor->appendNetworkInterfaceStats(bob);
+        auto stats = GRPCConnectionStats::parse(IDLParserContext("GRPCStats"),
+                                                bob.obj().getObjectField(subObjName));
+        open = stats.getTotalOpenChannels();
+    } else {
+        ConnectionPoolStats stats;
+        executor->appendConnectionStats(&stats);
+
+        ConnectionStatsPer hostStats = stats.statsByHost[remote];
+        created = hostStats.created;
+        open = hostStats.inUse + hostStats.available + hostStats.refreshing + hostStats.leased;
+    }
+    return {created, open};
+}
 
 class TaskExecutorCursorFixture : public mongo::unittest::Test {
 public:
     TaskExecutorCursorFixture() = default;
 
     void setUp() override {
-        _ni = makeNetworkInterface("TaskExecutorCursorTest");
+        if (!unittest::shouldUseGRPCEgress()) {
+            _ni = makeNetworkInterface(
+                kNetworkInterfaceInstanceName, nullptr, nullptr, ConnectionPool::Options());
+        } else {
+#ifdef MONGO_CONFIG_GRPC
+            _ni = makeNetworkInterfaceGRPC(kNetworkInterfaceInstanceName);
+#else
+            MONGO_UNREACHABLE;
+#endif
+        }
         auto tp = std::make_unique<NetworkInterfaceThreadPool>(_ni.get());
 
         _executor = ThreadPoolTaskExecutor::create(std::move(tp), _ni);
@@ -120,6 +154,10 @@ public:
         LOGV2(6531703, "Finished running remote command", "cmd"_attr = cmd);
     }
 
+    const AsyncClientFactory& getFactory() {
+        return checked_cast<NetworkInterfaceTL*>(net())->getClientFactory_forTest();
+    }
+
 private:
     std::shared_ptr<ThreadPoolTaskExecutor> _executor;
     std::shared_ptr<NetworkInterface> _ni;
@@ -152,12 +190,12 @@ TEST_F(TaskExecutorCursorFixture, Basic) {
     auto opCtx = makeOpCtx();
     RemoteCommandRequest rcr(unittest::getFixtureConnectionString().getServers().front(),
                              DatabaseName::createDatabaseName_forTest(boost::none, "test"),
-                             BSON("find"
-                                  << "test"
-                                  << "batchSize" << 10),
+                             BSON("find" << "test"
+                                         << "batchSize" << 10),
                              opCtx.get());
 
-    executor::TaskExecutorCursorOptions opts(/*pinConnection*/ gPinTaskExecCursorConns.load(),
+    executor::TaskExecutorCursorOptions opts(/*pinConnection*/ gPinTaskExecCursorConns.load() ||
+                                                 unittest::shouldUseGRPCEgress(),
                                              /*batchSize*/ 10);
     auto tec = std::make_unique<TaskExecutorCursor>(executor(), rcr, std::move(opts));
 
@@ -178,9 +216,8 @@ TEST_F(TaskExecutorCursorFixture, BasicNonPinned) {
     auto opCtx = makeOpCtx();
     RemoteCommandRequest rcr(unittest::getFixtureConnectionString().getServers().front(),
                              DatabaseName::createDatabaseName_forTest(boost::none, "test"),
-                             BSON("find"
-                                  << "test"
-                                  << "batchSize" << 10),
+                             BSON("find" << "test"
+                                         << "batchSize" << 10),
                              opCtx.get());
     executor::TaskExecutorCursorOptions opts(/*pinConnection*/ false,
                                              /*batchSize*/ 10,
@@ -205,9 +242,8 @@ TEST_F(TaskExecutorCursorFixture, PinnedExecutorDestroyedOnUnderlying) {
     auto opCtx = makeOpCtx();
     RemoteCommandRequest rcr(unittest::getFixtureConnectionString().getServers().front(),
                              DatabaseName::createDatabaseName_forTest(boost::none, "test"),
-                             BSON("find"
-                                  << "test"
-                                  << "batchSize" << 10),
+                             BSON("find" << "test"
+                                         << "batchSize" << 10),
                              opCtx.get());
 
     executor::TaskExecutorCursorOptions opts(/*pinConnection*/ true,
@@ -255,11 +291,7 @@ TEST_F(TaskExecutorCursorFixture, ConnectionRemainsOpenAfterKillingTheCursor) {
     auto opCtx = makeOpCtx();
     const auto target = unittest::getFixtureConnectionString().getServers().front();
 
-    auto getConnectionStatsForTarget = [&] {
-        ConnectionPoolStats stats;
-        executor()->appendConnectionStats(&stats);
-        return stats.statsByHost[target];
-    };
+    bool usingGRPC = unittest::shouldUseGRPCEgress();
 
     // We only need at most four connections to run this test, which will run the following
     // commands: `find`, `getMore`, `killCursor`, and `configureFailPoint`. Thus, the rest of this
@@ -267,11 +299,8 @@ TEST_F(TaskExecutorCursorFixture, ConnectionRemainsOpenAfterKillingTheCursor) {
     // unchanged.
     const size_t kNumConnections = 4;
     std::vector<TaskExecutor::CallbackHandle> handles;
-    auto cmd = BSON("find"
-                    << "test"
-                    << "filter"
-                    << BSON("$where"
-                            << "sleep(100); return true;"));
+    auto cmd = BSON("find" << "test"
+                           << "filter" << BSON("$where" << "sleep(100); return true;"));
     for (size_t i = 0; i < kNumConnections; i++) {
         handles.emplace_back(scheduleRemoteCommand(opCtx.get(), target, cmd));
     }
@@ -279,7 +308,7 @@ TEST_F(TaskExecutorCursorFixture, ConnectionRemainsOpenAfterKillingTheCursor) {
         executor()->wait(cbHandle);
     }
 
-    ConnectionStatsPer beforeStats;
+    int createdBefore, openBefore;
     {
         const auto fpName = "waitAfterCommandFinishesExecution";
         runRemoteCommand(opCtx.get(),
@@ -288,9 +317,8 @@ TEST_F(TaskExecutorCursorFixture, ConnectionRemainsOpenAfterKillingTheCursor) {
                               << fpName << "mode"
                               << "alwaysOn"
                               << "data"
-                              << BSON("ns"
-                                      << "test.test"
-                                      << "commands" << BSON_ARRAY("getMore"))));
+                              << BSON("ns" << "test.test"
+                                           << "commands" << BSON_ARRAY("getMore"))));
         ScopeGuard guard([&] {
             runRemoteCommand(opCtx.get(),
                              target,
@@ -300,9 +328,8 @@ TEST_F(TaskExecutorCursorFixture, ConnectionRemainsOpenAfterKillingTheCursor) {
 
         RemoteCommandRequest rcr(target,
                                  DatabaseName::createDatabaseName_forTest(boost::none, "test"),
-                                 BSON("find"
-                                      << "test"
-                                      << "batchSize" << 10),
+                                 BSON("find" << "test"
+                                             << "batchSize" << 10),
                                  opCtx.get());
 
         executor::TaskExecutorCursorOptions opts(
@@ -315,28 +342,41 @@ TEST_F(TaskExecutorCursorFixture, ConnectionRemainsOpenAfterKillingTheCursor) {
 
         tec->populateCursor(opCtx.get());
 
+        // Make sure there is enough time for a connection/stream to establish.
+        assertConnectionStatsSoon(
+            getFactory(),
+            unittest::getFixtureConnectionString().getServers().front(),
+            [](const ConnectionStatsPer& stats) { return stats.inUse >= 1; },
+            [&](const GRPCConnectionStats& stats) { return stats.getTotalInUseStreams() >= 1; },
+            "Timed out waiting for at least one in use connection.");
+
         // At least one of the connections is busy running the initial `getMore` command to populate
         // the cursor. The command is blocked on the remote host and does not return until after the
         // destructor for `tec` returns.
-        beforeStats = getConnectionStatsForTarget();
-        ASSERT_GTE(beforeStats.inUse, 1);
+        auto beforeStats = getCreatedAndOpenConnectionStats(
+            executor(), "NetworkInterfaceTL-" + kNetworkInterfaceInstanceName, target, usingGRPC);
+        createdBefore = beforeStats.first;
+        openBefore = beforeStats.second;
     }
 
     // Wait for all connections to become idle -- this ensures all tasks scheduled as part of
     // cleaning up `tec` have finished running.
-    while (getConnectionStatsForTarget().inUse > 0) {
-        LOGV2(6531701, "Waiting for all connections to become idle");
-        sleepFor(Seconds(1));
+    LOGV2(6531701, "Waiting for all connections to become idle");
+    assertConnectionStatsSoon(
+        getFactory(),
+        unittest::getFixtureConnectionString().getServers().front(),
+        [](const ConnectionStatsPer& stats) { return stats.inUse == 0; },
+        [&](const GRPCConnectionStats& stats) { return stats.getTotalInUseStreams() == 0; },
+        "Timed out waiting for connections to become idle.");
+
+    auto [createdAfter, openAfter] = getCreatedAndOpenConnectionStats(
+        executor(), "NetworkInterfaceTL-" + kNetworkInterfaceInstanceName, target, usingGRPC);
+
+    // Check to see that our connection stats did not change.
+    if (!usingGRPC) {
+        ASSERT_EQ(createdBefore, createdAfter);
     }
-
-    const auto afterStats = getConnectionStatsForTarget();
-    auto countOpenConns = [](const ConnectionStatsPer& stats) {
-        return stats.inUse + stats.available + stats.refreshing + stats.leased;
-    };
-
-    // Verify that no connection is created or closed.
-    ASSERT_EQ(beforeStats.created, afterStats.created);
-    ASSERT_EQ(countOpenConns(beforeStats), countOpenConns(afterStats));
+    ASSERT_EQ(openBefore, openAfter);
 }
 
 }  // namespace

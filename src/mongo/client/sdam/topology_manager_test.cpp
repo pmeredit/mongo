@@ -46,9 +46,7 @@
 #include "mongo/client/sdam/server_description.h"
 #include "mongo/client/sdam/topology_description.h"
 #include "mongo/rpc/topology_version_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/system_clock_source.h"
 
@@ -83,9 +81,8 @@ protected:
                                                   .append("minWireVersion", 2)
                                                   .append("maxWireVersion", 10)
                                                   .appendArray("hosts",
-                                                               BSON_ARRAY("foo:1234"
-                                                                          << "bar:1234"
-                                                                          << "baz:1234"))
+                                                               BSON_ARRAY("foo:1234" << "bar:1234"
+                                                                                     << "baz:1234"))
 
                                                   .obj();
 };

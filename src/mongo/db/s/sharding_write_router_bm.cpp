@@ -83,7 +83,7 @@
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/processinfo.h"
 #include "mongo/util/str.h"
@@ -250,9 +250,7 @@ protected:
         reshardingFields.setDonorFields(
             TypeCollectionDonorFields{tempNss, reshardKeyPattern, shards});
 
-        ChunkManager cm(shards[0],
-                        DatabaseVersion(UUID::gen(), Timestamp(1, 0)),
-                        makeStandaloneRoutingTableHistory(
+        ChunkManager cm(makeStandaloneRoutingTableHistory(
                             RoutingTableHistory::makeNew(kNss,
                                                          collIdentifier,
                                                          shardKeyPattern,

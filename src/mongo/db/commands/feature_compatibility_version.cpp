@@ -76,9 +76,6 @@
 #include "mongo/db/write_concern_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_tag.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
@@ -95,8 +92,6 @@ namespace mongo {
 using repl::UnreplicatedWritesBlock;
 using GenericFCV = multiversion::GenericFCV;
 using FCV = multiversion::FeatureCompatibilityVersion;
-
-using namespace fmt::literals;
 
 namespace {
 
@@ -308,11 +303,12 @@ void FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionRequest(
     auto newVersion = setFCVRequest.getCommandParameter();
     auto isFromConfigServer = setFCVRequest.getFromConfigServer().value_or(false);
 
-    uassert(
-        5147403,
-        "cannot set featureCompatibilityVersion to '{}' while featureCompatibilityVersion is '{}'"_format(
-            multiversion::toString(newVersion), multiversion::toString(fromVersion)),
-        fcvTransitions.permitsTransition(fromVersion, newVersion, isFromConfigServer));
+    uassert(5147403,
+            fmt::format("cannot set featureCompatibilityVersion to '{}' while "
+                        "featureCompatibilityVersion is '{}'",
+                        multiversion::toString(newVersion),
+                        multiversion::toString(fromVersion)),
+            fcvTransitions.permitsTransition(fromVersion, newVersion, isFromConfigServer));
 
     auto fcvObj = findFeatureCompatibilityVersionDocument(opCtx);
     if (!fcvObj.isOK()) {
@@ -518,8 +514,7 @@ void FeatureCompatibilityVersion::setIfCleanStartup(OperationContext* opCtx,
 }
 
 bool FeatureCompatibilityVersion::hasNoReplicatedCollections(OperationContext* opCtx) {
-    StorageEngine* storageEngine = getGlobalServiceContext()->getStorageEngine();
-    std::vector<DatabaseName> dbNames = storageEngine->listDatabases();
+    std::vector<DatabaseName> dbNames = catalog::listDatabases();
     auto catalog = CollectionCatalog::get(opCtx);
     for (auto&& dbName : dbNames) {
         Lock::DBLock dbLock(opCtx, dbName, MODE_S);
@@ -635,8 +630,7 @@ void FeatureCompatibilityVersion::fassertInitializedAfterStartup(OperationContex
 
     auto fcvDocument = findFeatureCompatibilityVersionDocument(opCtx);
 
-    auto const storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    auto dbNames = storageEngine->listDatabases();
+    auto dbNames = catalog::listDatabases();
     bool nonLocalDatabases = std::any_of(
         dbNames.begin(), dbNames.end(), [](auto dbName) { return dbName != DatabaseName::kLocal; });
 

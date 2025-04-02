@@ -172,17 +172,17 @@ private:
 
 public:
     /*! Destroys this pointer.  Functions like `std::unique_ptr`. */
-    inline ~clonable_ptr() noexcept = default;
+    inline ~clonable_ptr() = default;
 
     /*! Moves a value, by pointer.  Functions like `std::unique_ptr`. */
-    inline clonable_ptr(clonable_ptr&&) noexcept(noexcept(CloneFactory{
-        std::declval<CloneFactory>()}) && noexcept(UniquePtr<T>{
-        std::declval<UniquePtr<T>>()})) = default;
+    inline clonable_ptr(clonable_ptr&&) noexcept(
+        noexcept(CloneFactory{std::declval<CloneFactory>()}) &&
+        noexcept(UniquePtr<T>{std::declval<UniquePtr<T>>()})) = default;
 
     /*! Moves a value, by pointer.  Functions like `std::unique_ptr`. */
     inline clonable_ptr& operator=(clonable_ptr&&) & noexcept(
-        noexcept(std::declval<CloneFactory>() = std::declval<CloneFactory>()) && noexcept(
-            std::declval<UniquePtr<T>>() = std::declval<UniquePtr<T>>())) = default;
+        noexcept(std::declval<CloneFactory>() = std::declval<CloneFactory>()) &&
+        noexcept(std::declval<UniquePtr<T>>() = std::declval<UniquePtr<T>>())) = default;
 
     /*!
      * Constructs a pointer referring to a new copy of an original value.  The old object owned by

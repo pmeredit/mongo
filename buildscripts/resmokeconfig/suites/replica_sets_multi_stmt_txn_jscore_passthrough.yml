@@ -68,11 +68,11 @@ selector:
     - jstests/core/**/update_arrayFilters.js
     - jstests/core/**/update_find_and_modify_id.js
     - jstests/core/**/update_modifier_pop.js
-    - jstests/core/**/updateh.js
-    - jstests/core/**/updatej.js
+    - jstests/core/**/update_dollar_fields.js
+    - jstests/core/**/update_fail_halts_modifications.js
 
     # Reads from system.views.
-    - jstests/core/views/views_drop.js
+    - jstests/core/catalog/views/views_drop.js
 
     ##
     ## Some aggregation stages don't support snapshot readconcern.
@@ -104,7 +104,7 @@ selector:
     # $collStats
     - jstests/core/**/operation_latency_histogram.js
     - jstests/core/catalog/collstats/views_coll_stats.js
-    - jstests/core/views/views_stats.js
+    - jstests/core/catalog/views/views_stats.js
 
     # Errors expected to happen in tests, which can cause transactions to get aborted.
     # So when the test tries to inspect the documents it can be out of sync (relative
@@ -118,7 +118,7 @@ selector:
     - jstests/core/**/push_sort.js
     - jstests/core/**/update_arrayFilters.js
     - jstests/core/**/update_dbref.js
-    - jstests/core/**/updatel.js
+    - jstests/core/**/update_positional_no_array_elem.js
     - jstests/core/**/write_result.js
     - jstests/core/**/query/project/positional_projection.js
 
@@ -132,14 +132,14 @@ selector:
     - jstests/core/**/dbref1.js
     - jstests/core/**/dbref2.js
     - jstests/core/**/ref3.js
-    - jstests/core/**/update3.js
+    - jstests/core/**/update_mod_dotted.js
 
     ##
     ## Error: Unable to acquire lock within a max lock request timeout of '0ms' milliseconds
     ##
 
     # Collection drops done through applyOps are not converted to w:majority
-    - jstests/core/views/invalid_system_views.js
+    - jstests/core/catalog/views/invalid_system_views.js
 
     ##
     ## Misc. reasons.
@@ -163,7 +163,7 @@ selector:
     # Creates sessions explicitly, resulting in txns being run through different sessions
     # using a single txnNumber.
     - jstests/core/query/json_schema/misc_validation.js
-    - jstests/core/views/views_all_commands.js
+    - jstests/core/catalog/views/views_all_commands.js
 
     # Committing a transaction when the server is fsync locked fails.
     - jstests/core/**/fsync.js
@@ -173,12 +173,13 @@ selector:
 
     # txn interrupted by command outside of txn before getMore runs.
     - jstests/core/**/commands_namespace_parsing.js
-    - jstests/core/**/drop3.js
+    - jstests/core/ddl/drop_collection_cursors.js
     - jstests/core/**/geo_s2cursorlimitskip.js
     - jstests/core/**/getmore_invalidated_cursors.js
     - jstests/core/**/getmore_invalidated_documents.js
     - jstests/core/**/query/kill_cursors.js
-    - jstests/core/**/list_collections1.js
+    - jstests/core/catalog/list_collections.js
+    - jstests/core/catalog/list_collections_vs_apply_ops.js
     - jstests/core/**/list_indexes.js
     - jstests/core/**/list_indexes_invalidation.js
     - jstests/core/**/list_namespaces_invalidation.js
@@ -199,10 +200,10 @@ selector:
     - jstests/core/**/geo_update_btree.js
     - jstests/core/**/loadserverscripts.js
     - jstests/core/**/mr_killop.js
-    - jstests/core/**/removeb.js
-    - jstests/core/**/removec.js
+    - jstests/core/**/remove_concurrent_inserts.js
+    - jstests/core/**/remove_adjacent_index_keys.js
     - jstests/core/**/shellstartparallel.js
-    - jstests/core/**/updatef.js
+    - jstests/core/**/update_namespace_details.js
 
     # Command expects to see result from parallel operation.
     # E.g. Suppose the following sequence of events: op1, join() op2 in parallel shell, op3.

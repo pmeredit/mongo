@@ -51,8 +51,10 @@ const auto kDefaultRetryabilityPredicate = [](const Status& status) {
         status == ErrorCodes::FailedToSatisfyReadPreference ||
         status.isA<ErrorCategory::CursorInvalidatedError>() || status == ErrorCodes::Interrupted ||
         status.isA<ErrorCategory::CancellationError>() ||
+        status.isA<ErrorCategory::ExceededTimeLimitError>() ||
         status.isA<ErrorCategory::NotPrimaryError>() ||
-        status.isA<ErrorCategory::NetworkTimeoutError>();
+        status.isA<ErrorCategory::NetworkTimeoutError>() ||
+        status == ErrorCodes::ShardingStateNotInitialized;
 };
 
 const auto kAlwaysRetryPredicate = [](const Status& status) {

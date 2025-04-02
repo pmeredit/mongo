@@ -52,11 +52,13 @@
 #include "mongo/db/exec/disk_use_options_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/legacy_runtime_constants_gen.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/db/query/explain.h"
+#include "mongo/db/query/explain_diagnostic_printer.h"
 #include "mongo/db/query/map_reduce_output_format.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/plan_executor_factory.h"
@@ -65,7 +67,6 @@
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
@@ -165,6 +166,11 @@ bool runAggregationMapReduce(OperationContext* opCtx,
     curop->beginQueryPlanningTimer();
 
     auto expCtx = makeExpressionContext(opCtx, parsedMr, verbosity);
+
+    // Create an RAII object that prints useful information about the ExpressionContext in the case
+    // of a tassert or crash.
+    ScopedDebugInfo expCtxDiagnostics("ExpCtxDiagnostics",
+                                      diagnostic_printers::ExpressionContextPrinter{expCtx});
     auto runnablePipeline = [&]() {
         auto pipeline = map_reduce_common::translateFromMR(parsedMr, expCtx);
         return expCtx->getMongoProcessInterface()->attachCursorSourceToPipelineForLocalRead(
@@ -179,6 +185,10 @@ bool runAggregationMapReduce(OperationContext* opCtx,
     }
 
     try {
+        // Capture diagnostics to be logged in the case of a failure.
+        ScopedDebugInfo explainDiagnostics(
+            "explainDiagnostics", diagnostic_printers::ExplainDiagnosticPrinter{exec.get()});
+
         auto resultArray = exhaustPipelineIntoBSONArray(exec);
 
         if (expCtx->getExplain()) {
@@ -220,7 +230,8 @@ bool runAggregationMapReduce(OperationContext* opCtx,
                 "mapReduce on a view is not supported",
                 e.code() != ErrorCodes::CommandOnShardedViewNotSupportedOnMongod);
 
-        e.addContext("MapReduce internal error");
+        e.addContext(str::stream() << "Executor error during MapReduce command on namespace: "
+                                   << parsedMr.getNamespace().toStringForErrorMsg());
         throw;
     }
 }

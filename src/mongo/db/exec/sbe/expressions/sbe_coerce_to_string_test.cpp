@@ -43,8 +43,7 @@
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 
 namespace mongo::sbe {
@@ -94,8 +93,7 @@ TEST_F(SBECoerceToStringTest, BasicCoerceToString) {
     runAndAssertExpression(compiledExpr.get(), "42.2130000000000");
 
     // BSONString test.
-    auto bsonString = BSON("string"
-                           << "hello");
+    auto bsonString = BSON("string" << "hello");
     auto bsonStringVal = value::bitcastFrom<const char*>(bsonString["string"].value());
     coerceToStringAccessor.reset(value::TypeTags::bsonString, bsonStringVal);
     runAndAssertExpression(compiledExpr.get(), "hello");

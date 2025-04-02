@@ -13,7 +13,7 @@ doassert = function(msg, obj) {
             print(new Date().toISOString() + " assert: " + msg);
     }
 
-    var ex;
+    let ex;
     if (obj) {
         ex = _getErrorWithCode(obj, msg);
     } else {
@@ -28,11 +28,11 @@ doassert = function(msg, obj) {
 // Sort doc/obj fields and return new sorted obj
 sortDoc = function(doc) {
     // Helper to sort the elements of the array
-    var sortElementsOfArray = function(arr) {
-        var newArr = [];
+    const sortElementsOfArray = function(arr) {
+        let newArr = [];
         if (!arr || arr.constructor != Array)
             return arr;
-        for (var i = 0; i < arr.length; i++) {
+        for (let i = 0; i < arr.length; i++) {
             newArr.push(sortDoc(arr[i]));
         }
         return newArr;
@@ -46,27 +46,27 @@ sortDoc = function(doc) {
     if (doc.constructor == Array)
         return sortElementsOfArray(doc);
 
-    var newDoc = {};
-    var fields = Object.keys(doc);
-    if (fields.length > 0) {
-        fields.sort();
-        for (var i = 0; i < fields.length; i++) {
-            var field = fields[i];
-            if (doc.hasOwnProperty(field)) {
-                var tmp = doc[field];
+    let fields = Object.keys(doc);
+    if (fields.length === 0) {
+        return doc;
+    }
 
-                if (tmp) {
-                    // Sort recursively for Arrays and Objects (including bson ones)
-                    if (tmp.constructor == Array)
-                        tmp = sortElementsOfArray(tmp);
-                    else if (tmp._bson || tmp.constructor == Object)
-                        tmp = sortDoc(tmp);
-                }
-                newDoc[field] = tmp;
+    let newDoc = {};
+    fields.sort();
+    for (let i = 0; i < fields.length; i++) {
+        const field = fields[i];
+        if (doc.hasOwnProperty(field)) {
+            let tmp = doc[field];
+
+            if (tmp) {
+                // Sort recursively for Arrays and Objects (including bson ones)
+                if (tmp.constructor == Array)
+                    tmp = sortElementsOfArray(tmp);
+                else if (tmp._bson || tmp.constructor == Object)
+                    tmp = sortDoc(tmp);
             }
+            newDoc[field] = tmp;
         }
-    } else {
-        newDoc = doc;
     }
 
     return newDoc;
@@ -79,7 +79,7 @@ sortDoc = function(doc) {
  * message 'excMsg' upon catching such a thrown exception.
  */
 function _convertExceptionToReturnStatus(func, excMsg) {
-    var safeFunc = () => {
+    const safeFunc = () => {
         try {
             return func();
         } catch (e) {
@@ -95,33 +95,51 @@ assert = (function() {
 
     function _processMsg(msg) {
         if (typeof msg === "function") {
-            return msg();
-        } else if (typeof msg === "object") {
-            return tojson(msg);
+            msg = msg();
         }
 
+        if (typeof msg === "object") {
+            msg = tojson(msg);
+        }
         return msg;
     }
 
-    function _validateAssertionMessage(msg) {
+    function _doassert(msg, prefix, attr, prefixOverride) {
+        if (TestData?.logFormat === "json") {
+            if (attr?.res) {
+                // Special handling for command reply a.k.a. 'res' parameters, as it might contain
+                // non-printable '_commandObj' and '_mongo' properties.
+                attr = {
+                    ...attr,
+                    ...(attr.res._commandObj && {originalCommand: attr.res._commandObj}),
+                    ...(attr.res._mongo && {connection: attr.res._mongo})
+                };
+            }
+            doassert(_buildAssertionMessage(msg, prefixOverride ?? prefix), attr);
+        }
+        doassert(_buildAssertionMessage(msg, prefix), attr?.res);
+    }
+
+    function _validateAssertionMessage(msg, attr) {
         if (msg) {
             if (typeof msg === "function") {
                 if (msg.length !== 0) {
-                    doassert("msg function cannot expect any parameters.");
+                    _doassert("msg function cannot expect any parameters.");
                 }
             } else if (typeof msg !== "string" && typeof msg !== "object") {
-                doassert("msg parameter must be a string, function or object. Found type: " +
-                         typeof (msg));
+                _doassert("msg parameter must be a string, function or object. Found type: " +
+                          typeof (msg));
             }
-
-            if (msg && assert._debug) {
-                print("in assert for: " + _processMsg(msg));
+        }
+        if (attr) {
+            if (typeof attr !== "object") {
+                _doassert("attr parameter must be an object. Found type: " + typeof (attr));
             }
         }
     }
 
     function _buildAssertionMessage(msg, prefix) {
-        var fullMessage = '';
+        let fullMessage = '';
 
         if (prefix) {
             fullMessage += prefix;
@@ -138,21 +156,19 @@ assert = (function() {
         return fullMessage;
     }
 
-    var assert = function(b, msg) {
-        if (arguments.length > 2) {
-            doassert("Too many parameters to assert().");
+    var assert = function(value, msg, attr) {
+        if (arguments.length > 3) {
+            _doassert("Too many parameters to assert().");
         }
 
-        _validateAssertionMessage(msg);
+        _validateAssertionMessage(msg, attr);
 
-        if (b) {
+        if (value) {
             return;
         }
 
-        doassert(_buildAssertionMessage(msg, "assert failed"));
+        _doassert(msg, "assert failed", attr);
     };
-
-    assert._debug = false;
 
     function _isEq(a, b) {
         if (a == b) {
@@ -166,15 +182,17 @@ assert = (function() {
         return false;
     }
 
-    assert.eq = function(a, b, msg) {
-        _validateAssertionMessage(msg);
+    assert.eq = function(a, b, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
         if (_isEq(a, b)) {
             return;
         }
 
-        doassert(_buildAssertionMessage(
-            msg, "[" + tojson(a) + "] != [" + tojson(b) + "] are not equal"));
+        _doassert(msg,
+                  `[${tojson(a)}] != [${tojson(b)}] are not equal`,
+                  {a, b, ...attr},
+                  "assert.eq() failed");
     };
 
     function _isDocEq(a, b) {
@@ -186,31 +204,34 @@ assert = (function() {
      * (properties) within objects is disregarded.
      * Throws if object representation in BSON exceeds 16793600 bytes.
      */
-    assert.docEq = function(expectedDoc, actualDoc, msg) {
-        _validateAssertionMessage(msg);
+    assert.docEq = function(expectedDoc, actualDoc, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
         if (_isDocEq(expectedDoc, actualDoc)) {
             return;
         }
 
-        doassert(_buildAssertionMessage(msg,
-                                        "expected document " + tojson(expectedDoc) +
-                                            " and actual document " + tojson(actualDoc) +
-                                            " are not equal"));
+        _doassert(msg,
+                  "expected document " + tojson(expectedDoc) + " and actual document " +
+                      tojson(actualDoc) + " are not equal",
+                  {expectedDoc, actualDoc, ...attr},
+                  "assert.docEq() failed");
     };
 
     /**
      * Throws if the elements of the two given sets are not the same. Use only for primitive
      * (non-object) set element types.
      */
-    assert.setEq = function(expectedSet, actualSet, msg) {
-        _validateAssertionMessage(msg);
+    assert.setEq = function(expectedSet, actualSet, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
         const failAssertion = function() {
-            doassert(_buildAssertionMessage(msg,
-                                            "expected set " + tojson(expectedSet) +
-                                                " and actual set " + tojson(actualSet) +
-                                                " are not equal"));
+            _doassert(
+                msg,
+                "expected set " + tojson(expectedSet) + " and actual set " + tojson(actualSet) +
+                    " are not equal",
+                {expectedSet: Array.from(expectedSet), actualSet: Array.from(actualSet), ...attr},
+                "assert.setEq() failed");
         };
         if (expectedSet.size !== actualSet.size) {
             failAssertion();
@@ -228,11 +249,14 @@ assert = (function() {
      *
      * Optionally accepts a compareFn to compare values instead of using docEq.
      */
-    assert.sameMembers = function(aArr, bArr, msg, compareFn = _isDocEq) {
-        _validateAssertionMessage(msg);
+    assert.sameMembers = function(aArr, bArr, msg, compareFn = _isDocEq, attr) {
+        _validateAssertionMessage(msg, attr);
 
         const failAssertion = function() {
-            doassert(_buildAssertionMessage(msg, tojson(aArr) + " != " + tojson(bArr)));
+            _doassert(msg,
+                      tojson(aArr) + " != " + tojson(bArr),
+                      {aArr, bArr, compareFn: compareFn.name, ...attr},
+                      "assert.sameMembers() failed");
         };
 
         if (aArr.length !== bArr.length) {
@@ -261,80 +285,90 @@ assert = (function() {
     // Given two arrays of documents, check that each array has the same members, but,
     // for the numeric fields specified in 'fuzzyFields,' the values need to be 'close,' but do
     // not have to be equal.
-    assert.fuzzySameMembers = function(aArr, bArr, fuzzyFields, msg, places = 4) {
+    assert.fuzzySameMembers = function(aArr, bArr, fuzzyFields, msg, places = 4, attr) {
         function fuzzyCompare(docA, docB) {
             return _fieldsClose(docA, docB, fuzzyFields, msg, places);
         }
-        return assert.sameMembers(aArr, bArr, null, fuzzyCompare);
+        return assert.sameMembers(aArr, bArr, msg, fuzzyCompare, attr);
     };
 
-    assert.neq = function(a, b, msg) {
-        _validateAssertionMessage(msg);
+    assert.neq = function(a, b, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
         if (!_isEq(a, b)) {
             return;
         }
 
-        doassert(
-            _buildAssertionMessage(msg, "[" + tojson(a) + "] == [" + tojson(b) + "] are equal"));
+        _doassert(msg,
+                  `[${tojson(a)}] == [${tojson(b)}] are equal`,
+                  {a, b, ...attr},
+                  "assert.neq() failed");
     };
 
-    assert.hasFields = function(result, arr, msg) {
-        var count = 0;
+    assert.hasFields = function(result, arr, msg, attr) {
         if (!Array.isArray(arr)) {
-            throw new Error("The second argument to assert.hasFields must be an array.");
+            _doassert("The second argument to assert.hasFields must be an array.");
         }
 
-        for (var field in result) {
+        let count = 0;
+        for (let field in result) {
             if (arr.includes(field)) {
                 count += 1;
             }
         }
 
         if (count != arr.length) {
-            doassert(_buildAssertionMessage(
-                msg, "Not all of the values from " + tojson(arr) + " were in " + tojson(result)));
+            _doassert(msg,
+                      "Not all of the values from " + tojson(arr) + " were in " + tojson(result),
+                      {result, arr, ...attr},
+                      "assert.hasFields() failed");
         }
     };
 
-    assert.contains = function(o, arr, msg) {
-        var wasIn = false;
+    assert.contains = function(element, arr, msg, attr) {
         if (!Array.isArray(arr)) {
-            throw new Error("The second argument to assert.contains must be an array.");
+            _doassert("The second argument to assert.contains() must be an array.");
         }
 
-        for (var i = 0; i < arr.length; i++) {
-            wasIn = arr[i] == o || ((arr[i] != null && o != null) && friendlyEqual(arr[i], o));
-            if (wasIn) {
-                break;
+        for (let i = 0; i < arr.length; i++) {
+            const comp = arr[i];
+            const satisfied = comp == element ||
+                ((comp != null && element != null) && friendlyEqual(comp, element));
+            if (satisfied) {
+                return;
             }
         }
 
-        if (!wasIn) {
-            doassert(_buildAssertionMessage(msg, tojson(o) + " was not in " + tojson(arr)));
-        }
+        _doassert(msg,
+                  tojson(element) + " was not in " + tojson(arr),
+                  {element, arr, ...attr},
+                  "assert.contains() failed");
     };
 
-    assert.doesNotContain = function(o, arr, msg) {
+    assert.doesNotContain = function(element, arr, msg, attr) {
         if (!Array.isArray(arr)) {
-            throw new Error("The second argument to assert.doesNotContain must be an array.");
+            _doassert("The second argument to assert.doesNotContain must be an array.");
         }
 
-        for (var i = 0; i < arr.length; i++) {
-            const isIn = arr[i] == o || ((arr[i] != null && o != null) && friendlyEqual(arr[i], o));
-            if (isIn) {
-                doassert(_buildAssertionMessage(msg, tojson(o) + " is in " + tojson(arr)));
+        for (let i = 0; i < arr.length; i++) {
+            const comp = arr[i];
+            const match = comp == element ||
+                ((comp != null && element != null) && friendlyEqual(comp, element));
+            if (match) {
+                _doassert(msg,
+                          tojson(element) + " is in " + tojson(arr),
+                          {element, arr, ...attr},
+                          "assert.doesNotContain() failed");
             }
         }
     };
 
-    assert.containsPrefix = function(prefix, arr, msg) {
-        var wasIn = false;
+    assert.containsPrefix = function(prefix, arr, msg, attr) {
         if (typeof (prefix) !== "string") {
-            throw new Error("The first argument to containsPrefix must be a string.");
+            _doassert("The first argument to containsPrefix must be a string.");
         }
         if (!Array.isArray(arr)) {
-            throw new Error("The second argument to containsPrefix must be an array.");
+            _doassert("The second argument to containsPrefix must be an array.");
         }
 
         for (let i = 0; i < arr.length; i++) {
@@ -342,16 +376,16 @@ assert = (function() {
                 continue;
             }
 
-            wasIn = arr[i].startsWith(prefix);
-            if (wasIn) {
-                break;
+            const satisfied = arr[i].startsWith(prefix);
+            if (satisfied) {
+                return;
             }
         }
 
-        if (!wasIn) {
-            doassert(_buildAssertionMessage(
-                msg, tojson(prefix) + " was not a prefix in " + tojson(arr)));
-        }
+        _doassert(msg,
+                  tojson(prefix) + " was not a prefix in " + tojson(arr),
+                  {prefix, arr, ...attr},
+                  "assert.containsPrefix() failed");
     };
 
     /*
@@ -359,25 +393,21 @@ assert = (function() {
      * or more than 'timeout' milliseconds have elapsed. Throws an exception with
      * message 'msg' after timing out.
      */
-    assert.soon = function(func, msg, timeout, interval, {runHangAnalyzer = true} = {}) {
-        _validateAssertionMessage(msg);
+    assert.soon = function(
+        func, msg, timeout, interval = 200, {runHangAnalyzer = true} = {}, attr) {
+        _validateAssertionMessage(msg, attr);
 
-        var start = new Date();
+        const start = new Date();
 
-        if (TestData && TestData.inEvergreen) {
-            timeout = timeout || 10 * 60 * 1000;
+        if (TestData?.inEvergreen) {
+            timeout ??= 10 * 60 * 1_000;  // 10 min
         } else {
-            timeout = timeout || 90 * 1000;
+            timeout ??= 90 * 1_000;  // 90 sec
         }
 
-        interval = interval || 200;
-
-        var msgPrefix = "assert.soon failed (timeout " + timeout + "ms): " + func;
-
-        if (msg) {
-            if (typeof (msg) != "function") {
-                msgPrefix = "assert.soon failed (timeout " + timeout + "ms), msg";
-            }
+        let msgPrefix = `assert.soon failed (timeout ${timeout}ms): ${func}`;
+        if (msg && typeof (msg) != "function") {
+            msgPrefix = `assert.soon failed (timeout ${timeout}ms), msg`;
         }
 
         while (1) {
@@ -391,7 +421,7 @@ assert = (function() {
 
             const diff = (new Date()).getTime() - start.getTime();
             if (diff > timeout) {
-                msg = _buildAssertionMessage(msg, msgPrefix);
+                msg = _buildAssertionMessage(msg);
                 if (runHangAnalyzer) {
                     msg = msg +
                         " The hang analyzer is automatically called in assert.soon functions." +
@@ -401,7 +431,7 @@ assert = (function() {
                     print(msg + " Running hang analyzer from assert.soon.");
                     MongoRunner.runHangAnalyzer();
                 }
-                doassert(msg);
+                _doassert(msg, msgPrefix, attr);
             } else {
                 sleep(interval);
             }
@@ -413,10 +443,11 @@ assert = (function() {
      * throwing an exception or more than 'timeout' milliseconds have elapsed. Throws an exception
      * with message 'msg' after timing out.
      */
-    assert.soonNoExcept = function(func, msg, timeout, interval, {runHangAnalyzer = true} = {}) {
-        var safeFunc =
+    assert.soonNoExcept = function(
+        func, msg, timeout, interval, {runHangAnalyzer = true} = {}, attr) {
+        const safeFunc =
             _convertExceptionToReturnStatus(func, "assert.soonNoExcept caught exception");
-        var getFunc = () => {
+        const getFunc = () => {
             // No TestData means not running from resmoke. Non-resmoke tests usually don't trace
             // exceptions.
             if (typeof TestData === "undefined") {
@@ -437,7 +468,7 @@ assert = (function() {
             };
         };
 
-        assert.soon(getFunc(), msg, timeout, interval, {runHangAnalyzer});
+        assert.soon(getFunc(), msg, timeout, interval, {runHangAnalyzer}, attr);
     };
 
     /*
@@ -447,9 +478,9 @@ assert = (function() {
      * message 'msg' after all attempts are used up. If no 'intervalMS' argument is passed,
      * it defaults to 0.
      */
-    assert.retry = function(func, msg, num_attempts, intervalMS, {runHangAnalyzer = true} = {}) {
-        var intervalMS = intervalMS || 0;
-        var attempts_made = 0;
+    assert.retry = function(
+        func, msg, num_attempts, intervalMS = 0, {runHangAnalyzer = true} = {}, attr) {
+        let attempts_made = 0;
         while (attempts_made < num_attempts) {
             if (func()) {
                 return;
@@ -469,7 +500,7 @@ assert = (function() {
             print(msg + " Running hang analyzer from assert.retry.");
             MongoRunner.runHangAnalyzer();
         }
-        doassert(msg);
+        _doassert(msg, null, attr, "assert.retry() failed");
     };
 
     /*
@@ -479,10 +510,11 @@ assert = (function() {
      * Throws an exception with message 'msg' after all attempts are used up. If no 'intervalMS'
      * argument is passed, it defaults to 0.
      */
-    assert.retryNoExcept = function(func, msg, num_attempts, intervalMS) {
-        var safeFunc =
+    assert.retryNoExcept = function(
+        func, msg, num_attempts, intervalMS, {runHangAnalyzer = true} = {}, attr) {
+        const safeFunc =
             _convertExceptionToReturnStatus(func, "assert.retryNoExcept caught exception");
-        assert.retry(safeFunc, msg, num_attempts, intervalMS);
+        assert.retry(safeFunc, msg, num_attempts, intervalMS, {runHangAnalyzer}, attr);
     };
 
     /**
@@ -507,11 +539,10 @@ assert = (function() {
         return res;
     };
 
-    assert.time = function(f, msg, timeout /*ms*/, {runHangAnalyzer = true} = {}) {
-        _validateAssertionMessage(msg);
+    assert.time = function(f, msg, timeout = 30_000 /*ms*/, {runHangAnalyzer = true} = {}, attr) {
+        _validateAssertionMessage(msg, attr);
 
-        var start = new Date();
-        timeout = timeout || 30000;
+        const start = new Date();
 
         let res;
         if (typeof (f) == "string") {
@@ -521,32 +552,33 @@ assert = (function() {
         }
 
         const diff = (new Date()).getTime() - start.getTime();
-        if (diff > timeout) {
-            const msgPrefix =
-                "assert.time failed timeout " + timeout + "ms took " + diff + "ms : " + f + ", msg";
-            msg = _buildAssertionMessage(msg, msgPrefix);
-            if (runHangAnalyzer) {
-                msg = msg +
-                    " The hang analyzer is automatically called in assert.time functions. " +
-                    "If you are *expecting* assert.soon to possibly fail, call assert.time " +
-                    "with {runHangAnalyzer: false} as the fourth argument " +
-                    "(you can fill unused arguments with `undefined`).";
-                print(msg + " Running hang analyzer from assert.time.");
-                MongoRunner.runHangAnalyzer();
-            }
-            doassert(msg);
+        if (diff <= timeout) {
+            return res;
         }
-        return res;
+
+        const msgPrefix =
+            "assert.time failed timeout " + timeout + "ms took " + diff + "ms : " + f + ", msg";
+        msg = _buildAssertionMessage(msg);
+        if (runHangAnalyzer) {
+            msg = msg + " The hang analyzer is automatically called in assert.time functions. " +
+                "If you are *expecting* assert.soon to possibly fail, call assert.time " +
+                "with {runHangAnalyzer: false} as the fourth argument " +
+                "(you can fill unused arguments with `undefined`).";
+            print(msg + " Running hang analyzer from assert.time.");
+            MongoRunner.runHangAnalyzer();
+        }
+        _doassert(
+            msg, msgPrefix, {timeMS: diff, timeoutMS: timeout, ...attr}, "assert.time() failed");
     };
 
     function assertThrowsHelper(func, params) {
         if (typeof func !== "function") {
-            throw new Error('1st argument must be a function');
+            _doassert('1st argument must be a function');
         }
 
         if (arguments.length >= 2 && !Array.isArray(params) &&
             Object.prototype.toString.call(params) !== "[object Arguments]") {
-            throw new Error("2nd argument must be an Array or Arguments object");
+            _doassert("2nd argument must be an Array or Arguments object");
         }
 
         let thisKeywordWasUsed = false;
@@ -582,56 +614,61 @@ assert = (function() {
         }
 
         if (thisKeywordWasUsed) {
-            doassert("Attempted to access 'this' during function call in" +
-                     " assert.throws/doesNotThrow. Instead, wrap the function argument in" +
-                     " another function.");
+            _doassert("Attempted to access 'this' during function call in" +
+                      " assert.throws/doesNotThrow. Instead, wrap the function argument in" +
+                      " another function.");
         }
 
         return {error: error, res: res};
     }
 
-    assert.throws = function(func, params, msg) {
-        _validateAssertionMessage(msg);
+    assert.throws = function(func, params, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
         // Use .apply() instead of calling the function directly with explicit arguments to
         // preserve the length of the `arguments` object.
         const {error} = assertThrowsHelper.apply(null, arguments);
 
         if (!error) {
-            doassert(_buildAssertionMessage(msg, "did not throw exception"));
+            _doassert(msg, "did not throw exception", attr);
         }
 
         return error;
     };
 
-    assert.throwsWithCode = function(func, expectedCode, params, msg) {
+    assert.throwsWithCode = function(func, expectedCode, params, msg, attr) {
         if (arguments.length < 2) {
-            throw new Error("assert.throwsWithCode expects at least 2 arguments");
+            _doassert("assert.throwsWithCode expects at least 2 arguments");
         }
-        // Remove the 'code' parameter, and any undefined parameters, from the list of arguments.
-        // Use .apply() to preserve the length of the 'arguments' object.
-        const newArgs = [func, params, msg].filter(element => element !== undefined);
+        // Remove the 'expectedCode' parameter, and any undefined parameters, from the list of
+        // arguments. Use .apply() to preserve the length of the 'arguments' object.
+        const newArgs = [func, params, msg, attr].filter(element => element !== undefined);
         const error = assert.throws.apply(null, newArgs);
         if (!Array.isArray(expectedCode)) {
             expectedCode = [expectedCode];
         }
         if (!expectedCode.some((ec) => error.code == ec)) {
-            doassert(_buildAssertionMessage(
-                msg,
-                "[" + tojson(error.code) + "] != [" + tojson(expectedCode) + "] are not equal"));
+            _doassert(msg,
+                      `[${tojson(error.code)}] != [${tojson(expectedCode)}] are not equal`,
+                      {code: error.code, expectedCode, ...attr},
+                      "assert.throwsWithCode() failed");
         }
         return error;
     };
 
-    assert.doesNotThrow = function(func, params, msg) {
-        _validateAssertionMessage(msg);
+    assert.doesNotThrow = function(func, params, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
         // Use .apply() instead of calling the function directly with explicit arguments to
         // preserve the length of the `arguments` object.
         const {error, res} = assertThrowsHelper.apply(null, arguments);
 
         if (error) {
-            doassert(_buildAssertionMessage(msg, "threw unexpected exception: " + error));
+            const {code, message} = error;
+            _doassert(msg,
+                      "threw unexpected exception: " + error,
+                      {error: {...(code && {code}), ...(message && {message})}, ...attr},
+                      "assert.doesNotThrow() failed");
         }
 
         return res;
@@ -639,10 +676,10 @@ assert = (function() {
 
     assert.dropExceptionsWithCode = function(func, dropCodes, onDrop) {
         if (typeof func !== "function") {
-            doassert('assert.dropExceptionsWithCode 1st argument must be a function');
+            _doassert('assert.dropExceptionsWithCode 1st argument must be a function');
         }
         if (typeof onDrop !== "function") {
-            doassert('assert.dropExceptionsWithCode 3rd argument must be a function');
+            _doassert('assert.dropExceptionsWithCode 3rd argument must be a function');
         }
         if (!Array.isArray(dropCodes)) {
             dropCodes = [dropCodes];
@@ -665,14 +702,13 @@ assert = (function() {
         }
 
         // A write command response may have ok:1 but write errors.
-        if (!ignoreWriteErrors && raw.hasOwnProperty("writeErrors") && raw.writeErrors.length > 0) {
+        if (!ignoreWriteErrors && raw.writeErrors?.length > 0) {
             return false;
         }
 
         if (!ignoreWriteConcernErrors && raw.hasOwnProperty("writeConcernError")) {
             return false;
         }
-
         return true;
     }
 
@@ -685,8 +721,10 @@ assert = (function() {
 
     function _validateCommandResponse(res, assertionName) {
         if (typeof res !== "object") {
-            doassert("unknown response type '" + typeof res + "' given to " + assertionName +
-                     ", res='" + res + "'");
+            _doassert(`unexpected result type given to assert.${assertionName}()`,
+                      `expected result type 'object', got '${typeof res}', res='${res}'`,
+                      {result: res, resultType: typeof res},
+                      "expected result type 'object'");
         }
     }
 
@@ -697,9 +735,7 @@ assert = (function() {
             if (res.hasWriteConcernError() && res.getWriteConcernError().errmsg === timeoutMsg) {
                 isWriteConcernTimeout = true;
             }
-        } else if ((res.hasOwnProperty("errmsg") && res.errmsg === timeoutMsg) ||
-                   (res.hasOwnProperty("writeConcernError") &&
-                    res.writeConcernError.errmsg === timeoutMsg)) {
+        } else if (res?.errmsg === timeoutMsg || res.writeConcernError?.errmsg === timeoutMsg) {
             isWriteConcernTimeout = true;
         }
         if (isWriteConcernTimeout) {
@@ -715,9 +751,8 @@ assert = (function() {
         // However, they will also abort transactions and continue running rather than fail the
         // test, so we don't want to run the hang analyzer when the error has a
         // TransientTransactionError error label.
-        const isTransientTxnError = res.hasOwnProperty("errorLabels") &&
-            res.errorLabels.includes("TransientTransactionError");
-        const isLockTimeout = res.hasOwnProperty("code") && ErrorCodes.LockTimeout === res.code;
+        const isTransientTxnError = res.errorLabels?.includes("TransientTransactionError");
+        const isLockTimeout = res?.code === ErrorCodes.LockTimeout;
         if (isLockTimeout && !isTransientTxnError) {
             print("Running hang analyzer for lock timeout " + tojson(res));
             MongoRunner.runHangAnalyzer();
@@ -740,7 +775,7 @@ assert = (function() {
         _validateCommandResponse(res, "commandWorked");
 
         // Keep this as a function so we don't call tojson if not necessary.
-        const makeFailMsg = () => {
+        const makeFailPrefix = (res) => {
             let prefix = "command failed: " + tojson(res);
             if (typeof res._commandObj === "object" && res._commandObj !== null) {
                 prefix += " with original command request: " + tojson(res._commandObj);
@@ -748,7 +783,13 @@ assert = (function() {
             if (typeof res._mongo === "object" && res._mongo !== null) {
                 prefix += " on connection: " + res._mongo;
             }
-            return _buildAssertionMessage(msg, prefix);
+            return prefix;
+        };
+        const makeFailPrefixOverride = (res) => {
+            if (res.hasOwnProperty("errmsg")) {
+                return `command failed: ${res.errmsg}`;
+            }
+            return "command failed";
         };
 
         if (_isWriteResultType(res)) {
@@ -760,7 +801,7 @@ assert = (function() {
             // A WriteCommandError implies ok:0.
             // Error objects may have a `code` property added (e.g.
             // DBCollection.prototype.mapReduce) without a `ok` property.
-            doassert(makeFailMsg(), res);
+            _doassert(msg, makeFailPrefix(res), {res}, makeFailPrefixOverride(res));
         } else if (res.hasOwnProperty("ok")) {
             // Handle raw command responses or cases like MapReduceResult which extend command
             // response.
@@ -769,15 +810,16 @@ assert = (function() {
                     ignoreWriteConcernErrors: ignoreWriteConcernErrors
                 })) {
                 _runHangAnalyzerForSpecificFailureTypes(res);
-                doassert(makeFailMsg(), res);
+                _doassert(msg, makeFailPrefix(res), {res}, makeFailPrefixOverride(res));
             }
         } else if (res.hasOwnProperty("acknowledged")) {
             // CRUD api functions return plain js objects with an acknowledged property.
             // no-op.
         } else {
-            doassert(_buildAssertionMessage(
-                         msg, "unknown type of result, cannot check ok: " + tojson(res)),
-                     res);
+            _doassert(msg,
+                      "unknown type of result, cannot check ok: " + tojson(res),
+                      {res},
+                      "unknown type of result");
         }
         return res;
     }
@@ -793,17 +835,32 @@ assert = (function() {
         }
 
         // Keep this as a function so we don't call tojson if not necessary.
-        const makeFailMsg = () => {
-            return _buildAssertionMessage(
-                msg, "command worked when it should have failed: " + tojson(res));
+        const makeFailPrefix = (res) => {
+            return "command worked when it should have failed: " + tojson(res);
+        };
+        const makeFailPrefixOverride = (res) => {
+            if (res.hasOwnProperty("errmsg")) {
+                return `command worked when it should have failed: ${res.errmsg}`;
+            }
+            return "command worked when it should have failed";
         };
 
-        const makeFailCodeMsg = () => {
+        const makeFailCodePrefix = (res, expectedCode) => {
             return (expectedCode !== assert._kAnyErrorCode)
-                ? _buildAssertionMessage(msg,
-                                         "command did not fail with any of the following codes " +
-                                             tojson(expectedCode) + " " + tojson(res))
-                : "";
+                ? "command did not fail with any of the following codes " + tojson(expectedCode) +
+                    " " + tojson(res)
+                : null;
+        };
+        const makeFailCodePrefixOverride = (res, expectedCode) => {
+            if (res.hasOwnProperty("errmsg")) {
+                return (expectedCode !== assert._kAnyErrorCode)
+                    ? "command did not fail with any of the following codes " +
+                        tojson(expectedCode) + " " + res.errmsg
+                    : null;
+            }
+            return (expectedCode !== assert._kAnyErrorCode)
+                ? "command did not fail with any of the following codes " + tojson(expectedCode)
+                : null;
         };
 
         if (_isWriteResultType(res)) {
@@ -815,14 +872,20 @@ assert = (function() {
             // DBCollection.prototype.mapReduce) without a `ok` property.
             if (expectedCode !== assert._kAnyErrorCode) {
                 if (!res.hasOwnProperty("code") || !expectedCode.includes(res.code)) {
-                    doassert(makeFailCodeMsg(), res);
+                    _doassert(msg,
+                              makeFailCodePrefix(res, expectedCode),
+                              {res, expectedCode},
+                              makeFailCodePrefixOverride(res, expectedCode));
                 }
             }
         } else if (res.hasOwnProperty("ok")) {
             // Handle raw command responses or cases like MapReduceResult which extend command
             // response.
             if (_rawReplyOkAndNoWriteErrors(res)) {
-                doassert(makeFailMsg(), res);
+                _doassert(msg,
+                          makeFailPrefix(res, expectedCode),
+                          {res},
+                          makeFailPrefixOverride(res, expectedCode));
             }
 
             if (expectedCode !== assert._kAnyErrorCode) {
@@ -837,16 +900,23 @@ assert = (function() {
 
                 if (!foundCode) {
                     _runHangAnalyzerForSpecificFailureTypes(res);
-                    doassert(makeFailCodeMsg(), res);
+                    _doassert(msg,
+                              makeFailCodePrefix(res, expectedCode),
+                              {res, expectedCode},
+                              makeFailCodePrefixOverride(res, expectedCode));
                 }
             }
         } else if (res.hasOwnProperty("acknowledged")) {
             // CRUD api functions return plain js objects with an acknowledged property.
-            doassert(makeFailMsg(), res);
+            _doassert(msg,
+                      makeFailPrefix(res, expectedCode),
+                      {res},
+                      makeFailPrefixOverride(res, expectedCode));
         } else {
-            doassert(_buildAssertionMessage(
-                         msg, "unknown type of result, cannot check error: " + tojson(res)),
-                     res);
+            _doassert(msg,
+                      "unknown type of result, cannot check error: " + tojson(res),
+                      {res},
+                      "unknown type of result");
         }
         return res;
     }
@@ -856,6 +926,17 @@ assert = (function() {
         try {
             // First check if the command worked.
             return assert.commandWorked(res, msg);
+        } catch (e) {
+            // If the command did not work, assert it failed with one of the specified codes.
+            return assert.commandFailedWithCode(res, errorCodeSet, msg);
+        }
+    };
+
+    assert.commandWorkedIgnoringWriteConcernErrorsOrFailedWithCode =
+        function commandWorkedOrFailedWithCode(res, errorCodeSet, msg) {
+        try {
+            // First check if the command worked.
+            return _assertCommandWorked(res, msg, {ignoreWriteConcernErrors: true});
         } catch (e) {
             // If the command did not work, assert it failed with one of the specified codes.
             return assert.commandFailedWithCode(res, errorCodeSet, msg);
@@ -889,33 +970,33 @@ assert = (function() {
     };
 
     assert.writeOK = function(res, msg, {ignoreWriteConcernErrors} = {}) {
-        var errMsg = null;
+        let errMsg = null;
 
         if (res instanceof WriteResult) {
             if (res.hasWriteError()) {
-                errMsg = "write failed with error: " + tojson(res);
+                errMsg = "write failed with error";
             } else if (!ignoreWriteConcernErrors && res.hasWriteConcernError()) {
-                errMsg = "write concern failed with errors: " + tojson(res);
+                errMsg = "write concern failed with errors";
             }
         } else if (res instanceof BulkWriteResult) {
             // Can only happen with bulk inserts
             if (res.hasWriteErrors()) {
-                errMsg = "write failed with errors: " + tojson(res);
+                errMsg = "write failed with errors";
             } else if (!ignoreWriteConcernErrors && res.hasWriteConcernError()) {
-                errMsg = "write concern failed with errors: " + tojson(res);
+                errMsg = "write concern failed with errors";
             }
         } else if (res instanceof WriteCommandError || res instanceof WriteError ||
                    res instanceof BulkWriteError) {
-            errMsg = "write command failed: " + tojson(res);
+            errMsg = "write command failed";
         } else {
             if (!res || !res.ok) {
-                errMsg = "unknown type of write result, cannot check ok: " + tojson(res);
+                errMsg = "unknown type of write result, cannot check ok";
             }
         }
 
         if (errMsg) {
             _runHangAnalyzerForSpecificFailureTypes(res);
-            doassert(_buildAssertionMessage(msg, errMsg), res);
+            _doassert(msg, errMsg + ": " + tojson(res), {res}, errMsg);
         }
 
         return res;
@@ -929,11 +1010,11 @@ assert = (function() {
     // the expectedCode array.
     assert.writeErrorWithCode = function(res, expectedCode, msg) {
         if (expectedCode === undefined) {
-            doassert("assert.writeErrorWithCode called with undefined error code");
+            _doassert("assert.writeErrorWithCode called with undefined error code");
         }
 
-        var errMsg = null;
-        var writeErrorCodes = new Set();
+        let errMsg = null;
+        const writeErrorCodes = new Set();
 
         if (res instanceof WriteResult) {
             if (res.hasWriteError()) {
@@ -941,7 +1022,7 @@ assert = (function() {
             } else if (res.hasWriteConcernError()) {
                 writeErrorCodes.add(res.getWriteConcernError().code);
             } else {
-                errMsg = "no write error: " + tojson(res);
+                errMsg = "no write error";
             }
         } else if (res instanceof BulkWriteResult || res instanceof BulkWriteError) {
             // Can only happen with bulk inserts
@@ -951,7 +1032,7 @@ assert = (function() {
             } else if (res.hasWriteConcernError()) {
                 writeErrorCodes.add(res.getWriteConcernError().code);
             } else {
-                errMsg = "no write errors: " + tojson(res);
+                errMsg = "no write errors";
             }
         } else if (res instanceof WriteCommandError) {
             // Can only happen with bulk inserts
@@ -960,11 +1041,16 @@ assert = (function() {
             writeErrorCodes.add(res.code);
         } else {
             if (!res || res.ok) {
-                errMsg = "unknown type of write result, cannot check error: " + tojson(res);
+                errMsg = "unknown type of write result, cannot check error";
             }
         }
 
-        if (!errMsg && expectedCode !== assert._kAnyErrorCode) {
+        if (errMsg) {
+            _runHangAnalyzerForSpecificFailureTypes(res);
+            _doassert(msg, errMsg + ": " + tojson(res), {res}, errMsg);
+        }
+
+        if (expectedCode !== assert._kAnyErrorCode) {
             if (!Array.isArray(expectedCode)) {
                 expectedCode = [expectedCode];
             }
@@ -973,25 +1059,28 @@ assert = (function() {
                 errMsg = "found code(s) " + tojson(Array.from(writeErrorCodes)) +
                     " does not match any of the expected codes " + tojson(expectedCode) +
                     ". Original command response: " + tojson(res);
+                _runHangAnalyzerForSpecificFailureTypes(res);
+                _doassert(msg,
+                          errMsg,
+                          {res, expectedCode, writeErrorCodes: Array.from(writeErrorCodes)},
+                          "found code(s) does not match any of the expected codes");
             }
-        }
-
-        if (errMsg) {
-            _runHangAnalyzerForSpecificFailureTypes(res);
-            doassert(_buildAssertionMessage(msg, errMsg), res);
         }
 
         return res;
     };
 
-    assert.isnull = function(what, msg) {
-        _validateAssertionMessage(msg);
+    assert.isnull = function(value, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
-        if (what == null) {
+        if (value == null) {
             return;
         }
 
-        doassert("supposed to be null (" + (_processMsg(msg) || "") + ") was: " + tojson(what));
+        _doassert(msg,
+                  "supposed to be null, was: " + tojson(value),
+                  {value, ...attr},
+                  "assert.isnull() failed");
     };
 
     function _shouldUseBsonWoCompare(a, b) {
@@ -1021,77 +1110,77 @@ assert = (function() {
         return f(a, b);
     }
 
-    function _assertCompare(f, a, b, description, msg) {
-        _validateAssertionMessage(msg);
+    function _assertCompare(f, a, b, description, msg, attr) {
+        _validateAssertionMessage(msg, attr);
 
         if (_compare(f, a, b)) {
             return;
         }
 
-        doassert(_buildAssertionMessage(msg, a + " is not " + description + " " + b));
+        _doassert(msg,
+                  a + " is not " + description + " " + b,
+                  {a, b, ...attr},
+                  `assert ${description} failed`);
     }
 
-    assert.lt = function(a, b, msg) {
+    assert.lt = function(a, b, msg, attr) {
         _assertCompare((a, b) => {
             return a < b;
-        }, a, b, "less than", msg);
+        }, a, b, "less than", msg, attr);
     };
 
-    assert.gt = function(a, b, msg) {
+    assert.gt = function(a, b, msg, attr) {
         _assertCompare((a, b) => {
             return a > b;
-        }, a, b, "greater than", msg);
+        }, a, b, "greater than", msg, attr);
     };
 
-    assert.lte = function(a, b, msg) {
+    assert.lte = function(a, b, msg, attr) {
         _assertCompare((a, b) => {
             return a <= b;
-        }, a, b, "less than or eq", msg);
+        }, a, b, "less than or eq", msg, attr);
     };
 
-    assert.gte = function(a, b, msg) {
+    assert.gte = function(a, b, msg, attr) {
         _assertCompare((a, b) => {
             return a >= b;
-        }, a, b, "greater than or eq", msg);
+        }, a, b, "greater than or eq", msg, attr);
     };
 
-    assert.between = function(a, b, c, msg, inclusive) {
-        _validateAssertionMessage(msg);
+    assert.between = function(a, b, c, msg, inclusive = true, attr) {
+        _validateAssertionMessage(msg, attr);
 
         let compareFn = (a, b) => {
-            return a < b;
+            return inclusive ? a <= b : a < b;
         };
-
-        if ((inclusive == undefined || inclusive == true)) {
-            compareFn = (a, b) => {
-                return a <= b;
-            };
-        }
 
         if (_compare(compareFn, a, b) && _compare(compareFn, b, c)) {
             return;
         }
 
-        doassert(_buildAssertionMessage(msg, b + " is not between " + a + " and " + c));
+        _doassert(msg,
+                  b + " is not between " + a + " and " + c,
+                  {a, b, c, inclusive, ...attr},
+                  "assert.between() failed");
     };
 
-    assert.betweenIn = function(a, b, c, msg) {
-        assert.between(a, b, c, msg, true);
+    assert.betweenIn = function(a, b, c, msg, attr) {
+        assert.between(a, b, c, msg, true, attr);
     };
-    assert.betweenEx = function(a, b, c, msg) {
-        assert.between(a, b, c, msg, false);
+    assert.betweenEx = function(a, b, c, msg, attr) {
+        assert.between(a, b, c, msg, false, attr);
     };
 
     // Returns an array [isClose, msg] where 'isClose' is a bool indiciating whether or not values
     // 'a' and 'b' are sufficiently close, and, if they're not, 'msg' is set to a descriptive error
     // string.
     function _isClose(a, b, places = 4) {
-        var absoluteError = Math.abs(a - b);
+        const absoluteError = Math.abs(a - b);
         if (Math.round(absoluteError * Math.pow(10, places)) === 0) {
             return [true, null];
         }
         // This treats 'places' as significant figures.
-        var relativeError = Math.abs(absoluteError / b);
+        const relativeError = Math.abs(absoluteError / b);
         if (Math.round(relativeError * Math.pow(10, places)) === 0) {
             return [true, null];
         }
@@ -1104,7 +1193,7 @@ assert = (function() {
     assert.close = function(a, b, msg, places = 4) {
         const [isClose, errMsg] = _isClose(a, b, places);
         if (!isClose) {
-            doassert(_buildAssertionMessage(msg, errMsg));
+            _doassert(msg, errMsg, {a, b, places}, "assert.close() failed");
         }
     };
 
@@ -1138,15 +1227,10 @@ assert = (function() {
      * Asserts if the times in millis are not withing delta milliseconds, in either direction.
      * Default Delta: 1 second
      */
-    assert.closeWithinMS = function(a, b, msg, deltaMS) {
-        "use strict";
-
-        if (deltaMS === undefined) {
-            deltaMS = 1000;
-        }
-        var aMS = a instanceof Date ? a.getTime() : a;
-        var bMS = b instanceof Date ? b.getTime() : b;
-        var actualDelta = Math.abs(Math.abs(aMS) - Math.abs(bMS));
+    assert.closeWithinMS = function(a, b, msg, deltaMS = 1_000, attr) {
+        const aMS = a instanceof Date ? a.getTime() : a;
+        const bMS = b instanceof Date ? b.getTime() : b;
+        const actualDelta = Math.abs(Math.abs(aMS) - Math.abs(bMS));
 
         if (actualDelta <= deltaMS) {
             return;
@@ -1154,18 +1238,21 @@ assert = (function() {
 
         const msgPrefix = "" + a + " is not equal to " + b + " within " + deltaMS + " millis, " +
             "actual delta: " + actualDelta + " millis";
-        doassert(_buildAssertionMessage(msg, msgPrefix));
+
+        const forLog = (arg) => arg instanceof Date ? JSON.parse(JSON.stringify(arg)) : arg;
+        _doassert(msg,
+                  msgPrefix,
+                  {a: forLog(a), b: forLog(b), deltaMS, ...attr},
+                  "assert.closeWithinMS() failed");
     };
 
-    assert.includes = function(haystack, needle, msg) {
-        if (!haystack.includes(needle)) {
-            var assertMsg = "string [" + haystack + "] does not include [" + needle + "]";
-            if (msg) {
-                assertMsg += ", " + msg;
-            }
-
-            doassert(assertMsg);
+    assert.includes = function(haystack, needle, msg, attr) {
+        if (haystack.includes(needle)) {
+            return;
         }
+
+        const prefix = `string [${haystack}] does not include [${needle}]`;
+        _doassert(msg, prefix, {haystack, needle, ...attr}, "assert.includes() failed");
     };
 
     assert.noAPIParams = function(cmdOptions) {
@@ -1179,7 +1266,7 @@ assert = (function() {
     };
 
     assert.soonRetryOnAcceptableErrors = function(
-        func, acceptableErrors, msg, timeout, interval, {runHangAnalyzer = true} = {}) {
+        func, acceptableErrors, msg, timeout, interval, {runHangAnalyzer = true} = {}, attr) {
         if (!Array.isArray(acceptableErrors)) {
             acceptableErrors = [acceptableErrors];
         }
@@ -1196,7 +1283,7 @@ assert = (function() {
             }
         };
 
-        assert.soon(funcWithRetries, msg, timeout, interval, {runHangAnalyzer});
+        assert.soon(funcWithRetries, msg, timeout, interval, {runHangAnalyzer}, attr);
     };
 
     /*
@@ -1208,10 +1295,10 @@ assert = (function() {
      * again.
      */
     assert.soonRetryOnNetworkErrors = function(
-        func, msg, timeout, interval, {runHangAnalyzer = true} = {}) {
+        func, msg, timeout, interval, {runHangAnalyzer = true} = {}, attr) {
         let acceptableErrors = Array.from(ErrorCodes.NetworkError);
         assert.soonRetryOnAcceptableErrors(
-            func, acceptableErrors, msg, timeout, interval, runHangAnalyzer);
+            func, acceptableErrors, msg, timeout, interval, runHangAnalyzer, attr);
     };
 
     return assert;

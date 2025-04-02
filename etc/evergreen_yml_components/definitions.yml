@@ -18,9 +18,11 @@ variables:
       - amazon2023-arm64
       - enterprise-amazon2023
       - enterprise-amazon2023-arm64
+      - enterprise-amazon2023-arm64-grav4
       - debian12
       - enterprise-debian12-64
       - enterprise-rhel-81-ppc64le
+      - enterprise-rhel-9-ppc64le
       - ubi8
       - rhel8
       - rhel-8-arm64
@@ -335,8 +337,8 @@ functions:
         - "evergreen/functions/binaries_extract.py"
         - "--tarball=mongo_benchmarks.tgz"
         - "--extraction-command=${decompress}"
-        - "--change-dir=build/install"
-        - "--move-output=build/install/benchmarks.txt:build/"
+        - "--change-dir=${extraction_change_dir}"
+        - "--move-output=dist-test/:bazel-bin/install"
 
   "get version expansions": &get_version_expansions
     command: s3.get
@@ -486,15 +488,6 @@ functions:
       args:
         - "./src/evergreen/functions/credentials_setup.sh"
 
-  "set up win mount script": &set_up_win_mount_script
-    command: subprocess.exec
-    display_name: "win mount script setup"
-    params:
-      binary: bash
-      silent: true
-      args:
-        - "./src/evergreen/functions/win_mount_script_setup.sh"
-
   "set up notary client credentials":
     - *f_expansions_write
     - command: subprocess.exec
@@ -525,11 +518,12 @@ functions:
     params:
       aws_key: ${aws_key}
       aws_secret: ${aws_secret}
-      local_file: src/mongo-debugsymbols.${ext|tgz}
+      local_file: src/bazel-bin/dist-test-debug.${ext|tgz}
       remote_file: ${mongo_debugsymbols}
       bucket: mciuploads
       permissions: public-read
       content_type: ${content_type|application/gzip}
+      display_name: mongo-debugsymbols.${ext|tgz}
 
   "use WiredTiger develop": &use_wiredtiger_develop
     command: subprocess.exec
@@ -538,14 +532,6 @@ functions:
       binary: bash
       args:
         - "./src/evergreen/functions/wiredtiger_develop_use.sh"
-
-  "umount shared scons directory":
-    command: subprocess.exec
-    display_name: "shared scons directory umount"
-    params:
-      binary: bash
-      args:
-        - "./src/evergreen/functions/shared_scons_directory_umount.sh"
 
   "umount tmp directory":
     - *f_expansions_write
@@ -660,17 +646,6 @@ functions:
       args:
         - "src/evergreen/functions/venv_setup.sh"
 
-  # This needs to be run after "set up venv"
-  # This depends on having a venv already setup
-  # This just installs the extra deps needed for libdeps
-  "set up libdeps venv":
-    command: subprocess.exec
-    display_name: "set up libdeps venv"
-    params:
-      binary: bash
-      args:
-        - "src/evergreen/libdeps_setup.sh"
-
   "upload pip requirements": &upload_pip_requirements
     command: s3.put
     display_name: "upload pip requirements"
@@ -683,43 +658,6 @@ functions:
       permissions: public-read
       content_type: text/plain
       display_name: Pip Requirements
-
-  "run clang tidy":
-    - *f_expansions_write
-    - command: subprocess.exec
-      type: test
-      params:
-        binary: bash
-        add_expansions_to_env: true
-        args:
-          - "src/evergreen/run_python_script.sh"
-          - "buildscripts/clang_tidy.py"
-          - "--split-jobs=4"
-          - "--split=${split}"
-
-  "upload clang tidy results":
-    - command: s3.put
-      display_name: "upload clang_tidy_fixes.tgz"
-      params:
-        aws_key: ${aws_key}
-        aws_secret: ${aws_secret}
-        local_file: src/clang_tidy_fixes.tgz
-        remote_file: ${project}/${build_variant}/${version_id}/${task_id}/clang_tidy_fixes.tgz
-        bucket: mciuploads
-        permissions: public-read
-        content_type: application/gzip
-        display_name: clang_tidy_fixes.tgz
-    - command: s3.put
-      display_name: "upload clang_tidy_fixes.json"
-      params:
-        aws_key: ${aws_key}
-        aws_secret: ${aws_secret}
-        local_file: src/clang_tidy_fixes/clang_tidy_fixes.json
-        remote_file: ${project}/${build_variant}/${version_id}/${task_id}/clang_tidy_fixes.json
-        bucket: mciuploads
-        permissions: public-read
-        content_type: application/json
-        display_name: clang_tidy_fixes.json
 
   "generate network diagnostics": &generate_network_diagnostics
     command: subprocess.exec
@@ -1044,6 +982,24 @@ functions:
         OTEL_PARENT_ID: ${otel_parent_id}
         OTEL_COLLECTOR_DIR: "../build/OTelTraces/"
 
+  "execute resmoke tests with aws credentials":
+    &execute_resmoke_tests_with_aws_credentials
+    command: subprocess.exec
+    display_name: "execute resmoke tests with aws credentials"
+    type: test
+    params:
+      binary: bash
+      args:
+        - "./src/evergreen/resmoke_tests_execute.sh"
+      include_expansions_in_env:
+        - AWS_ACCESS_KEY_ID
+        - AWS_SECRET_ACCESS_KEY
+        - AWS_SESSION_TOKEN
+      env:
+        OTEL_TRACE_ID: ${otel_trace_id}
+        OTEL_PARENT_ID: ${otel_parent_id}
+        OTEL_COLLECTOR_DIR: "../build/OTelTraces/"
+
   "retrieve generated test configuration":
     &retrieve_generated_test_configuration
     command: s3.get
@@ -1197,6 +1153,18 @@ functions:
         binary: bash
         args:
           - "./src/evergreen/gen_tasks_activate.sh"
+    # This command will never generate any tasks. However, it must be present here in the main body
+    # of the _gen task to ensure that Evergreen prioritizes the task higher in the task queue. The
+    # "generate resmoke tasks" function is responsible for activating the corresponding non _gen
+    # task and any delays in scheduling the _gen task will cascade to the non _gen task also. An
+    # approach of a no-op generate.tasks command is used instead of configuring task priorities
+    # because it leaves the policy of weighting the relative urgency across tasks in the queue as
+    # Evergreen's responsibility.
+    - command: generate.tasks
+      params:
+        optional: true
+        files:
+          - /dev/null
 
   # Used by generator
   "validate resmoke tests runtime":
@@ -1313,6 +1281,44 @@ functions:
     - *check_run_tests_infrastructure_failure
     - *check_resmoke_failure
 
+  "run tests with aws credentials":
+    - *f_expansions_write
+    - *configure_evergreen_api_credentials
+    - *determine_task_timeout
+    - *update_task_timeout_expansions
+    - *f_expansions_write
+    - *update_task_timeout
+    - *f_expansions_write
+    - *set_code_coverage_expansion
+    - *f_expansions_write
+    - command: expansions.update
+      params:
+        env:
+          CEDAR_USER: ${cedar_user}
+          CEDAR_API_KEY: ${cedar_api_key}
+        updates:
+          - key: aws_key_remote
+            value: ${mongodatafiles_aws_key}
+          - key: aws_profile_remote
+            value: mongodata_aws
+          - key: aws_secret_remote
+            value: ${mongodatafiles_aws_secret}
+    - *f_expansions_write
+    - *set_up_remote_credentials
+    - *f_expansions_write
+    - *determine_resmoke_jobs
+    - *update_resmoke_jobs_expansions
+    - *f_expansions_write
+    - *configure_evergreen_api_credentials
+    - *sign_macos_dev_binaries
+    - *multiversion_exclude_tags_generate
+    - *execute_resmoke_tests_with_aws_credentials
+      # The existence of the "run_tests_infrastructure_failure" file indicates this failure isn't
+      # directly actionable. We use type=setup rather than type=system or type=test for this command
+    # because we don't intend for any human to look at this failure.
+    - *check_run_tests_infrastructure_failure
+    - *check_resmoke_failure
+
   "run benchmark tests":
     - *f_expansions_write
     - *configure_evergreen_api_credentials
@@ -1350,100 +1356,6 @@ functions:
     - *check_run_tests_infrastructure_failure
     - *check_resmoke_failure
 
-  "scons splunk": &scons_splunk
-    command: subprocess.exec
-    display_name: "scons splunk"
-    params:
-      background: true
-      continue_on_err: true
-      binary: bash
-      args:
-        - "./src/evergreen/scons_splunk.sh"
-
-  "scons compile":
-    - *get_version_expansions
-    - *apply_version_expansions
-    - *f_expansions_write
-    - *scons_splunk
-    - command: subprocess.exec
-      display_name: "scons compile sh"
-      type: test
-      params:
-        binary: bash
-        env:
-          evergreen_remote_exec: ${evergreen_remote_exec|off}
-        args:
-          - "src/evergreen/scons_compile.sh"
-    - command: expansions.update
-      display_name: "expansions update install_dir"
-      params:
-        updates:
-          - key: install_dir
-            value: ${install_dir}
-    - *f_expansions_write
-    - command: s3.put
-      display_name: "attach bazel scons diff file"
-      params:
-        optional: true
-        aws_key: ${aws_key}
-        aws_secret: ${aws_secret}
-        local_file: src/build/merged_diff.md
-        remote_file: ${project}/${build_variant}/${revision}/bazel-scons-diff-${task_id}-${execution}.md
-        bucket: mciuploads
-        permissions: public-read
-        content_type: text/markdown
-        display_name: Bazel-SCons Diff File
-
-  # This is only used to simulate local dev compilation. Do NOT use for anything else.
-  "scons raw compile":
-    - *get_version_expansions
-    - *apply_version_expansions
-    - *f_expansions_write
-    - *scons_splunk
-    - command: subprocess.exec
-      display_name: "scons raw compile sh"
-      type: test
-      params:
-        binary: bash
-        args:
-          - "src/evergreen/scons_raw_compile.sh"
-
-  "bazel scons diff":
-    - *get_version_expansions
-    - *apply_version_expansions
-    - *f_expansions_write
-    - *scons_splunk
-    - command: subprocess.exec
-      display_name: "bazel scons diff"
-      type: test
-      params:
-        binary: bash
-        args:
-          - "src/evergreen/bazel_scons_diff.sh"
-
-  "attach bazel scons diff file":
-    command: s3.put
-    params:
-      optional: true
-      aws_key: ${aws_key}
-      aws_secret: ${aws_secret}
-      local_file: src/build/merged_diff.md
-      remote_file: ${project}/${build_variant}/${revision}/bazel-scons-diff-${task_id}-${execution}.md
-      bucket: mciuploads
-      permissions: public-read
-      content_type: text/plain
-      display_name: Bazel-SCons Diff File
-
-  "fetch bazel":
-    - *f_expansions_write
-    - command: subprocess.exec
-      display_name: "fetch bazel"
-      type: test
-      params:
-        binary: bash
-        args:
-          - "src/evergreen/get_bazelisk.sh"
-
   "verify build output present":
     # Args:
     #   $output (string) - relpath to the file-to-be-checked
@@ -1463,6 +1375,7 @@ functions:
       binary: bash
       env:
         evergreen_remote_exec: ${evergreen_remote_exec|off}
+        author_email: ${author_email}
       args:
         - "src/evergreen/bazel_compile.sh"
 
@@ -1489,6 +1402,20 @@ functions:
     - *apply_version_expansions
     - *f_expansions_write
     - *bazel_compile_sh
+
+  "generate clang-tidy report sh": &generate_clang_tidy_report_sh
+    command: subprocess.exec
+    display_name: "generate clang-tidy report"
+    type: test
+    params:
+      binary: bash
+      args:
+        - "src/evergreen/run_python_script.sh"
+        - "evergreen/generate_clang_tidy_report.py"
+
+  "generate clang-tidy report":
+    - *f_expansions_write
+    - *generate_clang_tidy_report_sh
 
   "bazel run sh": &bazel_run_sh
     command: subprocess.exec
@@ -1526,19 +1453,6 @@ functions:
     - *set_bazel_test_silent_fail # TODO SERVER-99431 Remove once bazel coverage timeouts are under control.
     - *f_expansions_write
     - *bazel_coverage_sh
-
-  "ninja compile sh": &ninja_compile_sh
-    command: subprocess.exec
-    display_name: "ninja compile sh"
-    type: test
-    params:
-      binary: bash
-      args:
-        - "./src/evergreen/ninja_compile.sh"
-
-  "ninja compile":
-    - *f_expansions_write
-    - *ninja_compile_sh
 
   "generate version expansions": &generate_version_expansions
     command: subprocess.exec
@@ -1618,19 +1532,6 @@ functions:
       remote_file: ${project}/${version_id}/${bv_future_git_tag|version}-resmoke-constants.tgz
       bucket: mciuploads
       extract_to: src
-
-  "generate compile expansions": &generate_compile_expansions
-    command: subprocess.exec
-    display_name: "compile expansions generate sh"
-    params:
-      binary: bash
-      args:
-        - "src/evergreen/functions/compile_expansions_generate.sh"
-
-  "apply compile expansions": &apply_compile_expansions
-    command: expansions.update
-    params:
-      file: src/compile_expansions.yml
 
   "do jepsen setup":
     - *f_expansions_write
@@ -1986,6 +1887,7 @@ functions:
           - "./src/evergreen/wiki_page_minimized_agg_query_fuzzer.sh"
     - command: attach.artifacts
       params:
+        exact_file_names: true
         files:
           - wiki_page_running_minimized_test_location.json
 
@@ -2362,6 +2264,7 @@ functions:
     command: attach.artifacts
     display_name: "archive mongo coredumps"
     params:
+      exact_file_names: true
       files:
         - src/mongo-coredumps.json
 
@@ -2424,6 +2327,7 @@ functions:
     - command: attach.artifacts
       params:
         optional: true
+        exact_file_names: true
         files:
           - src/core_analyzer_artifact.json
     - command: s3.put
@@ -2472,36 +2376,6 @@ functions:
     - *gather_failed_unittests
     - *tar_failed_unittests
     - *archive_failed_unittests
-
-  "archive dbtest": &archive_dbtest
-    command: s3.put
-    params:
-      aws_key: ${aws_key}
-      aws_secret: ${aws_secret}
-      local_file: dbtest-binary.tgz
-      remote_file: ${project}/${build_variant}/${revision}/dbtest/dbtest-${build_id}-${task_name}-${execution}.tgz
-      bucket: mciuploads
-      permissions: public-read
-      content_type: application/tar
-      display_name: dbtest binary - Execution ${execution}
-      optional: true
-
-  "archive dbtest debugsymbols": &archive_dbtest_debug
-    command: s3.put
-    params:
-      aws_key: ${aws_key}
-      aws_secret: ${aws_secret}
-      local_file: dbtest-debugsymbols.tgz
-      remote_file: ${project}/${build_variant}/${revision}/dbtest/dbtest-${build_id}-${task_name}-${execution}.tgz
-      bucket: mciuploads
-      permissions: public-read
-      content_type: application/tar
-      display_name: dbtest debugsymbols
-      optional: true
-
-  "save unstripped dbtest":
-    - *archive_dbtest
-    - *archive_dbtest_debug
 
   ### Process & archive artifacts from hung processes ###
   "run hang analyzer":
@@ -2598,7 +2472,8 @@ functions:
       local_file: system-resource-info.tgz
       remote_file: ${project}/${build_variant}/${revision}/systemresourceinfo/mongo-system-resource-info-${task_id}-${execution}.tgz
       bucket: mciuploads
-      permissions: public-read
+      permissions: private
+      visibility: signed
       content_type: application/gzip
       display_name: System Resource Info - Execution ${execution}
       optional: true
@@ -2636,50 +2511,6 @@ functions:
       display_name: Bazel JVM dump
 
   ### Attach report & artifacts ###
-  "attach scons config logs": &attach_scons_config_logs
-    command: s3.put
-    params:
-      optional: true
-      aws_key: ${aws_key}
-      aws_secret: ${aws_secret}
-      local_file: src/build/scons/config.log
-      remote_file: ${project}/${build_variant}/${revision}/artifacts/scons-config.log.${build_id}-${task_name}-${execution}
-      bucket: mciuploads
-      permissions: public-read
-      content_type: text/plain
-      display_name: SCons configure log
-
-  "attach scons cache logs": &attach_scons_cache_logs
-    command: s3.put
-    params:
-      optional: true
-      aws_key: ${aws_key}
-      aws_secret: ${aws_secret}
-      local_file: src/scons_cache.log
-      content_type: text/plain
-      remote_file: ${project}/${build_variant}/${revision}/artifacts/scons-cache.log.${build_id}-${task_name}.${execution}
-      bucket: mciuploads
-      permissions: public-read
-      display_name: SCons cache debug log
-
-  "attach scons stdout logs": &attach_scons_stdout_logs
-    command: s3.put
-    params:
-      optional: true
-      aws_key: ${aws_key}
-      aws_secret: ${aws_secret}
-      local_file: src/scons_stdout.log
-      content_type: text/plain
-      remote_file: ${project}/${build_variant}/${revision}/artifacts/scons-stdout.log.${build_id}-${task_name}.${execution}
-      bucket: mciuploads
-      permissions: public-read
-      display_name: SCons stdout log
-
-  "attach scons logs":
-    - *attach_scons_config_logs
-    - *attach_scons_cache_logs
-    - *attach_scons_stdout_logs
-
   "create bazel test report":
     command: subprocess.exec
     params:
@@ -2695,106 +2526,11 @@ functions:
     params:
       file_location: ${report_file|src/report.json}
 
-  "combine build metrics":
-    - *f_expansions_write
-    - command: subprocess.exec
-      params:
-        binary: bash
-        add_expansions_to_env: true
-        args:
-          - "src/evergreen/run_python_script.sh"
-          - "site_scons/site_tools/build_metrics/combine_metrics_unittest.py"
-    - *f_expansions_write
-    - command: subprocess.exec
-      params:
-        binary: bash
-        add_expansions_to_env: true
-        args:
-          - "src/evergreen/run_python_script.sh"
-          - "site_scons/site_tools/build_metrics/combine_metrics.py"
-          - "--prefix-name=build_metrics"
-          - "--prefix-name=populate_cache"
-          - "--prefix-name=pull_cache"
-
-  "print top N metrics":
-    - *f_expansions_write
-    - command: subprocess.exec
-      params:
-        binary: bash
-        add_expansions_to_env: true
-        args:
-          - "src/evergreen/run_python_script.sh"
-          - "site_scons/site_tools/build_metrics/top_n_metrics.py"
-          - "--input=build_metrics.json"
-          - "--output=top_15_metrics.txt"
-          - "--num=15"
-
-    - command: s3.put
-      params:
-        aws_key: ${aws_key}
-        aws_secret: ${aws_secret}
-        local_file: src/top_15_metrics.txt
-        remote_file: ${project}/${build_variant}/${revision}/${build_id}-${task_name}-${execution}-top_15_metrics.txt
-        bucket: mciuploads
-        permissions: public-read
-        content_type: text/plain
-        display_name: Top 15 Metrics
-
-  "attach build metrics":
-    - command: archive.targz_pack
-      params:
-        target: build-metrics.tgz
-        source_dir: src
-        include:
-          - "./build_metrics.json"
-          - "./populate_cache.json"
-          - "./pull_cache.json"
-
-    - command: s3.put
-      params:
-        aws_key: ${aws_key}
-        aws_secret: ${aws_secret}
-        local_file: build-metrics.tgz
-        remote_file: ${project}/${build_variant}/${revision}/${build_id}-${task_name}-${execution}-build-metrics.tgz
-        bucket: mciuploads
-        permissions: public-read
-        content_type: application/gzip
-        display_name: Metrics JSON
-
-    - *f_expansions_write
-    - command: subprocess.exec
-      params:
-        binary: bash
-        add_expansions_to_env: true
-        args:
-          - "src/evergreen/run_python_script.sh"
-          - "evergreen/build_metric_cedar_report.py"
-          - "--build-metrics=build_metrics.json"
-          - "--cache-push-metrics=populate_cache.json"
-          - "--cache-pull-metrics=pull_cache.json"
-
-    - command: archive.targz_pack
-      params:
-        target: build_metrics_cedar_report.tgz
-        source_dir: src
-        include:
-          - "./build_metrics_cedar_report.json"
-
-    - command: s3.put
-      params:
-        aws_key: ${aws_key}
-        aws_secret: ${aws_secret}
-        local_file: build_metrics_cedar_report.tgz
-        remote_file: ${project}/${build_variant}/${revision}/${build_id}-${task_name}-${execution}-build_metrics_cedar_report.tgz
-        bucket: mciuploads
-        permissions: public-read
-        content_type: application/gzip
-        display_name: Cedar Report JSON
-
   "attach artifacts":
     command: attach.artifacts
     params:
       optional: true
+      exact_file_names: true
       ignore_artifacts_for_spawn: false
       files:
         - ${archive_file|src/archive.json}
@@ -2808,6 +2544,7 @@ functions:
           - "./src/evergreen/wiki_page.sh"
     - command: attach.artifacts
       params:
+        exact_file_names: true
         files:
           - wiki_page_location.json
 
@@ -3014,7 +2751,7 @@ functions:
     - *process_code_coverage_data
     - *upload_code_coverage_report
 
-  "do scons setup":
+  "do bazel setup":
     - command: manifest.load
     - *git_get_shallow_project
     - *f_expansions_write
@@ -3033,12 +2770,6 @@ functions:
     - *set_up_credentials
     - *f_expansions_write
     - *use_wiredtiger_develop
-    - *f_expansions_write
-    - *set_up_win_mount_script
-    - *f_expansions_write
-    - *generate_compile_expansions
-    - *f_expansions_write
-    - *apply_compile_expansions
     - *f_expansions_write
     - *set_task_expansion_macros
     - *f_expansions_write

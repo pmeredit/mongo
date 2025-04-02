@@ -22,7 +22,7 @@
 #include "mongo/db/timeseries/timeseries_collmod.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/md5.h"
 
@@ -76,7 +76,7 @@ public:
     // WiredTiger. Don't use in-memory mode. We can't open backup cursors on in-memory
     // WiredTiger.
     BackupCursorServiceTest()
-        : ServiceContextMongoDTest(Options{}.forceDisableTableLogging().ephemeral(false)) {}
+        : ServiceContextMongoDTest(Options{}.forceDisableTableLogging().inMemory(false)) {}
 
     void setUp() override {
         ServiceContextMongoDTest::setUp();
@@ -402,9 +402,14 @@ private:
 
         // Adds the collection to the durable catalog.
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
+        const bool directoryPerDB = storageEngine->isUsingDirectoryPerDb();
+        const bool directoryPerIndexes = storageEngine->isUsingDirectoryForIndexes();
+        const auto ident =
+            ident::generateNewCollectionIdent(nss.dbName(), directoryPerDB, directoryPerIndexes);
+
         std::pair<RecordId, std::unique_ptr<RecordStore>> catalogIdRecordStorePair =
-            uassertStatusOK(storageEngine->getCatalog()->createCollection(
-                opCtx, nss, newOptions, /*allocateDefaultSpace=*/true));
+            uassertStatusOK(storageEngine->getDurableCatalog()->createCollection(
+                opCtx, nss, ident, newOptions));
         auto& catalogId = catalogIdRecordStorePair.first;
         auto catalogEntry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(opCtx, catalogId);
         auto metadata = catalogEntry->metadata;
@@ -443,8 +448,8 @@ private:
 
         // Drops the collection from the durable catalog.
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-        uassertStatusOK(
-            storageEngine->getCatalog()->dropCollection(opCtx, writableCollection->getCatalogId()));
+        uassertStatusOK(storageEngine->getDurableCatalog()->dropCollection(
+            opCtx, writableCollection->getCatalogId()));
 
         // Drops the collection from the in-memory catalog.
         CollectionCatalog::get(opCtx)->dropCollection(

@@ -38,12 +38,10 @@
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
 #include <boost/smart_ptr.hpp>
-#include <cstdint>
 #include <fmt/format.h>
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -54,7 +52,6 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonelement_comparator.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/bson/oid.h"
 #include "mongo/db/auth/action_type.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/resource_pattern.h"
@@ -71,7 +68,6 @@
 #include "mongo/db/client.h"
 #include "mongo/db/collection_crud/collection_write_path.h"
 #include "mongo/db/commands.h"
-#include "mongo/db/commands/feature_compatibility_version.h"
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/exception_util.h"
@@ -80,24 +76,27 @@
 #include "mongo/db/curop_failpoint_helpers.h"
 #include "mongo/db/curop_metrics.h"
 #include "mongo/db/database_name.h"
-#include "mongo/db/db_raii.h"
 #include "mongo/db/error_labels.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/not_primary_error_tracker.h"
+#include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/legacy_runtime_constants_gen.h"
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/db/profile_collection.h"
 #include "mongo/db/profile_settings.h"
 #include "mongo/db/query/canonical_query.h"
-#include "mongo/db/query/collection_query_info.h"
+#include "mongo/db/query/collection_index_usage_tracker_decoration.h"
+#include "mongo/db/query/explain.h"
+#include "mongo/db/query/explain_diagnostic_printer.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/db/query/get_executor.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/plan_explainer.h"
 #include "mongo/db/query/plan_summary_stats.h"
 #include "mongo/db/query/plan_yield_policy.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
 #include "mongo/db/query/write_ops/delete_request_gen.h"
 #include "mongo/db/query/write_ops/insert.h"
 #include "mongo/db/query/write_ops/parsed_delete.h"
@@ -107,14 +106,11 @@
 #include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/query/write_ops/write_ops_gen.h"
 #include "mongo/db/query/write_ops/write_ops_retryability.h"
-#include "mongo/db/record_id_helpers.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/replication_coordinator.h"
-#include "mongo/db/resource_yielder.h"
-#include "mongo/db/s/collection_sharding_state.h"
 #include "mongo/db/s/operation_sharding_state.h"
 #include "mongo/db/s/query_analysis_writer.h"
-#include "mongo/db/s/scoped_collection_metadata.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/shard_role.h"
 #include "mongo/db/stats/counters.h"
@@ -123,7 +119,6 @@
 #include "mongo/db/stats/top.h"
 #include "mongo/db/storage/duplicate_key_error_info.h"
 #include "mongo/db/storage/recovery_unit.h"
-#include "mongo/db/storage/snapshot.h"
 #include "mongo/db/storage/storage_parameters_gen.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/timeseries/bucket_catalog/bucket_catalog.h"
@@ -137,15 +132,10 @@
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction/transaction_participant_resource_yielder.h"
 #include "mongo/db/transaction_resources.h"
-#include "mongo/db/update/document_diff_applier.h"
 #include "mongo/db/update/path_support.h"
-#include "mongo/db/update/update_oplog_entry_serialization.h"
+#include "mongo/db/version_context.h"
 #include "mongo/executor/inline_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/message.h"
@@ -157,7 +147,6 @@
 #include "mongo/s/would_change_owning_shard_exception.h"
 #include "mongo/s/write_ops/batched_command_response.h"
 #include "mongo/s/write_ops/batched_upsert_detail.h"
-#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/fail_point.h"
@@ -290,8 +279,9 @@ void makeCollection(OperationContext* opCtx, const NamespaceString& ns) {
             }
             WriteUnitOfWork wuow(opCtx);
             CollectionOptions defaultCollectionOptions;
-            if (auto fp = globalFailPointRegistry().find("clusterAllCollectionsByDefault");
-                fp && fp->shouldFail() && !clustered_util::requiresLegacyFormat(ns)) {
+            if (auto fp = globalFailPointRegistry().find("clusterAllCollectionsByDefault"); fp &&
+                fp->shouldFail() &&
+                !clustered_util::requiresLegacyFormat(ns, defaultCollectionOptions)) {
                 defaultCollectionOptions.clusteredIndex =
                     clustered_util::makeDefaultClusteredIdIndex();
             }
@@ -564,13 +554,6 @@ bool insertBatchAndHandleErrors(OperationContext* opCtx,
         },
         nss);
 
-    if (auto scoped = failAllInserts.scoped(); MONGO_unlikely(scoped.isActive())) {
-        tassert(9276700,
-                "failAllInserts failpoint active!",
-                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
-        uasserted(ErrorCodes::InternalError, "failAllInserts failpoint active!");
-    }
-
     boost::optional<CollectionAcquisition> collection;
     auto acquireCollection = [&] {
         while (true) {
@@ -629,6 +612,30 @@ bool insertBatchAndHandleErrors(OperationContext* opCtx,
         if (ex.code() == ErrorCodes::Unauthorized) {
             throw;
         }
+        // In a time-series context, this particular CollectionUUIDMismatch is re-thrown differently
+        // because there is already a check for this error higher up, which means this error must
+        // come from the guards installed to enforce that time-series operations are prepared
+        // and committed on the same collection.
+        if (ex.code() == ErrorCodes::CollectionUUIDMismatch &&
+            source == OperationSource::kTimeseriesInsert) {
+            uasserted(9748801, "Collection was changed during insert");
+        }
+    }
+
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics(
+        "ShardKeyDiagnostics",
+        diagnostic_printers::ShardKeyDiagnosticPrinter{
+            collection.has_value() && collection->getShardingDescription().isSharded()
+                ? collection.value().getShardingDescription().getKeyPattern()
+                : BSONObj()});
+
+    if (auto scoped = failAllInserts.scoped(); MONGO_unlikely(scoped.isActive())) {
+        tassert(9276700,
+                "failAllInserts failpoint active!",
+                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
+        uasserted(ErrorCodes::InternalError, "failAllInserts failpoint active!");
     }
 
     if (shouldProceedWithBatchInsert) {
@@ -747,12 +754,6 @@ UpdateResult performUpdate(OperationContext* opCtx,
         },
         nss);
 
-    if (auto scoped = failAllUpdates.scoped(); MONGO_unlikely(scoped.isActive())) {
-        tassert(9276701,
-                "failAllUpdates failpoint active!",
-                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
-        uasserted(ErrorCodes::InternalError, "failAllUpdates failpoint active!");
-    }
 
     auto collection =
         acquireCollection(opCtx,
@@ -764,6 +765,15 @@ UpdateResult performUpdate(OperationContext* opCtx,
         AutoGetDb autoDb(opCtx, dbName, MODE_IX);
         return autoDb.ensureDbExists(opCtx);
     }();
+
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics(
+        "ShardKeyDiagnostics",
+        diagnostic_printers::ShardKeyDiagnosticPrinter{
+            collection.getShardingDescription().isSharded()
+                ? collection.getShardingDescription().getKeyPattern()
+                : BSONObj()});
 
     invariant(DatabaseHolder::get(opCtx)->getDb(opCtx, dbName));
     curOp->raiseDbProfileLevel(
@@ -806,8 +816,10 @@ UpdateResult performUpdate(OperationContext* opCtx,
     }
 
     if (isTimeseriesViewUpdate) {
-        timeseries::timeseriesRequestChecks<UpdateRequest>(
-            collection.getCollectionPtr(), updateRequest, timeseries::updateRequestCheckFunction);
+        timeseries::timeseriesRequestChecks<UpdateRequest>(VersionContext::getDecoration(opCtx),
+                                                           collection.getCollectionPtr(),
+                                                           updateRequest,
+                                                           timeseries::updateRequestCheckFunction);
         timeseries::timeseriesHintTranslation<UpdateRequest>(collection.getCollectionPtr(),
                                                              updateRequest);
     }
@@ -819,9 +831,24 @@ UpdateResult performUpdate(OperationContext* opCtx,
                               isTimeseriesViewUpdate);
     uassertStatusOK(parsedUpdate.parseRequest());
 
+    // Create an RAII object that prints useful information about the ExpressionContext in the case
+    // of a tassert or crash.
+    ScopedDebugInfo expCtxDiagnostics(
+        "ExpCtxDiagnostics", diagnostic_printers::ExpressionContextPrinter{parsedUpdate.expCtx()});
+
+    if (auto scoped = failAllUpdates.scoped(); MONGO_unlikely(scoped.isActive())) {
+        tassert(9276701,
+                "failAllUpdates failpoint active!",
+                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
+        uasserted(ErrorCodes::InternalError, "failAllUpdates failpoint active!");
+    }
+
     const auto exec = uassertStatusOK(
         getExecutorUpdate(&curOp->debug(), collection, &parsedUpdate, boost::none /* verbosity
         */));
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics("explainDiagnostics",
+                                       diagnostic_printers::ExplainDiagnosticPrinter{exec.get()});
 
     {
         stdx::lock_guard<Client> lk(*opCtx->getClient());
@@ -830,6 +857,7 @@ UpdateResult performUpdate(OperationContext* opCtx,
 
     if (updateRequest->shouldReturnAnyDocs()) {
         docFound = exec->executeFindAndModify();
+        curOp->debug().additiveMetrics.nreturned = docFound ? 1 : 0;
     } else {
         // The 'UpdateResult' object will be obtained later, so discard the return value.
         (void)exec->executeUpdate();
@@ -842,8 +870,10 @@ UpdateResult performUpdate(OperationContext* opCtx,
     auto&& explainer = exec->getPlanExplainer();
     explainer.getSummaryStats(&summaryStats);
     if (collection.exists()) {
-        CollectionQueryInfo::get(collection.getCollectionPtr())
-            .notifyOfQuery(opCtx, collection.getCollectionPtr(), summaryStats);
+        CollectionIndexUsageTrackerDecoration::get(collection.getCollectionPtr().get())
+            .recordCollectionIndexUsage(summaryStats.collectionScans,
+                                        summaryStats.collectionScansNonTailable,
+                                        summaryStats.indexesUsed);
     }
     auto updateResult = exec->getUpdateResult();
 
@@ -902,18 +932,22 @@ long long performDelete(OperationContext* opCtx,
                   "Batch remove - hangDuringBatchRemove fail point enabled. Blocking until fail "
                   "point is disabled");
         });
-    if (auto scoped = failAllRemoves.scoped(); MONGO_unlikely(scoped.isActive())) {
-        tassert(9276703,
-                "failAllRemoves failpoint active!",
-                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
-        uasserted(ErrorCodes::InternalError, "failAllRemoves failpoint active!");
-    }
 
     const auto collection =
         acquireCollection(opCtx,
                           CollectionAcquisitionRequest::fromOpCtx(
                               opCtx, nsString, AcquisitionPrerequisites::kWrite, collectionUUID),
                           MODE_IX);
+
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics(
+        "ShardKeyDiagnostics",
+        diagnostic_printers::ShardKeyDiagnosticPrinter{
+            collection.getShardingDescription().isSharded()
+                ? collection.getShardingDescription().getKeyPattern()
+                : BSONObj()});
+
     const auto& collectionPtr = collection.getCollectionPtr();
 
     if (const auto& coll = collection.getCollectionPtr()) {
@@ -922,14 +956,28 @@ long long performDelete(OperationContext* opCtx,
     }
 
     if (isTimeseriesViewDelete) {
-        timeseries::timeseriesRequestChecks<DeleteRequest>(
-            collection.getCollectionPtr(), deleteRequest, timeseries::deleteRequestCheckFunction);
+        timeseries::timeseriesRequestChecks<DeleteRequest>(VersionContext::getDecoration(opCtx),
+                                                           collection.getCollectionPtr(),
+                                                           deleteRequest,
+                                                           timeseries::deleteRequestCheckFunction);
         timeseries::timeseriesHintTranslation<DeleteRequest>(collection.getCollectionPtr(),
                                                              deleteRequest);
     }
 
     ParsedDelete parsedDelete(opCtx, deleteRequest, collectionPtr, isTimeseriesViewDelete);
     uassertStatusOK(parsedDelete.parseRequest());
+
+    // Create an RAII object that prints useful information about the ExpressionContext in the case
+    // of a tassert or crash.
+    ScopedDebugInfo expCtxDiagnostics(
+        "ExpCtxDiagnostics", diagnostic_printers::ExpressionContextPrinter{parsedDelete.expCtx()});
+
+    if (auto scoped = failAllRemoves.scoped(); MONGO_unlikely(scoped.isActive())) {
+        tassert(9276703,
+                "failAllRemoves failpoint active!",
+                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
+        uasserted(ErrorCodes::InternalError, "failAllRemoves failpoint active!");
+    }
 
     auto dbName = nsString.dbName();
     if (DatabaseHolder::get(opCtx)->getDb(opCtx, dbName)) {
@@ -942,6 +990,9 @@ long long performDelete(OperationContext* opCtx,
     const auto exec = uassertStatusOK(
         getExecutorDelete(&curOp->debug(), collection, &parsedDelete, boost::none /* verbosity
         */));
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics("explainDiagnostics",
+                                       diagnostic_printers::ExplainDiagnosticPrinter{exec.get()});
 
     {
         stdx::lock_guard<Client> lk(*opCtx->getClient());
@@ -950,6 +1001,7 @@ long long performDelete(OperationContext* opCtx,
 
     if (deleteRequest->getReturnDeleted()) {
         docFound = exec->executeFindAndModify();
+        curOp->debug().additiveMetrics.nreturned = docFound ? 1 : 0;
     } else {
         // The number of deleted documents will be obtained from the plan executor later, so discard
         // the return value.
@@ -962,7 +1014,10 @@ long long performDelete(OperationContext* opCtx,
     PlanSummaryStats summaryStats;
     exec->getPlanExplainer().getSummaryStats(&summaryStats);
     if (const auto& coll = collectionPtr) {
-        CollectionQueryInfo::get(coll).notifyOfQuery(opCtx, coll, summaryStats);
+        CollectionIndexUsageTrackerDecoration::get(coll.get())
+            .recordCollectionIndexUsage(summaryStats.collectionScans,
+                                        summaryStats.collectionScansNonTailable,
+                                        summaryStats.indexesUsed);
     }
     curOp->debug().setPlanSummaryMetrics(std::move(summaryStats));
 
@@ -990,7 +1045,7 @@ long long performDelete(OperationContext* opCtx,
 boost::optional<write_ops::WriteError> generateError(OperationContext* opCtx,
                                                      const Status& status,
                                                      int index,
-                                                     size_t numErrors) noexcept {
+                                                     size_t numErrors) {
     if (status.isOK()) {
         return boost::none;
     }
@@ -1107,6 +1162,11 @@ size_t getTunedMaxBatchSize(OperationContext* opCtx,
 WriteResult performInserts(OperationContext* opCtx,
                            const write_ops::InsertCommandRequest& wholeOp,
                            OperationSource source) {
+    auto actualNs = wholeOp.getNamespace();
+    if (isRawDataOperation(opCtx)) {
+        actualNs = timeseries::isTimeseriesViewRequest(opCtx, wholeOp).second;
+    }
+
     // Insert performs its own retries, so we should only be within a WriteUnitOfWork when run in a
     // transaction.
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1114,14 +1174,14 @@ WriteResult performInserts(OperationContext* opCtx,
               (txnParticipant && opCtx->inMultiDocumentTransaction()));
 
     auto& curOp = *CurOp::get(opCtx);
-    ON_BLOCK_EXIT([&] {
+    ON_BLOCK_EXIT([&, &actualNs = actualNs] {
         // Timeseries inserts already did as part of performTimeseriesWrites.
         if (source != OperationSource::kTimeseriesInsert) {
             // This is the only part of finishCurOp we need to do for inserts because they
             // reuse the top-level curOp. The rest is handled by the top-level entrypoint.
             curOp.done();
             Top::getDecoration(opCtx).record(opCtx,
-                                             wholeOp.getNamespace(),
+                                             actualNs,
                                              LogicalOp::opInsert,
                                              Top::LockType::WriteLocked,
                                              curOp.elapsedTimeExcludingPauses(),
@@ -1133,14 +1193,14 @@ WriteResult performInserts(OperationContext* opCtx,
     // Timeseries inserts already did as part of performTimeseriesWrites.
     if (source != OperationSource::kTimeseriesInsert) {
         stdx::lock_guard<Client> lk(*opCtx->getClient());
-        curOp.setNS(lk, wholeOp.getNamespace());
+        curOp.setNS(lk, actualNs);
         curOp.setLogicalOp(lk, LogicalOp::opInsert);
         curOp.ensureStarted();
         // Initialize 'ninserted' for the operation if is not yet.
         curOp.debug().additiveMetrics.incrementNinserted(0);
     }
 
-    uassertStatusOK(userAllowedWriteNS(opCtx, wholeOp.getNamespace()));
+    uassertStatusOK(userAllowedWriteNS(opCtx, actualNs));
 
     const auto [disableDocumentValidation, fleCrudProcessed] = getDocumentValidationFlags(
         opCtx, wholeOp.getWriteCommandRequestBase(), wholeOp.getDbName().tenantId());
@@ -1211,7 +1271,7 @@ WriteResult performInserts(OperationContext* opCtx,
         }
 
         out.canContinue = insertBatchAndHandleErrors(opCtx,
-                                                     wholeOp.getNamespace(),
+                                                     actualNs,
                                                      wholeOp.getCollectionUUID(),
                                                      wholeOp.getOrdered(),
                                                      batch,
@@ -1239,7 +1299,7 @@ WriteResult performInserts(OperationContext* opCtx,
             } catch (const DBException& ex) {
                 out.canContinue = handleError(opCtx,
                                               ex,
-                                              wholeOp.getNamespace(),
+                                              actualNs,
                                               wholeOp.getOrdered(),
                                               false /* multiUpdate */,
                                               boost::none /* sampleId */,
@@ -1272,6 +1332,9 @@ static SingleWriteResult performSingleUpdateOpNoRetry(OperationContext* opCtx,
                                                       bool* containsDotsAndDollarsField) {
     auto exec = uassertStatusOK(
         getExecutorUpdate(&curOp.debug(), collection, &parsedUpdate, boost::none /* verbosity */));
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics("explainDiagnostics",
+                                       diagnostic_printers::ExplainDiagnosticPrinter{exec.get()});
 
     {
         stdx::lock_guard<Client> lk(*opCtx->getClient());
@@ -1284,7 +1347,9 @@ static SingleWriteResult performSingleUpdateOpNoRetry(OperationContext* opCtx,
     auto&& explainer = exec->getPlanExplainer();
     explainer.getSummaryStats(&summary);
     if (const auto& coll = collection.getCollectionPtr()) {
-        CollectionQueryInfo::get(coll).notifyOfQuery(opCtx, coll, summary);
+        CollectionIndexUsageTrackerDecoration::get(coll.get())
+            .recordCollectionIndexUsage(
+                summary.collectionScans, summary.collectionScansNonTailable, summary.indexesUsed);
     }
 
     if (curOp.shouldDBProfile()) {
@@ -1336,13 +1401,6 @@ static SingleWriteResult performSingleUpdateOp(OperationContext* opCtx,
         },
         ns);
 
-    if (auto scoped = failAllUpdates.scoped(); MONGO_unlikely(scoped.isActive())) {
-        tassert(9276702,
-                "failAllUpdates failpoint active!",
-                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
-        uasserted(ErrorCodes::InternalError, "failAllUpdates failpoint active!");
-    }
-
     const CollectionAcquisition collection = [&]() {
         const auto acquisitionRequest = CollectionAcquisitionRequest::fromOpCtx(
             opCtx, ns, AcquisitionPrerequisites::kWrite, opCollectionUUID);
@@ -1376,9 +1434,20 @@ static SingleWriteResult performSingleUpdateOp(OperationContext* opCtx,
         }
     }();
 
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics(
+        "ShardKeyDiagnostics",
+        diagnostic_printers::ShardKeyDiagnosticPrinter{
+            collection.getShardingDescription().isSharded()
+                ? collection.getShardingDescription().getKeyPattern()
+                : BSONObj()});
+
     if (source == OperationSource::kTimeseriesUpdate) {
-        timeseries::timeseriesRequestChecks<UpdateRequest>(
-            collection.getCollectionPtr(), updateRequest, timeseries::updateRequestCheckFunction);
+        timeseries::timeseriesRequestChecks<UpdateRequest>(VersionContext::getDecoration(opCtx),
+                                                           collection.getCollectionPtr(),
+                                                           updateRequest,
+                                                           timeseries::updateRequestCheckFunction);
         timeseries::timeseriesHintTranslation<UpdateRequest>(collection.getCollectionPtr(),
                                                              updateRequest);
     }
@@ -1402,6 +1471,18 @@ static SingleWriteResult performSingleUpdateOp(OperationContext* opCtx,
                               forgoOpCounterIncrements,
                               updateRequest->source() == OperationSource::kTimeseriesUpdate);
     uassertStatusOK(parsedUpdate.parseRequest());
+
+    // Create an RAII object that prints useful information about the ExpressionContext in the case
+    // of a tassert or crash.
+    ScopedDebugInfo expCtxDiagnostics(
+        "ExpCtxDiagnostics", diagnostic_printers::ExpressionContextPrinter{parsedUpdate.expCtx()});
+
+    if (auto scoped = failAllUpdates.scoped(); MONGO_unlikely(scoped.isActive())) {
+        tassert(9276702,
+                "failAllUpdates failpoint active!",
+                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
+        uasserted(ErrorCodes::InternalError, "failAllUpdates failpoint active!");
+    }
 
     CurOpFailpointHelpers::waitWhileFailPointEnabled(
         &hangWithLockDuringBatchUpdate, opCtx, "hangWithLockDuringBatchUpdate");
@@ -1517,6 +1598,16 @@ static SingleWriteResult performSingleUpdateOpWithDupKeyRetry(
                           retryAttempts,
                           "Caught DuplicateKey exception during upsert",
                           logAttrs(ns));
+        } catch (const ExceptionFor<ErrorCodes::CollectionUUIDMismatch>&) {
+            // In a time-series context, this particular CollectionUUIDMismatch is re-thrown
+            // differently because there is already a check for this error higher up, which means
+            // this error must come from the guards installed to enforce that time-series operations
+            // are prepared and committed on the same collection.
+            if (source == OperationSource::kTimeseriesInsert) {
+                uasserted(9748802, "Collection was changed during insert");
+            }
+
+            throw;
         }
     }
 
@@ -1586,6 +1677,9 @@ WriteResult performUpdates(OperationContext* opCtx,
                            const write_ops::UpdateCommandRequest& wholeOp,
                            OperationSource source) {
     auto ns = wholeOp.getNamespace();
+    if (isRawDataOperation(opCtx)) {
+        ns = timeseries::isTimeseriesViewRequest(opCtx, wholeOp).second;
+    }
     NamespaceString originalNs;
     if (source == OperationSource::kTimeseriesUpdate) {
         originalNs = ns;
@@ -1830,21 +1924,26 @@ static SingleWriteResult performSingleDeleteOp(OperationContext* opCtx,
                   "Batch remove - hangDuringBatchRemove fail point enabled. Blocking until fail "
                   "point is disabled");
         });
-    if (auto scoped = failAllRemoves.scoped(); MONGO_unlikely(scoped.isActive())) {
-        tassert(9276704,
-                "failAllRemoves failpoint active!",
-                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
-        uasserted(ErrorCodes::InternalError, "failAllRemoves failpoint active!");
-    }
 
     auto acquisitionRequest = CollectionAcquisitionRequest::fromOpCtx(
         opCtx, ns, AcquisitionPrerequisites::kWrite, opCollectionUUID);
     const auto collection = acquireCollection(
         opCtx, acquisitionRequest, fixLockModeForSystemDotViewsChanges(ns, MODE_IX));
 
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics(
+        "ShardKeyDiagnostics",
+        diagnostic_printers::ShardKeyDiagnosticPrinter{
+            collection.getShardingDescription().isSharded()
+                ? collection.getShardingDescription().getKeyPattern()
+                : BSONObj()});
+
     if (source == OperationSource::kTimeseriesDelete) {
-        timeseries::timeseriesRequestChecks<DeleteRequest>(
-            collection.getCollectionPtr(), &request, timeseries::deleteRequestCheckFunction);
+        timeseries::timeseriesRequestChecks<DeleteRequest>(VersionContext::getDecoration(opCtx),
+                                                           collection.getCollectionPtr(),
+                                                           &request,
+                                                           timeseries::deleteRequestCheckFunction);
         timeseries::timeseriesHintTranslation<DeleteRequest>(collection.getCollectionPtr(),
                                                              &request);
     }
@@ -1854,6 +1953,18 @@ static SingleWriteResult performSingleDeleteOp(OperationContext* opCtx,
                               collection.getCollectionPtr(),
                               source == OperationSource::kTimeseriesDelete);
     uassertStatusOK(parsedDelete.parseRequest());
+
+    // Create an RAII object that prints useful information about the ExpressionContext in the case
+    // of a tassert or crash.
+    ScopedDebugInfo expCtxDiagnostics(
+        "ExpCtxDiagnostics", diagnostic_printers::ExpressionContextPrinter{parsedDelete.expCtx()});
+
+    if (auto scoped = failAllRemoves.scoped(); MONGO_unlikely(scoped.isActive())) {
+        tassert(9276704,
+                "failAllRemoves failpoint active!",
+                !scoped.getData().hasField("tassert") || !scoped.getData().getBoolField("tassert"));
+        uasserted(ErrorCodes::InternalError, "failAllRemoves failpoint active!");
+    }
 
     if (DatabaseHolder::get(opCtx)->getDb(opCtx, ns.dbName())) {
         curOp.raiseDbProfileLevel(DatabaseProfileSettings::get(opCtx->getServiceContext())
@@ -1867,6 +1978,9 @@ static SingleWriteResult performSingleDeleteOp(OperationContext* opCtx,
 
     auto exec = uassertStatusOK(
         getExecutorDelete(&curOp.debug(), collection, &parsedDelete, boost::none /* verbosity */));
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics("explainDiagnostics",
+                                       diagnostic_printers::ExplainDiagnosticPrinter{exec.get()});
 
     {
         stdx::lock_guard<Client> lk(*opCtx->getClient());
@@ -1880,7 +1994,9 @@ static SingleWriteResult performSingleDeleteOp(OperationContext* opCtx,
     auto&& explainer = exec->getPlanExplainer();
     explainer.getSummaryStats(&summary);
     if (const auto& coll = collection.getCollectionPtr()) {
-        CollectionQueryInfo::get(coll).notifyOfQuery(opCtx, coll, summary);
+        CollectionIndexUsageTrackerDecoration::get(coll.get())
+            .recordCollectionIndexUsage(
+                summary.collectionScans, summary.collectionScansNonTailable, summary.indexesUsed);
     }
     curOp.debug().setPlanSummaryMetrics(std::move(summary));
 
@@ -1898,6 +2014,9 @@ WriteResult performDeletes(OperationContext* opCtx,
                            const write_ops::DeleteCommandRequest& wholeOp,
                            OperationSource source) {
     auto ns = wholeOp.getNamespace();
+    if (isRawDataOperation(opCtx)) {
+        ns = timeseries::isTimeseriesViewRequest(opCtx, wholeOp).second;
+    }
     if (source == OperationSource::kTimeseriesDelete) {
         if (!ns.isTimeseriesBucketsCollection()) {
             ns = ns.makeTimeseriesBucketsNamespace();
@@ -2187,8 +2306,10 @@ void explainUpdate(OperationContext* opCtx,
         MODE_IX);
 
     if (isTimeseriesViewRequest) {
-        timeseries::timeseriesRequestChecks<UpdateRequest>(
-            collection.getCollectionPtr(), &updateRequest, timeseries::updateRequestCheckFunction);
+        timeseries::timeseriesRequestChecks<UpdateRequest>(VersionContext::getDecoration(opCtx),
+                                                           collection.getCollectionPtr(),
+                                                           &updateRequest,
+                                                           timeseries::updateRequestCheckFunction);
         timeseries::timeseriesHintTranslation<UpdateRequest>(collection.getCollectionPtr(),
                                                              &updateRequest);
     }
@@ -2204,6 +2325,9 @@ void explainUpdate(OperationContext* opCtx,
         getExecutorUpdate(&CurOp::get(opCtx)->debug(), collection, &parsedUpdate, verbosity));
     auto bodyBuilder = result->getBodyBuilder();
 
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics("explainDiagnostics",
+                                       diagnostic_printers::ExplainDiagnosticPrinter{exec.get()});
     Explain::explainStages(exec.get(),
                            collection.getCollectionPtr(),
                            verbosity,
@@ -2229,8 +2353,10 @@ void explainDelete(OperationContext* opCtx,
                           MODE_IX);
 
     if (isTimeseriesViewRequest) {
-        timeseries::timeseriesRequestChecks<DeleteRequest>(
-            collection.getCollectionPtr(), &deleteRequest, timeseries::deleteRequestCheckFunction);
+        timeseries::timeseriesRequestChecks<DeleteRequest>(VersionContext::getDecoration(opCtx),
+                                                           collection.getCollectionPtr(),
+                                                           &deleteRequest,
+                                                           timeseries::deleteRequestCheckFunction);
         timeseries::timeseriesHintTranslation<DeleteRequest>(collection.getCollectionPtr(),
                                                              &deleteRequest);
     }
@@ -2244,6 +2370,9 @@ void explainDelete(OperationContext* opCtx,
         getExecutorDelete(&CurOp::get(opCtx)->debug(), collection, &parsedDelete, verbosity));
     auto bodyBuilder = result->getBodyBuilder();
 
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics("explainDiagnostics",
+                                       diagnostic_printers::ExplainDiagnosticPrinter{exec.get()});
     Explain::explainStages(exec.get(),
                            collection.getCollectionPtr(),
                            verbosity,

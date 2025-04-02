@@ -50,6 +50,7 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/bson/unordered_fields_bsonobj_comparator.h"
+#include "mongo/db/cancelable_operation_context.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/keypattern.h"
 #include "mongo/db/namespace_string.h"
@@ -70,7 +71,7 @@
 #include "mongo/s/resharding/common_types_gen.h"
 #include "mongo/s/resharding/resharding_feature_flag_gen.h"
 #include "mongo/s/shard_key_pattern.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/uuid.h"
 
@@ -310,13 +311,6 @@ Timestamp getHighestMinFetchTimestamp(const std::vector<DonorShardEntry>& donorS
 void checkForOverlappingZones(std::vector<ReshardingZoneType>& zones);
 
 /**
- * Builds documents to insert into config.tags from zones provided to reshardCollection cmd.
- */
-std::vector<BSONObj> buildTagsDocsFromZones(const NamespaceString& tempNss,
-                                            std::vector<ReshardingZoneType>& zones,
-                                            const ShardKeyPattern& shardKey);
-
-/**
  * Create an array of resharding zones from the existing collection. This is used for forced
  * same-key resharding.
  */
@@ -401,12 +395,12 @@ void validateShardDistribution(const std::vector<ShardKeyRange>& shardDistributi
 /**
  * Returns true if the provenance is moveCollection or balancerMoveCollection.
  */
-bool isMoveCollection(const boost::optional<ProvenanceEnum>& provenance);
+bool isMoveCollection(const boost::optional<ReshardingProvenanceEnum>& provenance);
 
 /**
  * Returns true if the provenance is unshardCollection.
  */
-bool isUnshardCollection(const boost::optional<ProvenanceEnum>& provenance);
+bool isUnshardCollection(const boost::optional<ReshardingProvenanceEnum>& provenance);
 
 /**
  * Helper function to create a thread pool for _markKilledExecutor member of resharding POS.
@@ -414,13 +408,6 @@ bool isUnshardCollection(const boost::optional<ProvenanceEnum>& provenance);
 std::shared_ptr<ThreadPool> makeThreadPoolForMarkKilledExecutor(const std::string& poolName);
 
 boost::optional<Status> coordinatorAbortedError();
-
-/**
- * If 'implicitlyCreateIndex' is false, asserts that
- * featureFlagHashedShardKeyIndexOptionalUponShardingCollection is enabled and the shard key is
- * hashed.
- */
-void validateImplicitlyCreateIndex(bool implicitlyCreateIndex, const BSONObj& shardKey);
 
 /**
  * If 'performVerification' is true, asserts that featureFlagReshardingVerification is enabled.
@@ -477,6 +464,18 @@ inline Status validateReshardBlockingWritesO2FieldType(const std::string& value)
 
     return Status::OK();
 }
+
+Date_t getCurrentTime();
+
+boost::optional<ReshardingCoordinatorDocument> tryGetCoordinatorDoc(OperationContext* opCtx,
+                                                                    const UUID& reshardingUUID);
+
+ReshardingCoordinatorDocument getCoordinatorDoc(OperationContext* opCtx,
+                                                const UUID& reshardingUUID);
+
+// Waits for majority replication of the latest opTime unless token is cancelled.
+SemiFuture<void> waitForMajority(const CancellationToken& token,
+                                 const CancelableOperationContextFactory& factory);
 
 }  // namespace resharding
 }  // namespace mongo

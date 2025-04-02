@@ -99,13 +99,12 @@ public:
      * satisfies this restriction set.
      */
     Status validate(const RestrictionEnvironment& environment) const override {
-        using namespace fmt::literals;
-
         auto const addr = T::addr(environment);
         if (addr.getType() == AF_UNSPEC) {
             // GRPCTransportLayer doesn't know server local address.
             return {ErrorCodes::AuthenticationRestrictionUnmet,
-                    "{} restriction can not be verified when address is unknown"_format(T::label)};
+                    fmt::format("{} restriction can not be verified when address is unknown",
+                                T::label)};
         }
 
         if (!addr.isIP()) {
@@ -187,11 +186,11 @@ StatusWith<SharedRestrictionDocument> parseAuthenticationRestriction(const BSONA
  * Parse and validate a BSONArray containing AuthenticationRestrictions
  * and return a new BSONArray representing a sanitized portion thereof.
  */
-StatusWith<BSONArray> getRawAuthenticationRestrictions(const BSONArray& arr) noexcept;
+StatusWith<BSONArray> getRawAuthenticationRestrictions(const BSONArray& arr);
 
 
 template <>
-inline BSONObjBuilder& BSONObjBuilderValueStream::operator<<<ClientSourceRestriction>(
+inline BSONObjBuilder& BSONObjBuilderValueStream::operator<< <ClientSourceRestriction>(
     ClientSourceRestriction value) {
     BSONObjBuilder b;
     value.appendToBuilder(&b);
@@ -201,7 +200,7 @@ inline BSONObjBuilder& BSONObjBuilderValueStream::operator<<<ClientSourceRestric
 }
 
 template <>
-inline BSONObjBuilder& BSONObjBuilderValueStream::operator<<<ServerAddressRestriction>(
+inline BSONObjBuilder& BSONObjBuilderValueStream::operator<< <ServerAddressRestriction>(
     ServerAddressRestriction value) {
     BSONObjBuilder b;
     value.appendToBuilder(&b);

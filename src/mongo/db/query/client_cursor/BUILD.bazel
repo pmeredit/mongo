@@ -84,12 +84,12 @@ idl_generator(
 mongo_cc_library(
     name = "generic_cursor",
     srcs = [
-        "allocate_cursor_id.cpp",
+        "generic_cursor_utils.cpp",
         ":generic_cursor_gen",
     ],
     hdrs = [
-        "allocate_cursor_id.h",
         "cursor_id.h",
+        "generic_cursor_utils.h",
     ],
     deps = [
         "//src/mongo/db:server_base",
@@ -109,12 +109,36 @@ idl_generator(
     ],
 )
 
+mongo_cc_library(
+    name = "release_memory_util",
+    srcs = [
+        "release_memory_util.cpp",
+    ],
+    hdrs = [
+        "release_memory_util.h",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
+    ],
+)
+
+idl_generator(
+    name = "release_memory_gen",
+    src = "release_memory.idl",
+    deps = [
+        "//src/mongo/db:basic_types_gen",
+        "//src/mongo/db/auth:access_checks_gen",
+        "//src/mongo/db/auth:action_type_gen",
+        "//src/mongo/idl:generic_argument_gen",
+    ],
+)
+
 mongo_cc_unit_test(
     name = "cursor_manager_test",
     srcs = [
         "cursor_manager_test.cpp",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         ":client_cursor",
         "//src/mongo/db:query_exec",

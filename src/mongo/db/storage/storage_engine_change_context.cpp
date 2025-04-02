@@ -40,9 +40,7 @@
 #include "mongo/db/storage/storage_engine_change_context.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
@@ -145,7 +143,7 @@ void StorageEngineChangeContext::changeStorageEngine(ServiceContext* service,
     // The lock is released at end of scope, allowing OperationContexts to be created again.
 }
 
-void StorageEngineChangeContext::notifyOpCtxDestroyed() noexcept {
+void StorageEngineChangeContext::notifyOpCtxDestroyed() {
     stdx::unique_lock lk(_mutex);
     invariant(--_numOpCtxtsToWaitFor >= 0);
     LOGV2_DEBUG(5781191,

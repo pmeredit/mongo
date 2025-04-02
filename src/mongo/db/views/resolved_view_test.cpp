@@ -49,9 +49,7 @@
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/views/resolved_view.h"
 #include "mongo/rpc/get_status_from_command_result.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/serialization_context.h"
 
@@ -70,7 +68,7 @@ TEST(ResolvedViewTest, ExpandingAggRequestWithEmptyPipelineOnNoOpViewYieldsEmpty
     const ResolvedView resolvedView{backingNss, emptyPipeline, kSimpleCollation};
     AggregateCommandRequest requestOnView{viewNss, emptyPipeline};
 
-    auto result = resolvedView.asExpandedViewAggregation(requestOnView);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, requestOnView);
     BSONObj expected =
         BSON("aggregate" << backingNss.coll() << "pipeline" << BSONArray() << "cursor"
                          << kDefaultCursorOptionDocument << "collation" << BSONObj());
@@ -82,7 +80,7 @@ TEST(ResolvedViewTest, ExpandingAggRequestWithNonemptyPipelineAppendsToViewPipel
     const ResolvedView resolvedView{backingNss, viewPipeline, kSimpleCollation};
     AggregateCommandRequest requestOnView{viewNss, std::vector<BSONObj>{BSON("limit" << 3)}};
 
-    auto result = resolvedView.asExpandedViewAggregation(requestOnView);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, requestOnView);
 
     BSONObj expected =
         BSON("aggregate" << backingNss.coll() << "pipeline"
@@ -94,11 +92,11 @@ TEST(ResolvedViewTest, ExpandingAggRequestWithNonemptyPipelineAppendsToViewPipel
 TEST(ResolvedViewTest, ExpandingAggRequestPreservesExplain) {
     const ResolvedView resolvedView{backingNss, emptyPipeline, kSimpleCollation};
     AggregateCommandRequest aggRequest{viewNss, std::vector<mongo::BSONObj>()};
-    aggRequest.setExplain(ExplainOptions::Verbosity::kExecStats);
+    aggRequest.setExplain(true);
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT(result.getExplain());
-    ASSERT(*result.getExplain() == ExplainOptions::Verbosity::kExecStats);
+    ASSERT(*result.getExplain() == true);
 }
 
 TEST(ResolvedViewTest, ExpandingAggRequestWithCursorAndExplainOnlyPreservesExplain) {
@@ -107,11 +105,11 @@ TEST(ResolvedViewTest, ExpandingAggRequestWithCursorAndExplainOnlyPreservesExpla
     SimpleCursorOptions cursor;
     cursor.setBatchSize(10);
     aggRequest.setCursor(cursor);
-    aggRequest.setExplain(ExplainOptions::Verbosity::kExecStats);
+    aggRequest.setExplain(true);
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT(result.getExplain());
-    ASSERT(*result.getExplain() == ExplainOptions::Verbosity::kExecStats);
+    ASSERT(*result.getExplain() == true);
     ASSERT_EQ(
         result.getCursor().getBatchSize().value_or(aggregation_request_helper::kDefaultBatchSize),
         aggregation_request_helper::kDefaultBatchSize);
@@ -122,7 +120,7 @@ TEST(ResolvedViewTest, ExpandingAggRequestPreservesBypassDocumentValidation) {
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
     aggRequest.setBypassDocumentValidation(true);
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_TRUE(result.getBypassDocumentValidation().value_or(false));
 }
 
@@ -131,7 +129,7 @@ TEST(ResolvedViewTest, ExpandingAggRequestPreservesAllowDiskUse) {
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
     aggRequest.setAllowDiskUse(true);
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_TRUE(result.getAllowDiskUse());
 }
 
@@ -140,20 +138,18 @@ TEST(ResolvedViewTest, ExpandingAggRequestPreservesHint) {
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
     aggRequest.setHint(BSON("a" << 1));
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_BSONOBJ_EQ(result.getHint().value_or(BSONObj()), BSON("a" << 1));
 }
 
 TEST(ResolvedViewTest, ExpandingAggRequestPreservesReadPreference) {
     const ResolvedView resolvedView{backingNss, emptyPipeline, kSimpleCollation};
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
-    aggRequest.setUnwrappedReadPref(BSON("$readPreference"
-                                         << "nearest"));
+    aggRequest.setUnwrappedReadPref(BSON("$readPreference" << "nearest"));
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_BSONOBJ_EQ(result.getUnwrappedReadPref().value_or(BSONObj()),
-                      BSON("$readPreference"
-                           << "nearest"));
+                      BSON("$readPreference" << "nearest"));
 }
 
 TEST(ResolvedViewTest, ExpandingAggRequestPreservesReadConcern) {
@@ -161,10 +157,9 @@ TEST(ResolvedViewTest, ExpandingAggRequestPreservesReadConcern) {
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
     aggRequest.setReadConcern(repl::ReadConcernArgs::kLinearizable);
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_BSONOBJ_EQ(result.getReadConcern().value_or(repl::ReadConcernArgs()).toBSONInner(),
-                      BSON("level"
-                           << "linearizable"));
+                      BSON("level" << "linearizable"));
 }
 
 TEST(ResolvedViewTest, ExpandingAggRequestPreservesMaxTimeMS) {
@@ -172,24 +167,17 @@ TEST(ResolvedViewTest, ExpandingAggRequestPreservesMaxTimeMS) {
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
     aggRequest.setMaxTimeMS(100u);
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_EQ(result.getMaxTimeMS().value_or(0), 100u);
 }
 
 TEST(ResolvedViewTest, ExpandingAggRequestPreservesDefaultCollationOfView) {
-    const ResolvedView resolvedView{backingNss,
-                                    emptyPipeline,
-                                    BSON("locale"
-                                         << "fr_CA")};
-    ASSERT_BSONOBJ_EQ(resolvedView.getDefaultCollation(),
-                      BSON("locale"
-                           << "fr_CA"));
+    const ResolvedView resolvedView{backingNss, emptyPipeline, BSON("locale" << "fr_CA")};
+    ASSERT_BSONOBJ_EQ(resolvedView.getDefaultCollation(), BSON("locale" << "fr_CA"));
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
 
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
-    ASSERT_BSONOBJ_EQ(result.getCollation().value_or(BSONObj()),
-                      BSON("locale"
-                           << "fr_CA"));
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
+    ASSERT_BSONOBJ_EQ(result.getCollation().value_or(BSONObj()), BSON("locale" << "fr_CA"));
 }
 
 TEST(ResolvedViewTest, EnsureSerializationContextCopy) {
@@ -197,7 +185,8 @@ TEST(ResolvedViewTest, EnsureSerializationContextCopy) {
 
     AggregateCommandRequest requestOnViewDefault{viewNss, emptyPipeline};
 
-    auto resultDefault = resolvedView.asExpandedViewAggregation(requestOnViewDefault);
+    auto resultDefault =
+        resolvedView.asExpandedViewAggregation(kNoVersionContext, requestOnViewDefault);
     ASSERT_TRUE(resultDefault.getSerializationContext() ==
                 SerializationContext::stateCommandRequest());
 
@@ -205,7 +194,8 @@ TEST(ResolvedViewTest, EnsureSerializationContextCopy) {
     scCommand.setPrefixState(true);
     AggregateCommandRequest requestOnViewCommand{viewNss, emptyPipeline, scCommand};
 
-    auto resultCommand = resolvedView.asExpandedViewAggregation(requestOnViewCommand);
+    auto resultCommand =
+        resolvedView.asExpandedViewAggregation(kNoVersionContext, requestOnViewCommand);
     ASSERT_EQ(resultCommand.getSerializationContext().getSource(),
               SerializationContext::Source::Command);
     ASSERT_EQ(resultCommand.getSerializationContext().getCallerType(),
@@ -219,11 +209,11 @@ TEST(ResolvedViewTest, ExpandingAggRequestPreservesIncludeQueryStatsMetrics) {
     AggregateCommandRequest aggRequest(viewNss, std::vector<mongo::BSONObj>());
 
     aggRequest.setIncludeQueryStatsMetrics(false);
-    auto result = resolvedView.asExpandedViewAggregation(aggRequest);
+    auto result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_FALSE(result.getIncludeQueryStatsMetrics());
 
     aggRequest.setIncludeQueryStatsMetrics(true);
-    result = resolvedView.asExpandedViewAggregation(aggRequest);
+    result = resolvedView.asExpandedViewAggregation(kNoVersionContext, aggRequest);
     ASSERT_TRUE(result.getIncludeQueryStatsMetrics());
 }
 
@@ -277,19 +267,16 @@ TEST(ResolvedViewTest, FromBSONSuccessfullyParsesEmptyBSONArrayIntoEmptyVector) 
 }
 
 TEST(ResolvedViewTest, FromBSONSuccessfullyParsesCollation) {
-    BSONObj cmdResponse = BSON("resolvedView" << BSON("ns" << backingNss.ns_forTest() << "pipeline"
-                                                           << BSONArray() << "collation"
-                                                           << BSON("locale"
-                                                                   << "fil")));
+    BSONObj cmdResponse =
+        BSON("resolvedView" << BSON("ns" << backingNss.ns_forTest() << "pipeline" << BSONArray()
+                                         << "collation" << BSON("locale" << "fil")));
     const ResolvedView result = ResolvedView::fromBSON(cmdResponse);
     ASSERT_EQ(result.getNamespace(), backingNss);
     ASSERT(std::equal(emptyPipeline.begin(),
                       emptyPipeline.end(),
                       result.getPipeline().begin(),
                       SimpleBSONObjComparator::kInstance.makeEqualTo()));
-    ASSERT_BSONOBJ_EQ(result.getDefaultCollation(),
-                      BSON("locale"
-                           << "fil"));
+    ASSERT_BSONOBJ_EQ(result.getDefaultCollation(), BSON("locale" << "fil"));
 }
 
 TEST(ResolvedViewTest, FromBSONSuccessfullyParsesPopulatedBSONArrayIntoVector) {
@@ -298,9 +285,8 @@ TEST(ResolvedViewTest, FromBSONSuccessfullyParsesPopulatedBSONArrayIntoVector) {
     BSONObj limitStage = BSON("$limit" << 7);
 
     BSONArray pipeline = BSON_ARRAY(matchStage << sortStage << limitStage);
-    BSONObj cmdResponse = BSON("resolvedView" << BSON("ns"
-                                                      << "testdb.testcoll"
-                                                      << "pipeline" << pipeline));
+    BSONObj cmdResponse = BSON("resolvedView" << BSON("ns" << "testdb.testcoll"
+                                                           << "pipeline" << pipeline));
 
     const ResolvedView result = ResolvedView::fromBSON(cmdResponse);
     ASSERT_EQ(result.getNamespace(), backingNss);
@@ -335,8 +321,7 @@ TEST(ResolvedViewTest, IsResolvedViewErrorResponseReportsFalseOnNonKickbackError
 TEST(ResolvedViewTest, SerializesCorrectly) {
     const ResolvedView resolvedView{backingNss,
                                     std::vector<BSONObj>{BSON("$match" << BSON("x" << 1))},
-                                    BSON("locale"
-                                         << "fr_CA")};
+                                    BSON("locale" << "fr_CA")};
     BSONObjBuilder bob;
     resolvedView.serialize(&bob);
     ASSERT_BSONOBJ_EQ(bob.obj(), fromjson(R"({
@@ -349,10 +334,7 @@ TEST(ResolvedViewTest, SerializesCorrectly) {
 }
 
 TEST(ResolvedViewTest, SerializeOutputCanBeReparsed) {
-    const ResolvedView resolvedView{backingNss,
-                                    emptyPipeline,
-                                    BSON("locale"
-                                         << "fr_CA")};
+    const ResolvedView resolvedView{backingNss, emptyPipeline, BSON("locale" << "fr_CA")};
     BSONObjBuilder bob;
     resolvedView.serialize(&bob);
     auto reparsedResolvedView = ResolvedView::fromBSON(bob.obj());
@@ -361,9 +343,79 @@ TEST(ResolvedViewTest, SerializeOutputCanBeReparsed) {
                       emptyPipeline.end(),
                       reparsedResolvedView.getPipeline().begin(),
                       SimpleBSONObjComparator::kInstance.makeEqualTo()));
-    ASSERT_BSONOBJ_EQ(reparsedResolvedView.getDefaultCollation(),
-                      BSON("locale"
-                           << "fr_CA"));
+    ASSERT_BSONOBJ_EQ(reparsedResolvedView.getDefaultCollation(), BSON("locale" << "fr_CA"));
+}
+
+TEST(ResolvedViewTest, ParseFromBSONCorrectly) {
+    BSONObj searchStage = BSON("$search" << BSON("text" << "foo"));
+    BSONObj matchStage = BSON("$match" << BSON("x" << 1));
+    BSONArray pipeline = BSON_ARRAY(searchStage << matchStage);
+
+    BSONObj cmdResponse =
+        BSON("resolvedView" << BSON("ns" << backingNss.ns_forTest() << "pipeline" << pipeline
+                                         << "collation" << BSON("locale" << "fil")));
+    BSONElement elem = cmdResponse.getField("resolvedView");
+
+    std::vector<BSONObj> expectedPipeline{searchStage, matchStage};
+    const ResolvedView result = ResolvedView::parseFromBSON(elem);
+    ASSERT_EQ(result.getNamespace(), backingNss);
+    ASSERT(std::equal(expectedPipeline.begin(),
+                      expectedPipeline.end(),
+                      result.getPipeline().begin(),
+                      SimpleBSONObjComparator::kInstance.makeEqualTo()));
+    ASSERT_BSONOBJ_EQ(result.getDefaultCollation(), BSON("locale" << "fil"));
+}
+
+TEST(ResolvedViewTest, ParseFromBSONFailsIfNotAnObject) {
+    BSONObj cmdResponse = BSON("resolvedView" << "ThisIsNotAnObject");
+    BSONElement elem = cmdResponse.getField("resolvedView");
+
+    ASSERT_THROWS_CODE(ResolvedView::parseFromBSON(elem), AssertionException, 936370);
+}
+
+TEST(ResolvedViewTest, ParseFromBSONFailsIfEmptyObject) {
+    BSONObj cmdResponse = BSON("resolvedView" << BSONObj());
+    BSONElement elem = cmdResponse.getField("resolvedView");
+
+    ASSERT_THROWS_CODE(ResolvedView::parseFromBSON(elem), AssertionException, 40249);
+}
+
+TEST(ResolvedViewTest, SerializeToBSONCorrectly) {
+    const ResolvedView resolvedView{backingNss,
+                                    std::vector<BSONObj>{BSON("$search" << BSON("text" << "foo")),
+                                                         BSON("$match" << BSON("x" << 1))},
+                                    BSON("locale" << "fil")};
+    BSONObjBuilder bob;
+    resolvedView.serializeToBSON("resolvedView", &bob);
+    ASSERT_BSONOBJ_EQ(bob.obj(), fromjson(R"({
+        resolvedView: {
+            ns: 'testdb.testcoll',
+            pipeline: [{$search: {text: "foo"}}, {$match: {x: 1}}],
+            collation: {locale: 'fil'}
+        }
+    })"));
+}
+
+TEST(ResolvedViewTest, IDLParserRoundtrip) {
+    BSONObj searchStage = BSON("$search" << BSON("text" << "foo"));
+    BSONObj matchStage = BSON("$match" << BSON("x" << 1));
+    BSONArray pipeline = BSON_ARRAY(searchStage << matchStage);
+
+    BSONObj cmdResponse =
+        BSON("resolvedView" << BSON("ns" << backingNss.ns_forTest() << "pipeline" << pipeline
+                                         << "collation" << BSON("locale" << "fil")));
+    BSONElement elem = cmdResponse.getField("resolvedView");
+    const ResolvedView fromObj = ResolvedView::parseFromBSON(elem);
+
+    BSONObjBuilder toObj;
+    fromObj.serializeToBSON("resolvedView", &toObj);
+    ASSERT_BSONOBJ_EQ(toObj.obj(), fromjson(R"({
+        resolvedView: {
+            ns: 'testdb.testcoll',
+            pipeline: [{$search: {text: "foo"}}, {$match: {x: 1}}],
+            collation: {locale: 'fil'}
+        }
+    })"));
 }
 }  // namespace
 }  // namespace mongo

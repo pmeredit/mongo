@@ -38,8 +38,7 @@
 #include "mongo/db/timeseries/write_ops/internal/timeseries_write_ops_internal.h"
 #include "mongo/db/timeseries/write_ops/timeseries_write_ops.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -64,11 +63,10 @@ TEST_F(TimeseriesWriteOpsTest, PerformAtomicTimeseriesWritesWithTransform) {
     NamespaceString ns =
         NamespaceString::createNamespaceString_forTest("db_timeseries_write_ops_test", "ts");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // We're going to insert a compressed bucket and ensure we can successfully decompress it via a
     // transform update using performAtomicTimeseriesWrites.
@@ -126,32 +124,49 @@ TEST_F(TimeseriesWriteOpsTest, PerformAtomicTimeseriesWritesWithTransform) {
     }
 }
 
-TEST_F(TimeseriesWriteOpsTest, PerformTimeseriesWritesMismatchedUUID) {
-    NamespaceString ns =
-        NamespaceString::createNamespaceString_forTest("db_timeseries_write_ops_test", "ts");
+TEST_F(TimeseriesWriteOpsTest, TimeseriesWritesMismatchedUUID) {
+    // Ordered
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
-    auto incorrectUUID = UUID::gen();
-    write_ops::InsertCommandRequest request(ns);
-    request.setDocuments({fromjson("{_id: 0, foo: 1}")});
-    request.setCollectionUUID(incorrectUUID);
+    auto ns = NamespaceString::createNamespaceString_forTest("db_timeseries_write_ops_test", "ts");
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
-    ASSERT_THROWS_CODE(timeseries::write_ops::performTimeseriesWrites(opCtx, request),
-                       DBException,
-                       ErrorCodes::CollectionUUIDMismatch);
+    auto insertCommandReq = write_ops::InsertCommandRequest(ns.makeTimeseriesBucketsNamespace());
+    insertCommandReq.setCollectionUUID(UUID::gen());
+    ASSERT_THROWS_CODE(
+        timeseries::write_ops::internal::performAtomicTimeseriesWrites(
+            opCtx, std::vector<write_ops::InsertCommandRequest>{insertCommandReq}, {}),
+        DBException,
+        9748800);
 
-    write_ops::InsertCommandRequest requestUnordered(ns);
-    requestUnordered.setOrdered(false);
-    requestUnordered.setDocuments({fromjson("{_id: 0, foo: 1}")});
-    requestUnordered.setCollectionUUID(incorrectUUID);
+    // Unordered
+    auto insertStatements = std::vector<InsertStatement>{InsertStatement{fromjson("{_id: 0}")}};
+    auto fixer = write_ops_exec::LastOpFixer(opCtx);
+    write_ops_exec::WriteResult result;
+    ASSERT_THROWS_CODE(
+        write_ops_exec::insertBatchAndHandleErrors(opCtx,
+                                                   ns,
+                                                   UUID::gen(),
+                                                   false,
+                                                   insertStatements,
+                                                   OperationSource::kTimeseriesInsert,
+                                                   &fixer,
+                                                   &result),
+        DBException,
+        9748801);
 
-    ASSERT_THROWS_CODE(timeseries::write_ops::performTimeseriesWrites(opCtx, requestUnordered),
-                       DBException,
-                       ErrorCodes::CollectionUUIDMismatch);
+    // Update
+    auto updateCommandRequest =
+        write_ops::UpdateCommandRequest(ns.makeTimeseriesBucketsNamespace());
+    updateCommandRequest.setUpdates(
+        {write_ops::UpdateOpEntry(BSON("_id" << 0), write_ops::UpdateModification())});
+    updateCommandRequest.setCollectionUUID(UUID::gen());
+    result = write_ops_exec::performUpdates(
+        opCtx, updateCommandRequest, OperationSource::kTimeseriesInsert);
+    ASSERT_EQ(1, result.results.size());
+    ASSERT_EQ(9748802, result.results[0].getStatus().code());
 }
 
 // It is possible that a collection is dropped after an insert starts but before it finishes. In
@@ -257,32 +272,6 @@ TEST_F(TimeseriesWriteOpsTest, PerformTimeseriesWritesNoCollection) {
 
     ASSERT_THROWS_CODE(
         timeseries::write_ops::performTimeseriesWrites(opCtx, request), DBException, 8555700);
-}
-
-TEST_F(TimeseriesWriteOpsTest, CommitTimeseriesBucketNoCollection) {
-    auto opCtx = operationContext();
-    auto uuid = UUID::gen();
-
-    tracking::Context trackingContext;
-    timeseries::bucket_catalog::TrackingContexts trackingContexts;
-    timeseries::bucket_catalog::BucketId bucketId{uuid, OID::gen(), 0};
-    timeseries::bucket_catalog::BucketKey key{uuid, {trackingContext, {}, boost::none}};
-    timeseries::bucket_catalog::ExecutionStatsController stats;
-
-    auto batch = std::make_shared<timeseries::bucket_catalog::WriteBatch>(
-        trackingContexts, bucketId, key, 0, stats, "");
-
-    absl::flat_hash_map<int, int> map;
-    auto nss =
-        NamespaceString::createNamespaceString_forTest("db_timeseries_write_ops_test", "dne");
-
-    write_ops::InsertCommandRequest insertCmdReq(nss.makeTimeseriesBucketsNamespace());
-
-    ASSERT_THROWS_CODE(
-        timeseries::write_ops::internal::commitTimeseriesBucket(
-            opCtx, batch, 0, 0, {}, {}, nullptr, nullptr, nullptr, map, insertCmdReq),
-        DBException,
-        8555700);
 }
 
 }  // namespace

@@ -62,7 +62,6 @@
 #include "mongo/s/request_types/sharded_ddl_commands_gen.h"
 #include "mongo/s/resharding/common_types_gen.h"
 #include "mongo/s/resharding/resharding_feature_flag_gen.h"
-#include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
@@ -96,27 +95,6 @@ public:
             reshardCollectionRequest.setNumInitialChunks(request().getNumInitialChunks());
             reshardCollectionRequest.setCollectionUUID(request().getCollectionUUID());
 
-            if (!resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                uassert(
-                    ErrorCodes::InvalidOptions,
-                    "Resharding improvements is not enabled, reject shardDistribution parameter",
-                    !request().getShardDistribution().has_value());
-                uassert(
-                    ErrorCodes::InvalidOptions,
-                    "Resharding improvements is not enabled, reject forceRedistribution parameter",
-                    !request().getForceRedistribution().has_value());
-                uassert(ErrorCodes::InvalidOptions,
-                        "Resharding improvements is not enabled, reject reshardingUUID parameter",
-                        !request().getReshardingUUID().has_value());
-                uassert(ErrorCodes::InvalidOptions,
-                        "Resharding improvements is not enabled, reject feature flag "
-                        "moveCollection or unshardCollection",
-                        !resharding::gFeatureFlagMoveCollection.isEnabled(
-                            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
-                            !resharding::gFeatureFlagUnshardCollection.isEnabled(
-                                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
-            }
             reshardCollectionRequest.setShardDistribution(request().getShardDistribution());
             reshardCollectionRequest.setForceRedistribution(request().getForceRedistribution());
             reshardCollectionRequest.setReshardingUUID(request().getReshardingUUID());
@@ -125,9 +103,9 @@ public:
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) ||
                 resharding::gFeatureFlagUnshardCollection.isEnabled(
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                reshardCollectionRequest.setProvenance(ProvenanceEnum::kReshardCollection);
+                reshardCollectionRequest.setProvenance(
+                    ReshardingProvenanceEnum::kReshardCollection);
             }
-            reshardCollectionRequest.setImplicitlyCreateIndex(request().getImplicitlyCreateIndex());
             reshardCollectionRequest.setPerformVerification(request().getPerformVerification());
 
             if (resharding::gfeatureFlagReshardingNumSamplesPerChunk.isEnabled(

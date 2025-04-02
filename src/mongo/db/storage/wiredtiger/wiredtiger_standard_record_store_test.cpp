@@ -56,8 +56,7 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -117,7 +116,7 @@ TEST(WiredTigerRecordStoreTest, SizeStorer1) {
         params.engineName = std::string{kWiredTigerEngineName};
         params.keyFormat = KeyFormat::Long;
         params.overwrite = true;
-        params.isEphemeral = false;
+        params.inMemory = false;
         params.isLogged = false;
         params.isChangeCollection = false;
         params.sizeStorer = &ss;
@@ -141,8 +140,8 @@ TEST(WiredTigerRecordStoreTest, SizeStorer1) {
 
         {
             StorageWriteTransaction txn(ru);
-            WT_SESSION* s = ru.getSession()->getSession();
-            invariantWTOK(s->create(s, indexUri.c_str(), ""), s);
+            WiredTigerSession* s = ru.getSession();
+            invariantWTOK(s->create(indexUri.c_str(), ""), *s);
             txn.commit();
         }
 

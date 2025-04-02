@@ -53,11 +53,7 @@
 #include "mongo/idl/server_parameter_specialized_test.h"
 #include "mongo/idl/server_parameter_specialized_test_gen.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/assert_that.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/unittest/matcher.h"
-#include "mongo/unittest/matcher_core.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 
@@ -127,10 +123,7 @@ TEST(SpecializedServerParameter, dummy) {
     ASSERT_APPENDED_STRING(dsp, "Dummy Value");
     ASSERT_OK(dsp->setFromString("new value", boost::none));
     ASSERT_NOT_OK(dsp->set(BSON("" << BSON_ARRAY("bar")).firstElement(), boost::none));
-    ASSERT_OK(dsp->set(BSON(""
-                            << "bar")
-                           .firstElement(),
-                       boost::none));
+    ASSERT_OK(dsp->set(BSON("" << "bar").firstElement(), boost::none));
 }
 
 // specializedWithCtor
@@ -282,23 +275,19 @@ Status SpecializedMultiValueServerParameter::setFromString(StringData value,
 TEST(SpecializedServerParameter, multiValue) {
     auto* edsp = getServerParameter("specializedWithMultiValue");
     ASSERT_APPENDED_OBJECT(edsp,
-                           BSON("value"
-                                << "start value"
-                                << "flag" << true));
+                           BSON("value" << "start value"
+                                        << "flag" << true));
     ASSERT_OK(edsp->setFromString("second value", boost::none));
     ASSERT_APPENDED_OBJECT(edsp,
-                           BSON("value"
-                                << "second value"
-                                << "flag" << false));
-    ASSERT_OK(edsp->set(BSON("" << BSON("value"
-                                        << "third value"
-                                        << "flag" << true))
+                           BSON("value" << "second value"
+                                        << "flag" << false));
+    ASSERT_OK(edsp->set(BSON("" << BSON("value" << "third value"
+                                                << "flag" << true))
                             .firstElement(),
                         boost::none));
     ASSERT_APPENDED_OBJECT(edsp,
-                           BSON("value"
-                                << "third value"
-                                << "flag" << true));
+                           BSON("value" << "third value"
+                                        << "flag" << true));
 }
 
 // specializedWithCtorAndValue

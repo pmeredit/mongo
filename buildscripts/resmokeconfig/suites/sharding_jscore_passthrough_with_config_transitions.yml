@@ -26,9 +26,7 @@ selector:
     - jstests/core/**/fsync.js # uses fsync.
     - jstests/core/**/geo_s2cursorlimitskip.js # profiling.
     - jstests/core/**/geo_update_btree2.js # notablescan.
-    - jstests/core/**/index9.js # "local" database.
     - jstests/core/**/queryoptimizera.js # "local" database.
-    - jstests/core/**/stages*.js # stageDebug.
     - jstests/core/**/startup_log.js # "local" database.
     - jstests/core/**/query/top/top.js # top.
     # The following tests fail because mongos behaves differently from mongod when testing certain
@@ -49,7 +47,7 @@ selector:
     # along with the MovePrimaryInProgress error. Since this test sets times: n
     # for some of the failpoints, by the time we retry, the failpoint will no
     # longer be active and the test will fail.
-    - jstests/core/failcommand_failpoint.js
+    - jstests/core/testing/failcommand_failpoint.js
 
     # TODO (SERVER-90646): Re-enable background_unique_indexes.js in config transition suites.
     - jstests/core/ddl/background_unique_indexes.js
@@ -57,8 +55,8 @@ selector:
     # Exclude tests that run cleanupOrphaned, which can fail running on a config shard if a
     # concurrent migration fails due to the config shard transitioning to dedicated.
     - jstests/core/administrative/cleanup_orphaned.js
-    - jstests/core/views/views_all_commands.js
-    - jstests/core/commands_namespace_parsing.js
+    - jstests/core/catalog/views/views_all_commands.js
+    - jstests/core/repro/commands_namespace_parsing.js
     # TODO SERVER-96199 Re-enable this test once FLE updates to a document's shard key work
     - src/mongo/db/modules/enterprise/jstests/fle2/find_and_modify_replace.js
     # TODO SERVER-86443 Enable test once featureFlagTrackUnshardedCollectionsUponCreation is enabled

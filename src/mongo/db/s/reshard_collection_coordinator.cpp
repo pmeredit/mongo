@@ -162,28 +162,6 @@ ExecutorFuture<void> ReshardCollectionCoordinator::_runImpl(
                         !_doc.getRelaxed().has_value());
             }
 
-            if (!resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                uassert(
-                    ErrorCodes::InvalidOptions,
-                    "Resharding improvements is not enabled, reject shardDistribution parameter",
-                    !_doc.getShardDistribution().has_value());
-                uassert(
-                    ErrorCodes::InvalidOptions,
-                    "Resharding improvements is not enabled, reject forceRedistribution parameter",
-                    !_doc.getForceRedistribution().has_value());
-                uassert(ErrorCodes::InvalidOptions,
-                        "Resharding improvements is not enabled, reject reshardingUUID parameter",
-                        !_doc.getReshardingUUID().has_value());
-                uassert(ErrorCodes::InvalidOptions,
-                        "Resharding improvements is not enabled, reject feature flag "
-                        "moveCollection or unshardCollection",
-                        !resharding::gFeatureFlagMoveCollection.isEnabled(
-                            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
-                            !resharding::gFeatureFlagUnshardCollection.isEnabled(
-                                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
-            }
-
             if (!resharding::gFeatureFlagMoveCollection.isEnabled(
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
                 !resharding::gFeatureFlagUnshardCollection.isEnabled(
@@ -192,7 +170,8 @@ ExecutorFuture<void> ReshardCollectionCoordinator::_runImpl(
                         "Feature flag move collection or unshard collection is not enabled, reject "
                         "provenance",
                         !_doc.getProvenance().has_value() ||
-                            _doc.getProvenance().get() == ProvenanceEnum::kReshardCollection);
+                            _doc.getProvenance().get() ==
+                                ReshardingProvenanceEnum::kReshardCollection);
             }
 
             configsvrReshardCollection.setRelaxed(_doc.getRelaxed());
@@ -200,9 +179,6 @@ ExecutorFuture<void> ReshardCollectionCoordinator::_runImpl(
             configsvrReshardCollection.setForceRedistribution(_doc.getForceRedistribution());
             configsvrReshardCollection.setReshardingUUID(_doc.getReshardingUUID());
 
-            resharding::validateImplicitlyCreateIndex(_doc.getImplicitlyCreateIndex(),
-                                                      _doc.getKey());
-            configsvrReshardCollection.setImplicitlyCreateIndex(_doc.getImplicitlyCreateIndex());
             resharding::validatePerformVerification(_doc.getPerformVerification());
             configsvrReshardCollection.setPerformVerification(_doc.getPerformVerification());
 
@@ -212,7 +188,8 @@ ExecutorFuture<void> ReshardCollectionCoordinator::_runImpl(
                         str::stream()
                             << "MoveCollection can only be called on an unsharded collection.",
                         !cmOld.isSharded());
-            } else if (provenance && provenance.get() == ProvenanceEnum::kUnshardCollection) {
+            } else if (provenance &&
+                       provenance.get() == ReshardingProvenanceEnum::kUnshardCollection) {
                 // If the collection is already unsharded, this request should be a no-op. Check
                 // that the user didn't specify a "to" shard other than the shard the collection
                 // lives on - if it is different, return an error.

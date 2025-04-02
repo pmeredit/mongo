@@ -68,20 +68,11 @@ mongo_cc_library(
     ],
     copts = select({
         "@platforms//os:windows": [
-            # See the /Zc:preprocessor comment in third_party/mozjs/SConscript
+            # See the /Zc:preprocessor comment in third_party/mozjs/BUILD.bazel
             "/Zc:preprocessor",
             "/wd5104",
             "/wd5105",
         ],
-        "//conditions:default": [
-            "-Wno-unknown-warning-option",
-            # TODO(SERVER-77205): Review and Possibly Remove '-Wno-deprecated' After Mozjs Update
-            "-Wno-deprecated",
-        ],
-    }),
-    features = select({
-        # TODO(SERVER-59992): Remove -Wno-class-memaccess where possible.
-        "//bazel/config:compiler_type_gcc": ["no_class_memaccess_warning"],
         "//conditions:default": [],
     }),
     deps = [
@@ -215,15 +206,6 @@ mongo_cc_library(
             "/wd5104",
             "/wd5105",
         ],
-        "//conditions:default": [
-            "-Wno-unknown-warning-option",
-            # TODO(SERVER-77205): Review and Possibly Remove '-Wno-deprecated' After Mozjs Update
-            "-Wno-deprecated",
-        ],
-    }),
-    features = select({
-        # TODO(SERVER-59992): Remove -Wno-class-memaccess where possible.
-        "//bazel/config:compiler_type_gcc": ["no_class_memaccess_warning"],
         "//conditions:default": [],
     }),
     target_compatible_with = select({
@@ -310,10 +292,10 @@ MONGOJS_CPP_JSFILES = [
 render_template(
     name = "mongojs_cpp",
     srcs = [
-        "//site_scons/site_tools:jstoh.py",
+        "//buildscripts:jstoh.py",
     ] + MONGOJS_CPP_JSFILES,
     cmd = [
-        "$(location //site_scons/site_tools:jstoh.py)",
+        "$(location //buildscripts:jstoh.py)",
         "$(location mongojs.cpp)",
     ] + [
         "$(location {})".format(file)
@@ -334,10 +316,10 @@ MONGO_SERVER_CPP_JS_FILES = [
 render_template(
     name = "mongo_server_cpp",
     srcs = [
-        "//site_scons/site_tools:jstoh.py",
+        "//buildscripts:jstoh.py",
     ] + MONGO_SERVER_CPP_JS_FILES,
     cmd = [
-        "$(location //site_scons/site_tools:jstoh.py)",
+        "$(location //buildscripts:jstoh.py)",
         "$(location mongo-server.cpp)",
     ] + [
         "$(location {})".format(file)
@@ -397,6 +379,7 @@ mongo_cc_library(
         "//src/mongo/db/pipeline:change_stream_error_extra_info",
         "//src/mongo/db/query:command_request_response",
         "//src/mongo/db/query:query_request",
+        "//src/mongo/db/s:remove_shard_exception",
         "//src/mongo/db:server_base",
         "//src/mongo/db:service_context_non_d",
         "//src/mongo/db/session:logical_session_id_helpers",
@@ -544,6 +527,16 @@ mongo_cc_unit_test(
         "//bazel/config:ssl_enabled": ["kms_test.cpp"],
         "//conditions:default": [],
     }),
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = ["shell_test_dependencies"],
+)
+
+load("//bazel:mongo_js_rules.bzl", "mongo_js_library")
+
+mongo_js_library(
+    name = "all",
+    srcs = glob([
+        "*.js",
+    ]),
+    visibility = ["//visibility:public"],
 )

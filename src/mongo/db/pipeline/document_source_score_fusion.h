@@ -45,8 +45,19 @@ namespace mongo {
 /**
  * The $scoreFusion stage is syntactic sugar for generating an output of scored results by combining
  * the results of any number of scored subpipelines with relative score fusion.
- * TODO SERVER-94022: Elaborate on this header comment with more details to what the stage gets
- * desugared to.
+ *
+ * Given n input pipelines each with a unique name, desugars into a
+ * pipeline consisting of:
+ * - The first input pipeline (e.g. $vectorSearch).
+ * - $replaceRoot and $addFields that for each document returned will:
+ *     - Add a score field: <pipeline name>_score (e.g. vs_score).
+ *         - Score is calculated as the weight * the score field on the input documents.
+ * - n-1 $unionWith stages on the same collection, which take as input pipelines:
+ *     - The nth input pipeline.
+ *     - $replaceRoot and $addFields which do the same thing as described above.
+ * - $group by ID and turn null scores into 0.
+ * - $addFields for a 'score' field which will aggregate the n scores for each document.
+ * - $sort in descending order.
  */
 class DocumentSourceScoreFusion final {
 public:
@@ -61,16 +72,74 @@ public:
     class LiteParsed final : public LiteParsedDocumentSourceNestedPipelines {
     public:
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec);
+                                                 const BSONElement& spec,
+                                                 const LiteParserOptions& options);
 
-        LiteParsed(std::string parseTimeName, std::vector<LiteParsedPipeline> pipelines)
+        LiteParsed(std::string parseTimeName,
+                   const NamespaceString& nss,
+                   std::vector<LiteParsedPipeline> pipelines)
             : LiteParsedDocumentSourceNestedPipelines(
-                  std::move(parseTimeName), boost::none, std::move(pipelines)) {}
+                  std::move(parseTimeName), nss, std::move(pipelines)) {}
 
         PrivilegeVector requiredPrivileges(bool isMongos,
                                            bool bypassDocumentValidation) const final {
             return requiredPrivilegesBasic(isMongos, bypassDocumentValidation);
         };
+
+        bool isSearchStage() const final {
+            return true;
+        }
+    };
+
+    // TODO (SERVER-102534): Make ScoreCombination private.
+
+    // The ScoreCombination class validates and stores the combination.method and
+    // combination.expression fields. combination.expression is not immediately parsed into an
+    // expression because any pipelines variables it references will be considered undefined and
+    // will therefore throw an error at parsing time. combination.expression will only be parsed
+    // into an expression when the enclosing $let var (which defines the pipeline variables) is
+    // constructed.
+    class ScoreCombination {
+    public:
+        ScoreCombination(const ScoreFusionSpec& spec) {
+            auto& combination = spec.getCombination();
+            ScoreFusionCombinationMethodEnum combinationMethod =
+                ScoreFusionCombinationMethodEnum::kSum;
+            boost::optional<IDLAnyType> combinationExpression = boost::none;
+            if (combination.has_value() && combination->getMethod().has_value()) {
+                combinationMethod = combination->getMethod().get();
+                uassert(10017300,
+                        "combination.expression should only be specified when combination.method "
+                        "has the value \"expression\"",
+                        (combinationMethod != ScoreFusionCombinationMethodEnum::kExpression &&
+                         !combination->getExpression().has_value()) ||
+                            (combinationMethod == ScoreFusionCombinationMethodEnum::kExpression &&
+                             combination->getExpression().has_value()));
+                combinationExpression = combination->getExpression();
+                uassert(
+                    10017301,
+                    "both combination.expression and combination.weights cannot be specified",
+                    !(combination->getWeights().has_value() && combinationExpression.has_value()));
+            }
+            _combinationMethod = std::move(combinationMethod);
+            _combinationExpression = std::move(combinationExpression);
+        }
+
+        ScoreFusionCombinationMethodEnum getCombinationMethod() const {
+            return _combinationMethod;
+        }
+
+        boost::optional<IDLAnyType> getCombinationExpression() const {
+            return _combinationExpression;
+        }
+
+    private:
+        // The default combination.method value is ScoreFusionCombinationMethodEnum::kSum. The IDL
+        // handles the default behavior.
+        ScoreFusionCombinationMethodEnum _combinationMethod;
+        // This field should only be populated when combination.method has the value
+        // ScoreFusionCombinationMethodEnum::kExpression.
+        boost::optional<IDLAnyType> _combinationExpression = boost::none;
     };
 
 private:

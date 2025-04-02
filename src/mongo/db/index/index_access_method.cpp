@@ -48,12 +48,14 @@
 #include "mongo/db/commands/server_status.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/curop.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/index/2d_access_method.h"
 #include "mongo/db/index/btree_access_method.h"
 #include "mongo/db/index/fts_access_method.h"
 #include "mongo/db/index/hash_access_method.h"
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/index/index_descriptor.h"
+#include "mongo/db/index/preallocated_container_pool.h"
 #include "mongo/db/index/s2_access_method.h"
 #include "mongo/db/index/s2_bucket_access_method.h"
 #include "mongo/db/index/wildcard_access_method.h"
@@ -63,7 +65,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/sorter/sorter.h"
-#include "mongo/db/storage/execution_context.h"
+#include "mongo/db/sorter/sorter_template_defs.h"
 #include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/kv/kv_engine.h"
 #include "mongo/db/storage/recovery_unit.h"
@@ -71,7 +73,6 @@
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/bufreader.h"
 #include "mongo/util/fail_point.h"
@@ -105,7 +106,8 @@ std::unique_ptr<IndexAccessMethod> IndexAccessMethod::make(
     auto engine = opCtx->getServiceContext()->getStorageEngine()->getEngine();
     auto desc = entry->descriptor();
     auto makeSDI = [&] {
-        return engine->getSortedDataInterface(opCtx, nss, collectionOptions, ident, desc);
+        return engine->getSortedDataInterface(
+            opCtx, nss, collectionOptions, ident, desc->toIndexConfig());
     };
     const std::string& type = desc->getAccessMethodName();
 
@@ -248,10 +250,10 @@ Status SortedDataIndexAccessMethod::insert(OperationContext* opCtx,
                 return status;
         }
 
-        auto& executionCtx = StorageExecutionContext::get(opCtx);
-        auto keys = executionCtx.keys();
-        auto multikeyMetadataKeys = executionCtx.multikeyMetadataKeys();
-        auto multikeyPaths = executionCtx.multikeyPaths();
+        auto& containerPool = PreallocatedContainerPool::get(opCtx);
+        auto keys = containerPool.keys();
+        auto multikeyMetadataKeys = containerPool.multikeyMetadataKeys();
+        auto multikeyPaths = containerPool.multikeyPaths();
 
         getKeys(opCtx,
                 coll,
@@ -292,12 +294,12 @@ void SortedDataIndexAccessMethod::remove(OperationContext* opCtx,
                                          const InsertDeleteOptions& options,
                                          int64_t* numDeleted,
                                          CheckRecordId checkRecordId) {
-    auto& executionCtx = StorageExecutionContext::get(opCtx);
+    auto& containerPool = PreallocatedContainerPool::get(opCtx);
 
     // There's no need to compute the prefixes of the indexed fields that cause the index to be
     // multikey when removing a document since the index metadata isn't updated when keys are
     // deleted.
-    auto keys = executionCtx.keys();
+    auto keys = containerPool.keys();
     getKeys(opCtx,
             coll,
             entry,
@@ -516,8 +518,8 @@ RecordId SortedDataIndexAccessMethod::findSingle(OperationContext* opCtx,
             // For performance, call get keys only if there is a non-simple collation.
             SharedBufferFragmentBuilder pooledBuilder(
                 key_string::HeapBuilder::kHeapAllocatorDefaultBytes);
-            auto& executionCtx = StorageExecutionContext::get(opCtx);
-            auto keys = executionCtx.keys();
+            auto& containerPool = PreallocatedContainerPool::get(opCtx);
+            auto keys = containerPool.keys();
             KeyStringSet* multikeyMetadataKeys = nullptr;
             MultikeyPaths* multikeyPaths = nullptr;
 
@@ -627,7 +629,7 @@ void SortedDataIndexAccessMethod::prepareUpdate(OperationContext* opCtx,
                                                 UpdateTicket* ticket) const {
     SharedBufferFragmentBuilder pooledBuilder(key_string::HeapBuilder::kHeapAllocatorDefaultBytes);
     const MatchExpression* indexFilter = entry->getFilterExpression();
-    if (!indexFilter || indexFilter->matchesBSON(from)) {
+    if (!indexFilter || exec::matcher::matchesBSON(indexFilter, from)) {
         // Override key constraints when generating keys for removal. This only applies to keys
         // that do not apply to a partial filter expression.
         const auto getKeysMode = entry->isHybridBuilding()
@@ -650,7 +652,7 @@ void SortedDataIndexAccessMethod::prepareUpdate(OperationContext* opCtx,
                 record);
     }
 
-    if (!indexFilter || indexFilter->matchesBSON(to)) {
+    if (!indexFilter || exec::matcher::matchesBSON(indexFilter, to)) {
         getKeys(opCtx,
                 collection,
                 entry,
@@ -997,10 +999,10 @@ Status SortedDataIndexAccessMethod::BulkBuilderImpl::insert(
     const InsertDeleteOptions& options,
     const OnSuppressedErrorFn& onSuppressedError,
     const ShouldRelaxConstraintsFn& shouldRelaxConstraints) {
-    auto& executionCtx = StorageExecutionContext::get(opCtx);
+    auto& containerPool = PreallocatedContainerPool::get(opCtx);
 
-    auto keys = executionCtx.keys();
-    auto multikeyPaths = executionCtx.multikeyPaths();
+    auto keys = containerPool.keys();
+    auto multikeyPaths = containerPool.multikeyPaths();
 
     try {
         _iam->getKeys(opCtx,
@@ -1333,7 +1335,7 @@ void SortedDataIndexAccessMethod::getKeys(
         // indexed), do not suppress the error.
         const MatchExpression* filter = entry->getFilterExpression();
         if (mode == InsertDeleteOptions::ConstraintEnforcementMode::kRelaxConstraintsUnfiltered &&
-            filter && filter->matchesBSON(obj)) {
+            filter && exec::matcher::matchesBSON(filter, obj)) {
             throw;
         }
 
@@ -1384,7 +1386,7 @@ Status SortedDataIndexAccessMethod::_indexKeysOrWriteToSideTable(
         // index.
         // See SERVER-28975 and SERVER-39705 for details.
         if (auto filter = entry->getFilterExpression()) {
-            if (!filter->matchesBSON(obj)) {
+            if (!exec::matcher::matchesBSON(filter, obj)) {
                 return Status::OK();
             }
         }
@@ -1436,7 +1438,7 @@ void SortedDataIndexAccessMethod::_unindexKeysOrWriteToSideTable(
         // index.
         // See SERVER-28975 and SERVER-39705 for details.
         if (auto filter = entry->getFilterExpression()) {
-            if (!filter->matchesBSON(obj)) {
+            if (!exec::matcher::matchesBSON(filter, obj)) {
                 return;
             }
         }
@@ -1476,9 +1478,3 @@ void SortedDataIndexAccessMethod::_unindexKeysOrWriteToSideTable(
 }
 
 }  // namespace mongo
-
-#undef MONGO_LOGV2_DEFAULT_COMPONENT
-#include "mongo/db/sorter/sorter.cpp"
-
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kCommand
-MONGO_CREATE_SORTER(mongo::key_string::Value, mongo::NullValue, mongo::BtreeExternalSortComparison);

@@ -17,8 +17,8 @@
 namespace mongo {
 class LiteParsedDocumentSourceBackupFile : public LiteParsedDocumentSource {
 public:
-    static std::unique_ptr<LiteParsedDocumentSourceBackupFile> parse(const NamespaceString& nss,
-                                                                     const BSONElement& spec) {
+    static std::unique_ptr<LiteParsedDocumentSourceBackupFile> parse(
+        const NamespaceString& nss, const BSONElement& spec, const LiteParserOptions& options) {
         return std::make_unique<LiteParsedDocumentSourceBackupFile>(spec.fieldName());
     }
 
@@ -207,7 +207,7 @@ DocumentSourceBackupFile::DocumentSourceBackupFile(
       _remainingLengthToRead(_backupFileSpec.getLength()) {}
 
 Value DocumentSourceBackupFile::serialize(const SerializationOptions& opts) const {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kToRepresentativeParseableValue) {
+    if (!opts.isReplacingLiteralsWithRepresentativeValues()) {
         return Value(Document{{kStageName, _backupFileSpec.toBSON(opts)}});
     }
 

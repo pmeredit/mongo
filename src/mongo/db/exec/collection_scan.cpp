@@ -59,8 +59,6 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/resharding/resharding_feature_flag_gen.h"
 #include "mongo/util/assert_util.h"
@@ -455,13 +453,9 @@ BSONObj CollectionScan::getPostBatchResumeToken() const {
     if (_params.requestResumeToken) {
         BSONObjBuilder builder;
         _lastSeenId.serializeToken("$recordId", &builder);
-        if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-            auto initialSyncId =
-                repl::ReplicationCoordinator::get(opCtx())->getInitialSyncId(opCtx());
-            if (initialSyncId) {
-                initialSyncId.value().appendToBuilder(&builder, "$initialSyncId");
-            }
+        auto initialSyncId = repl::ReplicationCoordinator::get(opCtx())->getInitialSyncId(opCtx());
+        if (initialSyncId) {
+            initialSyncId.value().appendToBuilder(&builder, "$initialSyncId");
         }
         return builder.obj();
     }

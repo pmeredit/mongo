@@ -50,9 +50,7 @@
 #include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/rpc/reply_builder_interface.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace {
@@ -113,8 +111,7 @@ BSONObj buildCommand() {
     commandReplyBob.append("ok", 1.0);
     BSONObjBuilder cursorBuilder;
     BSONArrayBuilder a(cursorBuilder.subarrayStart("firstBatch"));
-    a.append(BSON("Foo"
-                  << "Bar"));
+    a.append(BSON("Foo" << "Bar"));
     a.done();
 
     cursorBuilder.appendNumber("id", 1);

@@ -36,9 +36,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/collection_index_usage_tracker.h"
 #include "mongo/db/index/index_descriptor.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/duration.h"
 
@@ -170,53 +168,30 @@ struct TestCase {
     BSONObj spec;
     std::vector<std::string> features;
 };
-std::vector<TestCase>
-    testCases =
-        {
-            {BSON("key" << BSON("_id" << 1) << "v" << 2), {"id"}},
-            {BSON("key" << BSON("foo" << 1) << "v" << 2), {"normal", "single"}},
-            {BSON("key" << BSON("foo" << 1) << "sparse" << true << "v" << 2),
-             {"normal", "single", "sparse"}},
-            {BSON("key" << BSON("foo" << 1) << "unique" << true << "v" << 2),
-             {"normal", "single", "unique"}},
-            {BSON("key" << BSON("foo" << 1) << "unique" << false << "v" << 2),
-             {"normal", "single"}},
-            {BSON("key" << BSON("foo" << 1) << "partialFilterExpression" << BSON("foo" << 1) << "v"
-                        << 2),
-             {"normal", "single", "partial"}},
-            {BSON("key" << BSON("foo" << 1) << "prepareUnique" << true << "v" << 2),
-             {"normal", "single", "prepareUnique"}},
-            {BSON("key" << BSON("foo" << 1) << "prepareUnique" << false << "v" << 2),
-             {"normal", "single"}},
-            {BSON("key" << BSON("foo"
-                                << "2d")
-                        << "v" << 2),
-             {"2d", "single"}},
-            {BSON("key" << BSON("foo"
-                                << "2dsphere")
-                        << "v" << 2),
-             {"2dsphere", "single"}},
-            {BSON("key" << BSON("foo"
-                                << "2dsphere_bucket")
-                        << "v" << 2),
-             {"2dsphere_bucket", "single"}},
-            {BSON("key" << BSON("foo" << 1) << "collation"
-                        << BSON("locale"
-                                << "en")
-                        << "v" << 2),
-             {"normal", "single", "collation"}},
-            {BSON("key" << BSON("foo" << 1 << "bar" << 1) << "v" << 2), {"normal", "compound"}},
-            {BSON("key" << BSON("foo"
-                                << "hashed")
-                        << "v" << 2),
-             {"hashed", "single"}},
-            {BSON("key" << BSON("foo"
-                                << "text")
-                        << "v" << 2),
-             {"text", "single"}},
-            {BSON("key" << BSON("foo" << 1) << "expireAfterSeconds" << 100 << "v" << 2),
-             {"normal", "single", "ttl"}},
-            {BSON("key" << BSON("wild.$**" << 1) << "v" << 2), {"wildcard", "single"}},
+std::vector<TestCase> testCases = {
+    {BSON("key" << BSON("_id" << 1) << "v" << 2), {"id"}},
+    {BSON("key" << BSON("foo" << 1) << "v" << 2), {"normal", "single"}},
+    {BSON("key" << BSON("foo" << 1) << "sparse" << true << "v" << 2),
+     {"normal", "single", "sparse"}},
+    {BSON("key" << BSON("foo" << 1) << "unique" << true << "v" << 2),
+     {"normal", "single", "unique"}},
+    {BSON("key" << BSON("foo" << 1) << "unique" << false << "v" << 2), {"normal", "single"}},
+    {BSON("key" << BSON("foo" << 1) << "partialFilterExpression" << BSON("foo" << 1) << "v" << 2),
+     {"normal", "single", "partial"}},
+    {BSON("key" << BSON("foo" << 1) << "prepareUnique" << true << "v" << 2),
+     {"normal", "single", "prepareUnique"}},
+    {BSON("key" << BSON("foo" << 1) << "prepareUnique" << false << "v" << 2), {"normal", "single"}},
+    {BSON("key" << BSON("foo" << "2d") << "v" << 2), {"2d", "single"}},
+    {BSON("key" << BSON("foo" << "2dsphere") << "v" << 2), {"2dsphere", "single"}},
+    {BSON("key" << BSON("foo" << "2dsphere_bucket") << "v" << 2), {"2dsphere_bucket", "single"}},
+    {BSON("key" << BSON("foo" << 1) << "collation" << BSON("locale" << "en") << "v" << 2),
+     {"normal", "single", "collation"}},
+    {BSON("key" << BSON("foo" << 1 << "bar" << 1) << "v" << 2), {"normal", "compound"}},
+    {BSON("key" << BSON("foo" << "hashed") << "v" << 2), {"hashed", "single"}},
+    {BSON("key" << BSON("foo" << "text") << "v" << 2), {"text", "single"}},
+    {BSON("key" << BSON("foo" << 1) << "expireAfterSeconds" << 100 << "v" << 2),
+     {"normal", "single", "ttl"}},
+    {BSON("key" << BSON("wild.$**" << 1) << "v" << 2), {"wildcard", "single"}},
 };
 }  // namespace
 

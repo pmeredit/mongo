@@ -41,9 +41,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/platform/process_id.h"
 #include "mongo/rpc/metadata/client_metadata.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/testing_proctor.h"
 
@@ -180,10 +178,9 @@ TEST(ClientMetadataTest, TestRequiredOnlyFields) {
 
 // Positive: test with app_name spelled wrong fields
 TEST(ClientMetadataTest, TestWithAppNameSpelledWrong) {
-    ASSERT_DOC_OK(kApplication << BSON("extra"
-                                       << "1")
-                               << kDriver << BSON(kName << "n1" << kVersion << "v1")
-                               << kOperatingSystem << BSON(kType << kUnknown));
+    ASSERT_DOC_OK(kApplication << BSON("extra" << "1") << kDriver
+                               << BSON(kName << "n1" << kVersion << "v1") << kOperatingSystem
+                               << BSON(kType << kUnknown));
 }
 
 // Positive: test with empty application document

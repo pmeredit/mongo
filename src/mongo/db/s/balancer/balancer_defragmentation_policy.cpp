@@ -70,9 +70,6 @@
 #include "mongo/db/s/config/sharding_catalog_manager.h"
 #include "mongo/db/write_concern.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/random.h"
 #include "mongo/s/balancer_configuration.h"
@@ -92,9 +89,6 @@
 #include "mongo/util/time_support.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
-
-
-using namespace fmt::literals;
 
 namespace mongo {
 
@@ -120,7 +114,7 @@ ShardVersion getShardVersion(OperationContext* opCtx,
     uassert(ErrorCodes::NamespaceNotSharded,
             str::stream() << "Expected collection " << nss.toStringForErrorMsg()
                           << " to be sharded",
-            cri.cm.isSharded());
+            cri.isSharded());
     return cri.getShardVersion(shardId);
 }
 
@@ -1603,7 +1597,7 @@ void BalancerDefragmentationPolicy::_persistPhaseUpdate(OperationContext* opCtx,
     }()});
     auto response = write_ops::checkWriteErrors(dbClient.update(updateOp));
     uassert(ErrorCodes::NoMatchingDocument,
-            "Collection {} not found while persisting phase change"_format(uuid.toString()),
+            fmt::format("Collection {} not found while persisting phase change", uuid.toString()),
             response.getN() > 0);
     WriteConcernResult ignoreResult;
     const auto latestOpTime = repl::ReplClientInfo::forClient(opCtx->getClient()).getLastOp();

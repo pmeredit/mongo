@@ -36,37 +36,42 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
-#include <string_view>
 
 #include <absl/container/node_hash_map.h>
 
 #include "mongo/bson/bsontypes.h"
-#include "mongo/db/exec/sbe/expressions/runtime_environment.h"
 #include "mongo/db/query/bson_typemask.h"
-#include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/optimizer/algebra/polyvalue.h"
-#include "mongo/db/query/optimizer/reference_tracker.h"
 #include "mongo/db/query/stage_builder/sbe/abt_holder_impl.h"
-#include "mongo/db/query/stage_builder/sbe/builder.h"
-#include "mongo/db/query/stage_builder/sbe/expression_const_eval.h"
-#include "mongo/db/query/stage_builder/sbe/gen_helpers.h"
-#include "mongo/db/query/stage_builder/sbe/type_checker.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/str.h"
 
 namespace mongo::stage_builder {
-SbExpr makeBalancedBooleanOpTree(sbe::EPrimBinary::Op logicOp,
-                                 std::vector<SbExpr> leaves,
-                                 StageBuilderState& state) {
+SbExpr makeBooleanOpTree(optimizer::Operations logicOp,
+                         std::vector<SbExpr> leaves,
+                         StageBuilderState& state) {
     std::vector<optimizer::ABT> abtExprs;
     abtExprs.reserve(leaves.size());
     for (auto&& e : leaves) {
         abtExprs.push_back(abt::unwrap(e.extractABT()));
     }
-    return abt::wrap(makeBalancedBooleanOpTree(logicOp == sbe::EPrimBinary::logicAnd
-                                                   ? optimizer::Operations::And
-                                                   : optimizer::Operations::Or,
-                                               std::move(abtExprs)));
+    return abt::wrap(makeBooleanOpTree(logicOp, std::move(abtExprs)));
+}
+
+optimizer::ABT makeBooleanOpTree(optimizer::Operations logicOp,
+                                 std::vector<optimizer::ABT> leaves) {
+    invariant(!leaves.empty());
+    if (leaves.size() == 1) {
+        return std::move(leaves[0]);
+    }
+    if ((logicOp == optimizer::Operations::And || logicOp == optimizer::Operations::Or) &&
+        feature_flags::gFeatureFlagSbeUpgradeBinaryTrees.isEnabled()) {
+        return optimizer::make<optimizer::NaryOp>(logicOp, std::move(leaves));
+    } else {
+        auto builder = [=](optimizer::ABT lhs, optimizer::ABT rhs) {
+            return optimizer::make<optimizer::BinaryOp>(logicOp, std::move(lhs), std::move(rhs));
+        };
+        return makeBalancedTreeImpl(builder, leaves, 0, leaves.size());
+    }
 }
 
 optimizer::ABT makeFillEmpty(optimizer::ABT expr, optimizer::ABT altExpr) {
@@ -108,6 +113,21 @@ optimizer::ABT makeBinaryOp(optimizer::Operations binaryOp,
                             optimizer::ABT lhs,
                             optimizer::ABT rhs) {
     return optimizer::make<optimizer::BinaryOp>(binaryOp, std::move(lhs), std::move(rhs));
+}
+
+optimizer::ABT makeNaryOp(optimizer::Operations op, optimizer::ABTVector args) {
+    tassert(10199700, "Expected at least one argument", !args.empty());
+    if (feature_flags::gFeatureFlagSbeUpgradeBinaryTrees.isEnabled()) {
+        if (args.size() == 1) {
+            return std::move(args[0]);
+        }
+        return optimizer::make<optimizer::NaryOp>(op, std::move(args));
+    } else {
+        return std::accumulate(
+            args.begin() + 1, args.end(), std::move(args.front()), [&](auto&& acc, auto&& ex) {
+                return optimizer::make<optimizer::BinaryOp>(op, std::move(acc), std::move(ex));
+            });
+    }
 }
 
 optimizer::ABT generateABTNullOrMissing(optimizer::ABT var) {
@@ -199,7 +219,7 @@ optimizer::ABT generateABTNullishOrNotRepresentableInt32Check(optimizer::Project
 }
 
 optimizer::ABT generateInvalidRoundPlaceArgCheck(const optimizer::ProjectionName& var) {
-    return makeBalancedBooleanOpTree(
+    return makeBooleanOpTree(
         optimizer::Operations::Or,
         {
             // We can perform our numerical test with trunc. trunc will return nothing if we pass a
@@ -231,13 +251,19 @@ optimizer::ABT buildABTMultiBranchConditional(optimizer::ABT defaultCase) {
 
 optimizer::ABT buildABTMultiBranchConditionalFromCaseValuePairs(
     std::vector<ABTCaseValuePair> caseValuePairs, optimizer::ABT defaultValue) {
-    return std::accumulate(
-        std::make_reverse_iterator(std::make_move_iterator(caseValuePairs.end())),
-        std::make_reverse_iterator(std::make_move_iterator(caseValuePairs.begin())),
-        std::move(defaultValue),
-        [](auto&& expression, auto&& caseValuePair) {
-            return buildABTMultiBranchConditional(std::move(caseValuePair), std::move(expression));
-        });
+    if (!feature_flags::gFeatureFlagSbeUpgradeBinaryTrees.isEnabled()) {
+        return std::accumulate(
+            std::make_reverse_iterator(std::make_move_iterator(caseValuePairs.end())),
+            std::make_reverse_iterator(std::make_move_iterator(caseValuePairs.begin())),
+            std::move(defaultValue),
+            [](auto&& expression, auto&& caseValuePair) {
+                return buildABTMultiBranchConditional(std::move(caseValuePair),
+                                                      std::move(expression));
+            });
+    } else {
+        return optimizer::make<optimizer::Switch>(std::move(caseValuePairs),
+                                                  std::move(defaultValue));
+    }
 }
 
 optimizer::ABT makeIfNullExpr(std::vector<optimizer::ABT> values,
@@ -279,13 +305,40 @@ optimizer::ABT makeLet(sbe::FrameId frameId, optimizer::ABT bindExpr, optimizer:
 }
 
 optimizer::ABT makeLet(sbe::FrameId frameId, optimizer::ABTVector bindExprs, optimizer::ABT expr) {
-    for (size_t idx = bindExprs.size(); idx > 0;) {
-        --idx;
-        expr = optimizer::make<optimizer::Let>(
-            getABTLocalVariableName(frameId, idx), std::move(bindExprs[idx]), std::move(expr));
-    }
+    if (!feature_flags::gFeatureFlagSbeUpgradeBinaryTrees.isEnabled()) {
+        for (size_t idx = bindExprs.size(); idx > 0;) {
+            --idx;
+            expr = optimizer::make<optimizer::Let>(
+                getABTLocalVariableName(frameId, idx), std::move(bindExprs[idx]), std::move(expr));
+        }
 
-    return expr;
+        return expr;
+    } else {
+        std::vector<optimizer::ProjectionName> bindNames;
+        bindNames.reserve(bindExprs.size());
+        for (size_t idx = 0; idx < bindExprs.size(); ++idx) {
+            bindNames.emplace_back(getABTLocalVariableName(frameId, idx));
+        }
+
+        bindExprs.emplace_back(std::move(expr));
+        return optimizer::make<optimizer::MultiLet>(std::move(bindNames), std::move(bindExprs));
+    }
+}
+
+optimizer::ABT makeLet(std::vector<optimizer::ProjectionName> bindNames,
+                       optimizer::ABTVector bindExprs,
+                       optimizer::ABT inExpr) {
+    if (!feature_flags::gFeatureFlagSbeUpgradeBinaryTrees.isEnabled()) {
+        for (size_t idx = bindExprs.size(); idx > 0;) {
+            --idx;
+            inExpr = optimizer::make<optimizer::Let>(
+                std::move(bindNames[idx]), std::move(bindExprs[idx]), std::move(inExpr));
+        }
+        return inExpr;
+    } else {
+        bindExprs.emplace_back(std::move(inExpr));
+        return optimizer::make<optimizer::MultiLet>(std::move(bindNames), std::move(bindExprs));
+    }
 }
 
 optimizer::ABT makeLocalLambda(sbe::FrameId frameId, optimizer::ABT expr) {

@@ -42,8 +42,6 @@
 #include "mongo/bson/util/builder_fwd.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/expression_visitor.h"
-#include "mongo/db/matcher/match_details.h"
-#include "mongo/db/matcher/matchable.h"
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/db/query/util/make_data_structure.h"
 #include "mongo/util/assert_util.h"
@@ -75,6 +73,13 @@ public:
 
     size_t numChildren() const override {
         return _expressions.size();
+    }
+
+    /**
+     * Returns the unmodifiable vector of the children of the current node.
+     */
+    const std::vector<std::unique_ptr<MatchExpression>>& getChildren() const {
+        return _expressions;
     }
 
     MatchExpression* getChild(size_t i) const final {
@@ -143,10 +148,6 @@ public:
                        clonable_ptr<ErrorAnnotation> annotation = nullptr)
         : ListOfMatchExpression(AND, std::move(annotation), makeVector(std::move(expression))) {}
 
-    bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const final;
-
-    bool matchesSingleElement(const BSONElement&, MatchDetails* details = nullptr) const final;
-
     std::unique_ptr<MatchExpression> clone() const override {
         std::unique_ptr<AndMatchExpression> self =
             std::make_unique<AndMatchExpression>(_errorAnnotation);
@@ -190,10 +191,6 @@ public:
                       clonable_ptr<ErrorAnnotation> annotation = nullptr)
         : ListOfMatchExpression(OR, std::move(annotation), makeVector(std::move(expression))) {}
 
-    bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const final;
-
-    bool matchesSingleElement(const BSONElement&, MatchDetails* details = nullptr) const final;
-
     std::unique_ptr<MatchExpression> clone() const override {
         std::unique_ptr<OrMatchExpression> self =
             std::make_unique<OrMatchExpression>(_errorAnnotation);
@@ -236,10 +233,6 @@ public:
     NorMatchExpression(std::unique_ptr<MatchExpression> expression,
                        clonable_ptr<ErrorAnnotation> annotation = nullptr)
         : ListOfMatchExpression(NOR, std::move(annotation), makeVector(std::move(expression))) {}
-
-    bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const final;
-
-    bool matchesSingleElement(const BSONElement&, MatchDetails* details = nullptr) const final;
 
     std::unique_ptr<MatchExpression> clone() const override {
         std::unique_ptr<NorMatchExpression> self =
@@ -289,14 +282,6 @@ public:
         return self;
     }
 
-    bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const final {
-        return !_exp->matches(doc, nullptr);
-    }
-
-    bool matchesSingleElement(const BSONElement& elt, MatchDetails* details = nullptr) const final {
-        return !_exp->matchesSingleElement(elt, details);
-    }
-
     void debugString(StringBuilder& debug, int indentationLevel = 0) const override;
 
     void serialize(BSONObjBuilder* out,
@@ -313,7 +298,6 @@ public:
         tassert(6400210, "Out-of-bounds access to child of MatchExpression.", i < kNumChildren);
         return _exp.get();
     }
-
 
     std::vector<std::unique_ptr<MatchExpression>>* getChildVector() final {
         return nullptr;

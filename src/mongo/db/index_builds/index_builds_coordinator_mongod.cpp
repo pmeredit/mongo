@@ -76,12 +76,10 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/s/database_version.h"
 #include "mongo/s/shard_version.h"
 #include "mongo/util/assert_util.h"
@@ -434,9 +432,6 @@ IndexBuildsCoordinatorMongod::_startIndexBuild(OperationContext* opCtx,
 
     auto replState = invariant(_getIndexBuild(buildUUID));
 
-    // Since index builds occur in a separate thread, client attributes that are audited must be
-    // extracted from the client object and passed into the thread separately.
-    audit::ImpersonatedClientAttrs impersonatedClientAttrs(opCtx->getClient());
     ForwardableOperationMetadata forwardableOpMetadata(opCtx);
 
     // The thread pool task will be responsible for signalling the condition variable when the index
@@ -455,9 +450,8 @@ IndexBuildsCoordinatorMongod::_startIndexBuild(OperationContext* opCtx,
                           shardVersion = oss.getShardVersion(nss),
                           dbVersion = oss.getDbVersion(dbName),
                           resumeInfo,
-                          impersonatedClientAttrs = std::move(impersonatedClientAttrs),
                           forwardableOpMetadata =
-                              std::move(forwardableOpMetadata)](auto status) mutable noexcept {
+                              std::move(forwardableOpMetadata)](auto status) mutable {
         ScopeGuard onScopeExitGuard([&] {
             stdx::unique_lock<stdx::mutex> lk(_throttlingMutex);
             _numActiveIndexBuilds--;
@@ -482,13 +476,6 @@ IndexBuildsCoordinatorMongod::_startIndexBuild(OperationContext* opCtx,
         // Forward the forwardable operation metadata from the external client to this thread's
         // client.
         forwardableOpMetadata.setOn(opCtx.get());
-
-        // Load the external client's attributes into this thread's client for auditing.
-        auto authSession = AuthorizationSession::get(opCtx->getClient());
-        if (authSession) {
-            authSession->setImpersonatedUserData(std::move(impersonatedClientAttrs.userName),
-                                                 std::move(impersonatedClientAttrs.roleNames));
-        }
 
         while (MONGO_unlikely(hangBeforeInitializingIndexBuild.shouldFail())) {
             sleepmillis(100);
@@ -602,6 +589,10 @@ Status IndexBuildsCoordinatorMongod::voteCommitIndexBuild(OperationContext* opCt
     auto replState = swReplState.getValue();
 
     {
+        // TODO SERVER-99706: Investigate if this is safe. Other commit quorum operations take the
+        // RSTL lock before locking the commit quorum lock. However, this operation follows the
+        // inverse order.
+        DisableLockerRuntimeOrderingChecks disable{opCtx};
         // Secondary nodes will always try to vote regardless of the commit quorum value. If the
         // commit quorum is disabled, do not record their entry into the commit ready nodes.
         // If we fail to retrieve the persisted commit quorum, the index build might be in the
@@ -639,6 +630,11 @@ void IndexBuildsCoordinatorMongod::_sendCommitQuorumSatisfiedSignal(
 
 bool IndexBuildsCoordinatorMongod::_signalIfCommitQuorumIsSatisfied(
     OperationContext* opCtx, std::shared_ptr<ReplIndexBuildState> replState) {
+
+    // TODO SERVER-99706: Investigate if this is safe. Other commit quorum operations take the
+    // RSTL lock before locking the commit quorum lock. However, this operation follows the
+    // inverse order.
+    DisableLockerRuntimeOrderingChecks disable{opCtx};
 
     // Acquire the commitQuorumLk in shared mode to make sure commit quorum value did not change
     // after reading it from config.system.indexBuilds collection.
@@ -688,6 +684,11 @@ bool IndexBuildsCoordinatorMongod::_signalIfCommitQuorumNotEnabled(
         return false;
     }
 
+    // TODO SERVER-99706: Investigate if this is safe. Other commit quorum operations take the
+    // RSTL lock before locking the commit quorum lock. However, this operation follows the
+    // inverse order.
+    DisableLockerRuntimeOrderingChecks disable{opCtx};
+
     // Acquire the commitQuorumLk in shared mode to make sure commit quorum value did not change
     // after reading it from config.system.indexBuilds collection.
     Lock::SharedLock commitQuorumLk(opCtx, *replState->commitQuorumLock);
@@ -732,9 +733,7 @@ void IndexBuildsCoordinatorMongod::_signalPrimaryForAbortAndWaitForExternalAbort
 
     const auto generateCmd = [reason](const UUID& uuid, const std::string& address) {
         return BSON("voteAbortIndexBuild" << uuid << "hostAndPort" << address << "reason" << reason
-                                          << "writeConcern"
-                                          << BSON("w"
-                                                  << "majority"));
+                                          << "writeConcern" << BSON("w" << "majority"));
     };
 
     const auto checkVoteAbortIndexCmdDone = [](const BSONObj& response,
@@ -825,8 +824,7 @@ void IndexBuildsCoordinatorMongod::_signalPrimaryForCommitReadiness(
 
     const auto generateCmd = [](const UUID& uuid, const std::string& address) {
         return BSON("voteCommitIndexBuild" << uuid << "hostAndPort" << address << "writeConcern"
-                                           << BSON("w"
-                                                   << "majority"));
+                                           << BSON("w" << "majority"));
     };
 
     const auto checkVoteCommitIndexCmdSucceeded = [](const BSONObj& response,

@@ -64,9 +64,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/analyze_shard_key_role.h"
 #include "mongo/s/balancer_configuration.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
@@ -200,8 +197,10 @@ Status initializeGlobalShardingState(
         return std::make_shared<ShardingTaskExecutorPoolController>(srwp);
     };
 
-    auto network = executor::makeNetworkInterface(
-        "ShardRegistry", std::make_unique<ShardingNetworkConnectionHook>(), hookBuilder());
+    auto network = executor::makeNetworkInterface("Sharding-Fixed",
+                                                  std::make_unique<ShardingNetworkConnectionHook>(),
+                                                  hookBuilder(),
+                                                  connPoolOptions);
     auto networkPtr = network.get();
     auto executorPool = makeShardingTaskExecutorPool(
         std::move(network), hookBuilder, connPoolOptions, taskExecutorPoolSize);

@@ -133,6 +133,8 @@ public:
 
     std::string getServerAddress() const final;
 
+    std::string getLocalAddress() const final;
+
     void say(Message& toSend, bool isRetry, std::string* actualServer) final;
 
     using DBClientBase::runCommandWithTarget;
@@ -218,10 +220,10 @@ protected:
         RunCommandConnectionType type;
 
         RunCommandParams(OpMsgRequest request)
-            : request(std::move(request)), type(RunCommandConnectionType::rawPtr){};
+            : request(std::move(request)), type(RunCommandConnectionType::rawPtr) {};
 
         RunCommandParams(OpMsgRequest request, std::shared_ptr<DBClientBase> base)
-            : request(std::move(request)), conn(base), type(RunCommandConnectionType::sharedPtr){};
+            : request(std::move(request)), conn(base), type(RunCommandConnectionType::sharedPtr) {};
 
         RunCommandParams(OpMsgRequest request, RunCommandParams params)
             : request(std::move(request)), type(params.type) {

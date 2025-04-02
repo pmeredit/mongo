@@ -56,10 +56,6 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_detail.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/stdx/exception.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
@@ -76,9 +72,10 @@
 
 namespace mongo {
 
-namespace {
+// Used by `dumpScopedDebugInfo` below to determine if we should log anything.
+Atomic<bool> shouldLogScopedDebugInfoInSignalHandlers{true};
 
-using namespace fmt::literals;
+namespace {
 
 #if defined(_WIN32)
 const char* strsignal(int signalNum) {
@@ -213,13 +210,16 @@ void printSignal(int signalNum) {
 }
 
 void dumpScopedDebugInfo(std::ostream& os) {
+    if (!shouldLogScopedDebugInfoInSignalHandlers.load()) {
+        return;
+    }
     auto diagStack = scopedDebugInfoStack().getAll();
     if (diagStack.empty())
         return;
     os << "ScopedDebugInfo: [";
     StringData sep;
     for (const auto& s : diagStack) {
-        os << sep << "(" << s << ")";
+        os << sep << '"' << s << '"';
         sep = ", "_sd;
     }
     os << "]\n";
@@ -267,9 +267,12 @@ void myInvalidParameterHandler(const wchar_t* expression,
                                unsigned int line,
                                uintptr_t pReserved) {
 
-    logNoRecursion(
-        "Invalid parameter detected in function {} in {} at line {} with expression '{}'\n"_format(
-            toUtf8String(function), toUtf8String(file), line, toUtf8String(expression)));
+    logNoRecursion(fmt::format(
+        "Invalid parameter detected in function {} in {} at line {} with expression '{}'\n",
+        toUtf8String(function),
+        toUtf8String(file),
+        line,
+        toUtf8String(expression)));
 
     abruptQuit(SIGABRT);
 }
@@ -351,6 +354,10 @@ void setupSignalTestingHandler() {
 #endif
 
 }  // namespace
+
+void setDiagnosticLoggingInSignalHandlers(bool newVal) {
+    shouldLogScopedDebugInfoInSignalHandlers.store(newVal);
+}
 
 void endProcessWithSignal(int signalNum) {
 #if defined(_WIN32)

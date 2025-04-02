@@ -3,12 +3,6 @@ filters:
   - "/BUILD.bazel":
     approvers:
       - 10gen/devprod-build
-  - "/build.py":
-    approvers:
-      - 10gen/devprod-build
-  - "/SConscript":
-    approvers:
-      - 10gen/devprod-build
   - "/.gitignore":
     approvers:
       - 10gen/devprod-build

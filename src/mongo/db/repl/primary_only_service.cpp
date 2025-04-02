@@ -61,8 +61,6 @@
 #include "mongo/executor/network_interface_factory.h"
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/metadata/egress_metadata_hook_list.h"
 #include "mongo/rpc/metadata/metadata_hook.h"
@@ -375,7 +373,6 @@ void PrimaryOnlyService::startup(OperationContext* opCtx) {
 }
 
 void PrimaryOnlyService::onStepUp(const OpTime& stepUpOpTime) {
-    using namespace fmt::literals;
     SimpleBSONObjUnorderedMap<ActiveInstance> savedInstances;
     invariant(_getHasExecutor());
     auto newThenOldScopedExecutor =
@@ -476,10 +473,12 @@ void PrimaryOnlyService::onStepUp(const OpTime& stepUpOpTime) {
                 bool steppedDown = _state == State::kPaused;
                 bool shutDown = _state == State::kShutdown;
                 bool termAdvanced = _term > newTerm;
-                invariant(
-                    steppedDown || shutDown || termAdvanced,
-                    "Unexpected _state or _term; _state is {}, _term is {}, term was {} "_format(
-                        _getStateString(lk), _term, newTerm));
+                invariant(steppedDown || shutDown || termAdvanced,
+                          fmt::format(
+                              "Unexpected _state or _term; _state is {}, _term is {}, term was {} ",
+                              _getStateString(lk),
+                              _term,
+                              newTerm));
                 return;
             }
             invariant(_state == State::kRebuilding);

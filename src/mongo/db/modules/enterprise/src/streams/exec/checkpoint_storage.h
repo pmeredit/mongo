@@ -6,13 +6,13 @@
 
 #include <boost/optional.hpp>
 
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/unflushed_state_container.h"
+#include "streams/util/chunked_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 #include "streams/util/metrics.h"
 
@@ -174,7 +174,7 @@ public:
 
     // The byte size of the last checkpoint committed.
     int64_t getLastCheckpointSizeBytes() {
-        return _lastCheckpointSizeBytes;
+        return _lastCheckpointSizeBytes.load();
     }
 
 protected:
@@ -195,7 +195,9 @@ protected:
     // Checkpoint size histogram
     std::shared_ptr<Histogram> _checkpointSizeBytes;
     // Size of last committed checkpoint. This is reported in stats
-    int64_t _lastCheckpointSizeBytes{0};
+    // Atomic so some unit tests can read while Executor thread is setting
+    // it.
+    mongo::Atomic<int64_t> _lastCheckpointSizeBytes{0};
     mongo::Date_t _lastCheckpointStartTs{mongo::Date_t::now()};
     mongo::Date_t _lastCheckpointCommitTs{mongo::Date_t::now()};
     mongo::Date_t _lastCheckpointRestoreStartTs{mongo::Date_t::now()};

@@ -4,7 +4,6 @@
 
 #include "streams/exec/planner.h"
 
-#include <any>
 #include <boost/none.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <memory>
@@ -21,50 +20,47 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/oid.h"
-#include "mongo/db/change_stream_options_gen.h"
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/feature_flag.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/namespace_string.h"
-#include "mongo/db/pipeline/document_source_add_fields.h"
-#include "mongo/db/pipeline/document_source_change_stream.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_merge_modes_gen.h"
-#include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_redact.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
-#include "mongo/db/query/stage_types.h"
 #include "mongo/db/service_context.h"
-#include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/database_name_util.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/serialization_context.h"
+#include "mongo/util/testing_proctor.h"
 #include "streams/exec/add_fields_operator.h"
+#include "streams/exec/aws_util.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/dead_letter_queue.h"
-#include "streams/exec/delayed_watermark_generator.h"
+#include "streams/exec/document_source_external_function_stub.h"
 #include "streams/exec/document_source_https_stub.h"
 #include "streams/exec/document_source_validate_stub.h"
 #include "streams/exec/document_source_window_stub.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/documents_data_source_operator.h"
+#include "streams/exec/external_function_operator.h"
+#include "streams/exec/external_function_sink_operator.h"
 #include "streams/exec/feature_flag.h"
 #include "streams/exec/feedable_pipeline.h"
-#include "streams/exec/generated_data_source_operator.h"
 #include "streams/exec/group_operator.h"
 #include "streams/exec/https_operator.h"
 #include "streams/exec/in_memory_sink_operator.h"
@@ -72,7 +68,6 @@
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
-#include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/limit_operator.h"
 #include "streams/exec/log_sink_operator.h"
 #include "streams/exec/lookup_operator.h"
@@ -81,12 +76,16 @@
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/mongodb_process_interface.h"
+#include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
+#include "streams/exec/optimize.h"
 #include "streams/exec/project_operator.h"
+#include "streams/exec/queued_sink_operator.h"
 #include "streams/exec/redact_operator.h"
 #include "streams/exec/replace_root_operator.h"
+#include "streams/exec/s3_emit_operator.h"
 #include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/set_operator.h"
 #include "streams/exec/sink_operator.h"
@@ -99,6 +98,7 @@
 #include "streams/exec/unwind_operator.h"
 #include "streams/exec/util.h"
 #include "streams/exec/validate_operator.h"
+#include "streams/util/string_validator.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -154,6 +154,7 @@ enum class StageType {
     kLimit,
     kEmit,
     kHttps,
+    kExternalFunction,
 };
 
 // Encapsulates traits of a stage.
@@ -163,8 +164,8 @@ struct StageTraits {
     bool allowedInMainPipeline{false};
     // Whether the stage is allowed in the inner pipeline of a window stage.
     bool allowedInWindowPipeline{false};
-    // Whether the stage is allowed in the inner pipeline of a https stage.
-    bool allowedInHttpsPipeline{false};
+    // Whether the stage is allowed in the inner pipeline of a https or externalFunction stage.
+    bool allowedInPayloadPipeline{false};
 };
 
 mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
@@ -190,12 +191,13 @@ mongo::stdx::unordered_map<std::string, StageTraits> stageTraits =
         {"$limit", {StageType::kLimit, false, true, false}},
         {"$emit", {StageType::kEmit, true, false, false}},
         {"$https", {StageType::kHttps, true, true, false}},
+        {"$externalFunction", {StageType::kExternalFunction, true, true, false}},
     };
 
 enum class PipelineType {
     kMain,
     kWindow,
-    kHttps,
+    kPayloadPipeline,
 };
 
 // Verifies that a stage specified in the input pipeline is a valid stage.
@@ -223,18 +225,20 @@ void enforceStageConstraints(const std::string& name, PipelineType pipelineType)
                               << " stage is not permitted in the inner pipeline of a window stage",
                 stageInfo.allowedInWindowPipeline);
             break;
-        case PipelineType::kHttps:
+        case PipelineType::kPayloadPipeline:
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     str::stream() << name
                                   << " stage is not permitted in the payload (inner pipeline) of "
-                                     "an https stage",
-                    stageInfo.allowedInHttpsPipeline);
+                                     "an https or externalFunction stage",
+                    stageInfo.allowedInPayloadPipeline);
             break;
     }
 }
 
 // Constructs ValidateOperator::Options.
-ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj bsonOptions) {
+ValidateOperator::Options makeValidateOperatorOptions(Context* context,
+                                                      BSONObj bsonOptions,
+                                                      bool shouldValidateDLQ) {
     auto options = ValidateOptions::parse(IDLParserContext("validate"), bsonOptions);
 
     std::unique_ptr<MatchExpression> validator;
@@ -249,58 +253,14 @@ ValidateOperator::Options makeValidateOperatorOptions(Context* context, BSONObj 
         validator = std::make_unique<AlwaysTrueMatchExpression>();
     }
 
-    if (options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                str::stream() << "DLQ must be specified if validation action is dlq.",
-                bool(context->dlq));
+    if (shouldValidateDLQ &&
+        options.getValidationAction() == mongo::StreamsValidationActionEnum::Dlq &&
+        dynamic_cast<NoOpDeadLetterQueue*>(context->dlq.get())) {
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                  str::stream() << "DLQ must be specified if $validate.validationAction is dlq");
     }
 
     return {std::move(validator), options.getValidationAction()};
-}
-
-// Translates MergeOperatorSpec into DocumentSourceMergeSpec.
-boost::intrusive_ptr<DocumentSource> makeDocumentSourceMerge(
-    const MergeOperatorSpec& mergeOpSpec, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-    // TODO: Support kFail whenMatched/whenNotMatched mode.
-    static const stdx::unordered_set<MergeWhenMatchedModeEnum> supportedWhenMatchedModes{
-        {MergeWhenMatchedModeEnum::kKeepExisting,
-         MergeWhenMatchedModeEnum::kMerge,
-         MergeWhenMatchedModeEnum::kPipeline,
-         MergeWhenMatchedModeEnum::kReplace}};
-    static const stdx::unordered_set<MergeWhenNotMatchedModeEnum> supportedWhenNotMatchedModes{
-        {MergeWhenNotMatchedModeEnum::kDiscard, MergeWhenNotMatchedModeEnum::kInsert}};
-
-    if (mergeOpSpec.getWhenMatched()) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Unsupported whenMatched mode: ",
-                supportedWhenMatchedModes.contains(mergeOpSpec.getWhenMatched()->mode));
-    }
-    if (mergeOpSpec.getWhenNotMatched()) {
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Unsupported whenNotMatched mode: ",
-                supportedWhenNotMatchedModes.contains(*mergeOpSpec.getWhenNotMatched()));
-    }
-
-    DocumentSourceMergeSpec docSourceMergeSpec;
-    // Use a dummy target namespace kNoDbCollNamespaceString since it's not used.
-    auto dummyTargetNss = NamespaceStringUtil::deserialize(
-        /*tenantId=*/boost::none, kNoDbCollNamespaceString, SerializationContext());
-    auto whenMatched = mergeOpSpec.getWhenMatched() ? mergeOpSpec.getWhenMatched()->mode
-                                                    : DocumentSourceMerge::kDefaultWhenMatched;
-    auto whenNotMatched =
-        mergeOpSpec.getWhenNotMatched().value_or(DocumentSourceMerge::kDefaultWhenNotMatched);
-    auto pipeline =
-        mergeOpSpec.getWhenMatched() ? mergeOpSpec.getWhenMatched()->pipeline : boost::none;
-    std::set<FieldPath> dummyMergeOnFields{"_id"};
-    return DocumentSourceMerge::create(std::move(dummyTargetNss),
-                                       expCtx,
-                                       whenMatched,
-                                       whenNotMatched,
-                                       mergeOpSpec.getLet(),
-                                       pipeline,
-                                       std::move(dummyMergeOnFields),
-                                       /*collectionPlacementVersion*/ boost::none,
-                                       /*allowMergeOnNullishValues*/ true);
 }
 
 // Utility to construct a map of auth options from 'authOptions' for a Kafka connection.
@@ -327,13 +287,28 @@ mongo::stdx::unordered_map<std::string, std::string> constructKafkaAuthConfig(
         authConfig.emplace("ssl.endpoint.identification.algorithm",
                            KafkaTLSValidationAlgorithm_serializer(*tlsAlgorithm).toString());
     }
+    if (auto sslCertificate = authOptions.getSslCertificate(); sslCertificate) {
+        authConfig.emplace("ssl.certificate.pem", *sslCertificate);
+    }
+    if (auto sslKey = authOptions.getSslKey(); sslKey) {
+        authConfig.emplace("ssl.key.pem", *sslKey);
+    }
+    if (auto sslKeyPassword = authOptions.getSslKeyPassword(); sslKeyPassword) {
+        authConfig.emplace("ssl.key.password", *sslKeyPassword);
+    }
+
     return authConfig;
 }
 
 int64_t parseAllowedLateness(
     const boost::optional<std::variant<std::int32_t, StreamTimeDuration>>& param,
     mongo::WindowBoundaryEnum windowBoundary = mongo::WindowBoundaryEnum::eventTime) {
-    if (windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+    bool isProcessingTimeWindow = windowBoundary == mongo::WindowBoundaryEnum::processingTime;
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify allowed lateness value for a processing time window",
+            !(param && isProcessingTimeWindow));
+
+    if (isProcessingTimeWindow) {
         return 0;
     }
     // From the spec, 3 seconds is the default allowed lateness.
@@ -363,8 +338,16 @@ int64_t parseAllowedLateness(
 }
 
 boost::optional<int64_t> parseIdleTimeout(
-    const boost::optional<std::variant<int32_t, StreamTimeDuration>>& param) {
+    const boost::optional<std::variant<int32_t, StreamTimeDuration>>& param,
+    mongo::WindowBoundaryEnum windowBoundary = mongo::WindowBoundaryEnum::eventTime) {
+    bool isProcessingTimeWindow = windowBoundary == mongo::WindowBoundaryEnum::processingTime;
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify idle timeout value for a processing time window",
+            !(param && isProcessingTimeWindow));
     int64_t idleTimeoutMs = 0;
+    if (isProcessingTimeWindow) {
+        return idleTimeoutMs;
+    }
     if (!param) {
         return boost::none;
     }
@@ -471,16 +454,15 @@ std::vector<std::pair<std::string, StringOrExpression>> parseDynamicObject(
     return out;
 }
 
-mongo::JsonStringFormat parseJsonStringFormat(
-    boost::optional<KafkaEmitJsonStringFormatEnum> exprToParse) {
-    mongo::JsonStringFormat returnValue;
+JsonStringFormat parseJsonStringFormat(boost::optional<KafkaEmitJsonStringFormatEnum> exprToParse) {
+    JsonStringFormat returnValue;
     if (!exprToParse) {
-        return mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+        return JsonStringFormat::Relaxed;
     }
     if (*exprToParse == KafkaEmitJsonStringFormatEnum::CanonicalJson) {
-        returnValue = mongo::JsonStringFormat::ExtendedCanonicalV2_0_0;
+        returnValue = JsonStringFormat::Canonical;
     } else {
-        returnValue = mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+        returnValue = JsonStringFormat::Relaxed;
     }
     return returnValue;
 }
@@ -499,7 +481,8 @@ std::unique_ptr<DocumentTimestampExtractor> createTimestampExtractor(
 // Utility which configures options common to all $source stages.
 SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsFieldName,
                                                  DocumentTimestampExtractor* timestampExtractor,
-                                                 bool enableDataFlow) {
+                                                 bool enableDataFlow,
+                                                 bool oldStreamMetaEnabled) {
     SourceOperator::Options options;
     options.enableDataFlow = enableDataFlow;
     if (tsFieldName) {
@@ -507,10 +490,13 @@ SourceOperator::Options getSourceOperatorOptions(boost::optional<StringData> tsF
         uassert(7756300,
                 "'tsFieldOverride' cannot be a dotted path",
                 options.timestampOutputFieldName->find('.') == std::string::npos);
-    } else {
+    } else if (oldStreamMetaEnabled) {
+        // If using old stream meta, default to project assigned timestamp into
+        // _ts.
         options.timestampOutputFieldName = kDefaultTimestampOutputFieldName;
     }
-    if (options.timestampOutputFieldName->empty()) {
+
+    if (options.timestampOutputFieldName && options.timestampOutputFieldName->empty()) {
         options.timestampOutputFieldName = boost::none;
     }
     options.timestampExtractor = timestampExtractor;
@@ -535,6 +521,18 @@ void configureContextStreamMetaFieldName(Context* context, StringData streamMeta
         context->streamMetaFieldName = streamMetaFieldName.toString();
     }
 }
+
+NameExpression parseStringOrExpression(const std::variant<mongo::BSONObj, std::string>& strOrExpr) {
+    return std::visit(
+        OverloadedVisitor{[&](const BSONObj& bson) {
+                              uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                                      "Expected emit bucket expression to have one field.",
+                                      bson.nFields() == 1);
+                              return NameExpression{bson.firstElement()};
+                          },
+                          [&](const std::string& str) { return NameExpression{str}; }},
+        strOrExpr);
+}
 }  // namespace
 
 Planner::Planner(Context* context, Options options)
@@ -549,14 +547,28 @@ mongo::WindowBoundaryEnum Planner::getValidWindowBoundary(auto options) {
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 "Processing time windows are not supported",
                 enabled && *enabled);
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Cannot specify allowed lateness value for a processing time window",
-                !options.getAllowedLateness());
-        uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "Cannot specify idle timeout value for a processing time window",
-                !options.getIdleTimeout());
     }
     return boundary;
+}
+
+bool isProcessingTimeWindow(const BSONObj& stage) {
+    std::variant<TumblingWindowOptions, HoppingWindowOptions, SessionWindowOptions> opts;
+    std::string firstElementFieldName = stage.firstElementFieldName();
+    if (firstElementFieldName == kTumblingWindowStageName) {
+        opts = TumblingWindowOptions::parse(IDLParserContext{kTumblingWindowStageName},
+                                            stage.getField(kTumblingWindowStageName).Obj());
+    } else if (firstElementFieldName == kHoppingWindowStageName) {
+        opts = HoppingWindowOptions::parse(IDLParserContext{kHoppingWindowStageName},
+                                           stage.getField(kHoppingWindowStageName).Obj());
+    } else {
+        opts = SessionWindowOptions::parse(IDLParserContext{kSessionWindowStageName},
+                                           stage.getField(kSessionWindowStageName).Obj());
+    }
+    return std::visit(OverloadedVisitor{[](auto windowOptions) -> bool {
+                          return bool(windowOptions.getBoundary() ==
+                                      mongo::WindowBoundaryEnum::processingTime);
+                      }},
+                      opts);
 }
 
 void Planner::appendOperator(std::unique_ptr<Operator> oper) {
@@ -580,8 +592,11 @@ void Planner::planInMemorySource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    InMemorySourceOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    InMemorySourceOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
 
@@ -604,8 +619,11 @@ void Planner::planSampleSolarSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    SampleDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    SampleDataSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     auto oper = std::make_unique<SampleDataSourceOperator>(_context, std::move(internalOptions));
@@ -627,8 +645,11 @@ void Planner::planDocumentsSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    DocumentsDataSourceOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    DocumentsDataSourceOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
     internalOptions.useWatermarks = useWatermarks;
     internalOptions.sendIdleMessages = sendIdleMessages;
     internalOptions.documents = std::visit(
@@ -681,8 +702,11 @@ void Planner::planKafkaSource(const BSONObj& sourceSpec,
     if (!tsFieldName) {
         tsFieldName = options.getTsFieldOverride();
     }
-    KafkaConsumerOperator::Options internalOptions(getSourceOperatorOptions(
-        std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow));
+    KafkaConsumerOperator::Options internalOptions(
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta));
 
     internalOptions.bootstrapServers = std::string{baseOptions.getBootstrapServers()};
 
@@ -864,9 +888,15 @@ void Planner::planChangeStreamSource(const BSONObj& sourceSpec,
         tsFieldName = options.getTsFieldOverride();
     }
     ChangeStreamSourceOperator::Options internalOptions(
-        getSourceOperatorOptions(
-            std::move(tsFieldName), _timestampExtractor.get(), _options.enableDataFlow),
+        getSourceOperatorOptions(std::move(tsFieldName),
+                                 _timestampExtractor.get(),
+                                 _options.enableDataFlow,
+                                 _context->projectStreamMeta),
         std::move(clientOptions));
+
+    if (options.getInternalPredicate()) {
+        internalOptions.internalPredicate = options.getInternalPredicate()->getOwned();
+    }
 
     if (useWatermarks) {
         internalOptions.useWatermarks = true;
@@ -951,9 +981,9 @@ void Planner::planSource(const BSONObj& spec, bool useWatermarks, bool sendIdleM
 
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Invalid connectionName in " << kSourceStageName << " " << sourceSpec,
-            _context->connections.contains(connectionName));
+            _context->connections->contains(connectionName));
 
-    const auto& connection = _context->connections.at(connectionName);
+    const auto& connection = _context->connections->at(connectionName);
     switch (connection.getType()) {
         case ConnectionTypeEnum::Kafka: {
             auto options = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
@@ -989,62 +1019,29 @@ void Planner::planMergeSink(const BSONObj& spec) {
                 spec.firstElement().isABSONObj());
 
     auto mergeObj = spec.firstElement().Obj();
-    auto mergeOpSpec = MergeOperatorSpec::parse(IDLParserContext("MergeOperatorSpec"), mergeObj);
+    auto mergeOpSpec =
+        MergeOperatorSpec::parse(IDLParserContext("MergeOperatorSpec"), std::move(mergeObj));
     auto mergeIntoAtlas =
         AtlasCollection::parse(IDLParserContext("AtlasCollection"), mergeOpSpec.getInto());
     std::string connectionName(mergeIntoAtlas.getConnectionName().toString());
 
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connection name " << connectionName,
-            _context->connections.contains(connectionName));
+            _context->connections->contains(connectionName));
 
-    const auto& connection = _context->connections.at(connectionName);
+    const auto& connection = _context->connections->at(connectionName);
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Only atlas merge connection type is currently supported",
             connection.getType() == ConnectionTypeEnum::Atlas);
     auto atlasOptions = AtlasConnectionOptions::parse(IDLParserContext("AtlasConnectionOptions"),
                                                       connection.getOptions());
-    if (_context->expCtx->getMongoProcessInterface()) {
-        dassert(dynamic_cast<StubMongoProcessInterface*>(
-            _context->expCtx->getMongoProcessInterface().get()));
-    }
 
-    auto mergeExpressionCtx = ExpressionContextBuilder{}
-                                  .opCtx(_context->opCtx.get())
-                                  .ns(NamespaceString(DatabaseName::kLocal))
-                                  .build();
-
-    MongoCxxClientOptions clientOptions(atlasOptions, _context);
-    clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
-    mergeExpressionCtx->setMongoProcessInterface(
-        std::make_shared<MongoDBProcessInterface>(clientOptions));
-
-    auto documentSource = makeDocumentSourceMerge(mergeOpSpec, mergeExpressionCtx);
-
-    boost::optional<std::set<FieldPath>> onFieldPaths;
-    if (mergeOpSpec.getOn()) {
-        onFieldPaths.emplace();
-        for (const auto& field : *mergeOpSpec.getOn()) {
-            const auto [_, inserted] = onFieldPaths->insert(FieldPath(field));
-            uassert(8186211,
-                    str::stream() << "Found a duplicate field in the $merge.on list: '" << field
-                                  << "'",
-                    inserted);
-        }
-    }
-
-    auto specificSource = dynamic_cast<DocumentSourceMerge*>(documentSource.get());
-    dassert(specificSource);
-    MergeOperator::Options options{.documentSource = specificSource,
-                                   .db = mergeIntoAtlas.getDb(),
-                                   .coll = mergeIntoAtlas.getColl(),
-                                   .onFieldPaths = std::move(onFieldPaths),
-                                   .mergeExpCtx = std::move(mergeExpressionCtx)};
+    MergeOperator::Options options{.spec = std::move(mergeOpSpec), .atlasOptions = atlasOptions};
     auto oper = std::make_unique<MergeOperator>(_context, std::move(options));
+
     oper->setOperatorId(_nextOperatorId++);
 
     invariant(!_operators.empty());
-    _pipeline.push_back(std::move(documentSource));
     appendOperator(std::move(oper));
 }
 
@@ -1079,8 +1076,8 @@ void Planner::planEmitSink(const BSONObj& spec) {
         // 'connectionName' must be in '_context->connections'.
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Invalid connectionName in " << kEmitStageName << " " << sinkSpec,
-                _context->connections.contains(connectionName));
-        auto connection = _context->connections.at(connectionName);
+                _context->connections->contains(connectionName));
+        auto connection = _context->connections->at(connectionName);
         if (connection.getType() == ConnectionTypeEnum::Kafka) {
             auto baseOptions = KafkaConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                              connection.getOptions());
@@ -1105,6 +1102,18 @@ void Planner::planEmitSink(const BSONObj& spec) {
             KafkaEmitOperator::Options kafkaEmitOptions;
             kafkaEmitOptions.topicName = options.getTopic();
             kafkaEmitOptions.bootstrapServers = baseOptions.getBootstrapServers().toString();
+
+            boost::optional<int64_t> maybeMessageMaxBytes = _context->featureFlags
+                ? getKafkaMessageMaxBytes(_context->featureFlags)
+                : boost::none;
+            kafkaEmitOptions.messageMaxBytes = maybeMessageMaxBytes;
+
+            if (_context->featureFlags) {
+                if (auto val = getKafkaEmitMessageTimeoutMillis(_context->featureFlags); val) {
+                    kafkaEmitOptions.messageTimeoutMs = *val;
+                }
+            }
+
             if (auto auth = baseOptions.getAuth(); auth) {
                 kafkaEmitOptions.authConfig = constructKafkaAuthConfig(*auth);
             }
@@ -1145,7 +1154,7 @@ void Planner::planEmitSink(const BSONObj& spec) {
             }
             kafkaEmitOptions.jsonStringFormat = options.getConfig()
                 ? parseJsonStringFormat(options.getConfig()->getOutputFormat())
-                : mongo::JsonStringFormat::ExtendedRelaxedV2_0_0;
+                : JsonStringFormat::Relaxed;
             if (options.getTestOnlyPartition()) {
                 kafkaEmitOptions.testOnlyPartition = *options.getTestOnlyPartition();
             }
@@ -1155,6 +1164,67 @@ void Planner::planEmitSink(const BSONObj& spec) {
 
             sinkOperator =
                 std::make_unique<KafkaEmitOperator>(_context, std::move(kafkaEmitOptions));
+            sinkOperator->setOperatorId(_nextOperatorId++);
+        } else if (connection.getType() == ConnectionTypeEnum::AWSS3) {
+            bool featureFlag =
+                *_context->featureFlags->getFeatureFlagValue(FeatureFlags::kEnableS3Emit).getBool();
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "Creating an S3 $emit stage is not yet supported",
+                    featureFlag);
+
+            auto parsedOptions = S3Options::parse(IDLParserContext("emit"), sinkSpec);
+            S3EmitOperator::Options options{
+                .bucket = parseStringOrExpression(parsedOptions.getBucket()),
+                .path = parseStringOrExpression(parsedOptions.getPath()),
+                .delimiter = (parsedOptions.getDelimiter())
+                    ? std::string{*parsedOptions.getDelimiter()}
+                    : S3EmitOperator::kDefaultDelimiter,
+                .outputFormat = parsedOptions.getOutputFormat(),
+            };
+
+            // TODO(SERVER-100437) use StringValidator to validate dynamic paths and buckets during
+            // runtime.
+            StringValidator pathValidator{kUnsafeS3ObjectPathChars};
+            if (options.path.isLiteral()) {
+                uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                        fmt::format("Invalid s3 path"),
+                        pathValidator.isValid(options.path.getLiteral()));
+            }
+
+            Aws::Client::ClientConfiguration clientConfig;
+            if (!parsedOptions.getRegion() || parsedOptions.getRegion()->empty()) {
+                if (isAWSRegion(_context->region)) {
+                    clientConfig.region = _context->region;
+                } else {
+                    // TODO(SERVER-102689): Remove this and associate non-AWS regions with the
+                    // closest AWS region.
+                    clientConfig.region = Aws::Region::US_EAST_1;
+                }
+            } else {
+                clientConfig.region = std::string{*parsedOptions.getRegion()};
+            }
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    fmt::format("{} does not support non-AWS region '{}'",
+                                kEmitStageName,
+                                clientConfig.region),
+                    isAWSRegion(clientConfig.region));
+
+            if (TestingProctor::instance().isEnabled()) {
+                clientConfig.endpointOverride = "http://localhost:9000";
+                // Make a client with virtual addresses turned off. AWS S3 uses virtual addresses by
+                // default. MinIO (used for jstests) does not support virtual addresses.
+                options.client = std::make_shared<AWSS3Client>(
+                    std::make_shared<AWSCredentialsProvider>(_context, connectionName),
+                    clientConfig,
+                    false /* useVirtualAddressing */
+                );
+            } else {
+                options.client = std::make_shared<AWSS3Client>(
+                    std::make_shared<AWSCredentialsProvider>(_context, connectionName),
+                    clientConfig);
+            }
+
+            sinkOperator = std::make_unique<S3EmitOperator>(_context, std::move(options));
             sinkOperator->setOperatorId(_nextOperatorId++);
         } else {
             // $emit to TimeSeries collection
@@ -1260,7 +1330,8 @@ void Planner::planWindowCommon() {
 
 bool Planner::shouldPrependDummyLimit(Pipeline* innerPipeline) {
     if (_windowPlanningInfo->numWindowAwareStages == 0 || innerPipeline->getSources().empty()) {
-        // If the inner pipeline is empty or there are no window aware stages, add a dummy limit.
+        // If the inner pipeline is empty or there are no window aware stages, add a dummy
+        // limit.
         return true;
     }
 
@@ -1303,7 +1374,7 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     WindowAssigner::Options windowingOptions;
     windowingOptions.windowBoundary = getValidWindowBoundary(options);
 
-    tassert(9940801, "Operators shouldn't be empty", !_operators.empty());
+    tassert(ErrorCodes::InternalError, "Operators shouldn't be empty", !_operators.empty());
     if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
         src->setWindowBoundary(windowingOptions.windowBoundary);
     }
@@ -1315,8 +1386,8 @@ BSONObj Planner::planTumblingWindow(DocumentSource* source) {
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs =
         parseAllowedLateness(options.getAllowedLateness(), windowingOptions.windowBoundary);
-    windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
-
+    windowingOptions.idleTimeoutMs =
+        parseIdleTimeout(options.getIdleTimeout(), windowingOptions.windowBoundary);
     _windowPlanningInfo.emplace();
     _windowPlanningInfo->stubDocumentSource = source;
     _windowPlanningInfo->windowAssigner =
@@ -1393,9 +1464,11 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     WindowAssigner::Options windowingOptions;
     windowingOptions.windowBoundary = getValidWindowBoundary(options);
 
+    tassert(ErrorCodes::InternalError, "Operators shouldn't be empty", !_operators.empty());
     if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
         src->setWindowBoundary(windowingOptions.windowBoundary);
     }
+
     windowingOptions.size = windowInterval.getSize();
     windowingOptions.sizeUnit = windowInterval.getUnit();
     windowingOptions.slide = hopInterval.getSize();
@@ -1404,7 +1477,8 @@ BSONObj Planner::planHoppingWindow(DocumentSource* source) {
     windowingOptions.offsetUnit = offset ? offset->getUnit() : StreamTimeUnitEnum::Millisecond;
     windowingOptions.allowedLatenessMs =
         parseAllowedLateness(options.getAllowedLateness(), windowingOptions.windowBoundary);
-    windowingOptions.idleTimeoutMs = parseIdleTimeout(options.getIdleTimeout());
+    windowingOptions.idleTimeoutMs =
+        parseIdleTimeout(options.getIdleTimeout(), windowingOptions.windowBoundary);
     // TODO: what about offset.
 
     _windowPlanningInfo.emplace();
@@ -1469,6 +1543,11 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
 
     SessionWindowAssigner::Options windowingOptions(WindowAssigner::Options{});
 
+    windowingOptions.windowBoundary = getValidWindowBoundary(options);
+    tassert(ErrorCodes::InternalError, "Operators shouldn't be empty", !_operators.empty());
+    if (auto* src = dynamic_cast<SourceOperator*>(_operators.front().get())) {
+        src->setWindowBoundary(windowingOptions.windowBoundary);
+    }
     windowingOptions.gapSize = gap.getSize();
     windowingOptions.gapUnit = gap.getUnit();
     windowingOptions.allowedLatenessMs = parseAllowedLateness(options.getAllowedLateness());
@@ -1512,27 +1591,27 @@ BSONObj Planner::planSessionWindow(DocumentSource* source) {
                     "in the pipeline.",
                     false);
         } else if (_windowPlanningInfo->streamMetaDependencyBeforeOrAtFirstBlocking) {
-            // Else, if there is a read dependency on stream meta before the first blocking, prepend
-            // dummy sort. A blocking operator must precede any operator with a _stream_meta
-            // dependency so that the _stream_meta.window.start/end values are finalized by the time
-            // they are read.
+            // Else, if there is a read dependency on stream meta before the first blocking,
+            // prepend dummy sort. A blocking operator must precede any operator with a
+            // _stream_meta dependency so that the _stream_meta.window.start/end values are
+            // finalized by the time they are read.
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, the pipeline cannot use "
-                    "_stream_meta.window until after the first $group or $sort.",
+                    "stream meta until after the first $group or $sort.",
                     false);
         } else if (_windowPlanningInfo->limitBeforeFirstBlocking) {
-            // Else, if there's a limit operator before the first blocking window aware operator,
-            // prepend dummy sort. A blocking operator must precede a limit operator with limit <
-            // INF for window merge to work.
+            // Else, if there's a limit operator before the first blocking window aware
+            // operator, prepend dummy sort. A blocking operator must precede a limit operator
+            // with limit < INF for window merge to work.
             uassert(ErrorCodes::StreamProcessorInvalidOptions,
                     "The $sessionWindow.pipeline isn't supported, there cannot be a $limit before "
                     "the first $group or $sort.",
                     false);
         } else if (!isWindowAwareStage(pipeline->getSources().front()->getSourceName())) {
             // Else, if the first operator is NOT window aware, prepend dummy limit
-            // If the first operator has a filtering effect (ex. match), a limit operator with limit
-            // = INF needs to precede it so documents are not filtered out before they effect
-            // session window boundaries.
+            // If the first operator has a filtering effect (ex. match), a limit operator with
+            // limit = INF needs to precede it so documents are not filtered out before they
+            // effect session window boundaries.
             prependDummyLimitOperator(pipeline.get());
         }
     }
@@ -1568,9 +1647,9 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
 
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Unknown connection name " << connectionName,
-                _context->connections.contains(connectionName));
+                _context->connections->contains(connectionName));
 
-        const auto& connection = _context->connections.at(connectionName);
+        const auto& connection = _context->connections->at(connectionName);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 str::stream() << "Only atlas connection type is currently supported for $lookup",
                 connection.getType() == ConnectionTypeEnum::Atlas);
@@ -1579,7 +1658,8 @@ mongo::BSONObj Planner::planLookUp(mongo::DocumentSourceLookUp* documentSource,
 
         MongoCxxClientOptions clientOptions(atlasOptions, _context);
         clientOptions.svcCtx = _context->expCtx->getOperationContext()->getServiceContext();
-        auto foreignMongoDBClient = std::make_shared<MongoDBProcessInterface>(clientOptions);
+        auto foreignMongoDBClient =
+            std::make_shared<MongoDBProcessInterface>(clientOptions, _context);
 
         options.foreignMongoDBClient = std::move(foreignMongoDBClient);
         options.foreignNs = getNamespaceString(lookupFromAtlas.getDb(), lookupFromAtlas.getColl());
@@ -1672,25 +1752,32 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
                           << kHttpsStageName,
-            _context->connections.contains(connectionNameField));
-    const auto& connection = _context->connections.at(connectionNameField);
+            _context->connections->contains(connectionNameField));
+    const auto& connection = _context->connections->at(connectionNameField);
     auto connOptions = HttpsConnectionOptions::parse(IDLParserContext("connectionParser"),
                                                      connection.getOptions());
 
     HttpsOperator::Options options{
         .method = parseMethod(parsedOperatorOptions.getMethod()),
         .url = connOptions.getUrl().toString(),
+        .urlEncodePath = parsedOperatorOptions.getUrlEncodePath(),
         .queryParams = parseDynamicObject(_context->expCtx, parsedOperatorOptions.getParameters()),
         .as = parsedOperatorOptions.getAs().toString(),
         .onError = parsedOperatorOptions.getOnError(),
     };
+
+    if (shouldValidateDLQ() && options.onError == mongo::OnErrorEnum::DLQ &&
+        dynamic_cast<NoOpDeadLetterQueue*>(_context->dlq.get())) {
+        uasserted(ErrorCodes::StreamProcessorInvalidOptions,
+                  str::stream() << "DLQ must be specified if $https.onError is dlq");
+    }
 
     if (const auto& payloadPipeline = parsedOperatorOptions.getPayload(); payloadPipeline) {
         std::vector<mongo::BSONObj> stages;
         stages.reserve(payloadPipeline->size());
         for (auto& stageObj : *payloadPipeline) {
             std::string stageName(stageObj.firstElementFieldNameStringData());
-            enforceStageConstraints(stageName, PipelineType::kHttps);
+            enforceStageConstraints(stageName, PipelineType::kPayloadPipeline);
             stages.emplace_back(std::move(stageObj).getOwned());
         }
 
@@ -1701,6 +1788,7 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     if (auto config = parsedOperatorOptions.getConfig(); config) {
         options.connectionTimeoutSecs = mongo::Seconds{config->getConnectionTimeoutSec()};
         options.requestTimeoutSecs = mongo::Seconds{config->getRequestTimeoutSec()};
+        options.parseJsonStrings = config->getParseJsonStrings();
     }
 
     if (const auto& headersOpt = connOptions.getHeaders(); headersOpt) {
@@ -1762,21 +1850,110 @@ void Planner::planHttps(DocumentSourceHttpsStub* docSource) {
     appendOperator(std::move(oper));
 }
 
+ExternalFunction::Options Planner::planExternalFunctionOptions(const mongo::BSONObj& bsonOptions,
+                                                               bool isSink) {
+    auto parsedOperatorOptions =
+        ExternalFunctionOptions::parse(IDLParserContext("externalFunction"), bsonOptions);
+    auto connectionNameField = parsedOperatorOptions.getConnectionName().toString();
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            str::stream() << "Unknown connectionName '" << connectionNameField << "' in "
+                          << kExternalFunctionStageName,
+            _context->connections->contains(connectionNameField));
+
+    Aws::Client::ClientConfiguration clientConfig;
+    clientConfig.region = _context->region;
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            fmt::format("{} does not support non-AWS region '{}'",
+                        kExternalFunctionStageName,
+                        clientConfig.region),
+            isAWSRegion(clientConfig.region));
+    if (getTestCommandsEnabled()) {
+        clientConfig.endpointOverride = "http://localhost:9000";
+    }
+
+    ExternalFunction::Options options{
+        .lambdaClient = std::make_unique<AWSLambdaClient>(
+            std::make_shared<AWSCredentialsProvider>(_context, connectionNameField), clientConfig),
+        .functionName = parsedOperatorOptions.getFunctionName().toString(),
+        .execution = parsedOperatorOptions.getExecution(),
+        .onError = parsedOperatorOptions.getOnError(),
+        .isSink = isSink,
+    };
+
+    if (isSink) {
+        if (options.execution == mongo::ExternalFunctionExecutionEnum::Async) {
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "BSON field 'externalFunction.as' is not supported with "
+                    "'externalFunction.execution: async'",
+                    !parsedOperatorOptions.getAs());
+        }
+    } else {
+        if (options.execution == mongo::ExternalFunctionExecutionEnum::Sync) {
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "BSON field 'externalFunction.as' is missing but a required field",
+                    parsedOperatorOptions.getAs());
+
+            options.as = parsedOperatorOptions.getAs()->toString();
+        } else {
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "BSON field 'externalFunction.as' is not supported with "
+                    "'externalFunction.execution: async'",
+                    !parsedOperatorOptions.getAs());
+        }
+    }
+
+    if (const auto& payloadPipeline = parsedOperatorOptions.getPayload(); payloadPipeline) {
+        std::vector<mongo::BSONObj> stages;
+        stages.reserve(payloadPipeline->size());
+        for (auto& stageObj : *payloadPipeline) {
+            std::string stageName(stageObj.firstElementFieldNameStringData());
+            enforceStageConstraints(stageName, PipelineType::kPayloadPipeline);
+            stages.emplace_back(std::move(stageObj).getOwned());
+        }
+
+        auto [pipeline, pipelineRewriter] = preparePipeline(std::move(stages));
+        options.payloadPipeline = FeedablePipeline{std::move(pipeline)};
+    }
+
+    return options;
+}
+
+void Planner::planExternalFunction(DocumentSourceExternalFunctionStub* docSource) {
+    _context->projectStreamMetaPriorToSinkStage = true;
+
+    auto oper = std::make_unique<ExternalFunctionOperator>(
+        _context, planExternalFunctionOptions(docSource->bsonOptions(), false));
+    oper->setOperatorId(_nextOperatorId++);
+    appendOperator(std::move(oper));
+}
+
+void Planner::planExternalFunctionSink(const BSONObj& spec) {
+    uassert(ErrorCodes::StreamProcessorInvalidOptions,
+            str::stream() << "Invalid sink: " << spec,
+            spec.firstElementFieldName() == StringData(kExternalFunctionStageName) &&
+                spec.firstElement().isABSONObj());
+
+    auto oper = std::make_unique<ExternalFunctionSinkOperator>(
+        _context, planExternalFunctionOptions(spec.firstElement().Obj(), true));
+    oper->setOperatorId(_nextOperatorId++);
+    appendOperator(std::move(oper));
+}
+
 std::pair<std::unique_ptr<mongo::Pipeline, mongo::PipelineDeleter>,
           std::unique_ptr<PipelineRewriter>>
 Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
     auto pipelineRewriter = std::make_unique<PipelineRewriter>(std::move(stages));
     stages = pipelineRewriter->rewrite();
 
+    // Streams has it's own $lookup semantics and syntax that aren't allowed in regular MQL. We
+    // set 'allowGenericForeignDbLookup' to true so this syntax can be parsed in
+    // DocumentSourceLookup without throwing errors.
+    LiteParserOptions options{.allowGenericForeignDbLookup = true};
+    LiteParsedPipeline liteParsedPipeline(_context->expCtx->getNamespaceString(), stages, options);
+
     // Set resolved namespaces in the ExpressionContext. Currently this is only needed to
     // satisfy the getResolvedNamespace() call in DocumentSourceLookup constructor.
-    LiteParsedPipeline liteParsedPipeline(_context->expCtx->getNamespaceString(), stages);
-    auto pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    for (auto& involvedNs : pipelineInvolvedNamespaces) {
-        resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
-    }
-    _context->expCtx->setResolvedNamespaces(std::move(resolvedNamespaces));
+    _context->expCtx->addResolvedNamespaces(liteParsedPipeline.getInvolvedNamespaces());
     auto pipeline = Pipeline::parse(stages, _context->expCtx);
     if (_options.planningUserPipeline) {
         pipeline->optimizePipeline();
@@ -1800,7 +1977,7 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
                 ++_windowPlanningInfo->numWindowAwareStages;
                 if (isBlockingWindowAwareStage(stage->getSourceName())) {
                     ++_windowPlanningInfo->numBlockingWindowAwareStages;
-                } else if (stage->getSourceName() == kLimitStageName) {
+                } else if (isLimitStage(stage->getSourceName())) {
                     _windowPlanningInfo->limitBeforeFirstBlocking |=
                         _windowPlanningInfo->numBlockingWindowAwareStages == 0;
                 }
@@ -1850,14 +2027,15 @@ Planner::preparePipeline(std::vector<mongo::BSONObj> stages) {
                 _context->projectStreamMetaPriorToSinkStage |= hasStreamMetaDependency;
             }
 
-            if (isBlockingWindowAwareStage(stage->getSourceName())) {
-                ++blockingWindowAwareOperators;
-            }
             bool usesStreamMetaExpr =
                 deps.metadataDeps().test(DocumentMetadataFields::MetaType::kStream);
             if (_windowPlanningInfo && (hasStreamMetaDependency || usesStreamMetaExpr) &&
-                blockingWindowAwareOperators <= 1) {
+                blockingWindowAwareOperators == 0) {
                 _windowPlanningInfo->streamMetaDependencyBeforeOrAtFirstBlocking = true;
+            }
+
+            if (isBlockingWindowAwareStage(stage->getSourceName())) {
+                ++blockingWindowAwareOperators;
             }
 
             // If the expression is used, set the switch to write to DocumentMetadataFields.
@@ -1990,7 +2168,8 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 optimizedPipeline.push_back(serialize(stage));
                 auto specificSource = dynamic_cast<DocumentSourceValidateStub*>(stage.get());
                 dassert(specificSource);
-                auto options = makeValidateOperatorOptions(_context, specificSource->bsonOptions());
+                auto options = makeValidateOperatorOptions(
+                    _context, specificSource->bsonOptions(), shouldValidateDLQ());
                 auto oper = std::make_unique<ValidateOperator>(_context, std::move(options));
                 oper->setOperatorId(_nextOperatorId++);
                 appendOperator(std::move(oper));
@@ -2038,18 +2217,28 @@ std::vector<BSONObj> Planner::planPipeline(mongo::Pipeline& pipeline,
                 break;
             }
             case StageType::kHttps: {
-                auto enabled = _context->featureFlags
-                    ? _context->featureFlags
-                          ->getFeatureFlagValue(FeatureFlags::kEnableHttpsOperator)
-                          .getBool()
-                    : boost::none;
-                uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                        "Unsupported stage: $https",
-                        enabled && *enabled);
                 optimizedPipeline.push_back(serialize(stage));
                 auto httpsSource = dynamic_cast<DocumentSourceHttpsStub*>(stage.get());
                 tassert(9502902, "Expected stage to be a https document source.", httpsSource);
                 planHttps(httpsSource);
+                break;
+            }
+            case StageType::kExternalFunction: {
+                auto enabled = _context->featureFlags
+                    ? _context->featureFlags
+                          ->getFeatureFlagValue(FeatureFlags::kEnableExternalFunctionOperator)
+                          .getBool()
+                    : boost::none;
+                uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                        "Unsupported stage: $externalFunction",
+                        enabled && *enabled);
+                optimizedPipeline.push_back(serialize(stage));
+                auto externalfunctionSource =
+                    dynamic_cast<DocumentSourceExternalFunctionStub*>(stage.get());
+                tassert(9929400,
+                        "Expected stage to be an external function document source.",
+                        externalfunctionSource);
+                planExternalFunction(externalfunctionSource);
                 break;
             }
             default:
@@ -2092,6 +2281,25 @@ std::unique_ptr<OperatorDag> Planner::plan(const std::vector<BSONObj>& bsonPipel
     return result;
 }
 
+void checkSourceOptionsAndProcessingTimeWindowCompatibility(bool isProcessingTimeWindow,
+                                                            auto sourceOptions) {
+    bool hasTimeField = sourceOptions.type() == BSONType::Object &&
+        (sourceOptions.Obj().hasElement(GeneratedDataSourceOptions::kTimeFieldFieldName) ||
+         sourceOptions.Obj().hasElement(ChangeStreamSourceOptions::kTimeFieldFieldName) ||
+         sourceOptions.Obj().hasElement(KafkaSourceOptions::kTimeFieldFieldName));
+    bool hasTsFieldName = sourceOptions.type() == BSONType::Object &&
+        (sourceOptions.Obj().hasElement(GeneratedDataSourceOptions::kTsFieldNameFieldName) ||
+         sourceOptions.Obj().hasElement(ChangeStreamSourceOptions::kTsFieldNameFieldName) ||
+         sourceOptions.Obj().hasElement(KafkaSourceOptions::kTsFieldNameFieldName));
+
+    uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify timeField with processing time window",
+            !(hasTimeField && isProcessingTimeWindow));
+    uassert(mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "Cannot specify tsFieldName with processing time window",
+            !(hasTsFieldName && isProcessingTimeWindow));
+}
+
 std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bsonPipeline) {
     _context->projectStreamMeta = getOldStreamMetaEnabled(_context->featureFlags);
 
@@ -2105,7 +2313,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
             isSourceStage(firstStageName));
     std::string lastStageName(bsonPipeline.rbegin()->firstElementFieldNameStringData());
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "The last stage in the pipeline must be $merge or $emit.",
+            "The last stage in the pipeline must be $merge, $emit, or $externalFunction.",
             isSinkStage(lastStageName) || _context->isEphemeral);
 
     // Validate each stage BSONObj is well formatted.
@@ -2127,19 +2335,26 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
 
         // We only use watermarks when the pipeline contains a window stage.
         bool useWatermarks{false};
-        // We only send idle watermarks if the window idleTimeout is set.
+        // We only send idle watermarks if the window idleTimeout is set or if the window is a
+        // processing time window.
         bool sendIdleMessages{false};
+        bool processingTimeWindow{false};
         for (const BSONObj& stage : bsonPipeline) {
             const auto& name = stage.firstElementFieldNameStringData();
             if (isWindowStage(name)) {
                 useWatermarks = true;
                 auto windowOptions = stage.getField(name);
+                processingTimeWindow = isProcessingTimeWindow(stage);
+
                 sendIdleMessages = windowOptions.type() == BSONType::Object &&
                     (windowOptions.Obj().hasElement(HoppingWindowOptions::kIdleTimeoutFieldName) ||
-                     windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName));
+                     windowOptions.Obj().hasElement(TumblingWindowOptions::kIdleTimeoutFieldName) ||
+                     processingTimeWindow);
                 break;
             }
         }
+        auto sourceOptions = sourceSpec.getField(sourceSpec.firstElementFieldNameStringData());
+        checkSourceOptionsAndProcessingTimeWindowCompatibility(processingTimeWindow, sourceOptions);
 
         // Create the source operator
         optimizedPipeline.push_back(sourceSpec);
@@ -2150,7 +2365,9 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     // Get the middle stages until we hit a sink stage
     std::vector<BSONObj> middleStages;
     while (current != bsonPipeline.end() &&
-           !isSinkStage(current->firstElementFieldNameStringData())) {
+           !isSinkOnlyStage(current->firstElementFieldNameStringData()) &&
+           !(isMiddleAndSinkStage(current->firstElementFieldNameStringData()) &&
+             std::next(current) == bsonPipeline.end())) {
         std::string stageName(current->firstElementFieldNameStringData());
         enforceStageConstraints(stageName, PipelineType::kMain);
 
@@ -2173,7 +2390,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     if (current == bsonPipeline.end()) {
         // We're at the end of the bsonPipeline and we have not found a sink stage.
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
-                "The last stage in the pipeline must be $merge or $emit.",
+                "The last stage in the pipeline must be $merge, $emit, or $externalFunction.",
                 _context->isEphemeral);
         // In the ephemeral case, we append a NoOpSink to handle the sample requests.
         sinkSpec =
@@ -2192,6 +2409,16 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
         auto sinkStageName = sinkSpec.firstElementFieldNameStringData();
         if (isMergeStage(sinkStageName)) {
             planMergeSink(sinkSpec);
+        } else if (isExternalFunctionStage(sinkStageName)) {
+            auto enabled = _context->featureFlags
+                ? _context->featureFlags
+                      ->getFeatureFlagValue(FeatureFlags::kEnableExternalFunctionOperator)
+                      .getBool()
+                : boost::none;
+            uassert(ErrorCodes::StreamProcessorInvalidOptions,
+                    "Unsupported stage: $externalFunction",
+                    enabled && *enabled);
+            planExternalFunctionSink(sinkSpec);
         } else {
             dassert(isEmitStage(sinkStageName));
             planEmitSink(sinkSpec);
@@ -2205,6 +2432,7 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
     options.timestampExtractor = std::move(_timestampExtractor);
     options.eventDeserializer = std::move(_eventDeserializer);
     options.needsWindowReplay = _needsWindowReplay;
+    options.loggingContext = _context->toLoggingContext();
     auto dag = make_unique<OperatorDag>(std::move(options), std::move(_operators));
 
     // Validate the operator IDs in the dag.
@@ -2223,8 +2451,30 @@ std::unique_ptr<OperatorDag> Planner::planInner(const std::vector<BSONObj>& bson
         }
     }
 
+    if (_options.planningUserPipeline) {
+        return optimizeDag(std::move(dag));
+    }
+
     return dag;
 }
+
+std::unique_ptr<OperatorDag> Planner::optimizeDag(std::unique_ptr<OperatorDag> dag) {
+    auto opts = this->_options;
+    opts.shouldValidateModifyRequest = false;
+    opts.planningUserPipeline = false;
+
+    auto plan = dag->options().optimizedPipeline;
+    for (const auto& rule : optimize::Rule::getRules(_context)) {
+        if (rule->checkPattern(*dag)) {
+            plan = rule->transform(std::move(*dag));
+            Planner planner{_context, opts};
+            dag = planner.plan(plan);
+        }
+    }
+
+    return dag;
+}
+
 
 std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
     const std::vector<BSONObj>& pipeline) {
@@ -2244,8 +2494,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
                 str::stream() << "Stage spec must contain a 'connectionName' string field in it: "
                               << stage,
                 connectionField.getType() == String);
-            ParsedConnectionInfo info{connectionField.getString()};
-            info.setStage(stage.toString());
+            ParsedConnectionInfo info{connectionField.getString(), stage.toString()};
             connectionNames.push_back(std::move(info));
         };
         auto getSpecDoc = [](StringData stageName, const BSONObj& stageBson) {
@@ -2261,7 +2510,7 @@ std::vector<ParsedConnectionInfo> Planner::parseConnectionInfo(
             if (spec[kDocumentsField].missing()) {
                 addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
             }
-        } else if (isEmitStage(stageName) || isHttpsStage(stageName)) {
+        } else if (isEmitStage(stageName) || isPayloadStage(stageName)) {
             auto spec = getSpecDoc(stageName, stage);
             addConnectionName(stageName, spec, FieldPath(kConnectionNameField));
         } else if (isMergeStage(stageName)) {
@@ -2424,4 +2673,20 @@ void Planner::validatePipelineModify(const std::vector<mongo::BSONObj>& oldUserP
                   "resumeFromCheckpoint must be false to remove a window from a stream processor");
     }
 }
+
+bool Planner::shouldValidateDLQ() {
+    // TODO(SERVER-99672): Figure out a safe way to ship this.
+    return false && !_context->isEphemeral && _options.planningUserPipeline;
+}
+
+// TODO(STREAMS-1620): Remove this if/when we change the $uuid expression name everywhere.
+// We added this to workaround issues with extended JSON and the $uuid expression. Extended
+// json parsers expect $uuid to precede a string denoting a UUID literal.
+REGISTER_EXPRESSION_WITH_FEATURE_FLAG(createUUID,
+                                      ExpressionUUID::parse,
+                                      AllowedWithApiStrict::kNeverInVersion1,
+                                      AllowedWithClientType::kAny,
+                                      feature_flags::gFeatureFlagUUIDExpression);
+
+
 };  // namespace streams

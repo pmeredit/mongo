@@ -34,13 +34,9 @@
 #include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
 #include <boost/smart_ptr.hpp>
-#include <cstddef>
-#include <deque>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
@@ -49,14 +45,11 @@
 #include "mongo/client/async_client.h"
 #include "mongo/db/baton.h"
 #include "mongo/db/service_context.h"
-#include "mongo/executor/connection_pool.h"
-#include "mongo/executor/connection_pool_tl.h"
-#include "mongo/executor/network_connection_hook.h"
+#include "mongo/executor/async_client_factory.h"
 #include "mongo/executor/network_interface.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/executor/task_executor.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/metadata/metadata_hook.h"
 #include "mongo/stdx/condition_variable.h"
@@ -65,20 +58,14 @@
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/transport/baton.h"
 #include "mongo/transport/transport_layer.h"
-#include "mongo/transport/transport_layer_manager.h"
 #include "mongo/util/cancellation.h"
 #include "mongo/util/clock_source.h"
-#include "mongo/util/concurrency/notification.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/functional.h"
 #include "mongo/util/future.h"
 #include "mongo/util/future_impl.h"
-#include "mongo/util/hierarchical_acquisition.h"
 #include "mongo/util/net/hostandport.h"
-#include "mongo/util/strong_weak_finish_line.h"
 #include "mongo/util/time_support.h"
-#include "mongo/util/uuid.h"
-
 
 namespace mongo {
 namespace executor {
@@ -86,13 +73,12 @@ namespace executor {
 class NetworkInterfaceTL : public NetworkInterface {
 public:
     NetworkInterfaceTL(std::string instanceName,
-                       transport::TransportProtocol protocol,
-                       ConnectionPool::Options connPoolOpts,
-                       std::unique_ptr<NetworkConnectionHook> onConnectHook,
+                       std::shared_ptr<AsyncClientFactory> factory,
                        std::unique_ptr<rpc::EgressMetadataHook> metadataHook);
     ~NetworkInterfaceTL() override;
 
     constexpr static Milliseconds kCancelCommandTimeout{1000};
+    constexpr static Milliseconds kCancelCommandTimeout_forTest{5000};
 
     std::string getDiagnosticString() override;
     void appendConnectionStats(ConnectionPoolStats* stats) const override;
@@ -134,26 +120,31 @@ public:
                     Milliseconds timeout,
                     Status status) override;
 
+    const AsyncClientFactory& getClientFactory_forTest() const {
+        return *_clientFactory;
+    }
+
     /**
      * NetworkInterfaceTL's implementation of a leased network-stream
      * provided for manual use outside of the NITL's usual RPC API.
-     * When this type is destroyed, the destructor of the ConnectionHandle
-     * member will return the connection to this NetworkInterface's ConnectionPool.
+     * When this type is destroyed, the destructor of the AsyncClientHandle
+     * member will return the connection to this NetworkInterface's AsyncClientFactory.
      */
     class LeasedStream : public NetworkInterface::LeasedStream {
     public:
         AsyncDBClient* getClient() override;
 
-        LeasedStream(ConnectionPool::ConnectionHandle&& conn) : _conn{std::move(conn)} {}
+        LeasedStream(std::shared_ptr<AsyncClientFactory::AsyncClientHandle> client)
+            : _clientHandle{std::move(client)} {}
 
         // These pass-through indications of the health of the leased
-        // stream to the underlying ConnectionHandle
+        // stream to the underlying AsyncClientFactory.
         void indicateSuccess() override;
         void indicateUsed() override;
         void indicateFailure(Status) override;
 
     private:
-        ConnectionPool::ConnectionHandle _conn;
+        std::shared_ptr<AsyncClientFactory::AsyncClientHandle> _clientHandle;
     };
 
     SemiFuture<std::unique_ptr<NetworkInterface::LeasedStream>> leaseStream(
@@ -175,31 +166,28 @@ private:
                          const CancellationToken& token);
         virtual ~CommandStateBase();
 
-        SemiFuture<ConnectionPool::ConnectionHandle> getConnection(ConnectionPool& pool);
+        SemiFuture<std::shared_ptr<AsyncClientFactory::AsyncClientHandle>> getClient(
+            AsyncClientFactory& factory);
 
-        Status handleConnectionAcquisitionError(Status status);
+        Status handleClientAcquisitionError(Status status);
 
-        ExecutorFuture<RemoteCommandResponse> sendRequest(ConnectionPool::ConnectionHandle conn);
+        ExecutorFuture<RemoteCommandResponse> sendRequest(
+            std::shared_ptr<AsyncClientFactory::AsyncClientHandle> client);
         virtual ExecutorFuture<RemoteCommandResponse> sendRequestImpl(
             RemoteCommandRequest toSend) = 0;
 
         /**
-         * Return the current connection to the pool and unset it locally.
+         * Release the current client handle back to its factory.
          *
          * This must be called from the networking thread (i.e. the reactor).
          */
-        void returnConnection(Status status) noexcept;
+        void releaseClientHandle(Status status);
 
         /**
          * Set a timer to cancel the request at the requested deadline, if any.
          * If no timeout was specified on the request, this is a noop.
          */
         void setTimer();
-
-        /**
-         * Return the client for a given connection
-         */
-        static AsyncDBClient* getClient(const ConnectionPool::ConnectionHandle& conn) noexcept;
 
         /**
          * Cancel the operation with the provided status.
@@ -231,7 +219,7 @@ private:
         BatonHandle baton;
         std::unique_ptr<transport::ReactorTimer> timer;
 
-        ConnectionPool::ConnectionHandle conn;
+        std::shared_ptr<AsyncClientFactory::AsyncClientHandle> clientHandle;
 
         CancellationSource cancelSource;
 
@@ -311,11 +299,7 @@ private:
 
     std::string _instanceName;
     transport::ReactorHandle _reactor;
-    transport::TransportProtocol _protocol;
-
-    const ConnectionPool::Options _connPoolOpts;
-    std::unique_ptr<NetworkConnectionHook> _onConnectHook;
-    std::shared_ptr<ConnectionPool> _pool;
+    std::shared_ptr<AsyncClientFactory> _clientFactory;
 
     // A lock-free way to check that the reactor and connection pool have been initialized. We need
     // this and the _state enum to prevent null pointer dereferencing on the hot path without

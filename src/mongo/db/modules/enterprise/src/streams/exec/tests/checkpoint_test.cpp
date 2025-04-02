@@ -17,12 +17,9 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/periodic_runner_factory.h"
 #include "streams/exec/checkpoint/local_disk_checkpoint_storage.h"
@@ -105,7 +102,7 @@ public:
 
         _props.context->checkpointStorage->registerMetrics(executor->getMetricManager());
         _props.context->dlq = std::make_unique<NoOpDeadLetterQueue>(_props.context.get());
-        _props.context->connections = testKafkaConnectionRegistry();
+        _props.context->connections = testKafkaConnections();
         Planner planner(_props.context.get(), {});
         _props.dag = planner.plan(bsonVector);
         _props.context->executionPlan = _props.dag->optimizedPipeline();
@@ -214,7 +211,7 @@ public:
         startCheckpointRestore(checkpointId);
 
         _props.context->restoreCheckpointId = checkpointId;
-        _props.context->connections = testKafkaConnectionRegistry();
+        _props.context->connections = testKafkaConnections();
 
         Planner::Options plannerOptions{.planningUserPipeline = false};
         Planner planner(_props.context.get(), plannerOptions);
@@ -358,13 +355,13 @@ public:
     }
 
     Milliseconds getInterval(CheckpointCoordinator* coordinator) {
-        return coordinator->_interval;
+        return coordinator->_interval.load();
     }
 
     void setLastCheckpointTime(
         CheckpointCoordinator* coordinator,
         mongo::stdx::chrono::time_point<mongo::stdx::chrono::system_clock> time) {
-        coordinator->_lastCheckpointTimestamp = time;
+        coordinator->_lastCheckpointTimestamp.store(time);
     }
 
     Milliseconds getDynamicInterval(CheckpointCoordinator* coordinator, int64_t stateSize) {

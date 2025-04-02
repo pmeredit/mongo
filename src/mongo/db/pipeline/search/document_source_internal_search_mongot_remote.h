@@ -67,9 +67,11 @@ public:
         return constraints;
     }
 
-    DocumentSourceInternalSearchMongotRemote(InternalSearchMongotRemoteSpec spec,
-                                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             std::shared_ptr<executor::TaskExecutor> taskExecutor);
+    DocumentSourceInternalSearchMongotRemote(
+        InternalSearchMongotRemoteSpec spec,
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        std::shared_ptr<executor::TaskExecutor> taskExecutor,
+        boost::optional<MongotQueryViewInfo> view = boost::none);
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         return getSearchDefaultConstraints();
@@ -90,13 +92,15 @@ public:
         MONGO_UNREACHABLE_TASSERT(7815902);
     }
 
+    DepsTracker::State getDependencies(DepsTracker* deps) const override;
+
     boost::intrusive_ptr<DocumentSource> clone(
         const boost::intrusive_ptr<ExpressionContext>& newExpCtx) const override {
         auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
         auto spec = InternalSearchMongotRemoteSpec::parseOwned(IDLParserContext(kStageName),
                                                                _spec.toBSON());
         return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-            std::move(spec), expCtx, _taskExecutor);
+            std::move(spec), expCtx, _taskExecutor, _view);
     }
 
     const InternalSearchMongotRemoteSpec& getMongotRemoteSpec() const {
@@ -159,6 +163,11 @@ public:
         return !storedSourceElem.eoo() && storedSourceElem.Bool();
     }
 
+    auto hasScoreDetails() const {
+        auto scoreDetailsElem = _spec.getMongotQuery()[mongot_cursor::kScoreDetailsFieldName];
+        return !scoreDetailsElem.eoo() && scoreDetailsElem.Bool();
+    }
+
     void setDocsNeededBounds(DocsNeededBounds bounds) {
         // The bounds may have already been set when mongos walked the entire user pipeline. In that
         // case, we shouldn't override the existing bounds.
@@ -206,12 +215,19 @@ protected:
 
     /**
      * This stage may need to merge the metadata it generates on the merging half of the pipeline.
-     * Until we know if the merge needs to be done, we hold the pipeline containig the merging
+     * Until we know if the merge needs to be done, we hold the pipeline containing the merging
      * logic here.
      */
     std::unique_ptr<Pipeline, PipelineDeleter> _mergingPipeline;
 
     std::unique_ptr<executor::TaskExecutorCursor> _cursor;
+
+    /**
+     * For mongot queries on views, $_internalSearchMongotRemote is only required to know the
+     * view's nss. However, DocumentSourceSearchMeta derives from this class and needs both the
+     * view name and the view pipeline. As such, we keep track of the entire view struct.
+     */
+    boost::optional<MongotQueryViewInfo> _view;
 
 private:
     /**

@@ -14,13 +14,16 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/concurrent_checkpoint_monitor.h"
+#include "streams/exec/connection_collection.h"
 #include "streams/exec/dead_letter_queue.h"
+#include "streams/exec/latency_collector.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/stream_processor_feature_flags.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace streams {
 
@@ -30,11 +33,12 @@ class SourceBufferManager;
 // Encapsulates the top-level state of a stream processor.
 struct Context {
     std::string tenantId;
+    std::string projectId;
     std::string streamName;
     boost::optional<std::string> instanceName;
     std::string streamProcessorId;
     boost::optional<std::string> kafkaConsumerGroup;
-    mongo::stdx::unordered_map<std::string, mongo::Connection> connections;
+    std::unique_ptr<ConnectionCollection> connections;
     std::string clientName;
     mongo::ServiceContext::UniqueClient client;
     mongo::ServiceContext::UniqueOperationContext opCtx;
@@ -87,6 +91,14 @@ struct Context {
     // metadata, i.e. {$meta: "stream"}
     bool shouldUseDocumentMetadataFields{false};
 
+    // Collects latency information and emits logs/metrics.
+    // Only set if the sink should actually report e2e latency metrics. Not set if there is a window
+    // in the pipeline.
+    std::unique_ptr<LatencyCollector> latencyCollector;
+
+    // The region the sps are running in.
+    std::string region;
+
     mongo::BSONObj toBSON() const;
 
     // For non sink stages, add metadata when there is explicit dependency of metadata in the
@@ -99,6 +111,16 @@ struct Context {
     // pipeline but the user has requested the metadata.
     bool shouldProjectStreamMetaInSinkStage() {
         return projectStreamMeta && streamMetaFieldName && !projectStreamMetaPriorToSinkStage;
+    }
+
+    LoggingContext toLoggingContext() {
+        return LoggingContext{.streamProcessorName = streamName,
+                              .streamProcessorId = streamProcessorId,
+                              .tenantId = tenantId};
+    }
+
+    bool oldStreamMetaEnabled() {
+        return projectStreamMeta;
     }
 
     ~Context();

@@ -165,8 +165,13 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
                     request->len = conn->bindOptions()->bindDN.size();
                     break;
                 case SASL_CB_PASS:
-                    request->result = conn->bindOptions()->password->c_str();
-                    request->len = conn->bindOptions()->password->size();
+                    if (!conn->_pwd) {
+                        request->len = 0;
+                    } else {
+                        const auto& pwd = *conn->_pwd;
+                        request->result = pwd->c_str();
+                        request->len = pwd->size();
+                    }
                     break;
                 default:
                     break;
@@ -232,11 +237,18 @@ std::tuple<Status, int> openLDAPBindFunction(
         } else if (bindOptions->authenticationChoice == LDAPBindType::kSimple) {
             // Unfortunately, libldap wants a non-const password. Copy the password to remove risk
             // of it scribbling over our memory.
-            SecureVector<char> passwordCopy(bindOptions->password->begin(),
-                                            bindOptions->password->end());
+            SecureVector<char> passwordCopy;
             berval passwd;
-            passwd.bv_val = passwordCopy->data();
-            passwd.bv_len = passwordCopy->size();
+            if (conn->_pwd) {
+                const auto& pwd = *conn->_pwd;
+                passwordCopy = SecureVector<char>(pwd->begin(), pwd->end());
+                passwd.bv_val = passwordCopy->data();
+                passwd.bv_len = passwordCopy->size();
+            } else {
+                passwordCopy = SecureVector<char>{};
+                passwd.bv_val = passwordCopy->data();
+                passwd.bv_len = passwordCopy->size();
+            }
 
             ret = ldap_sasl_bind_s(session,
                                    bindOptions->bindDN.c_str(),
@@ -778,6 +790,7 @@ Status OpenLDAPConnection::connect() {
 }
 
 Status OpenLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
+                                      boost::optional<SecureString> pwd,
                                       TickSource* tickSource,
                                       SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
@@ -789,6 +802,7 @@ Status OpenLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     _bindOptions = std::move(bindOptions);
+    _pwd = std::move(pwd);
     _rebindCallbackParameters = LDAPRebindCallbackParameters(tickSource, userAcquisitionStats);
 
     // If ldapBindTimeoutHangIndefinitely is set, then hang until the failpoint is unset.

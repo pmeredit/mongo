@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 #include "mongo/logv2/log.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/murmur3.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

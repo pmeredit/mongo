@@ -41,9 +41,7 @@
 #include "mongo/db/exec/mutable_bson/element.h"
 #include "mongo/db/update/object_replace_executor.h"
 #include "mongo/db/update/update_node_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -280,9 +278,8 @@ TEST_F(ObjectReplaceExecutorTest, NoLogBuilder) {
 }
 
 TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheck) {
-    BSONObj replacement = BSON("a"
-                               << "1"
-                               << "_id" << 1 << "_id" << 2 << "_id" << 3);
+    BSONObj replacement = BSON("a" << "1"
+                                   << "_id" << 1 << "_id" << 2 << "_id" << 3);
     ObjectReplaceExecutor node(replacement);
 
     mutablebson::Document doc(fromjson("{a: 1, _id: 1}"));
@@ -293,9 +290,8 @@ TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheck) {
 }
 
 TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheckOnEmptyDoc) {
-    BSONObj replacement = BSON("a"
-                               << "1"
-                               << "_id" << 1 << "_id" << 2 << "_id" << 3);
+    BSONObj replacement = BSON("a" << "1"
+                                   << "_id" << 1 << "_id" << 2 << "_id" << 3);
     ObjectReplaceExecutor node(replacement);
 
     mutablebson::Document doc(fromjson(""));
@@ -307,14 +303,12 @@ TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheckOnEmptyDoc) {
 
 
 TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheckOnInvalidDoc) {
-    BSONObj replacement = BSON("a"
-                               << "2"
-                               << "_id" << 4 << "_id" << 5 << "_id" << 6);
+    BSONObj replacement = BSON("a" << "2"
+                                   << "_id" << 4 << "_id" << 5 << "_id" << 6);
     ObjectReplaceExecutor node(replacement);
 
-    BSONObj invalid = BSON("a"
-                           << "1"
-                           << "_id" << 1 << "_id" << 2 << "_id" << 3);
+    BSONObj invalid = BSON("a" << "1"
+                               << "_id" << 1 << "_id" << 2 << "_id" << 3);
     mutablebson::Document doc(invalid);
     ASSERT_THROWS_CODE_AND_WHAT(node.applyUpdate(getApplyParams(doc.root())),
                                 AssertionException,
@@ -325,9 +319,8 @@ TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheckOnInvalidDoc) {
 TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheckAllowsCorrection) {
     ObjectReplaceExecutor node(fromjson("{a: 4, _id: 3}"));
 
-    BSONObj invalid = BSON("a"
-                           << "1"
-                           << "_id" << 1 << "_id" << 2 << "_id" << 3);
+    BSONObj invalid = BSON("a" << "1"
+                               << "_id" << 1 << "_id" << 2 << "_id" << 3);
     mutablebson::Document doc(invalid);
     auto result = node.applyUpdate(getApplyParams(doc.root()));
     ASSERT_FALSE(result.noop);
@@ -337,9 +330,8 @@ TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheckAllowsCorrection) {
 }
 
 TEST_F(ObjectReplaceExecutorTest, DuplicateIdFieldsCheckAllowsNoop) {
-    BSONObj replacement = BSON("a"
-                               << "1"
-                               << "_id" << 1 << "_id" << 2 << "_id" << 3);
+    BSONObj replacement = BSON("a" << "1"
+                                   << "_id" << 1 << "_id" << 2 << "_id" << 3);
     ObjectReplaceExecutor node(replacement);
 
     mutablebson::Document doc(replacement);

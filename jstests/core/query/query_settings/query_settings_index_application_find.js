@@ -11,6 +11,8 @@
 //   # 'planCacheClear' command is not allowed with the security token.
 //   not_allowed_with_signed_security_token,
 //   requires_fcv_80,
+//   # Test includes SBE plan cache assertions if the SBE plan cache is used.
+//   examines_sbe_cache,
 // ]
 //
 
@@ -50,7 +52,7 @@ function testFindQuerySettingsApplication(collOrViewName) {
     const qsutils = new QuerySettingsUtils(db, collOrViewName);
     const qstests = new QuerySettingsIndexHintsTests(qsutils);
 
-    setIndexes(coll, [qstests.indexA, qstests.indexB, qstests.indexAB]);
+    setIndexes(coll, qstests.allIndexes);
 
     // Ensure that there are no query settings set.
     qsutils.removeAllQuerySettings();
@@ -71,6 +73,7 @@ function testFindQuerySettingsApplication(collOrViewName) {
     qstests.assertQuerySettingsNaturalApplication(querySettingsFindQuery, ns);
     qstests.assertQuerySettingsIgnoreCursorHints(querySettingsFindQuery, ns);
     qstests.assertQuerySettingsFallback(querySettingsFindQuery, ns);
+    qstests.assertQuerySettingsFallbackNoQueryExecutionPlans(querySettingsFindQuery, ns);
     qstests.assertQuerySettingsCommandValidation(querySettingsFindQuery, ns);
 }
 

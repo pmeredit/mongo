@@ -102,34 +102,49 @@ public:
 
             auto handleRecoverableCriticalSection = [this](auto opCtx) {
                 const auto reason = request().getReason().get_value_or(
-                    BSON("command"
-                         << "ShardSvrParticipantBlockCommand"
-                         << "ns"
-                         << NamespaceStringUtil::serialize(ns(),
-                                                           SerializationContext::stateDefault())));
+                    BSON("command" << "ShardSvrParticipantBlockCommand"
+                                   << "ns"
+                                   << NamespaceStringUtil::serialize(
+                                          ns(), SerializationContext::stateDefault())));
                 auto blockType = request().getBlockType().get_value_or(
                     CriticalSectionBlockTypeEnum::kReadsAndWrites);
 
                 auto service = ShardingRecoveryService::get(opCtx);
                 switch (blockType) {
-                    case CriticalSectionBlockTypeEnum::kUnblock:
+                    case CriticalSectionBlockTypeEnum::kUnblock: {
+                        const auto& beforeReleasingAction =
+                            (ns().isDbOnly() && !request().getClearDbInfo())
+                            ? static_cast<
+                                  const ShardingRecoveryService::BeforeReleasingCustomAction&>(
+                                  ShardingRecoveryService::NoCustomAction())
+                            : static_cast<
+                                  const ShardingRecoveryService::BeforeReleasingCustomAction&>(
+                                  ShardingRecoveryService::FilteringMetadataClearer());
+
                         service->releaseRecoverableCriticalSection(
                             opCtx,
                             ns(),
                             reason,
                             ShardingCatalogClient::kLocalWriteConcern,
-                            ShardingRecoveryService::FilteringMetadataClearer(),
-                            request().getThrowIfReasonDiffers()
-                                ? *request().getThrowIfReasonDiffers()
-                                : true);
+                            beforeReleasingAction,
+                            request().getThrowIfReasonDiffers().value_or(true));
                         break;
+                    }
                     case CriticalSectionBlockTypeEnum::kWrites:
                         service->acquireRecoverableCriticalSectionBlockWrites(
-                            opCtx, ns(), reason, ShardingCatalogClient::kLocalWriteConcern);
+                            opCtx,
+                            ns(),
+                            reason,
+                            ShardingCatalogClient::kLocalWriteConcern,
+                            request().getClearDbInfo());
                         break;
                     default:
                         service->acquireRecoverableCriticalSectionBlockWrites(
-                            opCtx, ns(), reason, ShardingCatalogClient::kLocalWriteConcern);
+                            opCtx,
+                            ns(),
+                            reason,
+                            ShardingCatalogClient::kLocalWriteConcern,
+                            request().getClearDbInfo());
                         service->promoteRecoverableCriticalSectionToBlockAlsoReads(
                             opCtx, ns(), reason, ShardingCatalogClient::kLocalWriteConcern);
                 };

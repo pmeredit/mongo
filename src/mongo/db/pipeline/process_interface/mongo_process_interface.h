@@ -180,7 +180,7 @@ public:
     MongoProcessInterface(std::shared_ptr<executor::TaskExecutor> executor)
         : taskExecutor(std::move(executor)) {}
 
-    virtual ~MongoProcessInterface(){};
+    virtual ~MongoProcessInterface() {};
 
     /**
      * Returns an instance of a 'WriteSizeEstimator' interface.
@@ -341,6 +341,9 @@ public:
      * parameterize this behavior.
      */
     virtual BSONObj getCollectionOptions(OperationContext* opCtx, const NamespaceString& nss) = 0;
+
+    virtual UUID fetchCollectionUUIDFromPrimary(OperationContext* opCtx,
+                                                const NamespaceString& nss) = 0;
 
     /**
      * Returns the query shape collection type in the namespace given by 'nss'. This function holds

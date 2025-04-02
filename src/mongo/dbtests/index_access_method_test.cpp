@@ -60,8 +60,7 @@
 #include "mongo/db/storage/key_string/key_string.h"
 #include "mongo/db/storage/storage_parameters_gen.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -104,14 +103,8 @@ TEST(IndexAccessMethodSetDifference, EmptyRightShouldReturnAllOfLeft) {
 }
 
 TEST(IndexAccessMethodSetDifference, IdenticalSetsShouldHaveNoDifference) {
-    auto left = makeKeyStringSet({BSON("" << 0),
-                                  BSON(""
-                                       << "string"),
-                                  BSON("" << BSONNULL)});
-    auto right = makeKeyStringSet({BSON("" << 0),
-                                   BSON(""
-                                        << "string"),
-                                   BSON("" << BSONNULL)});
+    auto left = makeKeyStringSet({BSON("" << 0), BSON("" << "string"), BSON("" << BSONNULL)});
+    auto right = makeKeyStringSet({BSON("" << 0), BSON("" << "string"), BSON("" << BSONNULL)});
 
     auto diff = SortedDataIndexAccessMethod::setDifference(left, right);
     ASSERT_EQ(0UL, diff.first.size());
@@ -163,20 +156,16 @@ TEST(IndexAccessMethodSetDifference, ZerosOfDifferentTypesAreNotEquivalent) {
 
 TEST(IndexAccessMethodSetDifference, ShouldDetectOneDifferenceAmongManySimilarities) {
     auto left = makeKeyStringSet({BSON("" << 0),
-                                  BSON(""
-                                       << "string"),
+                                  BSON("" << "string"),
                                   BSON("" << BSONNULL),
                                   BSON("" << static_cast<long long>(1)),  // This is different.
-                                  BSON("" << BSON("sub"
-                                                  << "document")),
+                                  BSON("" << BSON("sub" << "document")),
                                   BSON("" << BSON_ARRAY(1 << "hi" << 42))});
     auto right = makeKeyStringSet({BSON("" << 0),
-                                   BSON(""
-                                        << "string"),
+                                   BSON("" << "string"),
                                    BSON("" << BSONNULL),
                                    BSON("" << static_cast<double>(1.0)),  // This is different.
-                                   BSON("" << BSON("sub"
-                                                   << "document")),
+                                   BSON("" << BSON("sub" << "document")),
                                    BSON("" << BSON_ARRAY(1 << "hi" << 42))});
     auto diff = SortedDataIndexAccessMethod::setDifference(left, right);
     ASSERT_EQUALS(1UL, diff.first.size());

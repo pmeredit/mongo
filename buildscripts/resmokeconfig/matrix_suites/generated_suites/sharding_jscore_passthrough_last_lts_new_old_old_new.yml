@@ -45,9 +45,7 @@ selector:
     - jstests/core/**/fsync.js
     - jstests/core/**/geo_s2cursorlimitskip.js
     - jstests/core/**/geo_update_btree2.js
-    - jstests/core/**/index9.js
     - jstests/core/**/queryoptimizera.js
-    - jstests/core/**/stages*.js
     - jstests/core/**/startup_log.js
     - jstests/core/**/query/top/top.js
     - jstests/core/**/geo_2d_explain.js
@@ -58,6 +56,7 @@ selector:
     - assumes_standalone_mongod
     - assumes_against_mongod_not_mongos
     - requires_profiling
+    - DISABLED_TEMPORARILY_DUE_TO_FCV_UPGRADE
   roots:
     - jstests/core/**/*.js
     - jstests/core_sharding/**/*.js

@@ -112,15 +112,16 @@ public:
               _whenNotMatched(whenNotMatched) {}
 
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec);
+                                                 const BSONElement& spec,
+                                                 const LiteParserOptions& options);
 
         ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
                                                      bool isImplicitDefault) const final {
-            using namespace fmt::literals;
             ReadConcernSupportResult result = {
                 {level == repl::ReadConcernLevel::kLinearizableReadConcern,
                  {ErrorCodes::InvalidOptions,
-                  "{} cannot be used with a 'linearizable' read concern level"_format(kStageName)}},
+                  fmt::format("{} cannot be used with a 'linearizable' read concern level",
+                              kStageName)}},
                 Status::OK()};
             auto pipelineReadConcern = LiteParsedDocumentSourceNestedPipelines::supportsReadConcern(
                 level, isImplicitDefault);

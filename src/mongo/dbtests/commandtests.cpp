@@ -50,15 +50,12 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/protocol.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/string_map.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
@@ -277,9 +274,7 @@ public:
         ASSERT(db.createCollection(nss()));
 
         BSONObjBuilder indexSpec;
-        indexSpec.append("key",
-                         BSON("a"
-                              << ""));
+        indexSpec.append("key", BSON("a" << ""));
 
         BSONArrayBuilder indexes;
         indexes.append(indexSpec.obj());

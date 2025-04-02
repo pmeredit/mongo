@@ -2,8 +2,8 @@
  * Test that mongocryptd can correctly mark the delete command with intent-to-encrypt placeholders.
  */
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
-import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 import {
+    generateSchema,
     kDeterministicAlgo,
     kRandomAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";

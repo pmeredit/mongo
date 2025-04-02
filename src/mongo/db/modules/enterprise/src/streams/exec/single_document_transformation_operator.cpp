@@ -52,7 +52,7 @@ void SingleDocumentTransformationOperator::doOnDataMsg(
 
     incOperatorStats(OperatorStats{.numDlqDocs = numDlqDocs,
                                    .numDlqBytes = numDlqBytes,
-                                   .timeSpent = dataMsg.creationTimer->elapsed()});
+                                   .timeSpent = dataMsg.creationTimer.elapsed()});
 
     // Make sure to not wrap sendDataMsg() calls with a try/catch block.
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));

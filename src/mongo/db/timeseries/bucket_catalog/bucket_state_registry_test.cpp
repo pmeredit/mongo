@@ -50,9 +50,8 @@
 #include "mongo/db/timeseries/bucket_catalog/write_batch.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/time_support.h"
 
@@ -97,8 +96,14 @@ public:
     }
 
     Bucket& createBucket(InsertContext& info, Date_t time) {
-        auto ptr = &internal::allocateBucket(
-            *this, *stripes[info.stripeNumber], withLock, info, time, nullptr);
+        auto ptr = &internal::allocateBucket(*this,
+                                             *stripes[info.stripeNumber],
+                                             withLock,
+                                             info.key,
+                                             info.options,
+                                             time,
+                                             nullptr,
+                                             info.stats);
         ASSERT_FALSE(hasBeenCleared(*ptr));
         return *ptr;
     }
@@ -609,7 +614,8 @@ TEST_F(BucketStateRegistryTest, HasBeenClearedFunctionReturnsAsExpected) {
 
     // Sanity check that all this still works with multiple buckets in a namespace being cleared.
     auto& bucket3 = createBucket(info2, date);
-    bucket3.rolloverAction = RolloverAction::kArchive;  // Rollover before opening another bucket
+    bucket3.rolloverReason =
+        RolloverReason::kTimeBackward;  // Rollover before opening another bucket
     auto& bucket4 = createBucket(info2, date);
     ASSERT_EQ(bucket3.lastChecked, 1);
     ASSERT_EQ(bucket4.lastChecked, 1);
@@ -667,7 +673,8 @@ TEST_F(BucketStateRegistryTest, ClearRegistryGarbageCollection) {
     // Era 2 still has bucket4 in it, so its count remains non-zero.
     ASSERT_EQUALS(getClearedSetsCount(bucketStateRegistry), 1);
     auto& bucket5 = createBucket(info1, date);
-    bucket4.rolloverAction = RolloverAction::kArchive;  // Rollover before opening another bucket
+    bucket4.rolloverReason =
+        RolloverReason::kTimeBackward;  // Rollover before opening another bucket
     auto& bucket6 = createBucket(info2, date);
     ASSERT_EQ(bucket5.lastChecked, 3);
     ASSERT_EQ(bucket6.lastChecked, 3);
@@ -741,13 +748,8 @@ TEST_F(BucketStateRegistryTest, ArchivingBucketStopsTrackingState) {
     auto& bucket = createBucket(info1, date);
     auto bucketId = bucket.bucketId;
 
-    ClosedBuckets closedBuckets;
-    internal::archiveBucket(*this,
-                            *stripes[info1.stripeNumber],
-                            WithLock::withoutLock(),
-                            bucket,
-                            stats(bucket),
-                            closedBuckets);
+    internal::archiveBucket(
+        *this, *stripes[info1.stripeNumber], WithLock::withoutLock(), bucket, stats(bucket));
     auto state = getBucketState(bucketStateRegistry, bucketId);
     ASSERT_EQ(state, boost::none);
 }

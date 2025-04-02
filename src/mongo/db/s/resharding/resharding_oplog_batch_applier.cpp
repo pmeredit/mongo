@@ -46,9 +46,6 @@
 #include "mongo/db/s/resharding/resharding_oplog_batch_applier.h"
 #include "mongo/db/s/resharding/resharding_oplog_session_application.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/chunk_version.h"
 #include "mongo/s/database_version.h"
@@ -108,7 +105,7 @@ SemiFuture<void> ReshardingOplogBatchApplier::applyBatch(
                                // collection. We attach placement version IGNORED to the write
                                // operations and retry once on a StaleConfig error to allow the
                                // collection metadata information to be recovered.
-                               auto [_, sii] = uassertStatusOK(
+                               const auto cri = uassertStatusOK(
                                    Grid::get(opCtx.get())
                                        ->catalogCache()
                                        ->getCollectionRoutingInfo(opCtx.get(),
@@ -116,13 +113,10 @@ SemiFuture<void> ReshardingOplogBatchApplier::applyBatch(
                                ScopedSetShardRole scopedSetShardRole(
                                    opCtx.get(),
                                    _crudApplication.getOutputNss(),
-                                   ShardVersionFactory::make(
-                                       ChunkVersion::IGNORED(),
-                                       sii ? boost::make_optional(sii->getCollectionIndexes())
-                                           : boost::none) /* shardVersion */,
+                                   ShardVersionFactory::make(ChunkVersion::IGNORED(), boost::none),
                                    boost::none /* databaseVersion */);
                                uassertStatusOK(
-                                   _crudApplication.applyOperation(opCtx.get(), sii, oplogEntry));
+                                   _crudApplication.applyOperation(opCtx.get(), oplogEntry));
                            });
                        }
                    }

@@ -51,9 +51,7 @@
 #include "mongo/db/record_id.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -387,8 +385,7 @@ TEST(ExclusionProjectionExecutionTest, ShouldEvaluateMetaExpressions) {
     inputDocBuilder.metadata().setRecordId(RecordId{6});
     inputDocBuilder.metadata().setIndexKey(BSON("foo" << 7));
     inputDocBuilder.metadata().setSortKey(Value{Document{{"bar", 8}}}, true);
-    inputDocBuilder.metadata().setSearchScoreDetails(BSON("scoreDetails"
-                                                          << "foo"));
+    inputDocBuilder.metadata().setSearchScoreDetails(BSON("scoreDetails" << "foo"));
     inputDocBuilder.metadata().setVectorSearchScore(9.0);
     inputDocBuilder.metadata().setScore(10.0);
     Document inputDoc = inputDocBuilder.freeze();
@@ -647,7 +644,7 @@ TEST(ExclusionProjectionExecutionTest, ShouldExtractPartOfProjectOnRootField) {
 
 TEST(ExclusionProjectionExecutionTest, ShouldExtractPartOfProjectOnSubfields) {
     auto exclusion =
-        makeExclusionProjectionWithDefaultPolicies(fromjson("{'x.y': 0, 'x.z': 0, 'c.d': 0}}"));
+        makeExclusionProjectionWithDefaultPolicies(fromjson("{'x.y': 0, 'x.z': 0, 'c.d': 0}"));
 
     auto [extractedProj, allExtracted] = exclusion->extractProjectOnFieldAndRename("x", "w");
 

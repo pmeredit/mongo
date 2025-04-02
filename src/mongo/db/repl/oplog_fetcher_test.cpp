@@ -76,10 +76,8 @@
 #include "mongo/rpc/metadata/repl_set_metadata.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/task_executor_proxy.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/time_support.h"
@@ -190,8 +188,7 @@ bool blockedOnNetworkSoon(MockDBClientConnection* conn) {
 void validateMetadataRequest(OpMsg msg) {
     ASSERT_EQUALS(1, msg.body.getIntField("$replData"));
     ASSERT_EQUALS(1, msg.body.getIntField("$oplogQueryData"));
-    ASSERT_BSONOBJ_EQ(BSON("mode"
-                           << "secondaryPreferred"),
+    ASSERT_BSONOBJ_EQ(BSON("mode" << "secondaryPreferred"),
                       msg.body.getObjectField("$readPreference"));
 }
 
@@ -200,9 +197,8 @@ void validateFindCommand(Message m,
                          int findTimeout,
                          BSONObj filter = BSONObj(),
                          ReadConcernArgs readConcern = ReadConcernArgs::fromBSONThrows(
-                             BSON("level"
-                                  << "local"
-                                  << "afterClusterTime" << Timestamp(0, 1))),
+                             BSON("level" << "local"
+                                          << "afterClusterTime" << Timestamp(0, 1))),
                          bool requestResumeToken = false) {
     auto msg = mongo::OpMsg::parse(m);
     ASSERT_EQ(mongo::StringData(msg.body.firstElement().fieldName()), "find");
@@ -854,9 +850,8 @@ TEST_F(OplogFetcherTest,
 
     auto readConcern = findCmdRequest.getReadConcern();
     ASSERT(readConcern);
-    ASSERT_BSONOBJ_EQ(BSON("level"
-                           << "local"
-                           << "afterClusterTime" << Timestamp(0, 1)),
+    ASSERT_BSONOBJ_EQ(BSON("level" << "local"
+                                   << "afterClusterTime" << Timestamp(0, 1)),
                       readConcern->toBSONInner());
 
     auto term = findCmdRequest.getTerm();
@@ -882,9 +877,8 @@ TEST_F(OplogFetcherTest,
 
     auto readConcern = findCmdRequest.getReadConcern();
     ASSERT(readConcern);
-    ASSERT_BSONOBJ_EQ(BSON("level"
-                           << "local"
-                           << "afterClusterTime" << Timestamp(0, 1)),
+    ASSERT_BSONOBJ_EQ(BSON("level" << "local"
+                                   << "afterClusterTime" << Timestamp(0, 1)),
                       readConcern->toBSONInner());
 
     auto term = findCmdRequest.getTerm();
@@ -1730,8 +1724,7 @@ TEST_F(OplogFetcherTest, SkipFirstDocumentIfDoesntMatchFilter) {
     ShutdownState shutdownState;
 
     // Create a filter that won't match the first document.
-    BSONObj filter = BSON("ns" << BSON("$regex"
-                                       << "^notmydb"));
+    BSONObj filter = BSON("ns" << BSON("$regex" << "^notmydb"));
     // Create an oplog fetcher with one retry.
     auto oplogFetcher =
         getOplogFetcherAfterConnectionCreated(std::ref(shutdownState),
@@ -1771,8 +1764,7 @@ TEST_F(OplogFetcherTest, DontSkipFirstDocumentIfDoesMatchFilter) {
     ShutdownState shutdownState;
 
     // Create a filter that will match the first document.
-    BSONObj filter = BSON("ns" << BSON("$regex"
-                                       << "^test"));
+    BSONObj filter = BSON("ns" << BSON("$regex" << "^test"));
     // Create an oplog fetcher with one retry.
     auto oplogFetcher =
         getOplogFetcherAfterConnectionCreated(std::ref(shutdownState),
@@ -1842,15 +1834,14 @@ TEST_F(OplogFetcherTest,
     auto firstEntry = makeNoopOplogEntry(lastFetched);
     auto metadataObj = makeOplogBatchMetadata(replSetMetadata, oqMetadata);
 
-    ASSERT_EQUALS(
-        ErrorCodes::IDLFailedToParse,
-        processSingleBatch(makeFirstBatch(cursorId,
-                                          {firstEntry,
-                                           BSON("v" << OplogEntry::kOplogVersion << "o"
-                                                    << BSON("msg"
-                                                            << "oplog entry without optime"))},
-                                          metadataObj))
-            ->getStatus());
+    ASSERT_EQUALS(ErrorCodes::IDLFailedToParse,
+                  processSingleBatch(
+                      makeFirstBatch(cursorId,
+                                     {firstEntry,
+                                      BSON("v" << OplogEntry::kOplogVersion << "o"
+                                               << BSON("msg" << "oplog entry without optime"))},
+                                     metadataObj))
+                      ->getStatus());
 }
 
 TEST_F(OplogFetcherTest, TimestampsNotAdvancingInBatchCausesOplogFetcherStopWithOplogOutOfOrder) {
@@ -2137,8 +2128,7 @@ TEST_F(OplogFetcherTest, ValidateDocumentsReturnsBadValueIfAnyOplogEntryHasMissi
 TEST_F(OplogFetcherTest, ValidateDocumentsReturnsNoSuchKeyIfTimestampIsNotFoundInAnyDocument) {
     auto firstEntry = makeNoopOplogEntry(Seconds(123));
     auto secondEntry = BSON("v" << OplogEntry::kOplogVersion << "o"
-                                << BSON("msg"
-                                        << "oplog entry without optime"));
+                                << BSON("msg" << "oplog entry without optime"));
 
     ASSERT_EQUALS(ErrorCodes::IDLFailedToParse,
                   OplogFetcher::validateDocuments(
@@ -2605,8 +2595,7 @@ TEST_F(OplogFetcherTest, CheckFindCommandIncludesFilter) {
     // Create an oplog fetcher without any retries but with a filter.  Note the filter is not
     // respected as our Mock objects do not respect them; this unit test only tests the command
     // is well-formed.
-    const BSONObj filter = BSON("ns" << BSON("$regex"
-                                             << "/^tenant_.*/"));
+    const BSONObj filter = BSON("ns" << BSON("$regex" << "/^tenant_.*/"));
     auto oplogFetcher =
         getOplogFetcherAfterConnectionCreated(std::ref(shutdownState),
                                               0 /* numRestarts */,
@@ -2641,8 +2630,7 @@ TEST_F(OplogFetcherTest, CheckFindCommandIncludesCustomReadConcern) {
     ShutdownState shutdownState;
 
     // Create an oplog fetcher without any retries but with a custom read concern.
-    auto readConcern = ReadConcernArgs::fromBSONThrows(BSON("level"
-                                                            << "majority"));
+    auto readConcern = ReadConcernArgs::fromBSONThrows(BSON("level" << "majority"));
     auto oplogFetcher =
         getOplogFetcherAfterConnectionCreated(std::ref(shutdownState),
                                               0 /* numRestarts */,
@@ -2714,15 +2702,56 @@ TEST_F(OplogFetcherTest, CheckFindCommandIncludesRequestResumeTokenWhenRequested
         lastFetched,
         durationCount<Milliseconds>(oplogFetcher->getInitialFindMaxTime_forTest()),
         BSONObj() /* filter */,
-        ReadConcernArgs::fromBSONThrows(BSON("level"
-                                             << "local"
-                                             << "afterClusterTime" << Timestamp(0, 1))),
+        ReadConcernArgs::fromBSONThrows(BSON("level" << "local"
+                                                     << "afterClusterTime" << Timestamp(0, 1))),
         true /* requestResumeToken */);
 
     ASSERT_EQUALS(lastEnqueuedDocumentsInfo.resumeToken, resumeToken);
 
     oplogFetcher->shutdown();
     oplogFetcher->join();
+}
+
+TEST_F(OplogFetcherTest, BSONObjectTooLargeShutsDownOplogFetcher) {
+    // Test that if find command succeeds, and second batch fails
+    // because large BSON document and metadata combined exceeds BSON size limit, the oplog fetcher
+    // does not retry and shuts down on error BSONObjectTooLarge.
+    ShutdownState shutdownState;
+
+    // Create an oplog fetcher with 10 retries to ensure the oplog fetcher shuts down without
+    // retrying on this error.
+    auto oplogFetcher = getOplogFetcherAfterConnectionCreated(std::ref(shutdownState), 10);
+
+    CursorId cursorId = 22LL;
+    auto firstEntry = makeNoopOplogEntry(lastFetched);
+    auto secondEntry = makeNoopOplogEntry({{Seconds(456), 0}, lastFetched.getTerm()});
+    auto metadataObj = makeOplogBatchMetadata(replSetMetadata, oqMetadata);
+    auto firstBatch = {firstEntry, secondEntry};
+
+    // Update lastFetched before it is updated by getting the next batch.
+    lastFetched = oplogFetcher->getLastOpTimeFetched_forTest();
+
+    // Creating the cursor will succeed.
+    auto m = processSingleRequestResponse(oplogFetcher->getDBClientConnection_forTest(),
+                                          makeFirstBatch(cursorId, firstBatch, metadataObj),
+                                          true);
+
+    validateFindCommand(
+        m, lastFetched, durationCount<Milliseconds>(oplogFetcher->getInitialFindMaxTime_forTest()));
+
+    // Check that the first batch was successfully processed.
+    validateLastBatch(
+        true /* skipFirstDoc */, firstBatch, oplogFetcher->getLastOpTimeFetched_forTest());
+
+    // Process second batch that throws BSONObjectTooLarge.
+    processSingleRequestResponse(
+        oplogFetcher->getDBClientConnection_forTest(),
+        mongo::Status{mongo::ErrorCodes::BSONObjectTooLarge, "BSONObjectTooLarge"});
+
+    oplogFetcher->join();
+
+    // Assert that the oplog fetcher shuts down with error BSONObjectTooLarge.
+    ASSERT_EQUALS(ErrorCodes::BSONObjectTooLarge, shutdownState.getStatus());
 }
 
 }  // namespace

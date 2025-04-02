@@ -42,7 +42,6 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/index/multikey_paths.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/namespace_string.h"
@@ -54,9 +53,8 @@
 #include "mongo/db/query/query_solution.h"
 #include "mongo/db/query/query_test_service_context.h"
 #include "mongo/db/service_context.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/unittest.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 

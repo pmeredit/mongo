@@ -32,15 +32,14 @@
 #include <absl/container/node_hash_map.h>
 
 #include "mongo/base/string_data.h"
-#include "mongo/db/exec/sbe/abt/abt_unit_test_utils.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/query/optimizer/algebra/operator.h"
 #include "mongo/db/query/optimizer/algebra/polyvalue.h"
 #include "mongo/db/query/optimizer/comparison_op.h"
 #include "mongo/db/query/stage_builder/sbe/sbexpr.h"
+#include "mongo/db/query/stage_builder/sbe/tests/abt_unit_test_utils.h"
 #include "mongo/db/query/stage_builder/sbe/value_lifetime.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::stage_builder {
 namespace {
@@ -652,6 +651,163 @@ TEST(ValueLifetimeTest, ProcessIfOnMixedReferences) {
         tree2);
 }
 
+TEST(ValueLifetimeTest, ProcessSwitchOnReferences) {
+    // Both branches return references - no makeOwn expected
+    auto tree = make<Let>(
+        ProjectionName{"inputVar"},
+        make<FunctionCall>("newObj", makeSeq(Constant::str("a"), Constant::int32(9))),
+        make<Switch>(makeSeq(make<FunctionCall>("exists", makeSeq(make<Variable>("inputVar"))),
+                             make<Variable>("inputVar"),
+                             make<FunctionCall>("exists", makeSeq(make<Variable>("inputVar"))),
+                             make<Variable>("inputVar"),
+                             make<Variable>("inputVar"))));
+
+    ValueLifetime{}.validate(tree);
+
+    ASSERT_EXPLAIN_BSON_AUTO(
+        "{\n"
+        "    nodeType: \"Let\", \n"
+        "    variable: \"inputVar\", \n"
+        "    bind: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"newObj\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"StringSmall\", \n"
+        "                value: \"a\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"NumberInt32\", \n"
+        "                value: 9\n"
+        "            }\n"
+        "        ]\n"
+        "    }, \n"
+        "    expression: {\n"
+        "        nodeType: \"Switch\", \n"
+        "        condition0: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"exists\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"inputVar\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        then0: {\n"
+        "            nodeType: \"Variable\", \n"
+        "            name: \"inputVar\"\n"
+        "        }, \n"
+        "        condition1: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"exists\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"inputVar\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        then1: {\n"
+        "            nodeType: \"Variable\", \n"
+        "            name: \"inputVar\"\n"
+        "        }, \n"
+        "        else: {\n"
+        "            nodeType: \"Variable\", \n"
+        "            name: \"inputVar\"\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        tree);
+}
+
+TEST(ValueLifetimeTest, ProcessSwitchOnMixedReferences) {
+    // One branch return reference, the other a constant - makeOwn expected
+    auto tree1 = make<Let>(
+        ProjectionName{"inputVar"},
+        make<FunctionCall>("newObj", makeSeq(Constant::str("a"), Constant::int32(9))),
+        make<Switch>(makeSeq(make<FunctionCall>("exists", makeSeq(make<Variable>("inputVar"))),
+                             make<Variable>("inputVar"),
+                             make<FunctionCall>("exists", makeSeq(make<Variable>("inputVar"))),
+                             make<Variable>("inputVar"),
+                             Constant::null())));
+
+    ValueLifetime{}.validate(tree1);
+
+    ASSERT_EXPLAIN_BSON_AUTO(
+        "{\n"
+        "    nodeType: \"Let\", \n"
+        "    variable: \"inputVar\", \n"
+        "    bind: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"newObj\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"StringSmall\", \n"
+        "                value: \"a\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"NumberInt32\", \n"
+        "                value: 9\n"
+        "            }\n"
+        "        ]\n"
+        "    }, \n"
+        "    expression: {\n"
+        "        nodeType: \"Switch\", \n"
+        "        condition0: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"exists\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"inputVar\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        then0: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"makeOwn\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"inputVar\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        condition1: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"exists\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"inputVar\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        then1: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"makeOwn\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"inputVar\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        else: {\n"
+        "            nodeType: \"Const\", \n"
+        "            tag: \"Null\", \n"
+        "            value: null\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        tree1);
+}
+
 TEST(ValueLifetimeTest, ProcessFillEmtpyOnReferences) {
     // Both branches return references - no makeOwn expected
     auto tree = make<Let>(
@@ -1074,6 +1230,102 @@ TEST(ValueLifetimeTest, ProcessFillTypeOnMixedReferences) {
         "    }\n"
         "}\n",
         tree3);
+}
+
+TEST(ValueLifetimeTest, ProcessMultiLet) {
+    auto tree = make<Let>(
+        "letVar",
+        make<FunctionCall>("newObj", makeSeq(Constant::str("a"), Constant::int32(9))),
+        make<MultiLet>(
+            std::vector<std::pair<ProjectionName, ABT>>{
+                {ProjectionName{"multiLetVar1"},
+                 make<FunctionCall>("newObj", makeSeq(Constant::str("a"), Constant::int32(5)))},
+                {ProjectionName{"multiLetVar2"}, make<Variable>("letVar")}},
+            make<FunctionCall>("newObj",
+                               makeSeq(Constant::str("a"),
+                                       make<Variable>("letVar1"),
+                                       Constant::str("b"),
+                                       make<Variable>("letVar2")))));
+
+    ValueLifetime{}.validate(tree);
+
+    ASSERT_EXPLAIN_BSON_AUTO(
+        "{\n"
+        "    nodeType: \"Let\", \n"
+        "    variable: \"letVar\", \n"
+        "    bind: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"newObj\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"StringSmall\", \n"
+        "                value: \"a\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"NumberInt32\", \n"
+        "                value: 9\n"
+        "            }\n"
+        "        ]\n"
+        "    }, \n"
+        "    expression: {\n"
+        "        nodeType: \"MultiLet\", \n"
+        "        variable0: \"multiLetVar1\", \n"
+        "        variable1: \"multiLetVar2\", \n"
+        "        bind0: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"newObj\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Const\", \n"
+        "                    tag: \"StringSmall\", \n"
+        "                    value: \"a\"\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"Const\", \n"
+        "                    tag: \"NumberInt32\", \n"
+        "                    value: 5\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        bind1: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"makeOwn\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"letVar\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        expression: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"newObj\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Const\", \n"
+        "                    tag: \"StringSmall\", \n"
+        "                    value: \"a\"\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"letVar1\"\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"Const\", \n"
+        "                    tag: \"StringSmall\", \n"
+        "                    value: \"b\"\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"letVar2\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        tree);
 }
 
 }  // namespace

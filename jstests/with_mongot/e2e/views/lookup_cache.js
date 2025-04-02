@@ -1,11 +1,15 @@
 /**
  * This test seeks to ensure test coverage of the lookup cache codepath for $search subpipelines on
  * views.
+ *
+ * TODO SERVER-100355 Once sharded support is in, re-enable running subpipelines on mongot-indexed
+ * views in both sharded and non-sharded environments
+ *
  * @tags: [ featureFlagMongotIndexedViews, requires_fcv_81 ]
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {createSearchIndex, dropSearchIndex} from "jstests/libs/search.js";
-import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e/lib/explain_utils.js";
+import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e_lib/explain_utils.js";
 
 const testDb = db.getSiblingDB(jsTestName());
 const localColl = testDb.localColl;
@@ -95,8 +99,13 @@ let expectedResults = [
         ]
     }
 ];
-let results = localColl.aggregate(lookupPipeline).toArray();
-assert.eq(expectedResults, results);
+
+assert.commandFailedWithCode(
+    localColl.runCommand("aggregate", {pipeline: lookupPipeline, cursor: {}}),
+    ErrorCodes.QueryFeatureNotAllowed);
+
+// let results = localColl.aggregate(lookupPipeline).toArray();
+// assert.eq(expectedResults, results);
 
 /**
  * We've added a suffix to the subpipeline which does reference the let variable (studentID). The
@@ -137,6 +146,11 @@ expectedResults = [
         holidays: []
     }
 ];
-results = localColl.aggregate(lookupPipeline).toArray();
-assert.eq(expectedResults, results);
+
+assert.commandFailedWithCode(
+    localColl.runCommand("aggregate", {pipeline: lookupPipeline, cursor: {}}),
+    ErrorCodes.QueryFeatureNotAllowed);
+
+// results = localColl.aggregate(lookupPipeline).toArray();
+// assert.eq(expectedResults, results);
 dropSearchIndex(firstThreeMonthsView, {name: "sillyHolidaysInFirstThreeMonthsIx"});

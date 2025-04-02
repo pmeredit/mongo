@@ -72,9 +72,6 @@
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/chunk_version.h"
 #include "mongo/s/database_version.h"
@@ -134,10 +131,8 @@ ReshardingOplogApplicationRules::ReshardingOplogApplicationRules(
       _applierMetrics(applierMetrics),
       _isCapped(isCapped) {}
 
-Status ReshardingOplogApplicationRules::applyOperation(
-    OperationContext* opCtx,
-    const boost::optional<ShardingIndexesCatalogCache>& sii,
-    const repl::OplogEntry& op) const {
+Status ReshardingOplogApplicationRules::applyOperation(OperationContext* opCtx,
+                                                       const repl::OplogEntry& op) const {
     LOGV2_DEBUG(49901, 3, "Applying op for resharding", "op"_attr = redact(op.toBSONForLogging()));
 
     invariant(!shard_role_details::getLocker(opCtx)->inAWriteUnitOfWork());
@@ -149,10 +144,10 @@ Status ReshardingOplogApplicationRules::applyOperation(
             switch (opType) {
                 case repl::OpTypeEnum::kInsert:
                 case repl::OpTypeEnum::kUpdate:
-                    _applyInsertOrUpdate(opCtx, sii, op);
+                    _applyInsertOrUpdate(opCtx, op);
                     break;
                 case repl::OpTypeEnum::kDelete: {
-                    _applyDelete(opCtx, sii, op);
+                    _applyDelete(opCtx, op);
                     _applierMetrics->onDeleteApplied();
                     break;
                 }
@@ -174,10 +169,8 @@ Status ReshardingOplogApplicationRules::applyOperation(
     });
 }
 
-void ReshardingOplogApplicationRules::_applyInsertOrUpdate(
-    OperationContext* opCtx,
-    const boost::optional<ShardingIndexesCatalogCache>& sii,
-    const repl::OplogEntry& op) const {
+void ReshardingOplogApplicationRules::_applyInsertOrUpdate(OperationContext* opCtx,
+                                                           const repl::OplogEntry& op) const {
 
     WriteUnitOfWork wuow(opCtx);
 
@@ -412,10 +405,8 @@ void ReshardingOplogApplicationRules::_applyUpdate_inlock(OperationContext* opCt
     invariant(ur.numMatched != 0);
 }
 
-void ReshardingOplogApplicationRules::_applyDelete(
-    OperationContext* opCtx,
-    const boost::optional<ShardingIndexesCatalogCache>& sii,
-    const repl::OplogEntry& op) const {
+void ReshardingOplogApplicationRules::_applyDelete(OperationContext* opCtx,
+                                                   const repl::OplogEntry& op) const {
     /**
      * The rules to apply ordinary delete operations are as follows:
      *

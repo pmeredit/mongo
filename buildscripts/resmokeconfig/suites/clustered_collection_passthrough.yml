@@ -9,12 +9,11 @@ selector:
     - src/mongo/db/modules/*/jstests/fle2/**/*.js
   exclude_files:
     # Assumes the _id index is real.
-    - jstests/core/**/collmod_convert_to_ttl.js
+    - jstests/core/ddl/coll_mod_convert_to_ttl.js
     - jstests/core/**/index_create_too_many.js
     # Uses returnKey().
     - jstests/core/**/index_diag.js
     # Expects 'idIndex' field in the listCollections output.
-    - jstests/core/**/list_collections1.js
     - jstests/core/**/explain_shell_helpers.js
     - jstests/core/txns/list_collections_not_blocked_by_txn.js
     # Assumes the collection is not clustered by default.
@@ -30,12 +29,8 @@ selector:
     - jstests/core/**/find_and_modify_pipeline_update.js
     - jstests/core/**/update_pipeline_shell_helpers.js
     - jstests/core/**/idhack.js
-    # Uses the unsupported 'autoIndexId' option.
-    - jstests/core/**/queryoptimizera.js
-    - jstests/core/**/index9.js
-    # Expects the collection creation options not to change.
+    # Expects the rename options not to change.
     - jstests/core/**/internal_rename_if_options_and_indexes_match.js
-    - jstests/core/timeseries/ddl/timeseries_user_system_buckets.js
     # The _id index is expected to not have a 'unique' field.
     - jstests/core/**/list_indexes.js
     # Expects createIndex with 'clustered' option fails on a non-clustered collection.

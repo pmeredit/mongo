@@ -50,16 +50,12 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/factory.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/protocol.h"
 #include "mongo/rpc/reply_builder_interface.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/future.h"
 
@@ -68,8 +64,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 class AsyncCommandExecutionTest : public unittest::Test, public ScopedGlobalServiceContextForTest {
 public:

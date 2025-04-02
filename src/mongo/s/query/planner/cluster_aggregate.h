@@ -41,6 +41,7 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/lite_parsed_pipeline.h"
+#include "mongo/db/views/resolved_view.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/query/exec/cluster_client_cursor_params.h"
 #include "mongo/s/query/exec/document_source_merge_cursors.h"
@@ -93,6 +94,8 @@ public:
                                const LiteParsedPipeline& liteParsedPipeline,
                                const PrivilegeVector& privileges,
                                boost::optional<CollectionRoutingInfo> cri,
+                               boost::optional<ResolvedView> resolvedView,
+                               boost::optional<ExplainOptions::Verbosity> verbosity,
                                BSONObjBuilder* result);
 
     /**
@@ -103,6 +106,7 @@ public:
                                AggregateCommandRequest& request,
                                const LiteParsedPipeline& liteParsedPipeline,
                                const PrivilegeVector& privileges,
+                               boost::optional<ExplainOptions::Verbosity> verbosity,
                                BSONObjBuilder* result);
 
 
@@ -113,6 +117,7 @@ public:
                                const Namespaces& namespaces,
                                AggregateCommandRequest& request,
                                const PrivilegeVector& privileges,
+                               boost::optional<ExplainOptions::Verbosity> verbosity,
                                BSONObjBuilder* result);
 
     /**
@@ -129,6 +134,7 @@ public:
                                    const ResolvedView& resolvedView,
                                    const NamespaceString& requestedNss,
                                    const PrivilegeVector& privileges,
+                                   boost::optional<ExplainOptions::Verbosity> verbosity,
                                    BSONObjBuilder* result,
                                    unsigned numberRetries = 0);
 };

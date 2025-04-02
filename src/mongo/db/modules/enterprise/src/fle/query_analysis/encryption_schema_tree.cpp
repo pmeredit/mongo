@@ -977,33 +977,56 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaEncryptedObjectArrayNo
 template <>
 EncryptionSchemaMap EncryptionSchemaTreeNode::parse<EncryptionSchemaMap>(
     const QueryAnalysisParams& params) {
-    return visit(
-        OverloadedVisitor{
-            [](const QueryAnalysisParams::FLE1SchemaMap& schema) {
-                EncryptionSchemaMap schemaMap;
+    EncryptionSchemaMap fle1SchemaMap;
 
-                for (const auto& nsAndSchema : schema) {
-                    auto encryptionSchemaNodePtr =
-                        parse(nsAndSchema.second.jsonSchema, nsAndSchema.second.schemaType);
+    for (const auto& nsAndSchema : params.fle1SchemaMap) {
+        auto encryptionSchemaNodePtr =
+            parse(nsAndSchema.second.jsonSchema, nsAndSchema.second.schemaType);
 
-                    schemaMap.emplace(std::piecewise_construct,
-                                      std::forward_as_tuple(nsAndSchema.first),
-                                      std::forward_as_tuple(std::move(encryptionSchemaNodePtr)));
-                }
-                return schemaMap;
-            },
-            [](const QueryAnalysisParams::FLE2SchemaMap& schema) {
-                EncryptionSchemaMap schemaMap;
+        fle1SchemaMap.emplace(std::piecewise_construct,
+                              std::forward_as_tuple(nsAndSchema.first),
+                              std::forward_as_tuple(std::move(encryptionSchemaNodePtr)));
+    }
 
-                for (const auto& nsAndEncryptInfo : schema) {
-                    schemaMap.emplace(
-                        std::piecewise_construct,
-                        std::forward_as_tuple(nsAndEncryptInfo.first),
-                        std::forward_as_tuple(parseEncryptedFieldConfig(nsAndEncryptInfo.second)));
-                }
-                return schemaMap;
-            }},
-        params.schema);
+    if (params.fleVersion() == FleVersion::kFle1) {
+        return fle1SchemaMap;
+    }
+
+    /**
+     * If we had a queryable encryption query, we must guarantee that all FLE1 schemas are
+     * not encryption schemas. Mixing FLE1 and FLE2 is not permitted, however, in queries involving
+     * multiple collections, query analysis must be provided with all involved schemas, even
+     * unencrypted ones. In this case, it is possible that we may have FLE2 encryption schemas, and
+     * FLE1 format empty schemas or validation schemas.
+     *
+     * In this step, once we assert that all any FLE1 schemas are unencrypted, we convert them to
+     * FLE2 schemas, as we don't allow mixing FLE1 with FLE2.
+     */
+    EncryptionSchemaMap fle2SchemaMap;
+
+    for (auto& nsAndSchema : fle1SchemaMap) {
+        tassert(10026005,
+                "Found unexpected FLE2 schema",
+                nsAndSchema.second && nsAndSchema.second->parsedFrom == FleVersion::kFle1);
+        uassert(10026002,
+                "Cannot specify both encryptionInformation and csfleEncryptionSchemas unless "
+                "csfleEncryptionSchemas only contains non-encryption JSON schema validators",
+                nsAndSchema.second && !nsAndSchema.second->mayContainEncryptedNode());
+        fle2SchemaMap.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(nsAndSchema.first),
+            std::forward_as_tuple(
+                std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle2)));
+    }
+
+    for (const auto& nsAndEncryptInfo : params.fle2SchemaMap) {
+        fle2SchemaMap.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(nsAndEncryptInfo.first),
+            std::forward_as_tuple(parseEncryptedFieldConfig(nsAndEncryptInfo.second)));
+    }
+
+    return fle2SchemaMap;
 }
 
 /**
@@ -1015,23 +1038,21 @@ template <>
 std::unique_ptr<EncryptionSchemaTreeNode>
 EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(
     const QueryAnalysisParams& params) {
-    return visit(
-        OverloadedVisitor{[](const QueryAnalysisParams::FLE1SchemaMap& schema) {
-                              tassert(9686715,
-                                      "Parsing single schema from map that has multiple schema "
-                                      "is not supported.",
-                                      schema.size() == 1);
-                              auto iter = schema.begin();
-                              return parse(iter->second.jsonSchema, iter->second.schemaType);
-                          },
-                          [](const QueryAnalysisParams::FLE2SchemaMap& schema) {
-                              tassert(9686716,
-                                      "Parsing single schema from map that has multiple schema "
-                                      "is not supported.",
-                                      schema.size() == 1);
-                              auto iter = schema.begin();
-                              return parseEncryptedFieldConfig(iter->second);
-                          }},
-        params.schema);
+    if (params.fleVersion() == FleVersion::kFle1) {
+        tassert(9686715,
+                "Parsing single schema from map that has multiple schema "
+                "is not supported.",
+                params.fle1SchemaMap.size() == 1 && params.fle2SchemaMap.empty());
+
+        auto iter = params.fle1SchemaMap.begin();
+        return parse(iter->second.jsonSchema, iter->second.schemaType);
+    }
+    tassert(10026001, "Unexpected FleVersion", params.fleVersion() == FleVersion::kFle2);
+    tassert(9686716,
+            "Parsing single schema from map that has multiple schema "
+            "is not supported.",
+            params.fle2SchemaMap.size() == 1 && params.fle1SchemaMap.empty());
+    auto iter = params.fle2SchemaMap.begin();
+    return parseEncryptedFieldConfig(iter->second);
 }
 }  // namespace mongo

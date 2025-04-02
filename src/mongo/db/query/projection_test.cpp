@@ -54,8 +54,7 @@
 #include "mongo/db/query/projection_parser.h"
 #include "mongo/db/query/projection_policies.h"
 #include "mongo/db/query/query_test_service_context.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -213,8 +212,8 @@ TEST(QueryProjectionTest, ValidPositionalOperatorProjections) {
     createFindProjection("{'a.b.c': 1}", "{'a.b.c.$': 1}");
     createFindProjection("{'a.b.c': 1}", "{'a.e.f.$': 1}");
     createFindProjection("{a: {b: 1}}", "{'a.$': 1}");
-    createFindProjection("{a: 1, b: 1}}", "{'a.$': 1}");
-    createFindProjection("{a: 1, b: 1}}", "{'b.$': 1}");
+    createFindProjection("{a: 1, b: 1}", "{'a.$': 1}");
+    createFindProjection("{a: 1, b: 1}", "{'b.$': 1}");
     createFindProjection("{$and: [{a: 1}, {b: 1}]}", "{'a.$': 1}");
     createFindProjection("{$and: [{a: 1}, {b: 1}]}", "{'b.$': 1}");
     createFindProjection("{$or: [{a: 1}, {b: 1}]}", "{'a.$': 1}");

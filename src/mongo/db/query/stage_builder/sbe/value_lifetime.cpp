@@ -86,6 +86,29 @@ ValueLifetime::ValueType ValueLifetime::operator()(optimizer::ABT& n, optimizer:
     return resultType;
 }
 
+ValueLifetime::ValueType ValueLifetime::operator()(optimizer::ABT& n,
+                                                   optimizer::MultiLet& multiLet) {
+    // Define the new variables with the type of the 'bind' expressions.
+    // If the value is a reference, promote it to local value.
+    for (size_t idx = 0; idx < multiLet.numBinds(); ++idx) {
+        ValueType bindType = multiLet.bind(idx).visit(*this);
+        if (bindType == ValueType::Reference) {
+            wrapNode(multiLet.bind(idx));
+            bindType = ValueType::LocalValue;
+        }
+        _bindings[multiLet.varName(idx)] = bindType;
+    }
+
+    // The MultiLet node returns the value of its 'in' child.
+    ValueType resultType = multiLet.in().visit(*this);
+
+    for (auto&& name : multiLet.varNames()) {
+        _bindings.erase(name);
+    }
+
+    return resultType;
+}
+
 ValueLifetime::ValueType ValueLifetime::operator()(optimizer::ABT& n, optimizer::BinaryOp& op) {
 
     ValueType lhs = op.getLeftChild().visit(*this);
@@ -107,6 +130,14 @@ ValueLifetime::ValueType ValueLifetime::operator()(optimizer::ABT& n, optimizer:
             break;
     }
 
+    return ValueType::LocalValue;
+}
+
+ValueLifetime::ValueType ValueLifetime::operator()(optimizer::ABT& n, optimizer::NaryOp& op) {
+    // Process the arguments, but the logical operation is always going to return a local value.
+    for (auto& node : op.nodes()) {
+        node.visit(*this);
+    }
     return ValueType::LocalValue;
 }
 
@@ -168,6 +199,33 @@ ValueLifetime::ValueType ValueLifetime::operator()(optimizer::ABT& n, optimizer:
         wrapNode(op.getThenChild());
     } else if (elseType == ValueType::Reference) {
         wrapNode(op.getElseChild());
+    }
+
+    return ValueType::LocalValue;
+}
+
+ValueLifetime::ValueType ValueLifetime::operator()(optimizer::ABT& n, optimizer::Switch& op) {
+    std::vector<ValueType> branchTypes;
+    branchTypes.reserve(op.getNumBranches() + 1);
+    for (size_t i = 0; i < op.getNumBranches(); i++) {
+        op.getCondChild(i).visit(*this);
+        branchTypes.emplace_back(op.getThenChild(i).visit(*this));
+    }
+    branchTypes.emplace_back(op.getDefaultChild().visit(*this));
+
+    if (std::all_of(branchTypes.begin(), branchTypes.end(), [&](const ValueType& val) {
+            return val == branchTypes[0];
+        })) {
+        return branchTypes[0];
+    } else {
+        for (size_t i = 0; i < op.getNumBranches(); i++) {
+            if (branchTypes[i] == ValueType::Reference) {
+                wrapNode(op.getThenChild(i));
+            }
+        }
+        if (branchTypes.back() == ValueType::Reference) {
+            wrapNode(op.getDefaultChild());
+        }
     }
 
     return ValueType::LocalValue;

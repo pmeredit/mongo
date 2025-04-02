@@ -1,14 +1,15 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "streams/exec/rate_limiter.h"
+
+#include <random>
+
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/tick_source.h"
 #include "mongo/util/tick_source_mock.h"
-#include "streams/exec/rate_limiter.h"
-#include <random>
 
 namespace streams {
 
@@ -116,6 +117,12 @@ TEST(RateLimiterTest, SetsInvalidTokenRate) {
     ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSec(-1),
                        mongo::DBException,
                        "tokensRefilledPerSec is not greater than 0");
+    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(0, 1),
+                       mongo::DBException,
+                       "tokensRefilledPerSec is not greater than 0");
+    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(-1, 1),
+                       mongo::DBException,
+                       "tokensRefilledPerSec is not greater than 0");
 }
 
 TEST(RateLimiterTest, RefillRateIsSlower) {
@@ -151,6 +158,12 @@ TEST(RateLimiterTest, SetsInvalidCapacity) {
         rateLimiter.setCapacity(0), mongo::DBException, "capacity is not greater than 0");
     ASSERT_THROWS_WHAT(
         rateLimiter.setCapacity(-1), mongo::DBException, "capacity is not greater than 0");
+    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(1, 0),
+                       mongo::DBException,
+                       "capacity is not greater than 0");
+    ASSERT_THROWS_WHAT(rateLimiter.setTokensRefilledPerSecAndCapacity(1, -1),
+                       mongo::DBException,
+                       "capacity is not greater than 0");
 }
 
 TEST(RateLimiterTest, CapacityIsLowered) {

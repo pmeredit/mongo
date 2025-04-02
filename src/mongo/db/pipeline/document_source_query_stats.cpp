@@ -48,8 +48,6 @@
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
@@ -127,7 +125,7 @@ BSONObj DocumentSourceQueryStats::computeQueryStatsKey(
 }
 
 std::unique_ptr<DocumentSourceQueryStats::LiteParsed> DocumentSourceQueryStats::LiteParsed::parse(
-    const NamespaceString& nss, const BSONElement& spec) {
+    const NamespaceString& nss, const BSONElement& spec, const LiteParserOptions& options) {
     return parseSpec(spec, [&](TransformAlgorithmEnum algorithm, std::string hmacKey) {
         return std::make_unique<DocumentSourceQueryStats::LiteParsed>(
             spec.fieldName(), nss.tenantId(), algorithm, hmacKey);
@@ -156,7 +154,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceQueryStats::createFromBson(
 Value DocumentSourceQueryStats::serialize(const SerializationOptions& opts) const {
     auto hmacKey = opts.serializeLiteral(
         BSONBinData(_hmacKey.c_str(), _hmacKey.size(), BinDataType::Sensitive));
-    if (opts.literalPolicy == LiteralSerializationPolicy::kToRepresentativeParseableValue) {
+    if (opts.isReplacingLiteralsWithRepresentativeValues()) {
         // The default shape for a BinData under this policy is empty and has sub-type 0 (general).
         // This doesn't quite work for us since we assert when we parse that it is at least 32 bytes
         // and also is sub-type 8 (sensitive).

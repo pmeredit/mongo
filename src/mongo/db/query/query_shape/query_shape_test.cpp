@@ -52,8 +52,7 @@
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/db/query/query_shape/shape_helpers.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 namespace mongo::query_shape {
@@ -182,20 +181,13 @@ void assertRedactedShapeIs(std::string filterJson, BSONObj expectedShape) {
 TEST(QueryPredicateShape, Regex) {
     // Note/warning: 'fromjson' will parse $regex into a /regex/, so these tests can't use
     // auto-updating BSON assertions.
-    assertShapeIs("{a: /a+/}",
-                  BSON("a" << BSON("$regex"
-                                   << "?string")));
+    assertShapeIs("{a: /a+/}", BSON("a" << BSON("$regex" << "?string")));
     assertShapeIs("{a: /a+/i}",
-                  BSON("a" << BSON("$regex"
-                                   << "?string"
-                                   << "$options"
-                                   << "?string")));
-    assertRedactedShapeIs("{a: /a+/}",
-                          BSON("HASH<a>" << BSON("$regex"
-                                                 << "?string")));
-    assertRedactedShapeIs("{a: /a+/}",
-                          BSON("HASH<a>" << BSON("$regex"
-                                                 << "?string")));
+                  BSON("a" << BSON("$regex" << "?string"
+                                            << "$options"
+                                            << "?string")));
+    assertRedactedShapeIs("{a: /a+/}", BSON("HASH<a>" << BSON("$regex" << "?string")));
+    assertRedactedShapeIs("{a: /a+/}", BSON("HASH<a>" << BSON("$regex" << "?string")));
 }
 
 TEST(QueryPredicateShape, Mod) {
@@ -700,7 +692,7 @@ static const NamespaceString kDefaultTestNss =
     NamespaceString::createNamespaceString_forTest("testDB.testColl");
 
 struct DummyShapeSpecificComponents : public query_shape::CmdSpecificShapeComponents {
-    DummyShapeSpecificComponents(){};
+    DummyShapeSpecificComponents() {};
     void HashValue(absl::HashState state) const override {}
     size_t size() const final {
         return sizeof(DummyShapeSpecificComponents);

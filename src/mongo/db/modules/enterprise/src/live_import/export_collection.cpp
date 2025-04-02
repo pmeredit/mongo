@@ -15,6 +15,7 @@
 #include "mongo/db/storage/durable_catalog.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
@@ -36,10 +37,10 @@ void appendStorageMetadata(OperationContext* opCtx, const std::string& ident, BS
     const std::string tableUri = "table:" + ident;
     const std::string fileUri = "file:" + ident + kTableExtension;
 
-    auto tableMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(
-        *WiredTigerRecoveryUnit::get(shard_role_details::getRecoveryUnit(opCtx)), tableUri));
-    auto fileMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(
-        *WiredTigerRecoveryUnit::get(shard_role_details::getRecoveryUnit(opCtx)), fileUri));
+    auto session =
+        WiredTigerRecoveryUnit::get(shard_role_details::getRecoveryUnit(opCtx))->getSessionNoTxn();
+    auto tableMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(*session, tableUri));
+    auto fileMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(*session, fileUri));
 
     out->append(ident, BSON("tableMetadata" << tableMetadata << "fileMetadata" << fileMetadata));
 }

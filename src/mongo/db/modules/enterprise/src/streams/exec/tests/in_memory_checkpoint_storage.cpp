@@ -2,8 +2,9 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
+
 #include "mongo/bson/simple_bsonobj_comparator.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stats_utils.h"
@@ -24,13 +25,13 @@ void InMemoryCheckpointStorage::doCommitCheckpoint(CheckpointId id) {
     invariant(id > _mostRecentCommitted);
     invariant(!_writer);
     _mostRecentCommitted = id;
-    _lastCheckpointSizeBytes = _currentMemoryBytes;
+    _lastCheckpointSizeBytes.store(_currentMemoryBytes);
     _currentMemoryBytes = 0;
 
     addUnflushedCheckpoint(id,
                            {*_mostRecentCommitted,
                             "inmemory",
-                            _lastCheckpointSizeBytes,
+                            _lastCheckpointSizeBytes.load(),
                             mongo::Date_t::now(),
                             Milliseconds{1} /* writeDurationMs */});
     _checkpoints[id].committed = true;
@@ -81,7 +82,7 @@ RestoredCheckpointInfo InMemoryCheckpointStorage::doStartCheckpointRestore(Check
             mongo::CheckpointDescription{
                 *_mostRecentCommitted,
                 "inmemory",
-                _lastCheckpointSizeBytes,
+                _lastCheckpointSizeBytes.load(),
                 mongo::Date_t::now(), /* we do not track the actual commit
                                          ts, so just return now() instead */
                 mongo::Milliseconds{1} /* writeDurationMs */},

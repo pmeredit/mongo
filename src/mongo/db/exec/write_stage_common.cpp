@@ -33,6 +33,7 @@
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/cluster_role.h"
 #include "mongo/db/database_name.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/exec/shard_filterer_impl.h"
 #include "mongo/db/exec/working_set.h"
 #include "mongo/db/exec/working_set_common.h"
@@ -49,9 +50,6 @@
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/util/str.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kWrite
@@ -161,7 +159,8 @@ bool ensureStillMatches(const CollectionPtr& collection,
 
         // Make sure the re-fetched doc still matches the predicate.
         if (cq &&
-            !cq->getPrimaryMatchExpression()->matchesBSON(member->doc.value().toBson(), nullptr)) {
+            !exec::matcher::matchesBSON(
+                cq->getPrimaryMatchExpression(), member->doc.value().toBson(), nullptr)) {
             // No longer matches.
             return false;
         }

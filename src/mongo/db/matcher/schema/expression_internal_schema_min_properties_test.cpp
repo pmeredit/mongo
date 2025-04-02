@@ -32,61 +32,13 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_max_properties.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_min_properties.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
 
 namespace {
-
-TEST(InternalSchemaMinPropertiesMatchExpression, RejectsObjectsWithTooFewElements) {
-    InternalSchemaMinPropertiesMatchExpression minProperties(2);
-
-    ASSERT_FALSE(minProperties.matchesBSON(BSONObj()));
-    ASSERT_FALSE(minProperties.matchesBSON(BSON("b" << 21)));
-}
-
-
-TEST(InternalSchemaMinPropertiesMatchExpression, AcceptsObjectWithAtLeastMinElements) {
-    InternalSchemaMinPropertiesMatchExpression minProperties(2);
-
-    ASSERT_TRUE(minProperties.matchesBSON(BSON("b" << 21 << "c" << BSONNULL)));
-    ASSERT_TRUE(minProperties.matchesBSON(BSON("b" << 21 << "c" << 3)));
-    ASSERT_TRUE(minProperties.matchesBSON(BSON("b" << 21 << "c" << 3 << "d" << 43)));
-}
-
-TEST(InternalSchemaMinPropertiesMatchExpression, MatchesSingleElementTest) {
-    InternalSchemaMinPropertiesMatchExpression minProperties(2);
-
-    // Only BSON elements that are embedded objects can match.
-    BSONObj match = BSON("a" << BSON("a" << 5 << "b" << 10));
-    BSONObj notMatch1 = BSON("a" << 1);
-    BSONObj notMatch2 = BSON("a" << BSON("b" << 10));
-
-    ASSERT_TRUE(minProperties.matchesSingleElement(match.firstElement()));
-    ASSERT_FALSE(minProperties.matchesSingleElement(notMatch1.firstElement()));
-    ASSERT_FALSE(minProperties.matchesSingleElement(notMatch2.firstElement()));
-}
-
-TEST(InternalSchemaMinPropertiesMatchExpression, MinPropertiesZeroAllowsEmptyObjects) {
-    InternalSchemaMinPropertiesMatchExpression minProperties(0);
-
-    ASSERT_TRUE(minProperties.matchesBSON(BSONObj()));
-}
-
-TEST(InternalSchemaMinPropertiesMatchExpression, NestedObjectsAreNotUnwound) {
-    InternalSchemaMinPropertiesMatchExpression minProperties(2);
-
-    ASSERT_FALSE(minProperties.matchesBSON(BSON("b" << BSON("c" << 2 << "d" << 3))));
-}
-
-TEST(InternalSchemaMinPropertiesMatchExpression, NestedArraysAreNotUnwound) {
-    InternalSchemaMinPropertiesMatchExpression minProperties(2);
-
-    ASSERT_FALSE(minProperties.matchesBSON(BSON("a" << (BSON("b" << 2 << "c" << 3 << "d" << 4)))));
-}
 
 TEST(InternalSchemaMinPropertiesMatchExpression, EquivalentFunctionIsAccurate) {
     InternalSchemaMinPropertiesMatchExpression minProperties1(1);

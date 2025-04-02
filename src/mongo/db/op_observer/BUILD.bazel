@@ -32,9 +32,6 @@ mongo_cc_library(
         "//src/mongo/crypto:symmetric_key.h",
         "//src/mongo/db:keypattern.h",
         "//src/mongo/db:yieldable.h",
-        "//src/mongo/db/catalog:collection.h",
-        "//src/mongo/db/catalog:index_catalog.h",
-        "//src/mongo/db/catalog:index_catalog_entry.h",
         "//src/mongo/db/collection_crud:capped_visibility.h",
         "//src/mongo/db/exec:shard_filterer.h",
         "//src/mongo/db/exec:working_set.h",
@@ -55,8 +52,6 @@ mongo_cc_library(
         "//src/mongo/db/fts:stemmer.h",
         "//src/mongo/db/fts:stop_words.h",
         "//src/mongo/db/fts:tokenizer.h",
-        "//src/mongo/db/index:index_descriptor.h",
-        "//src/mongo/db/index:index_descriptor_fwd.h",
         "//src/mongo/db/index_builds:commit_quorum_options.h",
         "//src/mongo/db/matcher:expression_leaf.h",
         "//src/mongo/db/matcher:expression_parser.h",
@@ -102,6 +97,7 @@ mongo_cc_library(
         "//src/mongo/db/query/util:make_data_structure.h",
         "//src/mongo/db/query/util:named_enum.h",
         "//src/mongo/db/repl:rollback.h",
+        "//src/mongo/db/s:type_oplog_catalog_metadata_gen",
         "//src/mongo/db/storage:bson_collection_catalog_entry.h",
         "//src/mongo/db/storage:duplicate_key_error_info.h",
         "//src/mongo/db/storage:durable_catalog_entry.h",
@@ -165,6 +161,7 @@ mongo_cc_library(
     ],
     deps = [
         "//src/mongo:base",
+        "//src/mongo/db:service_context",
     ],
 )
 
@@ -343,7 +340,7 @@ mongo_cc_unit_test(
         "op_observer_registry_test.cpp",
         "user_write_block_mode_op_observer_test.cpp",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     deps = [
         ":batched_write_context",
         ":change_stream_pre_images_op_observer",

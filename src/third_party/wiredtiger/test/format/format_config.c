@@ -48,6 +48,7 @@ static void config_map_checkpoint(const char *, u_int *);
 static void config_map_file_type(const char *, u_int *);
 static void config_mirrors(void);
 static void config_mirrors_disable_reverse(void);
+static void config_obsolete_cleanup(void);
 static void config_off(TABLE *, const char *);
 static void config_off_all(const char *);
 static void config_pct(TABLE *);
@@ -154,7 +155,17 @@ config_random(TABLE *table, bool table_only)
         if (F_ISSET(cp, C_BOOL))
             testutil_snprintf(buf, sizeof(buf), "%s=%s", cp->name,
               mmrand(&g.data_rnd, 1, 100) <= cp->min ? "on" : "off");
-        else
+        else if (F_ISSET(cp, C_POW2)) {
+            double max, min;
+            uint32_t vbits, val_p2;
+
+            max = log2((double)cp->maxrand);
+            testutil_assert(max < 32);
+            min = log2((double)cp->min);
+            vbits = mmrand(&g.data_rnd, (uint32_t)min, (uint32_t)max);
+            val_p2 = (uint32_t)(1 << vbits);
+            testutil_snprintf(buf, sizeof(buf), "%s=%" PRIu32, cp->name, val_p2);
+        } else
             testutil_snprintf(
               buf, sizeof(buf), "%s=%" PRIu32, cp->name, mmrand(&g.data_rnd, cp->min, cp->maxrand));
         config_single(table, buf, false);
@@ -489,6 +500,7 @@ config_run(void)
     config_mirrors();                                /* Mirrors */
     config_statistics();                             /* Statistics */
     config_compact();                                /* Compaction */
+    config_obsolete_cleanup();                       /* Obsolete cleanup */
 
     /* Configure the cache last, cache size depends on everything else. */
     config_cache();
@@ -1960,6 +1972,16 @@ config_single(TABLE *table, const char *s, bool explicit)
         return;
     }
 
+    if (F_ISSET(cp, C_POW2)) {
+        v1 = atou32(s, equalp, '\0');
+        if (v1 != 0 && !__wt_ispo2(v1))
+            testutil_die(EINVAL, "%s: %s: value is not a power of 2", progname, s);
+
+        v->v = v1;
+        v->set = explicit;
+        return;
+    }
+
     /*
      * Three possible syntax elements: a number, two numbers separated by a dash, two numbers
      * separated by an colon. The first is a fixed value, the second is a range where all values are
@@ -2198,5 +2220,27 @@ config_compact(void)
               EINVAL, "%s: Foreground compaction cannot be enabled for in-memory runs", progname);
         config_off(NULL, "background_compact");
         config_off(NULL, "ops.compaction");
+    }
+}
+
+/*
+ * config_obsolete_cleanup --
+ *     Obsolete cleanup configuration.
+ */
+static void
+config_obsolete_cleanup(void)
+{
+    uint32_t wait_seconds;
+    char confbuf[128];
+
+    if (!config_explicit(NULL, "obsolete_cleanup.method")) {
+        if (mmrand(&g.extra_rnd, 1, 10) < 2)
+            config_single(NULL, "obsolete_cleanup.method=reclaim_space", false);
+    }
+
+    if (!config_explicit(NULL, "obsolete_cleanup.wait")) {
+        wait_seconds = mmrand(&g.extra_rnd, 1, 3600);
+        testutil_snprintf(confbuf, sizeof(confbuf), "obsolete_cleanup.wait=%" PRIu32, wait_seconds);
+        config_single(NULL, confbuf, false);
     }
 }

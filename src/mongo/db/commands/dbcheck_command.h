@@ -35,6 +35,7 @@
 #include "mongo/db/repl/dbcheck_idl.h"
 #include "mongo/db/write_concern.h"
 #include "mongo/db/write_concern_options.h"
+#include "mongo/util/background.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/uuid.h"
 
@@ -182,7 +183,7 @@ private:
 
 class DbChecker {
 public:
-    DbChecker(DbCheckCollectionInfo info) : _info(info){};
+    DbChecker(DbCheckCollectionInfo info) : _info(info) {};
 
     /**
      * Runs dbCheck on the collection specified in the DbCheckCollectionInfo struct.

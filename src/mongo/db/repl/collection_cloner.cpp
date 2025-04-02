@@ -61,8 +61,6 @@
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/stdx/mutex.h"
@@ -425,10 +423,7 @@ void CollectionCloner::runQuery() {
     if (_collectionOptions.recordIdsReplicated) {
         // The below projection returns a stream of documents in the format
         // {r: <recordId>, d: <original document>}.
-        auto projection = BSON("_id" << 0 << "r"
-                                     << BSON("$meta"
-                                             << "recordId")
-                                     << "d"
+        auto projection = BSON("_id" << 0 << "r" << BSON("$meta" << "recordId") << "d"
                                      << "$$ROOT");
         findCmd.setProjection(std::move(projection));
     }

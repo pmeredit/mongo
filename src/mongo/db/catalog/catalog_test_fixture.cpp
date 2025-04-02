@@ -37,7 +37,7 @@
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/storage_interface_impl.h"
 #include "mongo/db/service_context_d_test_fixture.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -75,6 +75,23 @@ void CatalogTestFixture::tearDown() {
 
 repl::StorageInterface* CatalogTestFixture::storageInterface() const {
     return repl::StorageInterface::get(getServiceContext());
+}
+
+ConsistentCollection CatalogTestFixture::makeConsistentCollection(const Collection* coll) const {
+    return makeConsistentCollection(operationContext(), coll);
+}
+
+ConsistentCollection CatalogTestFixture::makeConsistentCollection(OperationContext* opCtx,
+                                                                  const Collection* coll) const {
+    return ConsistentCollection{opCtx, coll};
+}
+
+int CatalogTestFixture::getReferenceCount(const ConsistentCollection& coll) const {
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+    return coll._getRefCount();
+#else
+    return 1;
+#endif
 }
 
 }  // namespace mongo

@@ -47,8 +47,6 @@ __wt_wiredtiger_error(int error)
         return ("WT_NONE: No additional context");
     case WT_BACKGROUND_COMPACT_ALREADY_RUNNING:
         return ("WT_BACKGROUND_COMPACT_ALREADY_RUNNING: Background compaction is already running");
-    case WT_SESSION_MAX:
-        return ("WT_SESSION_MAX: Max capacity of configured sessions reached");
     case WT_CACHE_OVERFLOW:
         return ("WT_CACHE_OVERFLOW: Cache capacity has overflown");
     case WT_WRITE_CONFLICT:
@@ -67,6 +65,12 @@ __wt_wiredtiger_error(int error)
         return ("WT_DIRTY_DATA: Table has dirty data");
     case WT_CONFLICT_TABLE_LOCK:
         return ("WT_CONFLICT_TABLE_LOCK: Another thread currently holds the table lock");
+    case WT_CONFLICT_CHECKPOINT_LOCK:
+        return ("WT_CONFLICT_CHECKPOINT_LOCK: Another thread currently holds the checkpoint lock");
+    case WT_CONFLICT_LIVE_RESTORE:
+        return (
+          "WT_CONFLICT_LIVE_RESTORE: Conflict performing operation due to an in-progress live "
+          "restore");
     }
 
     /* Windows strerror doesn't support ENOTSUP. */

@@ -32,8 +32,7 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -157,8 +156,7 @@ TEST(ValidateResultsTest, MissingAndExtraEntriesKeepsAtLeastOne) {
     ASSERT_EQ(1, vr.getExtraIndexEntries().size());
 
     // Much smaller.
-    auto obj2 = BSON("x"
-                     << "a");
+    auto obj2 = BSON("x" << "a");
     vr.addMissingIndexEntry(obj2);
     vr.addExtraIndexEntry(obj2);
 
@@ -221,6 +219,28 @@ TEST(ValidateResultsTest, TestingSizeOfIndexDetailsEntries) {
     std::vector<BSONElement> index_errors = getElements(
         obj.getObjectField("indexDetails").getObjectField("index1").getObjectField("errors"));
     ASSERT_LESS_THAN(index_warns.size(), 11);
+}
+
+TEST(ValidateResultsTest, SpecAppearsInOutput) {
+    ValidateResults vr;
+
+    IndexValidateResults& ivr = vr.getIndexValidateResult("index1");
+    ivr.setSpec(BSON("k" << "v"));
+
+    BSONObjBuilder bob;
+    vr.appendToResultObj(&bob, /*debugging=*/false);
+    auto obj = bob.done();
+
+    ASSERT_TRUE(obj.getObjectField("indexDetails").getObjectField("index1").hasField("spec"));
+    ASSERT_TRUE(obj.getObjectField("indexDetails")
+                    .getObjectField("index1")
+                    .getObjectField("spec")
+                    .hasField("k"));
+    ASSERT_EQ(obj.getObjectField("indexDetails")
+                  .getObjectField("index1")
+                  .getObjectField("spec")
+                  .getStringField("k"),
+              "v");
 }
 
 }  // namespace mongo

@@ -47,10 +47,10 @@
 
 namespace mongo {
 
-REGISTER_DOCUMENT_SOURCE(mergeCursors,
-                         LiteParsedDocumentSourceDefault::parse,
-                         DocumentSourceMergeCursors::createFromBson,
-                         AllowedWithApiStrict::kInternal);
+REGISTER_INTERNAL_DOCUMENT_SOURCE(mergeCursors,
+                                  LiteParsedDocumentSourceInternal::parse,
+                                  DocumentSourceMergeCursors::createFromBson,
+                                  true);
 ALLOCATE_DOCUMENT_SOURCE_ID(mergeCursors, DocumentSourceMergeCursors::id)
 
 constexpr StringData DocumentSourceMergeCursors::kStageName;
@@ -148,6 +148,13 @@ DocumentSource::GetNextResult DocumentSourceMergeCursors::doGetNext() {
         return GetNextResult::makeEOF();
     }
     return Document::fromBsonWithMetaData(*next.getResult());
+}
+
+void DocumentSourceMergeCursors::doForceSpill() {
+    tassert(
+        10249800, "releaseMemory command requires BlockingResultsMerger", _blockingResultsMerger);
+    auto status = _blockingResultsMerger->releaseMemory();
+    uassertStatusOK(status);
 }
 
 Value DocumentSourceMergeCursors::serialize(const SerializationOptions& opts) const {

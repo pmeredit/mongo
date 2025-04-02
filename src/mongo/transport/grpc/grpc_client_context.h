@@ -44,7 +44,7 @@ class GRPCClientContext : public ClientContext {
 public:
     GRPCClientContext() = default;
 
-    ~GRPCClientContext() = default;
+    ~GRPCClientContext() override = default;
 
     void addMetadataEntry(const std::string& key, const std::string& value) override {
         _ctx.AddMetadata(key, value);
@@ -73,6 +73,20 @@ public:
 
     void setDeadline(Date_t deadline) override {
         _ctx.set_deadline(deadline.toSystemTimePoint());
+    }
+
+    /**
+     * Sets whether stream establishment should wait (up to the deadline) for the underlying channel
+     * to become connected or not. If set to false, stream establishment will
+     * immediately return an error if the channel is not connected.
+     *
+     * The default is false.
+     *
+     * See: https://grpc.github.io/grpc/cpp/md_doc_wait-for-ready.html
+     * See: https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md
+     */
+    void setWaitForReady(bool wait) {
+        _ctx.set_wait_for_ready(wait);
     }
 
     // Similar to getServerInitialMetadata(), we parse the URI in each invocation of this method to

@@ -9,10 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "mongo/util/timer.h"
 #include "streams/exec/message.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/util/chunked_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -29,6 +29,16 @@ static constexpr int32_t kDataMsgMaxByteSize = 1 * 1024 * 1024;
  */
 class Operator {
 public:
+    // Encapsulates metadata for an operator attached at the output of this
+    // operator.
+    struct OutputInfo {
+        // The operator attached at the output of this operator.
+        Operator* oper{nullptr};
+
+        // The input of 'oper' at which this operator is attached to it.
+        int32_t operInputIdx{0};
+    };
+
     Operator(Context* context, int32_t numInputs, int32_t numOutputs);
 
     virtual ~Operator() = default;
@@ -86,19 +96,13 @@ public:
      * Operators with callback gauges should implement this method so that it registers them with
      * stream processor's executor.
      */
-    virtual void registerMetrics(MetricManager* metricManager){};
+    virtual void registerMetrics(MetricManager* metricManager) {};
+
+    const std::vector<OutputInfo>& getOutputInfo() const {
+        return _outputs;
+    }
 
 protected:
-    // Encapsulates metadata for an operator attached at the output of this
-    // operator.
-    struct OutputInfo {
-        // The operator attached at the output of this operator.
-        Operator* oper{nullptr};
-
-        // The input of 'oper' at which this operator is attached to it.
-        int32_t operInputIdx{0};
-    };
-
     virtual void doStart() {}
 
     virtual void doStop() {}

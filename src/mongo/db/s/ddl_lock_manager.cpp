@@ -48,7 +48,6 @@
 #include "mongo/db/s/database_sharding_state.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/database_name_util.h"
@@ -63,7 +62,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
 namespace mongo {
-using namespace fmt::literals;
 namespace {
 
 const auto ddlLockManagerDecorator = ServiceContext::declareDecoration<DDLLockManager>();
@@ -102,8 +100,12 @@ void DDLLockManager::_lock(OperationContext* opCtx,
     Timer waitingTime;
     if (waitForRecovery) {
         tassert(9037199,
-                "Failed to wait for recovery on acquire DDL lock for namespace '{}' in mode {} with"
-                " reason '{}': No recoverable object set"_format(ns, modeName(mode), reason),
+                fmt::format(
+                    "Failed to wait for recovery on acquire DDL lock for namespace '{}' in mode {} "
+                    "with reason '{}': No recoverable object set",
+                    ns,
+                    modeName(mode),
+                    reason),
                 _recoverable);
         try {
             opCtx->runWithDeadline(
@@ -111,11 +113,14 @@ void DDLLockManager::_lock(OperationContext* opCtx,
                     _recoverable->waitForRecovery(opCtx);
                 });
         } catch (const ExceptionForCat<ErrorCategory::ExceededTimeLimitError>&) {
-            uasserted(
-                ErrorCodes::LockTimeout,
-                "Failed to acquire DDL lock for namespace '{}' in mode {} after {} with reason "
-                "'{}' while waiting recovery of DDLCoordinatorService"_format(
-                    ns, modeName(mode), waitingTime.elapsed().toString(), reason));
+            uasserted(ErrorCodes::LockTimeout,
+                      fmt::format(
+                          "Failed to acquire DDL lock for namespace '{}' in mode {} after {} with "
+                          "reason '{}' while waiting recovery of DDLCoordinatorService",
+                          ns,
+                          modeName(mode),
+                          waitingTime.elapsed().toString(),
+                          reason));
         }
     }
 
@@ -244,9 +249,7 @@ void DDLLockManager::ScopedDatabaseDDLLock::_lock(OperationContext* opCtx,
                         timeout);
 
         // Check under the DDL dbLock if this is the primary shard for the database
-        const auto lockMode = opCtx->inMultiDocumentTransaction() ? MODE_IX : MODE_IS;
-        Lock::DBLock dbLock(opCtx, db, lockMode);
-        const auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, db);
+        const auto scopedDss = DatabaseShardingState::acquireShared(opCtx, db);
         scopedDss->assertIsPrimaryShardForDb(opCtx);
     } catch (...) {
         _dbLock.reset();
@@ -304,10 +307,7 @@ void DDLLockManager::ScopedCollectionDDLLock::_lock(OperationContext* opCtx,
 
         // Check under the DDL db lock if this is the primary shard for the database
         {
-            const auto lockMode = opCtx->inMultiDocumentTransaction() ? MODE_IX : MODE_IS;
-            Lock::DBLock dbLock(opCtx, ns.dbName(), lockMode);
-            const auto scopedDss =
-                DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, ns.dbName());
+            const auto scopedDss = DatabaseShardingState::acquireShared(opCtx, ns.dbName());
             scopedDss->assertIsPrimaryShardForDb(opCtx);
         }
 

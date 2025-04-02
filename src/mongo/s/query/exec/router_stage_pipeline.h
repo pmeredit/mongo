@@ -58,9 +58,19 @@ public:
 
     StatusWith<ClusterQueryResult> next() final;
 
+    Status releaseMemory() final {
+        try {
+            _mergePipeline->forceSpill();
+            // When I have the bytes I will return them from here. Now, I have nothing to return.
+            return Status::OK();
+        } catch (const DBException& e) {
+            return e.toStatus();
+        }
+    }
+
     void kill(OperationContext* opCtx) final;
 
-    bool remotesExhausted() final;
+    bool remotesExhausted() const final;
 
     std::size_t getNumRemotes() const final;
 

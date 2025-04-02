@@ -45,15 +45,14 @@ namespace mongo::transport {
 std::shared_ptr<AsyncDBClient> AsyncClientIntegrationTestFixture::makeClient() {
     auto svcCtx = getServiceContext();
     auto metrics = std::make_shared<ConnectionMetrics>(svcCtx->getFastClockSource());
-    auto client =
-        AsyncDBClient::connect(getServer(),
-                               transport::kGlobalSSLMode,
-                               svcCtx,
-                               svcCtx->getTransportLayerManager()->getDefaultEgressLayer(),
-                               _reactor,
-                               Milliseconds::max(),
-                               metrics)
-            .get();
+    auto client = AsyncDBClient::connect(getServer(),
+                                         kGlobalSSLMode,
+                                         svcCtx,
+                                         getTransportLayer(svcCtx),
+                                         _reactor,
+                                         Milliseconds::max(),
+                                         metrics)
+                      .get();
     client->initWireVersion(__FILE__, nullptr).get();
     return client;
 }
@@ -143,15 +142,14 @@ void AsyncClientIntegrationTestFixture::testAsyncConnectTimeoutCleansUpSocket() 
     FailPointEnableBlock fp("asioTransportLayerAsyncConnectTimesOut");
     auto svcCtx = getServiceContext();
     auto metrics = std::make_shared<ConnectionMetrics>(svcCtx->getFastClockSource());
-    auto client =
-        AsyncDBClient::connect(getServer(),
-                               transport::kGlobalSSLMode,
-                               svcCtx,
-                               svcCtx->getTransportLayerManager()->getDefaultEgressLayer(),
-                               getReactor(),
-                               Milliseconds{500},
-                               metrics)
-            .getNoThrow();
+    auto client = AsyncDBClient::connect(getServer(),
+                                         kGlobalSSLMode,
+                                         svcCtx,
+                                         getTransportLayer(svcCtx),
+                                         getReactor(),
+                                         Milliseconds{500},
+                                         metrics)
+                      .getNoThrow();
     ASSERT_EQ(client.getStatus(), ErrorCodes::NetworkTimeout);
 }
 
@@ -266,9 +264,8 @@ void AsyncClientIntegrationTestFixture::testRunCommandRequestCancelEarly() {
 
     cancelSource.cancel();
 
-    auto req = makeTestRequest(DatabaseName::kAdmin,
-                               BSON("echo"
-                                    << "RunCommandRequestCancelEarly"));
+    auto req =
+        makeTestRequest(DatabaseName::kAdmin, BSON("echo" << "RunCommandRequestCancelEarly"));
     auto fut = client->runCommandRequest(req, baton(), nullptr, cancelSource.token());
     ASSERT(fut.isReady());
     ASSERT_EQ(fut.getNoThrow(interruptible()), ErrorCodes::CallbackCanceled);
@@ -282,8 +279,7 @@ void AsyncClientIntegrationTestFixture::testRunCommandRequestCancelSourceDismiss
     auto fpGuard = configureFailCommand(fpClient, "echo", boost::none, Milliseconds(1000));
 
     auto req = makeTestRequest(DatabaseName::kAdmin,
-                               BSON("echo"
-                                    << "RunCommandRequestCancelSourceDismissed"));
+                               BSON("echo" << "RunCommandRequestCancelSourceDismissed"));
 
     auto runCommandFuture = client->runCommandRequest(req, baton(), nullptr, cancelSource->token());
     cancelSource.reset();

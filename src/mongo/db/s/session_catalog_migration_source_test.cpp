@@ -67,10 +67,8 @@
 #include "mongo/db/shard_id.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/executor/remote_command_request.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
 #include "mongo/util/time_support.h"
@@ -3213,8 +3211,7 @@ TEST_F(SessionCatalogMigrationSourceTest, ExtractShardKeyFromOplogNonCRUD) {
                                     BSON("_id" << 1 << "a.b" << 5));        // o
     auto commandOplog = makeOplogEntry(repl::OpTime(Timestamp(60, 10), 1),  // optime
                                        repl::OpTypeEnum::kCommand,          // op type
-                                       BSON("create"
-                                            << "c"));  // o
+                                       BSON("create" << "c"));              // o
 
     ASSERT_BSONOBJ_EQ(
         SessionCatalogMigrationSource::extractShardKeyFromOplogEntry(pattern, noopOplog),

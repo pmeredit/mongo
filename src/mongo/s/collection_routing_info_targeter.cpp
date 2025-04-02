@@ -29,7 +29,6 @@
 
 #include "mongo/s/collection_routing_info_targeter.h"
 
-#include "mongo/s/transaction_router.h"
 #include <fmt/format.h>
 #include <memory>
 #include <string>
@@ -46,17 +45,17 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/matcher/expression_parser.h"
-#include "mongo/db/matcher/extensions_callback_noop.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/collation/collation_index_key.h"
 #include "mongo/db/query/collation/collation_spec.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/find_command.h"
+#include "mongo/db/query/write_ops/update_request.h"
 #include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/query/write_ops/write_ops_parsers.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage/storage_parameters_gen.h"
@@ -64,9 +63,9 @@
 #include "mongo/db/timeseries/timeseries_constants.h"
 #include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/db/timeseries/timeseries_update_delete_util.h"
+#include "mongo/db/version_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
+#include "mongo/platform/compiler.h"
 #include "mongo/s/chunk.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/cluster_commands_helpers.h"
@@ -80,7 +79,6 @@
 #include "mongo/s/type_collection_common_types_gen.h"
 #include "mongo/s/write_ops/batched_command_request.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/intrusive_counter.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 
@@ -106,10 +104,16 @@ using UpdateType = write_ops::UpdateModification::Type;
  *            or
  *          coll.update({x: 1}, [{$addFields: {y: 2}}])
  */
-void validateUpdateDoc(const UpdateRef updateRef) {
+void validateUpdateDoc(const UpdateRef& updateRef) {
     const auto& updateMod = updateRef.getUpdateMods();
     if (updateMod.type() == write_ops::UpdateModification::Type::kPipeline) {
         return;
+    }
+
+    // Non-pipeline style update.
+    if (MONGO_unlikely(updateRef.getConstants())) {
+        // Using 'c' field (constants) for a non-pipeline update is disallowed.
+        UpdateRequest::throwUnexpectedConstantValuesException();
     }
 
     const auto updateType = updateMod.type();
@@ -182,38 +186,31 @@ BSONObj getUpdateExprForTargeting(const boost::intrusive_ptr<ExpressionContext> 
  * Returns true if the two CollectionRoutingInfo objects are different.
  */
 bool isMetadataDifferent(const CollectionRoutingInfo& criA, const CollectionRoutingInfo& criB) {
-    if (criA.cm.hasRoutingTable() != criB.cm.hasRoutingTable())
+    if (criA.hasRoutingTable() != criB.hasRoutingTable())
         return true;
 
-    if (criA.cm.hasRoutingTable()) {
-        if (criA.cm.getVersion() != criB.cm.getVersion())
-            return true;
-
-        if (criA.sii.is_initialized() != criB.sii.is_initialized())
-            return true;
-
-        return criA.sii.is_initialized() &&
-            criA.sii->getCollectionIndexes() != criB.sii->getCollectionIndexes();
+    if (criA.hasRoutingTable()) {
+        return criA.getChunkManager().getVersion() != criB.getChunkManager().getVersion();
     }
 
-    return criA.cm.dbVersion() != criB.cm.dbVersion();
+    return criA.getDbVersion() != criB.getDbVersion();
 }
 
 ShardEndpoint targetUnshardedCollection(const NamespaceString& nss,
                                         const CollectionRoutingInfo& cri) {
-    invariant(!cri.cm.isSharded());
-    if (cri.cm.hasRoutingTable()) {
+    invariant(!cri.isSharded());
+    if (cri.hasRoutingTable()) {
         // Target the only shard that owns this collection.
-        const auto shardId = cri.cm.getMinKeyShardIdWithSimpleCollation();
+        const auto shardId = cri.getChunkManager().getMinKeyShardIdWithSimpleCollation();
         return ShardEndpoint(shardId, cri.getShardVersion(shardId), boost::none);
     } else {
         // Target the db-primary shard. Attach 'dbVersion: X, shardVersion: UNSHARDED'.
         // TODO (SERVER-51070): Remove the boost::none when the config server can support
         // shardVersion in commands
         return ShardEndpoint(
-            cri.cm.dbPrimary(),
+            cri.getDbPrimaryShardId(),
             nss.isOnInternalDb() ? boost::optional<ShardVersion>() : ShardVersion::UNSHARDED(),
-            nss.isOnInternalDb() ? boost::optional<DatabaseVersion>() : cri.cm.dbVersion());
+            nss.isOnInternalDb() ? boost::optional<DatabaseVersion>() : cri.getDbVersion());
     }
 }
 
@@ -229,7 +226,7 @@ CollectionRoutingInfoTargeter::CollectionRoutingInfoTargeter(OperationContext* o
 CollectionRoutingInfoTargeter::CollectionRoutingInfoTargeter(const NamespaceString& nss,
                                                              const CollectionRoutingInfo& cri)
     : _nss(nss), _cri(cri) {
-    invariant(!cri.cm.hasRoutingTable() || cri.cm.getNss() == nss);
+    invariant(!cri.hasRoutingTable() || cri.getChunkManager().getNss() == nss);
 }
 
 /**
@@ -276,7 +273,10 @@ CollectionRoutingInfo CollectionRoutingInfoTargeter::_init(OperationContext* opC
         }
     };
 
-    auto [cm, sii] = createDatabaseAndGetRoutingInfo(_nss);
+    auto [cm, dbInfo] = [&]() {
+        auto cri = createDatabaseAndGetRoutingInfo(_nss);
+        return std::make_tuple(std::move(cri.getChunkManager()), std::move(cri.getDatabaseInfo()));
+    }();
 
     // For a tracked time-series collection, only the underlying buckets collection is stored on the
     // config servers. If the user operation is on the time-series view namespace, we should check
@@ -293,20 +293,20 @@ CollectionRoutingInfo CollectionRoutingInfoTargeter::_init(OperationContext* opC
     //    back to the view namespace and reset '_isRequestOnTimeseriesViewNamespace'.
     if (!cm.hasRoutingTable() && !_nss.isTimeseriesBucketsCollection()) {
         auto bucketsNs = _nss.makeTimeseriesBucketsNamespace();
-        auto [bucketsPlacementInfo, bucketsIndexInfo] = createDatabaseAndGetRoutingInfo(bucketsNs);
-        if (bucketsPlacementInfo.hasRoutingTable()) {
+        auto bucketsCri = createDatabaseAndGetRoutingInfo(bucketsNs);
+        if (bucketsCri.hasRoutingTable()) {
             _nss = bucketsNs;
-            cm = std::move(bucketsPlacementInfo);
-            sii = std::move(bucketsIndexInfo);
-            _isRequestOnTimeseriesViewNamespace = true;
+            cm = std::move(bucketsCri.getChunkManager());
+            if (!isRawDataOperation(opCtx)) {
+                _isRequestOnTimeseriesViewNamespace = true;
+            }
         }
     } else if (!cm.hasRoutingTable() && _isRequestOnTimeseriesViewNamespace) {
         // This can happen if a tracked time-series collection is dropped and re-created. Then we
         // need to reset the namespace to the original namespace.
         _nss = _nss.getTimeseriesViewNamespace();
-        auto [newCm, newSii] = createDatabaseAndGetRoutingInfo(_nss);
-        cm = std::move(newCm);
-        sii = std::move(newSii);
+        auto newCri = createDatabaseAndGetRoutingInfo(_nss);
+        cm = std::move(newCri.getChunkManager());
         _isRequestOnTimeseriesViewNamespace = false;
     }
 
@@ -316,7 +316,7 @@ CollectionRoutingInfo CollectionRoutingInfoTargeter::_init(OperationContext* opC
                 "Collection epoch has changed",
                 cm.getVersion().epoch() == *_targetEpoch);
     }
-    return CollectionRoutingInfo(std::move(cm), std::move(sii));
+    return CollectionRoutingInfo(std::move(cm), std::move(dbInfo));
 }
 
 const NamespaceString& CollectionRoutingInfoTargeter::getNS() const {
@@ -400,13 +400,13 @@ bool CollectionRoutingInfoTargeter::isExactIdQuery(OperationContext* opCtx,
 
 ShardEndpoint CollectionRoutingInfoTargeter::targetInsert(OperationContext* opCtx,
                                                           const BSONObj& doc) const {
-    if (!_cri.cm.isSharded()) {
+    if (!_cri.isSharded()) {
         return targetUnshardedCollection(_nss, _cri);
     }
 
     // Collection is sharded
     const BSONObj shardKey = [&]() {
-        const auto& shardKeyPattern = _cri.cm.getShardKeyPattern();
+        const auto& shardKeyPattern = _cri.getChunkManager().getShardKeyPattern();
         BSONObj shardKey;
         if (shardKeyPattern.hasId()) {
             uassert(ErrorCodes::InvalidIdField,
@@ -414,7 +414,7 @@ ShardEndpoint CollectionRoutingInfoTargeter::targetInsert(OperationContext* opCt
                     doc.hasField("_id"));
         }
         if (_isRequestOnTimeseriesViewNamespace) {
-            auto tsFields = _cri.cm.getTimeseriesFields();
+            auto tsFields = _cri.getChunkManager().getTimeseriesFields();
             tassert(5743701, "Missing timeseriesFields on buckets collection", tsFields);
             shardKey = extractBucketsShardKeyFromTimeseriesDoc(
                 doc, shardKeyPattern, tsFields->getTimeseriesOptions());
@@ -467,7 +467,7 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetUpdate(
         getQueryCounters(opCtx).updateManyCount.increment(1);
     }
 
-    if (!_cri.cm.isSharded()) {
+    if (!_cri.isSharded()) {
         if (!isMulti) {
             getQueryCounters(opCtx).updateOneUnshardedCount.increment(1);
         }
@@ -476,7 +476,7 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetUpdate(
     }
 
     // Collection is sharded
-    const auto& shardKeyPattern = _cri.cm.getShardKeyPattern();
+    const auto& shardKeyPattern = _cri.getChunkManager().getShardKeyPattern();
     const auto collation = write_ops::collationOf(updateOp);
 
     auto expCtx = makeExpressionContextWithDefaultsForTargeter(opCtx,
@@ -495,12 +495,14 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetUpdate(
                 str::stream()
                     << "A {multi:false} update on a sharded timeseries collection is disallowed.",
                 feature_flags::gTimeseriesUpdatesSupport.isEnabled(
+                    VersionContext::getDecoration(opCtx),
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) ||
                     isMulti);
         uassert(ErrorCodes::InvalidOptions,
                 str::stream()
                     << "An {upsert:true} update on a sharded timeseries collection is disallowed.",
                 feature_flags::gTimeseriesUpdatesSupport.isEnabled(
+                    VersionContext::getDecoration(opCtx),
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) ||
                     !isUpsert);
 
@@ -513,8 +515,9 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetUpdate(
         query = timeseries::getBucketLevelPredicateForRouting(
             query,
             expCtx,
-            _cri.cm.getTimeseriesFields()->getTimeseriesOptions(),
+            _cri.getChunkManager().getTimeseriesFields()->getTimeseriesOptions(),
             feature_flags::gTimeseriesUpdatesSupport.isEnabled(
+                VersionContext::getDecoration(opCtx),
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
     }
 
@@ -536,16 +539,17 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetUpdate(
     };
 
     // Parse update query.
-    const auto cq =
-        uassertStatusOKWithContext(_canonicalize(opCtx, expCtx, _nss, query, collation, _cri.cm),
-                                   str::stream() << "Could not parse update query " << query);
+    const auto cq = uassertStatusOKWithContext(
+        _canonicalize(opCtx, expCtx, _nss, query, collation, _cri.getChunkManager()),
+        str::stream() << "Could not parse update query " << query);
 
     if (updateOp.getMulti() && isUpsert) {
         return targetByShardKey(extractShardKeyFromQuery(shardKeyPattern, *cq),
                                 "Failed to target upsert by query");
     }
 
-    auto isExactId = _isExactIdQuery(*cq, _cri.cm) && !_isRequestOnTimeseriesViewNamespace;
+    auto isExactId =
+        _isExactIdQuery(*cq, _cri.getChunkManager()) && !_isRequestOnTimeseriesViewNamespace;
 
     // We first try to target based on the update's query. It is always valid to forward any update
     // or upsert to a single shard, so return immediately if we are able to target a single shard.
@@ -621,7 +625,7 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetDelete(
         getQueryCounters(opCtx).deleteManyCount.increment(1);
     }
 
-    if (!_cri.cm.isSharded()) {
+    if (!_cri.isSharded()) {
         if (!isMulti) {
             getQueryCounters(opCtx).deleteOneUnshardedCount.increment(1);
         }
@@ -643,10 +647,11 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetDelete(
         uassert(ErrorCodes::IllegalOperation,
                 "Cannot perform a non-multi delete on a time-series collection",
                 feature_flags::gTimeseriesDeletesSupport.isEnabled(
+                    VersionContext::getDecoration(opCtx),
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) ||
                     isMulti);
 
-        auto tsFields = _cri.cm.getTimeseriesFields();
+        auto tsFields = _cri.getChunkManager().getTimeseriesFields();
         tassert(5918101, "Missing timeseriesFields on buckets collection", tsFields);
 
         // Translate the delete query on a timeseries collection into the bucket-level predicate
@@ -660,12 +665,13 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetDelete(
             expCtx,
             tsFields->getTimeseriesOptions(),
             feature_flags::gTimeseriesDeletesSupport.isEnabled(
+                VersionContext::getDecoration(opCtx),
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
     }
 
     // Parse delete query.
     const auto cq = uassertStatusOKWithContext(
-        _canonicalize(opCtx, expCtx, _nss, deleteQuery, collation, _cri.cm),
+        _canonicalize(opCtx, expCtx, _nss, deleteQuery, collation, _cri.getChunkManager()),
         str::stream() << "Could not parse delete query " << deleteQuery);
 
     // We first try to target based on the delete's query. It is always valid to forward any delete
@@ -678,7 +684,8 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetDelete(
         return endpoints;
     }
 
-    auto isExactId = _isExactIdQuery(*cq, _cri.cm) && !_isRequestOnTimeseriesViewNamespace;
+    auto isExactId =
+        _isExactIdQuery(*cq, _cri.getChunkManager()) && !_isRequestOnTimeseriesViewNamespace;
 
     if (!isMulti) {
         getQueryCounters(opCtx).deleteOneNonTargetedShardedCount.increment(1);
@@ -715,6 +722,9 @@ StatusWith<std::unique_ptr<CanonicalQuery>> CollectionRoutingInfoTargeter::_cano
     findCommand->setFilter(query);
     expCtx->setUUID(cm.getUUID());
 
+    tassert(8557200,
+            "This function should not be invoked if we do not have a routing table",
+            cm.hasRoutingTable());
     if (!collation.isEmpty()) {
         findCommand->setCollation(collation.getOwned());
     } else if (cm.getDefaultCollator()) {
@@ -735,7 +745,7 @@ StatusWith<std::vector<ShardEndpoint>> CollectionRoutingInfoTargeter::_targetQue
 
     std::set<ShardId> shardIds;
     try {
-        getShardIdsForCanonicalQuery(query, _cri.cm, &shardIds);
+        getShardIdsForCanonicalQuery(query, _cri.getChunkManager(), &shardIds);
     } catch (const DBException& ex) {
         return ex.toStatus();
     }
@@ -752,7 +762,7 @@ StatusWith<std::vector<ShardEndpoint>> CollectionRoutingInfoTargeter::_targetQue
 StatusWith<ShardEndpoint> CollectionRoutingInfoTargeter::_targetShardKey(
     const BSONObj& shardKey, const BSONObj& collation) const {
     try {
-        auto chunk = _cri.cm.findIntersectingChunk(shardKey, collation);
+        auto chunk = _cri.getChunkManager().findIntersectingChunk(shardKey, collation);
         return ShardEndpoint(
             chunk.getShardId(), _cri.getShardVersion(chunk.getShardId()), boost::none);
     } catch (const DBException& ex) {
@@ -765,7 +775,7 @@ std::vector<ShardEndpoint> CollectionRoutingInfoTargeter::targetAllShards(
     OperationContext* opCtx) const {
     // This function is only called if doing a multi write that targets more than one shard. This
     // implies the collection is sharded, so we should always have a chunk manager.
-    invariant(_cri.cm.isSharded());
+    invariant(_cri.isSharded());
 
     auto shardIds = Grid::get(opCtx)->shardRegistry()->getAllShardIds(opCtx);
 
@@ -875,15 +885,15 @@ bool CollectionRoutingInfoTargeter::createCollectionIfNeeded(OperationContext* o
 }
 
 int CollectionRoutingInfoTargeter::getAproxNShardsOwningChunks() const {
-    if (_cri.cm.hasRoutingTable()) {
-        return _cri.cm.getAproxNShardsOwningChunks();
+    if (_cri.hasRoutingTable()) {
+        return _cri.getChunkManager().getAproxNShardsOwningChunks();
     }
 
     return 0;
 }
 
 bool CollectionRoutingInfoTargeter::isTargetedCollectionSharded() const {
-    return _cri.cm.isSharded();
+    return _cri.isSharded();
 }
 
 bool CollectionRoutingInfoTargeter::isTrackedTimeSeriesBucketsNamespace() const {
@@ -891,7 +901,8 @@ bool CollectionRoutingInfoTargeter::isTrackedTimeSeriesBucketsNamespace() const 
     if (MONGO_unlikely(isTrackedTimeSeriesBucketsNamespaceAlwaysTrue.shouldFail())) {
         return true;
     }
-    return _cri.cm.hasRoutingTable() && _cri.cm.getTimeseriesFields();
+    return _cri.hasRoutingTable() && _cri.getChunkManager().isTimeseriesCollection() &&
+        !_cri.getChunkManager().isNewTimeseriesWithoutView();
 }
 
 bool CollectionRoutingInfoTargeter::timeseriesNamespaceNeedsRewrite(

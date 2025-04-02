@@ -71,11 +71,8 @@
 #include "mongo/bson/timestamp.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
 #include "mongo/util/str.h"
@@ -144,7 +141,7 @@ TEST(JsonStringTest, BasicTest) {
 TEST(JsonStringTest, PrettyFormatTest) {
     auto validate = [&](int line, BSONObj obj, bool arr, std::string out) {
         ASSERT_EQUALS(obj.jsonString(ExtendedRelaxedV2_0_0, true, arr), out)
-            << format(FMT_STRING(", line {}"), line);
+            << fmt::format(", line {}", line);
     };
     validate(__LINE__, B().obj(), 0, "{}");
     validate(__LINE__, B{}.obj(), 1, "[]");
@@ -579,10 +576,7 @@ TEST(JsonStringTest, CodeTests) {
 
 TEST(JsonStringTest, CodeWScopeTests) {
     BSONObjBuilder b;
-    b.appendCodeWScope("x",
-                       "function(arg){ var string = \"\\n\"; return x; }",
-                       BSON("x"
-                            << "1"));
+    b.appendCodeWScope("x", "function(arg){ var string = \"\\n\"; return x; }", BSON("x" << "1"));
 
     checkJsonStringEach({{b.done(),
                           "{ \"x\" : "
@@ -833,7 +827,7 @@ TEST(FromJsonTest, DBRefTest) {
          B().append("a", B().append("$ref", "ns").append("$id", OID()).obj()).obj()},
         // DbName
         {R"({ "a" : { "$ref" : "ns", "$id" : "000000000000000000000000", )"
-         R"("$db" : "dbname" } }))",
+         R"("$db" : "dbname" } })",
          B().append("a",
                     B().append("$ref", "ns")
                         .append("$id", "000000000000000000000000")
@@ -883,9 +877,7 @@ TEST(FromJsonTest, BinDataTypes) {
     for (const auto& ts : specs) {
         if (ts.bdt == Column) {
             BSONColumnBuilder cb;
-            cb.append(BSON("a"
-                           << "abc")
-                          .getField("a"));
+            cb.append(BSON("a" << "abc").getField("a"));
             BSONBinData columnData = cb.finalize();
             checkEquivalence(fmt::sprintf(R"({ "a" : { "$binary" : "%s", "$type" : "%02x" } })",
                                           base64::encode(columnData.data, columnData.length),

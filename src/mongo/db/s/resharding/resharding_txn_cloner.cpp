@@ -67,6 +67,7 @@
 #include "mongo/db/s/resharding/resharding_server_parameters_gen.h"
 #include "mongo/db/s/resharding/resharding_txn_cloner.h"
 #include "mongo/db/s/resharding/resharding_txn_cloner_progress_gen.h"
+#include "mongo/db/s/session_catalog_migration_util.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/session/logical_session_id.h"
 #include "mongo/db/session/logical_session_id_helpers.h"
@@ -76,9 +77,6 @@
 #include "mongo/db/write_concern_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
@@ -103,8 +101,8 @@ std::unique_ptr<Pipeline, PipelineDeleter> ReshardingTxnCloner::makePipeline(
     std::shared_ptr<MongoProcessInterface> mongoProcessInterface,
     const boost::optional<LogicalSessionId>& startAfter) {
     const auto& sourceNss = NamespaceString::kSessionTransactionsTableNamespace;
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[sourceNss.coll()] = {sourceNss, std::vector<BSONObj>{}};
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[sourceNss] = {sourceNss, std::vector<BSONObj>{}};
     auto expCtx = ExpressionContextBuilder{}
                       .opCtx(opCtx)
                       .mongoProcessInterface(std::move(mongoProcessInterface))
@@ -207,7 +205,7 @@ boost::optional<SharedSemiFuture<void>> ReshardingTxnCloner::doOneRecord(
         sessionId = *getParentSessionId(sessionId);
     }
 
-    return resharding::data_copy::withSessionCheckedOut(
+    return session_catalog_migration_util::runWithSessionCheckedOutIfStatementNotExecuted(
         opCtx, sessionId, txnNumber, boost::none /* stmtId */, [&] {
             // If the TransactionParticipant is flagged as having an incomplete history, then the
             // dead end sentinel is already present in the oplog.

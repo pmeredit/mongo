@@ -47,8 +47,6 @@
 #include "mongo/bson/generator_extended_relaxed_2_0_0.h"
 #include "mongo/bson/generator_legacy_strict.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/decimal_counter.h"
 #include "mongo/util/duration.h"
@@ -115,7 +113,7 @@ BSONObj BSONElement::_jsonStringGenerator(const Generator& g,
     if (includeSeparator)
         buffer.push_back(',');
     if (pretty)
-        fmt::format_to(buffer, "\n{:<{}}", "", (pretty - 1) * 4);
+        fmt::format_to(std::back_inserter(buffer), "\n{:<{}}", "", (pretty - 1) * 4);
 
     if (includeFieldNames) {
         g.writePadding(buffer);
@@ -768,14 +766,14 @@ void BSONElement::toString(
             const char* data = binDataClean(len);
             // If the BinData is a correctly sized newUUID, display it as such.
             if (binDataType() == newUUID && len == 16) {
-                using namespace fmt::literals;
                 StringData sd(data, len);
                 // 4 Octets - 2 Octets - 2 Octets - 2 Octets - 6 Octets
-                s << "UUID(\"{}-{}-{}-{}-{}\")"_format(hexblob::encodeLower(sd.substr(0, 4)),
-                                                       hexblob::encodeLower(sd.substr(4, 2)),
-                                                       hexblob::encodeLower(sd.substr(6, 2)),
-                                                       hexblob::encodeLower(sd.substr(8, 2)),
-                                                       hexblob::encodeLower(sd.substr(10, 6)));
+                s << fmt::format("UUID(\"{}-{}-{}-{}-{}\")",
+                                 hexblob::encodeLower(sd.substr(0, 4)),
+                                 hexblob::encodeLower(sd.substr(4, 2)),
+                                 hexblob::encodeLower(sd.substr(6, 2)),
+                                 hexblob::encodeLower(sd.substr(8, 2)),
+                                 hexblob::encodeLower(sd.substr(10, 6)));
                 break;
             }
             s << "BinData(" << binDataType() << ", ";

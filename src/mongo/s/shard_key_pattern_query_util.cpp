@@ -70,9 +70,6 @@
 #include "mongo/db/query/stage_types.h"
 #include "mongo/db/update/path_support.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/chunk.h"
 #include "mongo/s/shard_targeting_helpers.h"
 #include "mongo/util/assert_util.h"
@@ -417,7 +414,7 @@ IndexBounds getIndexBoundsForQuery(const BSONObj& key, const CanonicalQuery& can
     // Use query framework to generate index bounds.
     IndexEntry indexEntry(key,
                           indexType,
-                          IndexDescriptor::kLatestIndexVersion,
+                          IndexConfig::kLatestIndexVersion,
                           // The shard key index cannot be multikey.
                           false,
                           // Empty multikey paths, since the shard key index cannot be multikey.

@@ -61,8 +61,6 @@
 #include "mongo/db/server_options.h"
 #include "mongo/db/server_options_helpers.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/transport/message_compressor_registry.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/cmdline_utils/censor_cmdline.h"
@@ -74,7 +72,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kControl
 
 
-using std::endl;
 using std::string;
 
 namespace mongo {
@@ -155,8 +152,8 @@ bool shouldFork(const moe::Environment& params) {
 
 void printCommandLineOpts(std::ostream* os) {
     if (os) {
-        *os << format(FMT_STRING("Options set by command line: {}"),
-                      tojson(serverGlobalParams.parsedOpts, ExtendedRelaxedV2_0_0, true))
+        *os << fmt::format("Options set by command line: {}",
+                           tojson(serverGlobalParams.parsedOpts, ExtendedRelaxedV2_0_0, true))
             << std::endl;
     } else {
         LOGV2(21951, "Options set by command line", "options"_attr = serverGlobalParams.parsedOpts);
@@ -419,6 +416,14 @@ Status storeServerOptions(const moe::Environment& params) {
         serverGlobalParams.doFork = true;
     }
 #endif  // _WIN32
+
+#ifdef __APPLE__
+    if (serverGlobalParams.doFork) {
+        return Status(ErrorCodes::BadValue,
+                      "Server fork+exec via `--fork` or `processManagement.fork` "
+                      "is incompatible with macOS");
+    }
+#endif  // Apple
 
     if (serverGlobalParams.doFork && serverGlobalParams.logpath.empty() &&
         !serverGlobalParams.logWithSyslog) {

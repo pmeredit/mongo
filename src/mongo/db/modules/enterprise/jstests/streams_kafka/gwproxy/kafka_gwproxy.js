@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
     flushUntilStopped,
@@ -8,6 +14,7 @@ import {
     listStreamProcessors,
     sanitizeDoc,
     startSample,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID,
     waitForCount,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
@@ -250,6 +257,7 @@ function makeMongoToKafkaStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: mongoToKafkaName,
         pipeline: [
             {$source: {connectionName: dbConnName, db: dbName, coll: collName}},
@@ -292,6 +300,7 @@ function makeKafkaToMongoStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoNamePrefix}-${topicName}`,
         pipeline: pipeline.length ? pipeline : [
             {
@@ -341,6 +350,7 @@ function makeFailingKafkaToMongoStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${kafkaToMongoFailingNamePrefix}-${topicName}`,
         pipeline: pipeline.length ? pipeline : [
             {
@@ -390,6 +400,7 @@ function makeFailingSolarToKafkaStartCmd({
     return {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: `${solarToKafkaFailingNamePrefix}-${topicName}`,
         pipeline: pipeline.length ? pipeline : [
             { $source: { connectionName: "sample_solar_1" } },

@@ -27,6 +27,7 @@
  *    it in the license file.
  */
 
+#include "mongo/bson/bsonelement_comparator.h"
 #include "mongo/bson/column/bsoncolumn.h"
 #include "mongo/bson/column/bsoncolumnbuilder.h"
 #include "mongo/bson/json.h"
@@ -39,8 +40,7 @@
 #include "mongo/db/exec/sbe/values/ts_block.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::sbe {
 

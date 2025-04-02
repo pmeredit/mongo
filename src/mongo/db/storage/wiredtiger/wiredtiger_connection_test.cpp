@@ -38,9 +38,8 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/system_clock_source.h"
 
 namespace mongo {
@@ -98,7 +97,7 @@ TEST(WiredTigerConnectionTest, CheckSessionCacheCleanup) {
     WiredTigerConnection* connection = harnessHelper.getConnection();
     ASSERT_EQUALS(connection->getIdleSessionsCount(), 0U);
     {
-        UniqueWiredTigerSession _session = connection->getSession();
+        WiredTigerManagedSession _session = connection->getUninterruptibleSession();
         ASSERT_EQUALS(connection->getIdleSessionsCount(), 0U);
     }
     // Destroying of a session puts it in the session cache
@@ -120,7 +119,7 @@ TEST(WiredTigerConnectionTest, CheckSessionCacheCleanup) {
 TEST(WiredTigerConnectionTest, ReleaseCursorDuringShutdown) {
     WiredTigerConnectionHarnessHelper harnessHelper("");
     WiredTigerConnection* connection = harnessHelper.getConnection();
-    UniqueWiredTigerSession session = connection->getSession();
+    WiredTigerManagedSession session = connection->getUninterruptibleSession();
     // Simulates the cursor already being deleted during shutdown.
     WT_CURSOR* cursor = nullptr;
 
@@ -141,7 +140,7 @@ TEST(WiredTigerConnectionTest, ReleaseSessionAfterShutdown) {
     // Assert that there are no idle sessions in the cache to start off with.
     ASSERT_EQ(connection->getIdleSessionsCount(), 0);
     {
-        UniqueWiredTigerSession session = connection->getSession();
+        WiredTigerManagedSession session = connection->getUninterruptibleSession();
         WT_CURSOR* cursor = nullptr;
 
         connection->shuttingDown();

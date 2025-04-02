@@ -34,16 +34,12 @@
 #include <string>
 #include <vector>
 
-#include "mongo/bson/bsonelement.h"
-#include "mongo/db/field_ref.h"
-#include "mongo/db/index/multikey_paths.h"
 #include "mongo/db/query/index_bounds.h"
 #include "mongo/db/query/index_bounds_builder.h"
 #include "mongo/db/query/index_entry.h"
 #include "mongo/db/query/interval.h"
 #include "mongo/db/query/interval_evaluation_tree.h"
 #include "mongo/db/query/query_solution.h"
-#include "mongo/stdx/unordered_set.h"
 
 namespace mongo {
 namespace wildcard_planning {
@@ -61,7 +57,7 @@ static constexpr size_t kWildcardMaxArrayIndexTraversalDepth = 8u;
  * IndexEntry for each of the query fields and add them into the provided vector.
  */
 void expandWildcardIndexEntry(const IndexEntry& wildcardIndex,
-                              const stdx::unordered_set<std::string>& fields,
+                              const std::set<std::string>& fields,
                               std::vector<IndexEntry>* out);
 
 /**
@@ -101,12 +97,5 @@ bool isWildcardObjectSubpathScan(const IndexEntry& index, const IndexBounds& bou
  * is for documents missing the wildcard field.
  */
 std::vector<Interval> makeAllValuesForPath();
-
-/**
- * If the compound wildcard index is expanded to any known field and the index is used to answer a
- * $or query, we should expand the index bounds of the wildcard field in such IndexEntry to include
- * all keys. Returns false if the query plan cannot use the index.
- */
-bool expandWildcardFieldBounds(std::vector<std::unique_ptr<QuerySolutionNode>>& ixscanNodes);
 }  // namespace wildcard_planning
 }  // namespace mongo

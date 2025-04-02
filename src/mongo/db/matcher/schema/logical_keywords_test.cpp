@@ -40,8 +40,7 @@
 #include "mongo/db/matcher/schema/json_schema_parser.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -254,7 +253,7 @@ TEST(JSONSchemaLogicalKeywordTest, EnumTranslatesCorrectly) {
 }
 
 TEST(JSONSchemaLogicalKeywordTest, TopLevelEnumTranslatesCorrectly) {
-    BSONObj schema = fromjson("{enum: [1, {foo: 1}]}}}");
+    BSONObj schema = fromjson("{enum: [1, {foo: 1}]}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_OK(result.getStatus());
     auto optimizedResult = MatchExpression::optimize(std::move(result.getValue()));
@@ -262,7 +261,7 @@ TEST(JSONSchemaLogicalKeywordTest, TopLevelEnumTranslatesCorrectly) {
 }
 
 TEST(JSONSchemaLogicalKeywordTest, TopLevelEnumWithZeroObjectsTranslatesCorrectly) {
-    BSONObj schema = fromjson("{enum: [1, 'impossible', true]}}}");
+    BSONObj schema = fromjson("{enum: [1, 'impossible', true]}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_OK(result.getStatus());
     auto optimizedResult = MatchExpression::optimize(std::move(result.getValue()));

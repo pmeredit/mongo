@@ -51,7 +51,6 @@ mongo_cc_library(
         "//src/mongo/db/auth",
         "//src/mongo/db/modules/enterprise/src/live_import:import_collection_coordinator",
         "//src/mongo/db/repl:repl_coordinator_interface",
-        "//src/mongo/util:fail_point",
     ],
 )
 

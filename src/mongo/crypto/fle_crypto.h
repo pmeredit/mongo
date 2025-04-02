@@ -199,13 +199,6 @@ public:
     virtual BSONObj getById(const NamespaceString& nss, BSONElement element) = 0;
 
     /**
-     * Count the documents in the collection.
-     *
-     * Throws if the collection is not found.
-     */
-    virtual uint64_t countDocuments(const NamespaceString& nss) = 0;
-
-    /**
      * Get the set of counts from ESC for a set of tags. Returns counts for these fields suitable
      * either for query or insert based on the type parameter.
      *
@@ -529,6 +522,24 @@ public:
                                          FLEKeyVault* keyVault,
                                          const ContentionFactorFn& contentionFactor);
 
+    /**
+     * Given the original command, the output of query analysis, and a schema map,
+     * this generates a client-side payload that is sent to the server.
+     * The cryptdResult object parameter is expected to have the fields:
+     * {
+     *     "hasEncryptionPlaceholders" : bool
+     *     "schemaRequiresEncryption" : bool
+     *     "result" : BSON object
+     * } where "result" is the command object containing intent-to-encrypt markings.
+     * The encryptedFieldConfigMap parameter is an object mapping namespace strings to
+     * EncryptedFieldConfigs.
+     */
+    static BSONObj transformPlaceholders(const BSONObj& originalCmd,
+                                         const BSONObj& cryptdResult,
+                                         const BSONObj& encryptedFieldConfigMap,
+                                         FLEKeyVault* keyVault,
+                                         StringData dbName);
+
 
     /**
      * For every encrypted field path in the EncryptedFieldConfig, this generates
@@ -600,6 +611,15 @@ struct ECOCCompactionDocumentV2 {
     boost::optional<AnchorPaddingRootToken> anchorPaddingRootToken;
 };
 
+// Simple view of a mc_FLE2TagAndEncryptedMetadataBlock_t
+// TODO SERVER-96973 Refactor this into a full wrapper class around
+// mc_FLE2TagAndEncryptedMetadataBlock_t
+struct FLE2TagAndEncryptedMetadataBlockView {
+    ConstDataRange encryptedCounts;
+    ConstDataRange tag;
+    ConstDataRange encryptedZeros;
+};
+
 /**
  * Class to read/write the metadata block consisting of the encrypted counter
  * and contention factor, the tag, and the encrypted 128-bit string of zeros.
@@ -647,6 +667,9 @@ struct FLE2TagAndEncryptedMetadataBlock {
 
     static StatusWith<FLE2TagAndEncryptedMetadataBlock> decryptAndParse(
         ServerDerivedFromDataToken token, ConstDataRange serializedBlock);
+
+    static StatusWith<FLE2TagAndEncryptedMetadataBlock> decryptAndParse(
+        ServerDerivedFromDataToken token, const FLE2TagAndEncryptedMetadataBlockView& block);
 
     static StatusWith<PrfBlock> parseTag(ConstDataRange serializedBlock);
 
@@ -831,6 +854,59 @@ struct FLE2IndexedRangeEncryptedValueV2 {
     std::vector<FLE2TagAndEncryptedMetadataBlock> metadataBlocks;
 };
 
+/**
+ * Class to read/write QE Text Search Indexed Encrypted Values.
+ *
+ * Fields are encrypted with the following:
+ *
+ * struct {
+ *   uint8_t fle_blob_subtype = 17;
+ *   uint8_t key_uuid[16];
+ *   uint8_t original_bson_type;
+ *   uint8_t total_tag_count;
+ *   uint8_t substring_tag_count;
+ *   uint8_t suffix_tag_count;
+ *   ciphertext[ciphertext_length];
+ *   metadataBlock exact_metadata;
+ *   array<metadataBlock> substring_metadata;
+ *   array<metadataBlock> suffix_metadata;
+ *   array<metadataBlock> prefix_metadata;
+ * }
+ * where ciphertext computed as:
+ *   Encrypt(ServerDataEncryptionLevel1Token, clientCiphertext)
+ * and metadataBlock is a vector of serialized FLE2TagAndEncryptedMetadataBlock.
+ *
+ * The specification needs to be in sync with the validation in 'bson_validate.cpp'.
+ */
+class FLE2IndexedTextEncryptedValue {
+public:
+public:
+    FLE2IndexedTextEncryptedValue(ConstDataRange toParse);
+    static FLE2IndexedTextEncryptedValue fromUnencrypted(const FLE2InsertUpdatePayloadV2& payload,
+                                                         const std::vector<PrfBlock>& tags,
+                                                         const std::vector<uint64_t>& counters);
+
+    StatusWith<std::vector<uint8_t>> serialize() const;
+
+    UUID getKeyId() const;
+    BSONType getBsonType() const;
+    ConstDataRange getServerEncryptedValue() const;
+    uint8_t getTagCount() const;
+    uint8_t getSubstringTagCount() const;
+    uint8_t getSuffixTagCount() const;
+    uint8_t getPrefixTagCount() const;
+    FLE2TagAndEncryptedMetadataBlockView getExactStringMetadataBlock() const;
+    std::vector<FLE2TagAndEncryptedMetadataBlockView> getSubstringMetadataBlocks() const;
+    std::vector<FLE2TagAndEncryptedMetadataBlockView> getSuffixMetadataBlocks() const;
+    std::vector<FLE2TagAndEncryptedMetadataBlockView> getPrefixMetadataBlocks() const;
+
+private:
+    FLE2IndexedTextEncryptedValue();
+    UniqueMCFLE2IndexedEncryptedValueV2 _value;
+    // Cached parsed values
+    mutable boost::optional<std::vector<uint8_t>> _cachedSerializedPayload;
+};
+
 struct EDCServerPayloadInfo {
     static ESCDerivedFromDataTokenAndContentionFactorToken getESCToken(ConstDataRange cdr);
 
@@ -841,6 +917,16 @@ struct EDCServerPayloadInfo {
     bool isTextSearchPayload() const {
         return payload.getTextSearchTokenSets().has_value();
     }
+
+    size_t getTotalTextSearchTokenSetCount() const {
+        if (isTextSearchPayload()) {
+            auto& tsts = payload.getTextSearchTokenSets().get();
+            // +1 for the exact match token set.
+            return 1 + tsts.getPrefixTokenSets().size() + tsts.getSuffixTokenSets().size() +
+                tsts.getSubstringTokenSets().size();
+        }
+        return 0;
+    };
 
     FLE2InsertUpdatePayloadV2 payload;
     std::string fieldPathName;
@@ -914,6 +1000,7 @@ public:
     static PrfBlock generateTag(const EDCServerPayloadInfo& payload);
     static PrfBlock generateTag(const FLEEdgeToken& token, FLECounter count);
     static std::vector<PrfBlock> generateTags(const EDCServerPayloadInfo& rangePayload);
+    static std::vector<PrfBlock> generateTagsForTextSearch(const EDCServerPayloadInfo& textPayload);
 
     /**
      * Generate all the EDC tokens
@@ -1206,6 +1293,10 @@ public:
      */
     static StatusWith<std::vector<uint8_t>> decryptData(ConstDataRange key,
                                                         ConstDataRange cipherText);
+
+    // Encrypt data with AES-256-CTR. Exposed for testing.
+    static StatusWith<std::vector<uint8_t>> encryptData(ConstDataRange key,
+                                                        ConstDataRange plainText);
 };
 
 /**
@@ -1232,6 +1323,10 @@ std::pair<EncryptedBinDataType, ConstDataRange> fromEncryptedBinData(const Value
 
 boost::optional<EncryptedBinDataType> getEncryptedBinDataType(const Value& value);
 boost::optional<EncryptedBinDataType> getEncryptedBinDataType(const BSONElement& elt);
+
+using QueryTypeMatchFn = std::function<bool(QueryTypeEnum)>;
+bool hasQueryTypeMatching(const EncryptedField& field, const QueryTypeMatchFn& matcher);
+bool hasQueryTypeMatching(const EncryptedFieldConfig& config, const QueryTypeMatchFn& matcher);
 
 bool hasQueryType(const EncryptedField& field, QueryTypeEnum queryType);
 bool hasQueryType(const EncryptedFieldConfig& config, QueryTypeEnum queryType);

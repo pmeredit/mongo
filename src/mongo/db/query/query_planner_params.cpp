@@ -38,7 +38,6 @@
 #include "mongo/db/query/multiple_collection_accessor.h"
 #include "mongo/db/query/planner_ixselect.h"
 #include "mongo/db/query/query_settings/query_settings_gen.h"
-#include "mongo/db/query/query_settings/query_settings_manager.h"
 #include "mongo/db/query/query_settings_decoration.h"
 #include "mongo/db/query/query_utils.h"
 #include "mongo/db/query/stats/collection_statistics_impl.h"
@@ -525,6 +524,16 @@ void QueryPlannerParams::fillOutMainCollectionPlannerParams(
         mainCollectionInfo.options |= QueryPlannerParams::OPLOG_SCAN_WAIT_FOR_VISIBLE;
     }
 
+    // Populate collection statistics for CBR. In the case of clustered collections, a query may
+    // appear to be ID-hack eligible as per 'isIdHackEligibleQuery()', but 'buildIdHackPlan()' fails
+    // as there is no _id index. In these cases, we will end up invoking the query planner and CBR,
+    // so we need this catalog information.
+    if (canonicalQuery.getExpCtx()->getQueryKnobConfiguration().getPlanRankerMode() !=
+        QueryPlanRankerModeEnum::kMultiPlanning) {
+        mainCollectionInfo.collStats = std::make_unique<stats::CollectionStatisticsImpl>(
+            static_cast<double>(mainColl->getRecordStore()->numRecords()), canonicalQuery.nss());
+    }
+
     // _id queries can skip checking the catalog for indices since they will always use the _id
     // index.
     if (isIdHackEligibleQuery(mainColl, canonicalQuery)) {
@@ -537,12 +546,6 @@ void QueryPlannerParams::fillOutMainCollectionPlannerParams(
 
     fillOutPlannerCollectionInfo(
         opCtx, mainColl, &mainCollectionInfo.stats, false /* includeSizeStats */);
-
-    if (canonicalQuery.getExpCtx()->getQueryKnobConfiguration().getPlanRankerMode() !=
-        QueryPlanRankerModeEnum::kMultiPlanning) {
-        mainCollectionInfo.collStats = std::make_unique<stats::CollectionStatisticsImpl>(
-            static_cast<double>(mainColl->getRecordStore()->numRecords()), canonicalQuery.nss());
-    }
 }
 
 void QueryPlannerParams::setTargetSbeStageBuilder(OperationContext* opCtx,
@@ -602,10 +605,11 @@ std::vector<IndexEntry> getIndexEntriesForDistinct(
             }
 
             if (!mayUnwindArrays &&
-                isAnyComponentOfPathMultikey(desc->keyPattern(),
-                                             ice->isMultikey(opCtx, collectionPtr),
-                                             ice->getMultikeyPaths(opCtx, collectionPtr),
-                                             key)) {
+                isAnyComponentOfPathOrProjectionMultikey(
+                    desc->keyPattern(),
+                    ice->isMultikey(opCtx, collectionPtr),
+                    ice->getMultikeyPaths(opCtx, collectionPtr),
+                    key)) {
                 // If the caller requested "strict" distinct that does not "pre-unwind" arrays,
                 // then an index which is multikey on the distinct field may not be used. This is
                 // because when indexing an array each element gets inserted individually. Any plan

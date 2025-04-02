@@ -39,8 +39,8 @@
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/db/exec/sbe/vm/vm_printer.h"
 #include "mongo/db/exec/sbe/vm/vm_types.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/golden_test.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::sbe {
 
@@ -930,14 +930,14 @@ TEST_F(SBECodeFragmentTest, LabelJumpNothing) {
         then2.appendConstVal(value2.first, value2.second);
         then2.appendSub({}, {});
 
-        else1.append(std::move(else2), std::move(then2));
+        else1.append({std::move(else2), std::move(then2)});
         else1.appendLabelJump(labelEnd);
 
         vm::CodeFragment then1;
         then1.appendLabel(labelThen1);
         then1.appendPop();
 
-        code.append(std::move(else1), std::move(then1));
+        code.append({std::move(else1), std::move(then1)});
         code.appendLabel(labelEnd);
 
         code.removeLabel(labelThen1);
@@ -979,14 +979,14 @@ TEST_F(SBECodeFragmentTest, LabelJumpNotNothing) {
         then2.appendConstVal(value2.first, value2.second);
         then2.appendSub({}, {});
 
-        else1.append(std::move(else2), std::move(then2));
+        else1.append({std::move(else2), std::move(then2)});
         else1.appendLabelJump(labelEnd);
 
         vm::CodeFragment then1;
         then1.appendLabel(labelThen1);
         then1.appendPop();
 
-        code.append(std::move(else1), std::move(then1));
+        code.append({std::move(else1), std::move(then1)});
         code.appendLabel(labelEnd);
 
         code.removeLabel(labelThen1);

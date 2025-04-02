@@ -592,6 +592,18 @@ export function assertIsRangeIndexedEncryptedField(value) {
 }
 
 /**
+ * Assert a field is a text indexed encrypted field
+ *
+ * @param {BinData} value bindata value
+ */
+export function assertIsTextIndexedEncryptedField(value) {
+    assert(value instanceof BinData, "Expected BinData, found: " + value);
+    assert.eq(value.subtype(), 6, "Expected Encrypted bindata: " + value);
+    assert(value.hex().startsWith("11"),
+           "Expected subtype 17 but found the wrong type: " + value.hex());
+}
+
+/**
  * Assert a field is an unindexed encrypted field
  *
  * @param {BinData} value bindata value
@@ -601,6 +613,21 @@ export function assertIsUnindexedEncryptedField(value) {
     assert.eq(value.subtype(), 6, "Expected Encrypted bindata: " + value);
     assert(value.hex().startsWith("10"),
            "Expected subtype 16 but found the wrong type: " + value.hex());
+}
+
+/**
+ * Runs the callback function and returns whether or not it threw a client error, and
+ * if expectedErrorStr is given, if the error message contains it.
+ * The exception logged but not rethrown.
+ */
+export function codeFailsInClientWithError(callback, expectedErrorStr) {
+    try {
+        callback();
+        return false;
+    } catch (e) {
+        jsTestLog(`Test callback threw error: ${tojson(e)}`);
+        return (!expectedErrorStr || (e.message.indexOf(expectedErrorStr) !== -1));
+    }
 }
 
 /**

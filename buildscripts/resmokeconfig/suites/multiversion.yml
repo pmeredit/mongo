@@ -4,10 +4,14 @@ selector:
   roots:
     - jstests/multiVersion/**/*.js
     - src/mongo/db/modules/*/jstests/hot_backups_multiversion/*.js
+    - src/mongo/db/modules/*/jstests/live_import_multiversion/*.js
     - src/mongo/db/modules/*/jstests/audit/multiVersion/*.js
   exclude_files:
     # Do not execute files with helper functions.
     - jstests/multiVersion/libs/*.js
+
+    # TODO SERVER-101204
+    - jstests/multiVersion/genericBinVersion/dbcheck_old*.js
 
     # TODO: SERVER-28104
     - jstests/multiVersion/genericBinVersion/minor_version_tags_new_old_new.js
@@ -24,6 +28,7 @@ executor:
   archive:
     tests:
       - src/mongo/db/modules/enterprise/jstests/hot_backups_multiversion/*.js
+      - src/mongo/db/modules/enterprise/jstests/live_imports_multiversion/*.js
   config:
     shell_options:
       nodb: ""

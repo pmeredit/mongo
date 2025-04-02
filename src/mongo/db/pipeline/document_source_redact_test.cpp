@@ -39,8 +39,7 @@
 #include "mongo/db/pipeline/document_source_mock.h"
 #include "mongo/db/pipeline/document_source_redact.h"
 #include "mongo/db/pipeline/pipeline.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -49,8 +48,7 @@ namespace {
 using DocumentSourceRedactTest = AggregationContextFixture;
 
 TEST_F(DocumentSourceRedactTest, ShouldCopyRedactSafePartOfMatchBeforeItself) {
-    BSONObj redactSpec = BSON("$redact"
-                              << "$$PRUNE");
+    BSONObj redactSpec = BSON("$redact" << "$$PRUNE");
     auto redact = DocumentSourceRedact::createFromBson(redactSpec.firstElement(), getExpCtx());
     auto match = DocumentSourceMatch::create(BSON("a" << 1), getExpCtx());
 
@@ -65,8 +63,7 @@ TEST_F(DocumentSourceRedactTest, ShouldCopyRedactSafePartOfMatchBeforeItself) {
 }
 
 TEST_F(DocumentSourceRedactTest, ShouldPropagatePauses) {
-    auto redactSpec = BSON("$redact"
-                           << "$$KEEP");
+    auto redactSpec = BSON("$redact" << "$$KEEP");
     auto redact = DocumentSourceRedact::createFromBson(redactSpec.firstElement(), getExpCtx());
     auto mock =
         DocumentSourceMock::createForTest({Document{{"_id", 0}},

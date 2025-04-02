@@ -43,7 +43,6 @@
 #include "mongo/db/query/bson/dotted_path_support.h"
 #include "mongo/db/s/collection_metadata.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/chunk.h"
 #include "mongo/s/resharding/common_types_gen.h"
@@ -54,8 +53,6 @@
 
 
 namespace mongo {
-
-using namespace fmt::literals;
 
 CollectionMetadata::CollectionMetadata(ChunkManager cm, const ShardId& thisShardId)
     : _cm(std::move(cm)), _thisShardId(thisShardId) {}
@@ -155,7 +152,7 @@ std::string CollectionMetadata::toStringBasic() const {
 }
 
 RangeMap CollectionMetadata::getChunks() const {
-    invariant(hasRoutingTable());
+    tassert(10016202, "Expected a routing table to be initialized", hasRoutingTable());
 
     RangeMap chunksMap(SimpleBSONObjComparator::kInstance.makeBSONObjIndexedMap<BSONObj>());
 
@@ -170,7 +167,7 @@ RangeMap CollectionMetadata::getChunks() const {
 }
 
 bool CollectionMetadata::getNextChunk(const BSONObj& lookupKey, ChunkType* chunk) const {
-    invariant(hasRoutingTable());
+    tassert(10016203, "Expected a routing table to be initialized", hasRoutingTable());
 
     auto nextChunk = _cm->getNextChunkOnShard(lookupKey, _thisShardId);
     if (!nextChunk)
@@ -182,7 +179,7 @@ bool CollectionMetadata::getNextChunk(const BSONObj& lookupKey, ChunkType* chunk
 }
 
 bool CollectionMetadata::currentShardHasAnyChunks() const {
-    invariant(hasRoutingTable());
+    tassert(10016204, "Expected a routing table to be initialized", hasRoutingTable());
     std::set<ShardId> shards;
     _cm->getAllShardIds(&shards);
     return shards.find(_thisShardId) != shards.end();

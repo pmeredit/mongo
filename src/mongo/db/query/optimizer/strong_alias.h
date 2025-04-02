@@ -29,10 +29,8 @@
 
 #pragma once
 
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
-#include <limits>
-
 
 namespace mongo::optimizer {
 
@@ -144,7 +142,8 @@ struct StrongDoubleAlias {
 
     // Prevent implicit conversion from bool to double.
     template <typename T>
-    StrongDoubleAlias(T) requires std::is_same_v<T, bool>
+    StrongDoubleAlias(T)
+    requires std::is_same_v<T, bool>
     = delete;
 
     constexpr StrongDoubleAlias(const double value) : _value(value) {

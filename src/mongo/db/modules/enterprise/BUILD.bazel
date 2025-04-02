@@ -1,4 +1,5 @@
 load("//bazel/install_rules:install_rules.bzl", "mongo_install")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
 mongo_install(
     name = "dist-test",
@@ -8,6 +9,75 @@ mongo_install(
         "//src/mongo/db/modules/enterprise/src/fle:mongocryptd",
         "//src/mongo/db/modules/enterprise/src/kerberos:mongokerberos",
         "//src/mongo/db/modules/enterprise/src/ldap:mongoldap",
+    ] + select({
+        "@platforms//os:windows": ["//src/mongo/db/modules/enterprise/src/sasl:cyrus_sasl_windows_test_plugin"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# This reflects the package that actually gets released during packaging. Be careful
+# when changing this definition
+mongo_install(
+    name = "dist",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/encryptdb:mongodecrypt",
+        "//src/mongo/db/modules/enterprise/src/fle:mongocryptd",
+        "//src/mongo/db/modules/enterprise/src/kerberos:mongokerberos",
+        "//src/mongo/db/modules/enterprise/src/ldap:mongoldap",
+    ] + select({
+        "@platforms//os:windows": ["@windows_sasl//:bins"],
+        "//conditions:default": [],
+    }),
+    publish_debug_in_stripped = select({
+        "@platforms//os:windows": True,
+        "//conditions:default": False,
+    }),
+    visibility = ["//visibility:public"],
+)
+
+mongo_install(
+    name = "mongocryptd",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/fle:mongocryptd",
     ],
+    visibility = ["//visibility:public"],
+)
+
+# This is because the install system hardlinks files so permission changes end up
+# being reflected on the source code version without this copy
+copy_file(
+    name = "crypt_header",
+    src = "//src/mongo/db/modules/enterprise/src/fle/lib:mongo_crypt.h",
+    out = "copied_files/mongo_crypt.h",
+)
+
+mongo_install(
+    name = "mongo_crypt",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/fle/lib:mongo_crypt_v1",
+    ],
+    root_files = {
+        "crypt_header": "include/mongo_crypt/v1/mongo_crypt",
+    },
+    visibility = ["//visibility:public"],
+)
+
+# This is because the install system hardlinks files so permission changes end up
+# being reflected on the source code version without this copy
+copy_file(
+    name = "crypt_debuggability_test",
+    src = "//src/mongo/db/modules/enterprise/src/fle/lib:crypt_debuggability_test.py",
+    out = "copied_files/crypt_debuggability_test.py",
+)
+
+mongo_install(
+    name = "mongo_crypt_shlib_test",
+    srcs = [
+        "//src/mongo/db/modules/enterprise/src/fle/lib:mongo_crypt_shlib_test",
+    ],
+    root_files = {
+        "crypt_debuggability_test": "",
+    },
     visibility = ["//visibility:public"],
 )

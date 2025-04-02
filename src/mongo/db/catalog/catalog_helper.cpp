@@ -37,12 +37,22 @@
 
 #include "mongo/db/catalog/collection_catalog.h"
 #include "mongo/db/database_name.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/str.h"
 
 namespace mongo::catalog_helper {
 MONGO_FAIL_POINT_DEFINE(setAutoGetCollectionWait);
+
+StorageEngine::TimestampMonitor::TimestampListener kCollectionCatalogCleanupTimestampListener(
+    StorageEngine::TimestampMonitor::TimestampType::kOldest,
+    [](OperationContext* opCtx, Timestamp timestamp) {
+        if (CollectionCatalog::latest(opCtx)->catalogIdTracker().dirty(timestamp)) {
+            CollectionCatalog::write(opCtx, [timestamp](CollectionCatalog& catalog) {
+                catalog.catalogIdTracker().cleanup(timestamp);
+            });
+        }
+    });
 
 namespace {
 /**

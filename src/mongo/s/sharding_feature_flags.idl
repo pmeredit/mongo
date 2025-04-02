@@ -43,12 +43,6 @@ feature_flags:
     default: true
     version: 6.3
     shouldBeFCVGated: true
-  featureFlagCheckForDirectShardOperations:
-    description: "Feature flag for checking for direct shard operations."
-    cpp_varname: feature_flags::gCheckForDirectShardOperations
-    default: true
-    version: 7.0
-    shouldBeFCVGated: true
   # TODO (SERVER-73632): Remove once 9.0 becomes last LTS.
   featureFlagRouterPort:
     description: "Feature flag to open the router port."
@@ -89,6 +83,7 @@ feature_flags:
     default: true
     version: 7.3
     shouldBeFCVGated: true
+    fcv_context_unaware: true
   featureFlagShardedAggregationCatalogCacheGossiping:
     description: "Feature flag that makes routers executing distributed aggregations that involve
                   secondary collections request the shards to gossip back the catalog cache versions
@@ -97,6 +92,7 @@ feature_flags:
     default: true
     version: 8.0
     shouldBeFCVGated: true
+    fcv_context_unaware: true
   # TODO (SERVER-81037): enable this feature flag once it's possible to detect prepare conflicts on the catalog
   featureFlagCreateCollectionInPreparedTransactions:
     description: "Feature flag protecting the codepath allowing to create collections in prepared transactions "
@@ -110,6 +106,7 @@ feature_flags:
     default: true
     version: 8.0
     shouldBeFCVGated: true
+    fcv_context_unaware: true
   # TODO (SERVER-77915): Remove once 8.0 becomes last LTS.
   featureFlag80CollectionCreationPath:
     description: "Feature flag protecting all codepaths that rely on the 8.0 way of collection creation in a
@@ -119,36 +116,22 @@ feature_flags:
     default: true
     version: 8.0
     shouldBeFCVGated: true
+    fcv_context_unaware: true
   featureFlagReplicaSetEndpoint:
     description: When enabled, allows users to connect to a single-shard cluster with no dedicated config
                  server using a replica set connection string.
     cpp_varname: feature_flags::gFeatureFlagReplicaSetEndpoint
     default: false
     shouldBeFCVGated: true
-  featureFlagFailOnDirectShardOperations:
-    description: "Feature flag for erroring when a direct shard operation is detected."
-    cpp_varname: feature_flags::gFailOnDirectShardOperations
-    default: true
-    version: 7.3
-    shouldBeFCVGated: true
-  featureFlagStopDDLCoordinatorsDuringTopologyChanges:
-    description: "Feature flag to stop ShardingDDLCoordinators during sharding topology changes (i.e.
-                  addShard and removeShard)."
-    cpp_varname: feature_flags::gStopDDLCoordinatorsDuringTopologyChanges
-    default: true
-    version: 8.0
-    shouldBeFCVGated: true
-  featureFlagHashedShardKeyIndexOptionalUponShardingCollection:
-    description: "Feature flag to make shardCollection and reshardCollection not require a hashed
-                  shard key to have a supporting index."
-    cpp_varname: feature_flags::gFeatureFlagHashedShardKeyIndexOptionalUponShardingCollection
-    default: false
-    shouldBeFCVGated: true
   featureFlagCreateDatabaseDDLCoordinator:
-    description: "Feature flag for enabling the sharding DDL coordinator for database creation."
+    description: >
+      Feature flag for enabling the sharding DDL coordinator for database creation. Enabled in
+      transitional FCV because the new coordinator is needed during the transition phase of
+      authoritative databases.
     cpp_varname: feature_flags::gCreateDatabaseDDLCoordinator
     default: false
     shouldBeFCVGated: true
+    enable_on_transitional_fcv: true
   # TODO (SERVER-95599): remove once 9.0 becomes last LTS.
   featureFlagConfigDebugDumpSupported:
     description: "The configDebugDump flag is supported in listCollections and $listCatalog."
@@ -169,15 +152,44 @@ feature_flags:
     default: false
     shouldBeFCVGated: true
   # TODO (SERVER-98118): remove once 9.0 becomes last LTS.
-  featureFlagShardAuthoritativeDbMetadata:
+  featureFlagShardAuthoritativeDbMetadataCRUD:
+    description: "Feature flag to enable the authoritative model to read database metadata from
+                  stored shard-local information"
+    cpp_varname: feature_flags::gShardAuthoritativeDbMetadataCRUD
+    default: false
+    shouldBeFCVGated: true
+    enable_on_transitional_fcv: false
+  # TODO (SERVER-98118): remove once 9.0 becomes last LTS.
+  featureFlagShardAuthoritativeDbMetadataDDL:
     description: "Feature flag to enable the authoritative model to store shard-local information
                   for database metadata."
-    cpp_varname: feature_flags::gShardAuthoritativeDbMetadata
+    cpp_varname: feature_flags::gShardAuthoritativeDbMetadataDDL
+    default: false
+    shouldBeFCVGated: true
+    enable_on_transitional_fcv: true
+  # TODO (SERVER-89169): remove once 9.0 becomes last LTS.
+  featureFlagShardAuthoritativeCollMetadata:
+    description: "Feature flag to enable the authoritative model for storing shard-local information 
+                  for collections and chunks metadata."
+    cpp_varname: feature_flags::gShardAuthoritativeCollMetadata
     default: false
     shouldBeFCVGated: false
-  # TODO (SERVER-99140): Remove once 9.0 becomes last LTS
-  featureFlagProhibitNonEmptyReplicaSetOnAddShard:
-    description: "Feature flag to prohibit adding non-empty replica set to the cluster."
-    cpp_varname: feature_flags::gProhibitNonEmptyReplicaSetOnAddShard
+  # TODO (SERVER-100309): remove once 9.0 becomes last LTS.
+  featureFlagSessionsCollectionCoordinatorOnConfigServer:
+    description: Feature flag for running the shard collection coordinator on the config server for
+                 config.system.sessions.
+    cpp_varname: feature_flags::gSessionsCollectionCoordinatorOnConfigServer
+    default: true
+    version: 8.1
+    shouldBeFCVGated: true
+  featureFlagTerminateSecondaryReadsUponRangeDeletion:
+    description: "Feature flag to enable the termination of secondary reads due to range deletions."
+    cpp_varname: feature_flags::gTerminateSecondaryReadsUponRangeDeletion
+    default: true 
+    shouldBeFCVGated: false
+  # TODO (SERVER-99655): remove this feature flag
+  featureFlagSnapshotFCVInDDLCoordinators:
+    description: "Feature flag to enable snapshotting of the operation FCV at the start of DDL operations."
+    cpp_varname: feature_flags::gSnapshotFCVInDDLCoordinators
     default: false
     shouldBeFCVGated: true

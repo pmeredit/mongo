@@ -70,9 +70,6 @@
 #include "mongo/db/shard_id.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/catalog/type_chunk.h"
@@ -101,7 +98,6 @@
 namespace mongo {
 
 using namespace shardmetadatautil;
-using namespace fmt::literals;
 
 using CollectionAndChangedChunks = CatalogCacheLoader::CollectionAndChangedChunks;
 
@@ -430,7 +426,7 @@ void performNoopMajorityWriteLocally(OperationContext* opCtx, StringData msg) {
     {
         AutoGetOplogFastPath oplogWrite(opCtx, OplogAccessMode::kWrite);
         uassert(ErrorCodes::NotWritablePrimary,
-                "Not primary when performing noop write for {}"_format(msg),
+                fmt::format("Not primary when performing noop write for {}", msg),
                 replCoord->canAcceptWritesForDatabase(opCtx, DatabaseName::kAdmin));
 
         writeConflictRetry(

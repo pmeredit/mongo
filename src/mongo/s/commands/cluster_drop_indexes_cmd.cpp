@@ -51,9 +51,6 @@
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/async_requests_sender.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/client/shard.h"
@@ -85,6 +82,10 @@ public:
 
     bool adminOnly() const override {
         return false;
+    }
+
+    bool supportsRawData() const override {
+        return true;
     }
 
     Status checkAuthForOperation(OperationContext* opCtx,

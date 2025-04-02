@@ -5,6 +5,8 @@
 #pragma once
 
 #include <boost/intrusive_ptr.hpp>
+#include <rdkafka.h>
+#include <rdkafkacpp.h>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/oid.h"
@@ -14,12 +16,11 @@
 #include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_resolve_callback.h"
+#include "streams/exec/latency_collector.h"
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/sink_operator.h"
 #include "streams/exec/stages_gen.h"
-
-#include <rdkafka.h>
-#include <rdkafkacpp.h>
+#include "streams/exec/util.h"
 
 namespace streams {
 /**
@@ -43,6 +44,9 @@ public:
         int queueBufferingMaxKBytes{16384};
         // queue.buffering.max.messages setting.
         int queueBufferingMaxMessages{100000};
+        // message.max.bytes setting.
+        boost::optional<int> messageMaxBytes;
+        mongo::Milliseconds messageTimeoutMs{30'000};
         // Partition to write to. If not specified, PARTITION_UA is supplied to librdkafka,
         // which will write to random partitions. Explicit partition is currently only
         // used in testing.
@@ -60,7 +64,7 @@ public:
         // GWProxy symmetric key.
         boost::optional<std::string> gwproxyKey;
         // Json String Format either relaxedJson or canonicalJson.
-        mongo::JsonStringFormat jsonStringFormat{mongo::JsonStringFormat::ExtendedRelaxedV2_0_0};
+        JsonStringFormat jsonStringFormat{JsonStringFormat::Relaxed};
         // compression.type setting
         mongo::KafkaCompressionTypeEnum compressionType{mongo::KafkaCompressionTypeEnum::none};
         bool setCompressionType{false};
@@ -109,6 +113,8 @@ protected:
     // Here we flush those messages.
     void doFlush() override;
 
+    void registerMetrics(MetricManager* metricManager) override;
+
 private:
     static constexpr double kTryLogRate{1.0 / 60};
 
@@ -122,6 +128,7 @@ private:
             KafkaEventCallback* kafkaEventCallback{nullptr};
             std::shared_ptr<KafkaResolveCallback> kafkaResolveCallback;
             std::shared_ptr<KafkaConnectAuthCallback> kafkaConnectAuthCallback;
+            boost::optional<std::string> gwproxyEndpoint;
         };
 
         Connector(Options options);
@@ -155,10 +162,31 @@ private:
         ConnectionStatus _connectionStatus;
     };
 
+    // Metrics specific to librdkafka producer queue.
+    struct ProducerQueueMetrics {
+        // Returns true if metrics should be used.
+        bool use() {
+            return queueCount && queueByteSize && maxLatency;
+        }
+
+        // The number of events in librdkafka's producer queue.
+        std::shared_ptr<IntGauge> queueCount;
+        // The number of bytes in librdkafka's producer queue.
+        std::shared_ptr<IntGauge> queueByteSize;
+        // The max latency of message delivery according to librdkafka.
+        std::shared_ptr<IntGauge> maxLatency;
+    };
+
     // Used to detect connection/timeout errors in sending a message to Kafka.
     class DeliveryReportCallback : public RdKafka::DeliveryReportCb {
     public:
-        DeliveryReportCallback(Context* context) : _context(context) {}
+        // Delivery callback message.
+        struct CallbackMessage {
+            LatencyCollector::LatencyInfo latencyInfo;
+        };
+
+        DeliveryReportCallback(Context* context, ProducerQueueMetrics* metrics)
+            : _context(context), _metrics(metrics) {}
 
         // Callback function invoked by librdkafka.
         void dr_cb(RdKafka::Message& message) override;
@@ -168,6 +196,12 @@ private:
 
     private:
         Context* _context{nullptr};
+
+        // Metrics on queue size.
+        ProducerQueueMetrics* _metrics{nullptr};
+
+        // Max latency of event delivery (according to librdkafka).
+        int64_t _maxLatencyMicros{0};
 
         // Protects the members below.
         mutable mongo::stdx::mutex _mutex;
@@ -218,5 +252,7 @@ private:
     mongo::stdx::unordered_map<int, std::unique_ptr<RateLimiter>> _logIDToRateLimiter;
     // timer used for log rate limiting
     Timer _timer{};
+    // Metrics about queue size and latency.
+    ProducerQueueMetrics _metrics;
 };
 }  // namespace streams

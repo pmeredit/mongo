@@ -67,10 +67,12 @@ public:
     LiteParsedPipeline(const AggregateCommandRequest& request)
         : LiteParsedPipeline(request.getNamespace(), request.getPipeline()) {}
 
-    LiteParsedPipeline(const NamespaceString& nss, const std::vector<BSONObj>& pipelineStages) {
+    LiteParsedPipeline(const NamespaceString& nss,
+                       const std::vector<BSONObj>& pipelineStages,
+                       const LiteParserOptions& options = LiteParserOptions{}) {
         _stageSpecs.reserve(pipelineStages.size());
         for (auto&& rawStage : pipelineStages) {
-            _stageSpecs.push_back(LiteParsedDocumentSource::parse(nss, rawStage));
+            _stageSpecs.push_back(LiteParsedDocumentSource::parse(nss, rawStage, options));
         }
     }
 
@@ -150,6 +152,22 @@ public:
     }
 
     /**
+     * Returns true if the pipeline has a search stage.
+     */
+    bool hasSearchStage() const {
+        return std::any_of(_stageSpecs.begin(), _stageSpecs.end(), [](auto&& spec) {
+            return spec->isSearchStage();
+        });
+    }
+
+    /**
+     * Returns true iff the pipeline begins with a $rankFusion stage.
+     */
+    bool startsWithRankFusionStage() const {
+        return !_stageSpecs.empty() && _stageSpecs.front()->isRankFusionStage();
+    }
+
+    /**
      * Returns true if the pipeline contains at least one stage that requires the aggregation
      * command to be exempt from ingress admission control.
      */
@@ -190,10 +208,9 @@ public:
     /**
      * Verifies that this pipeline is allowed to run with the specified read concern level.
      */
-    ReadConcernSupportResult supportsReadConcern(
-        repl::ReadConcernLevel level,
-        bool isImplicitDefault,
-        boost::optional<ExplainOptions::Verbosity> explain) const;
+    ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
+                                                 bool isImplicitDefault,
+                                                 bool explain) const;
 
     /**
      * Checks that all of the stages in this pipeline are allowed to run with the specified read
@@ -208,16 +225,14 @@ public:
      * only be called if the caller has determined the current operation is part of a
      * transaction.
      */
-    void assertSupportsMultiDocumentTransaction(
-        boost::optional<ExplainOptions::Verbosity> explain) const;
+    void assertSupportsMultiDocumentTransaction(bool explain) const;
 
     /**
      * Verifies that this pipeline is allowed to run with the read concern from the provided
      * opCtx. Used only when asserting is the desired behavior, otherwise use
      * supportsReadConcern instead.
      */
-    void assertSupportsReadConcern(OperationContext* opCtx,
-                                   boost::optional<ExplainOptions::Verbosity> explain) const;
+    void assertSupportsReadConcern(OperationContext* opCtx, bool explain) const;
 
     /**
      * Perform checks that verify that the LitePipe is valid. Note that this function must be
@@ -226,7 +241,7 @@ public:
      */
     void verifyIsSupported(OperationContext* opCtx,
                            std::function<bool(OperationContext*, const NamespaceString&)> isSharded,
-                           boost::optional<ExplainOptions::Verbosity> explain) const;
+                           bool explain) const;
 
     /**
      * Returns true if the first stage in the pipeline does not require an input source.

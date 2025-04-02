@@ -103,7 +103,6 @@ MONGO_FAIL_POINT_DEFINE(asioTransportLayerAsyncConnectTimesOut);
 MONGO_FAIL_POINT_DEFINE(asioTransportLayerDelayConnection);
 MONGO_FAIL_POINT_DEFINE(asioTransportLayerHangBeforeAcceptCallback);
 MONGO_FAIL_POINT_DEFINE(asioTransportLayerHangDuringAcceptCallback);
-MONGO_FAIL_POINT_DEFINE(asioTransportLayerAsyncConnectReturnsConnectionError);
 
 #ifdef MONGO_CONFIG_SSL
 SSLConnectionContext::~SSLConnectionContext() = default;
@@ -185,7 +184,7 @@ class AsioReactor final : public Reactor {
 public:
     AsioReactor() : _clkSource(this), _stats(&_clkSource), _ioContext() {}
 
-    void run() noexcept override {
+    void run() override {
         ThreadIdGuard threadIdGuard(this);
         asio::io_context::work work(_ioContext);
         _ioContext.run();
@@ -722,9 +721,6 @@ Future<std::shared_ptr<Session>> AsioTransportLayer::asyncConnect(
     Milliseconds timeout,
     std::shared_ptr<ConnectionMetrics> connectionMetrics,
     std::shared_ptr<const SSLConnectionContext> transientSSLContext) {
-    if (MONGO_unlikely(asioTransportLayerAsyncConnectReturnsConnectionError.shouldFail()))
-        return Status{ErrorCodes::ConnectionError, "Failing asyncConnect due to fail-point"};
-
     invariant(connectionMetrics);
     connectionMetrics->onConnectionStarted();
 
@@ -793,7 +789,7 @@ Future<std::shared_ptr<Session>> AsioTransportLayer::asyncConnect(
                 if (connector->session) {
                     connector->session->end();
                 } else {
-                    connector->socket.cancel(ec);
+                    (void)connector->socket.cancel(ec);
                 }
             });
     }
@@ -1059,12 +1055,12 @@ Status AsioTransportLayer::setup() {
                 acceptor, IPV6OnlyOption(true), "acceptor v6 only", logv2::LogSeverity::Info());
         }
 
-        acceptor.non_blocking(true, ec);
+        (void)acceptor.non_blocking(true, ec);
         if (ec) {
             return errorCodeToStatus(ec, "setup non_blocking");
         }
 
-        acceptor.bind(*addr, ec);
+        (void)acceptor.bind(*addr, ec);
         if (ec) {
             return errorCodeToStatus(ec, "setup bind").withContext(addr.toString());
         }
@@ -1134,7 +1130,7 @@ void AsioTransportLayer::appendStatsForFTDC(BSONObjBuilder& bob) const {
     queueDepthsArrayBuilder.done();
 }
 
-void AsioTransportLayer::_runListener() noexcept {
+void AsioTransportLayer::_runListener() {
     setThreadName("listener");
 
     stdx::unique_lock lk(_mutex);
@@ -1153,7 +1149,7 @@ void AsioTransportLayer::_runListener() noexcept {
 
     for (auto& acceptorRecord : _acceptorRecords) {
         asio::error_code ec;
-        acceptorRecord->acceptor.listen(serverGlobalParams.listenBacklog, ec);
+        (void)acceptorRecord->acceptor.listen(serverGlobalParams.listenBacklog, ec);
         if (ec) {
             LOGV2_FATAL(31339,
                         "Error listening for new connections on listen address",
@@ -1337,7 +1333,7 @@ void AsioTransportLayer::_acceptConnection(GenericAcceptor& acceptor) {
         try {
             std::shared_ptr<AsioSession> session(
                 new SyncAsioSession(this, std::move(peerSocket), true));
-            if (session->isFromLoadBalancer()) {
+            if (session->isConnectedToLoadBalancerPort()) {
                 session->parseProxyProtocolHeader(_acceptorReactor)
                     .getAsync([this, session = std::move(session)](Status s) {
                         if (s.isOK()) {
@@ -1371,8 +1367,7 @@ void AsioTransportLayer::_acceptConnection(GenericAcceptor& acceptor) {
     acceptor.async_accept(*_ingressReactor, std::move(acceptCb));
 }
 
-void AsioTransportLayer::_trySetListenerSocketBacklogQueueDepth(
-    GenericAcceptor& acceptor) noexcept {
+void AsioTransportLayer::_trySetListenerSocketBacklogQueueDepth(GenericAcceptor& acceptor) {
 #ifdef __linux__
     try {
         if (!isTcp(acceptor.local_endpoint().protocol()))

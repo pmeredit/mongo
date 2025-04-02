@@ -154,3 +154,93 @@ wrap the log encryption key. `AuditKeyManagerKMIPGet` retrieves the key from the
 a Get request, and uses AES-256-GCM for key wrapping. `AuditKeyManagerKMIPEncrypt` does not pull
 a key encryption key from the KMIP server, instead it sends the server the log encryption key in
 an Encrypt request, and uses the returned encrypted key in the response as the wrapped key.
+
+## AuditUserAttrs and AuditClientAttrs
+
+All mongo-formatted and some OCSF-formatted audit log events contain fields to specify the user
+and client responsible for the action. Although user and client information is typically stored in
+the `AuthorizationSession` and the `Client::_session` objects, they cannot be relied on for auditing
+purposes. Audit events that occur in background threads will have an empty `AuthorizationSession` and
+`Client::_session` instances, so they will not be able to properly identify the user/client attached
+to the parent thread. Similarly, audit events that occur on shards will have `AuthorizationSessions`
+and `Client::_sessions` associated with the mongos that proxied the action over from the client. As a
+result, `AuditUserAttrs` and `AuditClientAttrs` exist as the canonical sources of truth for user and
+client info for the auditing subsystem.
+
+### AuditUserAttrs and AuditUserAttrsClientObserver
+
+Every `OperationContext` contains a `boost::optional<AuditUserAttrs>` decoration called `auditUserAttrsDecoration`.
+The `AuditUserAttrsClientObserver` initializes `auditUserAttrsDecoration` to an `AuditUserAttrs`
+instance upon `OperationContext` creation if its parent `Client` already has an `AuthorizationSession`
+with an authenticated user. Otherwise, the decoration is set to `boost::none`.
+
+`auditUserAttrsDecoration` also gets updated in response to `AuthorizationSession` lifecycle events, namely:
+
+1. `AuthorizationSession::addAndAuthorize()` -> `auditUserAttrsDecoration` set to `AuditUserAttrs` with new user/roles
+2. `AuthorizationSession::startRequest()` -> `auditUserAttrsDecoration` set to `boost::none` if old user expired
+3. `AuthorizationSession::logout{AllDatabases|SecurityTokenUser}()` -> `auditUserAttrsDecoration` set to `boost::none`
+4. `AuthorizationSession::_updateInternalAuthorizationState()` -> `auditUserAttrsDecoration` set to currently authenticated user
+
+- This helper gets invoked whenever the `AuthorizationSession` refreshes a user, grants internal authz, starts a new request
+  or logs a user in or out.
+
+All of the above scenarios handle updating `auditUserAttrsDecoration` to track the authenticated user/roles on the
+corresponding `Client`'s `AuthorizationSession`. When a new thread is spawned which might log an audit event, the
+`ForwardableOperationMetadata` class must be used to update the `auditUserAttrsDecoration` on the background thread.
+
+```c++
+// Automatically grabs AuditUserAttrs from OpCtx.
+ForwardableOperationMetadata metadata(opCtx);
+_threadPool.schedule([forwardableOpMetadata = std::move(metadata)](Status status) mutable noexcept {
+  // Updates this thread's OperationContext's AuditUserAttrs with the old one after making it.
+  auto opCtx = Client::getCurrent()->makeOperationContext();
+  forwardableOpMetadata.setOn(opCtx.get());
+
+  // Now, AuditUserAttrs should match whatever was stored on parent thread.
+  auto* userAttrs = rpc::AuditUserAttrs::get(opCtx.get());
+});
+```
+
+`auditUserAttrsDecoration` is also updated whenever a new incoming request specifies a user and roles in the
+`$audit` field. This particular call sets the `isImpersonating` flag of the constructed `AuditUserAttrs` to
+`true` to indicate that the user information does not correspond to the directly-authenticated user running
+the operation on that node. The `isImpersonating` flag is checked at the start of the actual command execution;
+if it was set to true, then the server verifies that the `AuthorizationSession` is authorized with
+`ActionType::impersonate`.
+
+Since `auditUserAttrsDecoration` is an `OperationContext` decoration, the user/roles stored in it are scoped to
+only apply to the operation that it represents. Subsequently, it does not need to be cleared out as soon as an impersonated
+operation is complete as the `OperationContext` is not expected to be used for any other logically distinct commands
+or queries.
+
+### AuditClientAttrs and AuditClientObserver
+
+Every `Client` contains a `boost::optional<AuditClientAttrs>` decoration called `getAuditClientAttrs`.
+The `AuditClientObserver` initializes `getAuditClientAttrs` to an `AuditClientAttrs`
+instance upon `Client` creation if its `transport::Session` exists. Otherwise, the decoration is set to `boost::none`.
+
+A `Client`'s `_session` can only be supplied upon construction. If the `session` provided at construction is `nullptr`, then
+the `Client` is assumed to represent a thread that is not directly performing actions on behalf of an external client. Otherwise,
+the `Client` is assumed to be tied to the `session`'s `remote` endpoint for its entire lifetime. Therefore, `AuditClientAttrs`
+does not have any lifecycle events that it gets updated on.
+
+When a new thread is spawned which might log an audit event, the `ForwardableOperationMetadata` class must be used to
+update `getAuditClientAttrs` on the background thread `Client`.
+
+```c++
+// Automatically grabs AuditUserAttrs from OpCtx.
+ForwardableOperationMetadata metadata(opCtx);
+_threadPool.schedule([forwardableOpMetadata = std::move(metadata)](Status status) mutable noexcept {
+  // Updates this thread's OperationContext's AuditUserAttrs with the old one after making it.
+  auto opCtx = Client::getCurrent()->makeOperationContext();
+  forwardableOpMetadata.setOn(opCtx.get());
+
+  // Now, AuditClientAttrs should match whatever was stored on the parent thread.
+  auto* clientAttrs = rpc::AuditClientAttrs::get(opCtx->getClient());
+});
+```
+
+`getAuditClientAttrs` is also updated whenever a new incoming request specifies an impersonated client in the
+`$audit` field. Once that is done, all subsequent audit events originating from that thread are attributed to
+the client information supplied via `$audit` until a new request from the same `Client` causes that information
+to get overwritten.

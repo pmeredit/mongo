@@ -4,9 +4,7 @@
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 import {
     fle2Enabled,
-    generateSchema
-} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
-import {
+    generateSchema,
     kDeterministicAlgo,
     kRandomAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
@@ -248,6 +246,24 @@ let cmdRes = assert.commandWorked(testDB.runCommand({
     isRemoteSchema: false,
 }));
 assert(cmdRes.result.filter.userSsn.$eq instanceof BinData, tojson(cmdRes));
+
+// Verify that $encStrStartsWith cannot be used with FLE1. MongoCryptD doesn't support getting the
+// value of feature flags, so fails with InvalidPipelineOperator if featureFlagQETextSearchPreview
+// is not enabled.
+// TODO SERVER-59280 Remove ErrorCodes.InvalidPipelineOperator.
+assert.commandFailedWithCode(testDB.runCommand({
+    find: "test",
+    filter: {$expr: {$encStrStartsWith: {input: "$ssn", prefix: "PREFIX"}}},
+    jsonSchema: {
+        type: "object",
+        patternProperties: {
+            "[Ss]sn":
+                {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
+        }
+    },
+    isRemoteSchema: false,
+}),
+                             [ErrorCodes.InvalidPipelineOperator, 10112201]);
 
 // Verify that a find with a field which is encrypted with a JSONPointer keyId fails.
 assert.commandFailedWithCode(testDB.runCommand({

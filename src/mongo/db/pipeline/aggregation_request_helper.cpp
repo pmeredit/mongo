@@ -31,9 +31,6 @@
 
 #include <boost/cstdint.hpp>
 #include <boost/move/utility_core.hpp>
-#include <cstdint>
-#include <memory>
-#include <string>
 
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
@@ -57,8 +54,6 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/idl/idl_parser.h"
-#include "mongo/s/resharding/resharding_feature_flag_gen.h"
-#include "mongo/transport/session.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/str.h"
 
@@ -97,7 +92,9 @@ AggregateCommandRequest parseFromBSON(const BSONObj& cmdObj,
                 str::stream() << "The '" << AggregateCommandRequest::kExplainFieldName
                               << "' option is illegal when a explain verbosity is also provided",
                 !cmdObj.hasField(AggregateCommandRequest::kExplainFieldName));
-        request.setExplain(explainVerbosity);
+        // The explain field on the aggregate request is a boolean with default value boost::none,
+        // so we set it to true if expainVerbosity is defined.
+        request.setExplain(true);
     }
 
     validate(request, cmdObj, request.getNamespace(), explainVerbosity);
@@ -151,16 +148,6 @@ void validate(const AggregateCommandRequest& aggregate,
                           << nss.toStringForErrorMsg(),
             !aggregate.getRequestReshardingResumeToken().value_or(false) || nss.isOplog());
 
-    // We need to use isEnabledUseLastLTSFCVWhenUninitialized here because an aggregate
-    // command with $_requestResumeToken could be sent directly to an initial sync node with
-    // uninitialized FCV, and creating/parsing/validating this command invocation happens before
-    // any check that the node is a primary.
-    uassert(
-        90675,
-        "$_requestResumeToken is not supported without Resharding Improvements",
-        !aggregate.getRequestResumeToken().has_value() ||
-            resharding::gFeatureFlagReshardingImprovements.isEnabledUseLastLTSFCVWhenUninitialized(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
     bool hasRequestResumeToken = aggregate.getRequestResumeToken().value_or(false);
     uassert(ErrorCodes::FailedToParse,
             str::stream() << AggregateCommandRequest::kRequestResumeTokenFieldName
@@ -238,18 +225,20 @@ const mongo::OptionalBool& getFromRouter(const AggregateCommandRequest& request)
     return request.getFromMongos();
 }
 
-void setFromRouter(AggregateCommandRequest& request, mongo::OptionalBool value) {
+void setFromRouter(const VersionContext& vCtx,
+                   AggregateCommandRequest& request,
+                   mongo::OptionalBool value) {
     if (feature_flags::gFeatureFlagAggMongosToRouter.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+            vCtx, serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         request.setFromRouter(value);
     } else {
         request.setFromMongos(value);
     }
 }
 
-void setFromRouter(MutableDocument& doc, mongo::Value value) {
+void setFromRouter(const VersionContext& vCtx, MutableDocument& doc, mongo::Value value) {
     if (feature_flags::gFeatureFlagAggMongosToRouter.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+            vCtx, serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         doc[AggregateCommandRequest::kFromRouterFieldName] = value;
     } else {
         doc[AggregateCommandRequest::kFromMongosFieldName] = value;
@@ -263,26 +252,22 @@ void setFromRouter(MutableDocument& doc, mongo::Value value) {
  * IMPORTANT: The method should not be modified, as API version input/output guarantees could
  * break because of it.
  */
-boost::optional<mongo::ExplainOptions::Verbosity> parseExplainModeFromBSON(
-    const BSONElement& explainElem) {
+boost::optional<bool> parseExplainModeFromBSON(const BSONElement& explainElem) {
     uassert(ErrorCodes::TypeMismatch,
             "explain must be a boolean",
             explainElem.type() == BSONType::Bool);
-
     if (explainElem.Bool()) {
-        return ExplainOptions::Verbosity::kQueryPlanner;
+        return true;
+    } else {
+        return boost::none;
     }
-
-    return boost::none;
 }
 
 /**
  * IMPORTANT: The method should not be modified, as API version input/output guarantees could
  * break because of it.
  */
-void serializeExplainToBSON(const mongo::ExplainOptions::Verbosity& explain,
-                            StringData fieldName,
-                            BSONObjBuilder* builder) {
+void serializeExplainToBSON(const bool& explain, StringData fieldName, BSONObjBuilder* builder) {
     // Note that we do not serialize 'explain' field to the command object. This serializer only
     // serializes an empty cursor object for field 'cursor' when it is an explain command.
     builder->append(AggregateCommandRequest::kCursorFieldName, BSONObj());

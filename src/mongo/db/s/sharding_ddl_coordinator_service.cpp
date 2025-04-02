@@ -45,10 +45,12 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/client/dbclient_cursor.h"
 #include "mongo/db/client.h"
+#include "mongo/db/commands/feature_compatibility_version.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/s/add_shard_coordinator.h"
 #include "mongo/db/s/cleanup_structured_encryption_data_coordinator.h"
+#include "mongo/db/s/clone_authoritative_metadata_coordinator.h"
 #include "mongo/db/s/collmod_coordinator.h"
 #include "mongo/db/s/compact_structured_encryption_data_coordinator.h"
 #include "mongo/db/s/convert_to_capped_coordinator.h"
@@ -68,10 +70,10 @@
 #include "mongo/db/s/set_allow_migrations_coordinator.h"
 #include "mongo/db/s/sharding_ddl_coordinator.h"
 #include "mongo/db/s/untrack_unsplittable_collection_coordinator.h"
+#include "mongo/db/version_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/sharding_cluster_parameters_gen.h"
+#include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/future_impl.h"
@@ -131,6 +133,9 @@ std::shared_ptr<ShardingDDLCoordinator> constructShardingDDLCoordinatorInstance(
             return std::make_shared<RemoveShardCommitCoordinator>(service, std::move(initialState));
         case DDLCoordinatorTypeEnum::kAddShard:
             return std::make_shared<AddShardCoordinator>(service, std::move(initialState));
+        case DDLCoordinatorTypeEnum::kCloneAuthoritativeMetadata:
+            return std::make_shared<CloneAuthoritativeMetadataCoordinator>(service,
+                                                                           std::move(initialState));
         default:
             uasserted(ErrorCodes::BadValue,
                       str::stream()
@@ -154,11 +159,14 @@ ShardingDDLCoordinatorService::constructInstance(BSONObj initialState) {
 
     {
         stdx::lock_guard lg(_mutex);
-        const auto it = _numActiveCoordinatorsPerType.find(coord->operationType());
-        if (it != _numActiveCoordinatorsPerType.end()) {
-            it->second++;
+        const auto coordTypeAndOfcv =
+            std::make_pair(coord->operationType(), coord->getOperationFCV());
+        const auto coordPerTypeAndOfcvIt =
+            _numActiveCoordinatorsPerTypeAndOfcv.find(coordTypeAndOfcv);
+        if (coordPerTypeAndOfcvIt != _numActiveCoordinatorsPerTypeAndOfcv.end()) {
+            coordPerTypeAndOfcvIt->second++;
         } else {
-            _numActiveCoordinatorsPerType.emplace(coord->operationType(), 1);
+            _numActiveCoordinatorsPerTypeAndOfcv.emplace(coordTypeAndOfcv, 1);
         }
     }
 
@@ -181,14 +189,20 @@ ShardingDDLCoordinatorService::constructInstance(BSONObj initialState) {
 
     coord->getCompletionFuture()
         .thenRunOn(**getInstanceExecutor())
-        .getAsync([this, coordinatorType = coord->operationType()](auto status) {
+        .getAsync([this,
+                   coordTypeAndOfcv = std::make_pair(coord->operationType(),
+                                                     coord->getOperationFCV())](auto status) {
             stdx::lock_guard lg(_mutex);
             if (_state == State::kPaused) {
                 return;
             }
-            const auto it = _numActiveCoordinatorsPerType.find(coordinatorType);
-            invariant(it != _numActiveCoordinatorsPerType.end());
-            it->second--;
+            const auto coordPerTypeAndOfcvIt =
+                _numActiveCoordinatorsPerTypeAndOfcv.find(coordTypeAndOfcv);
+            invariant(coordPerTypeAndOfcvIt != _numActiveCoordinatorsPerTypeAndOfcv.end());
+            coordPerTypeAndOfcvIt->second--;
+            if (coordPerTypeAndOfcvIt->second == 0) {
+                _numActiveCoordinatorsPerTypeAndOfcv.erase(coordPerTypeAndOfcvIt);
+            }
             _recoveredOrCoordinatorCompletedCV.notify_all();
         });
 
@@ -200,13 +214,29 @@ ShardingDDLCoordinatorService::createExternalState() const {
     return _externalStateFactory->create();
 }
 
-void ShardingDDLCoordinatorService::waitForCoordinatorsOfGivenTypeToComplete(
-    OperationContext* opCtx, DDLCoordinatorTypeEnum type) const {
+void ShardingDDLCoordinatorService::waitForCoordinatorsOfGivenOfcvToComplete(
+    OperationContext* opCtx, std::function<bool(boost::optional<FCV>)> pred) const {
     stdx::unique_lock lk(_mutex);
-    opCtx->waitForConditionOrInterrupt(_recoveredOrCoordinatorCompletedCV, lk, [this, type]() {
-        const auto it = _numActiveCoordinatorsPerType.find(type);
-        return _state == State::kRecovered &&
-            (it == _numActiveCoordinatorsPerType.end() || it->second == 0);
+    opCtx->waitForConditionOrInterrupt(_recoveredOrCoordinatorCompletedCV, lk, [this, pred]() {
+        const auto numActiveCoords = _countActiveCoordinators(
+            [pred](DDLCoordinatorTypeEnum activeCoordType, boost::optional<FCV> ofcv) {
+                // TODO SERVER-102971: Simplify once resharding gets aborted before draining DDL
+                // coordinators during FCV downgrades.
+                return pred(ofcv) && activeCoordType != DDLCoordinatorTypeEnum::kReshardCollection;
+            });
+        return _state == State::kRecovered && numActiveCoords == 0;
+    });
+}
+
+void ShardingDDLCoordinatorService::waitForCoordinatorsOfGivenTypeToComplete(
+    OperationContext* opCtx, DDLCoordinatorTypeEnum coordType) const {
+    stdx::unique_lock lk(_mutex);
+    opCtx->waitForConditionOrInterrupt(_recoveredOrCoordinatorCompletedCV, lk, [this, coordType]() {
+        const auto numActiveCoords = _countActiveCoordinators(
+            [coordType](DDLCoordinatorTypeEnum activeCoordType, boost::optional<FCV>) {
+                return coordType == activeCoordType;
+            });
+        return _state == State::kRecovered && numActiveCoords == 0;
     });
 }
 
@@ -231,7 +261,7 @@ void ShardingDDLCoordinatorService::_onServiceInitialization() {
     stdx::lock_guard lg(_mutex);
     invariant(_state == State::kPaused);
     invariant(_numCoordinatorsToWait == 0);
-    invariant(_numActiveCoordinatorsPerType.empty());
+    invariant(_numActiveCoordinatorsPerTypeAndOfcv.empty());
     _state = State::kRecovering;
 }
 
@@ -239,8 +269,19 @@ void ShardingDDLCoordinatorService::_onServiceTermination() {
     stdx::lock_guard lg(_mutex);
     _state = State::kPaused;
     _numCoordinatorsToWait = 0;
-    _numActiveCoordinatorsPerType.clear();
+    _numActiveCoordinatorsPerTypeAndOfcv.clear();
     _recoveredOrCoordinatorCompletedCV.notify_all();
+}
+
+size_t ShardingDDLCoordinatorService::_countActiveCoordinators(
+    std::function<bool(DDLCoordinatorTypeEnum, boost::optional<FCV>)> pred) const {
+    size_t cnt = 0;
+    for (const auto& [typeAndOfcvPair, numCoords] : _numActiveCoordinatorsPerTypeAndOfcv) {
+        if (pred(typeAndOfcvPair.first, typeAndOfcvPair.second)) {
+            cnt += numCoords;
+        }
+    }
+    return cnt;
 }
 
 size_t ShardingDDLCoordinatorService::_countCoordinatorDocs(OperationContext* opCtx) {
@@ -265,14 +306,34 @@ size_t ShardingDDLCoordinatorService::_countCoordinatorDocs(OperationContext* op
     return numCoordField.numberLong();
 }
 
-void ShardingDDLCoordinatorService::waitForRecovery(OperationContext* opCtx) const {
-    stdx::unique_lock lk(_mutex);
-    opCtx->waitForConditionOrInterrupt(
-        _recoveredOrCoordinatorCompletedCV, lk, [this]() { return _state != State::kRecovering; });
+void ShardingDDLCoordinatorService::_waitForRecovery(OperationContext* opCtx,
+                                                     std::unique_lock<stdx::mutex>& lock) const {
+    opCtx->waitForConditionOrInterrupt(_recoveredOrCoordinatorCompletedCV, lock, [this]() {
+        return _state != State::kRecovering;
+    });
 
     uassert(ErrorCodes::NotWritablePrimary,
             "Not primary when trying to create a DDL coordinator",
             _state != State::kPaused);
+}
+
+void ShardingDDLCoordinatorService::waitForRecovery(OperationContext* opCtx) const {
+    stdx::unique_lock lk(_mutex);
+    _waitForRecovery(opCtx, lk);
+}
+
+bool ShardingDDLCoordinatorService::areAllCoordinatorsOfTypeFinished(
+    OperationContext* opCtx, DDLCoordinatorTypeEnum coordinatorType) {
+    stdx::unique_lock lk(_mutex);
+
+    _waitForRecovery(opCtx, lk);
+
+    const auto numActiveCoords = _countActiveCoordinators(
+        [coordinatorType](DDLCoordinatorTypeEnum activeCoordType, boost::optional<FCV>) {
+            return coordinatorType == activeCoordType;
+        });
+
+    return numActiveCoords == 0;
 }
 
 ExecutorFuture<void> ShardingDDLCoordinatorService::_rebuildService(
@@ -293,8 +354,8 @@ ExecutorFuture<void> ShardingDDLCoordinatorService::_rebuildService(
             {
                 stdx::lock_guard lg(_mutex);
                 // Since this is an asyncronous task,
-                // It could happen that it gets executed after the node stepped down and changed the
-                // state to kPaused.
+                // It could happen that it gets executed after the node stepped down and changed
+                // the state to kPaused.
                 invariant(_state == State::kRecovering || _state == State::kPaused);
                 invariant(_numCoordinatorsToWait == 0);
                 if (_state == State::kRecovering) {
@@ -318,7 +379,6 @@ std::shared_ptr<ShardingDDLCoordinatorService::Instance>
 ShardingDDLCoordinatorService::getOrCreateInstance(OperationContext* opCtx,
                                                    BSONObj coorDoc,
                                                    bool checkOptions) {
-
     // Wait for all coordinators to be recovered before to allow the creation of new ones.
     waitForRecovery(opCtx);
 
@@ -333,15 +393,23 @@ ShardingDDLCoordinatorService::getOrCreateInstance(OperationContext* opCtx,
                 "Request sent without attaching database version",
                 clientDbVersion);
         {
-            Lock::DBLock dbLock(opCtx, nss.dbName(), MODE_IS);
-            const auto scopedDss =
-                DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, nss.dbName());
+            const auto scopedDss = DatabaseShardingState::acquireShared(opCtx, nss.dbName());
             scopedDss->assertIsPrimaryShardForDb(opCtx);
         }
         coorMetadata.setDatabaseVersion(clientDbVersion);
     }
 
-    coorMetadata.setForwardableOpMetadata(boost::optional<ForwardableOperationMetadata>(opCtx));
+    FixedFCVRegion fixedFcvRegion(opCtx);
+    const auto fcv = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+    ForwardableOperationMetadata forwardableOpMetadata(opCtx);
+    // We currently only propagate the Operation FCV for DDL operations.
+    // Moreover, DDL operations cannot be nested. Therefore, the VersionContext
+    // shouldn't have been initialized yet.
+    invariant(!VersionContext::getDecoration(opCtx).isInitialized());
+    if (feature_flags::gSnapshotFCVInDDLCoordinators.isEnabled(kVersionContextIgnored, fcv)) {
+        forwardableOpMetadata.setVersionContext(VersionContext{fcv});
+    }
+    coorMetadata.setForwardableOpMetadata(forwardableOpMetadata);
     const auto patchedCoorDoc = coorDoc.addFields(coorMetadata.toBSON());
 
     auto [coordinator, created] = [&] {
@@ -387,16 +455,22 @@ void ShardingDDLCoordinatorService::checkIfConflictsWithOtherInstances(
     OperationContext* opCtx,
     BSONObj initialState,
     const std::vector<const PrimaryOnlyService::Instance*>& existingInstances) {
-    auto* addOrRemoveShardInProgressParam =
-        ServerParameterSet::getClusterParameterSet()
-            ->get<ClusterParameterWithStorage<AddOrRemoveShardInProgressParam>>(
-                "addOrRemoveShardInProgress");
-    const auto addOrRemoveShardInProgressVal =
-        addOrRemoveShardInProgressParam->getValue(boost::none).getInProgress();
+    auto coorMetadata = extractShardingDDLCoordinatorMetadata(initialState);
+    const auto& opType = coorMetadata.getId().getOperationType();
+    if (opType != DDLCoordinatorTypeEnum::kRemoveShardCommit &&
+        opType != DDLCoordinatorTypeEnum::kAddShard) {
 
-    uassert(ErrorCodes::AddOrRemoveShardInProgress,
-            "Cannot start ShardingDDLCoordinator because a topology change is in progress",
-            !addOrRemoveShardInProgressVal);
+        auto* addOrRemoveShardInProgressParam =
+            ServerParameterSet::getClusterParameterSet()
+                ->get<ClusterParameterWithStorage<AddOrRemoveShardInProgressParam>>(
+                    "addOrRemoveShardInProgress");
+        const auto addOrRemoveShardInProgressVal =
+            addOrRemoveShardInProgressParam->getValue(boost::none).getInProgress();
+
+        uassert(ErrorCodes::AddOrRemoveShardInProgress,
+                "Cannot start ShardingDDLCoordinator because a topology change is in progress",
+                !addOrRemoveShardInProgressVal);
+    }
 }
 
 }  // namespace mongo

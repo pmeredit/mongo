@@ -30,7 +30,6 @@
 #pragma once
 
 #include <algorithm>
-#include <concepts>
 #include <cstdint>
 #include <limits>
 #include <type_traits>
@@ -131,6 +130,12 @@ public:
             .append("max", bsonValue(max))
             .append("min", bsonValue(min))
             .append("sumOfSquares", bsonValue(sumOfSquares));
+    }
+
+    void appendToIfNonNegative(BSONObjBuilder& builder, StringData fieldName) const {
+        if (sum >= 0) {
+            appendTo(builder, fieldName);
+        }
     }
 
 private:

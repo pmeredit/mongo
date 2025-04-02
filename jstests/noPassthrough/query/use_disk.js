@@ -1,5 +1,6 @@
 // @tags: [
 //   does_not_support_stepdowns,
+//   requires_persistence,
 //   requires_profiling,
 //   requires_sharding,
 // ]
@@ -59,8 +60,8 @@ assert.eq(profileObj.usedDisk, true, tojson(profileObj));
 assert.eq(profileObj.hasSortStage, true, tojson(profileObj));
 
 //
-// Confirm that disk use is correctly detected for the $sort stage and the
-// sorter spilling metrics--'sortSpills', 'sortSpillBytes', 'sortTotalDataSizeBytes'--are outputted.
+// Confirm that disk use is correctly detected for the $sort stage and the sorter spilling metrics
+// are outputted.
 //
 resetCollection();
 
@@ -70,7 +71,9 @@ profileObj = getLatestProfilerEntry(testDB);
 assert.eq(profileObj.command.comment, "sort_spill", tojson(profileObj));
 assert.eq(profileObj.usedDisk, true, tojson(profileObj));
 assert.gt(profileObj.sortSpills, 0, tojson(profileObj));
-assert.gt(profileObj.sortSpillBytes, 0, tojson(profileObj));
+assert.gt(profileObj.sortSpilledBytes, 0, tojson(profileObj));
+assert.gt(profileObj.sortSpilledRecords, 0, tojson(profileObj));
+assert.gt(profileObj.sortSpilledDataStorageSize, 0, tojson(profileObj));
 assert.gt(profileObj.sortTotalDataSizeBytes, 0, tojson(profileObj));
 
 //
@@ -97,6 +100,44 @@ resetCollection();
 coll.aggregate([{$group: {"_id": {$avg: "$a"}}}], {allowDiskUse: true});
 profileObj = getLatestProfilerEntry(testDB);
 assert.eq(profileObj.usedDisk, true, tojson(profileObj));
+assert.gt(profileObj.groupSpills, 0, tojson(profileObj));
+assert.gt(profileObj.groupSpilledBytes, 0, tojson(profileObj));
+assert.gt(profileObj.groupSpilledRecords, 0, tojson(profileObj));
+assert.gt(profileObj.groupSpilledDataStorageSize, 0, tojson(profileObj));
+
+//
+// Confirm that usedDisk is correctly detected for the TEXT_OR stage.
+//
+coll.drop();
+assert.commandWorked(
+    coll.insertMany([{a: "green tea", b: 5}, {a: "black tea", b: 6}, {a: "black coffee", b: 7}]));
+assert.commandWorked(coll.createIndex({a: "text"}));
+assert.commandWorked(testDB.adminCommand({setParameter: 1, internalTextOrStageMaxMemoryBytes: 1}));
+
+coll.aggregate(
+    [{$match: {$text: {$search: "black tea"}}}, {$addFields: {score: {$meta: "textScore"}}}],
+    {allowDiskUse: true});
+profileObj = getLatestProfilerEntry(testDB);
+assert.eq(profileObj.usedDisk, true, tojson(profileObj));
+assert.gt(profileObj.textOrSpills, 0, tojson(profileObj));
+assert.gt(profileObj.textOrSpilledBytes, 0, tojson(profileObj));
+assert.gt(profileObj.textOrSpilledRecords, 0, tojson(profileObj));
+assert.gt(profileObj.textOrSpilledDataStorageSize, 0, tojson(profileObj));
+
+coll.aggregate([{$match: {$text: {$search: "black tea"}}}, {$sort: {_: {$meta: "textScore"}}}],
+               {allowDiskUse: true});
+profileObj = getLatestProfilerEntry(testDB);
+assert.eq(profileObj.usedDisk, true, tojson(profileObj));
+assert.gt(profileObj.textOrSpills, 0, tojson(profileObj));
+assert.gt(profileObj.textOrSpilledBytes, 0, tojson(profileObj));
+assert.gt(profileObj.textOrSpilledRecords, 0, tojson(profileObj));
+assert.gt(profileObj.textOrSpilledDataStorageSize, 0, tojson(profileObj));
+assert.gt(profileObj.sortSpills, 0, tojson(profileObj));
+assert.gt(profileObj.sortSpilledBytes, 0, tojson(profileObj));
+assert.gt(profileObj.sortSpilledRecords, 0, tojson(profileObj));
+assert.gt(profileObj.sortSpilledDataStorageSize, 0, tojson(profileObj));
+
+// TODO SERVER-99887 - add $setWindowFields test
 
 //
 // Confirm that usedDisk is correctly detected for the $lookup stage with a subsequent $unwind.

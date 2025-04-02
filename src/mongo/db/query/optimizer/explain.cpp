@@ -30,34 +30,23 @@
 #include "mongo/db/query/optimizer/explain.h"
 
 #include <absl/container/node_hash_map.h>
-#include <absl/container/node_hash_set.h>
-#include <boost/core/demangle.hpp>
 #include <boost/move/utility_core.hpp>
 #include <boost/none.hpp>
-#include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
 #include <cstddef>
 #include <cstdint>
 // IWYU pragma: no_include "ext/alloc_traits.h"
 #include <algorithm>
-#include <compare>
 #include <functional>
 #include <iterator>
 #include <map>
-#include <memory>
-#include <ostream>
-#include <set>
 #include <sstream>
 #include <tuple>
-#include <type_traits>
 #include <vector>
 
 #include "mongo/base/string_data.h"
-#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/sbe/makeobj_spec.h"
-#include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/query/optimizer/algebra/operator.h"
-#include "mongo/db/query/optimizer/algebra/polyvalue.h"
 #include "mongo/db/query/optimizer/comparison_op.h"
 #include "mongo/db/query/optimizer/containers.h"
 #include "mongo/db/query/optimizer/defs.h"
@@ -118,11 +107,6 @@ public:
           _childrenRemaining(0),
           _inlineNextChild(false),
           _cmdInsertPos(-1) {}
-
-    ~ExplainPrinterImpl() {
-        uassert(6624003, "Unmatched indentations", _indentCount == 0);
-        uassert(6624004, "Incorrect child count mark", _childrenRemaining == 0);
-    }
 
     ExplainPrinterImpl(const ExplainPrinterImpl& other) = delete;
     ExplainPrinterImpl& operator=(const ExplainPrinterImpl& other) = delete;
@@ -445,6 +429,16 @@ public:
                 auto [mosTag, mosVal] =
                     sbe::value::makeNewString(sbe::value::getMakeObjSpecView(v.second)->toString());
                 addValue(mosTag, mosVal);
+            } else if (v.first == sbe::value::TypeTags::pcreRegex) {
+                // We want to append the pattern of the regular expression to explain here.
+                auto [regexTag, regexVal] =
+                    sbe::value::makeNewString(sbe::value::getPcreRegexView(v.second)->pattern());
+                addValue(regexTag, regexVal);
+            } else if (v.first == sbe::value::TypeTags::timeZone) {
+                // We want to append the name of the timezone expression to explain here.
+                auto [tzTag, tzVal] =
+                    sbe::value::makeNewString(sbe::value::getTimeZoneView(v.second)->toString());
+                addValue(tzTag, tzVal);
             } else {
                 // Extended types need to implement their own explain, since we can't directly
                 // convert them to bson.
@@ -862,6 +856,23 @@ public:
         return printer;
     }
 
+    ExplainPrinter transport(const ABT::reference_type /*n*/,
+                             const NaryOp& expr,
+                             std::vector<ExplainPrinter> argResults) {
+        ExplainPrinter printer("NaryOp");
+        printer.separator(" [")
+            .fieldName("op", ExplainVersion::V3)
+            .print(toStringData(expr.op()))
+            .separator("]")
+            .setChildCount(argResults.size())
+            .maybeReverse();
+        for (size_t i = 0; i < argResults.size(); i++) {
+            std::stringstream ss;
+            ss << "arg" << i;
+            printer.fieldName(ss.str(), ExplainVersion::V3).print(argResults[i]);
+        }
+        return printer;
+    }
 
     ExplainPrinter transport(const ABT::reference_type /*n*/,
                              const If& expr,
@@ -882,6 +893,25 @@ public:
     }
 
     ExplainPrinter transport(const ABT::reference_type /*n*/,
+                             const Switch& expr,
+                             std::vector<ExplainPrinter> argResults) {
+        ExplainPrinter printer("Switch");
+        printer.separator(" []").setChildCount(argResults.size()).maybeReverse();
+        for (size_t i = 0; i < expr.getNumBranches(); i++) {
+            std::stringstream ssCond;
+            ssCond << "condition" << i;
+            std::stringstream ssThen;
+            ssThen << "then" << i;
+            printer.fieldName(ssCond.str(), ExplainVersion::V3)
+                .print(argResults[i * 2])
+                .fieldName(ssThen.str(), ExplainVersion::V3)
+                .print(argResults[i * 2 + 1]);
+        }
+        printer.fieldName("else", ExplainVersion::V3).print(argResults.back());
+        return printer;
+    }
+
+    ExplainPrinter transport(const ABT::reference_type /*n*/,
                              const Let& expr,
                              ExplainPrinter bindResult,
                              ExplainPrinter exprResult) {
@@ -896,6 +926,34 @@ public:
             .print(bindResult)
             .fieldName("expression", ExplainVersion::V3)
             .print(exprResult);
+        return printer;
+    }
+
+    ExplainPrinter transport(const ABT::reference_type /*n*/,
+                             const MultiLet& expr,
+                             std::vector<ExplainPrinter> results) {
+        auto numBinds = expr.numBinds();
+
+        ExplainPrinter printer("MultiLet");
+        printer.separator(" [");
+        for (size_t idx = 0; idx < numBinds; ++idx) {
+            std::stringstream ss;
+            ss << "variable" << idx;
+            printer.fieldName(ss.str(), ExplainVersion::V3).print(expr.varName(idx));
+            if (idx < numBinds - 1) {
+                printer.separator(", ");
+            }
+        }
+        printer.separator("]").setChildCount(numBinds + 1).maybeReverse();
+
+        for (size_t idx = 0; idx < numBinds; ++idx) {
+            std::stringstream ss;
+            ss << "bind" << idx;
+            printer.fieldName(ss.str(), ExplainVersion::V3).print(results[idx]);
+        }
+
+        printer.fieldName("expression", ExplainVersion::V3).print(results.back());
+
         return printer;
     }
 

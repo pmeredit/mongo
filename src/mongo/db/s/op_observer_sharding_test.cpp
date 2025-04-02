@@ -80,9 +80,7 @@
 #include "mongo/s/shard_version.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
@@ -112,10 +110,12 @@ protected:
         bool justCreated = false;
         auto databaseHolder = DatabaseHolder::get(operationContext());
         auto db = databaseHolder->openDb(operationContext(), kTestNss.dbName(), &justCreated);
-        auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(
-            operationContext(), kTestNss.dbName());
-        scopedDss->setDbInfo(operationContext(),
-                             DatabaseType{kTestNss.dbName(), ShardId("this"), dbVersion1});
+        {
+            auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(
+                operationContext(), kTestNss.dbName());
+            scopedDss->setDbInfo(operationContext(),
+                                 DatabaseType{kTestNss.dbName(), ShardId("this"), dbVersion1});
+        }
         ASSERT_TRUE(db);
         ASSERT_TRUE(justCreated);
 
@@ -152,11 +152,9 @@ protected:
                                                true,
                                                {std::move(chunk)});
 
-        return CollectionMetadata(ChunkManager(ShardId("this"),
-                                               DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                                               makeStandaloneRoutingTableHistory(std::move(rt)),
-                                               Timestamp(100, 0)),
-                                  ShardId("this"));
+        return CollectionMetadata(
+            ChunkManager(makeStandaloneRoutingTableHistory(std::move(rt)), Timestamp(100, 0)),
+            ShardId("this"));
     }
 
     const DatabaseVersion dbVersion0 = DatabaseVersion{UUID::gen(), Timestamp(1, 0)};
@@ -164,7 +162,7 @@ protected:
 };
 
 TEST_F(DocumentKeyStateTest, MakeDocumentKeyStateUnsharded) {
-    const auto metadata{CollectionMetadata()};
+    const auto metadata{CollectionMetadata::UNTRACKED()};
     setCollectionFilteringMetadata(operationContext(), metadata);
 
     ScopedSetShardRole scopedSetShardRole{
@@ -175,16 +173,13 @@ TEST_F(DocumentKeyStateTest, MakeDocumentKeyStateUnsharded) {
         boost::none /* databaseVersion */};
     AutoGetCollection autoColl(operationContext(), kTestNss, MODE_IX);
 
-    auto doc = BSON("key3"
-                    << "abc"
-                    << "key" << 3 << "_id"
-                    << "hello"
-                    << "key2" << true);
+    auto doc = BSON("key3" << "abc"
+                           << "key" << 3 << "_id"
+                           << "hello"
+                           << "key2" << true);
 
     // Check that an order for deletion from an unsharded collection extracts just the "_id" field
-    ASSERT_BSONOBJ_EQ(getDocumentKey(*autoColl, doc).getShardKeyAndId(),
-                      BSON("_id"
-                           << "hello"));
+    ASSERT_BSONOBJ_EQ(getDocumentKey(*autoColl, doc).getShardKeyAndId(), BSON("_id" << "hello"));
 }
 
 TEST_F(DocumentKeyStateTest, MakeDocumentKeyStateShardedWithoutIdInShardKey) {
@@ -201,11 +196,10 @@ TEST_F(DocumentKeyStateTest, MakeDocumentKeyStateShardedWithoutIdInShardKey) {
     AutoGetCollection autoColl(operationContext(), kTestNss, MODE_IX);
 
     // The order of fields in `doc` deliberately does not match the shard key
-    auto doc = BSON("key3"
-                    << "abc"
-                    << "key" << 100 << "_id"
-                    << "hello"
-                    << "key2" << true);
+    auto doc = BSON("key3" << "abc"
+                           << "key" << 100 << "_id"
+                           << "hello"
+                           << "key2" << true);
 
     // Verify the shard key is extracted, in correct order, followed by the "_id" field.
     ASSERT_BSONOBJ_EQ(getDocumentKey(*autoColl, doc).getShardKeyAndId(),
@@ -244,8 +238,7 @@ TEST_F(DocumentKeyStateTest, MakeDocumentKeyStateShardedWithIdInShardKey) {
 
 TEST_F(DocumentKeyStateTest, MakeDocumentKeyStateShardedWithIdHashInShardKey) {
     // Push a CollectionMetadata with a shard key "_id", hashed.
-    const auto metadata{makeAMetadata(BSON("_id"
-                                           << "hashed"))};
+    const auto metadata{makeAMetadata(BSON("_id" << "hashed"))};
     setCollectionFilteringMetadata(operationContext(), metadata);
 
     ScopedSetShardRole scopedSetShardRole{
@@ -261,9 +254,7 @@ TEST_F(DocumentKeyStateTest, MakeDocumentKeyStateShardedWithIdHashInShardKey) {
                            << "key" << 100);
 
     // Verify the shard key is extracted with "_id" in the right place, not hashed.
-    ASSERT_BSONOBJ_EQ(getDocumentKey(*autoColl, doc).getShardKeyAndId(),
-                      BSON("_id"
-                           << "hello"));
+    ASSERT_BSONOBJ_EQ(getDocumentKey(*autoColl, doc).getShardKeyAndId(), BSON("_id" << "hello"));
 }
 
 TEST_F(DocumentKeyStateTest, CheckDBVersion) {
@@ -290,8 +281,7 @@ TEST_F(DocumentKeyStateTest, CheckDBVersion) {
     updateArgs.stmtIds = {kUninitializedStmtId};
     updateArgs.updatedDoc = BSON("_id" << 1 << "data"
                                        << "y");
-    updateArgs.update = BSON("$set" << BSON("data"
-                                            << "y"));
+    updateArgs.update = BSON("$set" << BSON("data" << "y"));
     OplogUpdateEntryArgs update(&updateArgs, *autoColl);
 
     // OpObserver calls

@@ -71,8 +71,10 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_manager_factory.h"
 #include "mongo/db/auth/user_cache_invalidator_job.h"
+#include "mongo/db/catalog/catalog_helper.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/catalog/collection_catalog.h"
+#include "mongo/db/catalog/collection_catalog_helper.h"
 #include "mongo/db/catalog/collection_impl.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/catalog/database.h"
@@ -133,13 +135,14 @@
 #include "mongo/db/op_observer/operation_logger_transaction_proxy.h"
 #include "mongo/db/op_observer/user_write_block_mode_op_observer.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/periodic_runner_cache_pressure_rollback.h"
 #include "mongo/db/periodic_runner_job_abort_expired_transactions.h"
 #include "mongo/db/pipeline/process_interface/replica_set_node_process_interface.h"
 #include "mongo/db/profile_filter_impl.h"
 #include "mongo/db/query/client_cursor/clientcursor.h"
 #include "mongo/db/query/query_knobs_gen.h"
-#include "mongo/db/query/query_settings/query_settings_manager.h"
-#include "mongo/db/query/query_settings/query_settings_utils.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
+#include "mongo/db/query/search/mongot_options.h"
 #include "mongo/db/query/search/search_task_executors.h"
 #include "mongo/db/query/stats/stats_cache_loader_impl.h"
 #include "mongo/db/query/stats/stats_catalog.h"
@@ -188,6 +191,7 @@
 #include "mongo/db/s/sharding_initialization_mongod.h"
 #include "mongo/db/s/sharding_ready.h"
 #include "mongo/db/s/transaction_coordinator_service.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/server_lifecycle_monitor.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
@@ -209,9 +213,7 @@
 #include "mongo/db/storage/flow_control.h"
 #include "mongo/db/storage/flow_control_parameters_gen.h"
 #include "mongo/db/storage/oplog_cap_maintainer_thread.h"
-#include "mongo/db/storage/recovery_unit_noop.h"
 #include "mongo/db/storage/storage_engine.h"
-#include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_engine_lock_file.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/storage_parameters_gen.h"
@@ -220,6 +222,7 @@
 #include "mongo/db/timeseries/timeseries_op_observer.h"
 #include "mongo/db/transaction/session_catalog_mongod_transaction_interface_impl.h"
 #include "mongo/db/transaction/transaction_participant.h"
+#include "mongo/db/transaction/transaction_participant_gen.h"
 #include "mongo/db/ttl/ttl.h"
 #include "mongo/db/vector_clock_metadata_hook.h"
 #include "mongo/db/wire_version.h"
@@ -231,11 +234,6 @@
 #include "mongo/idl/cluster_server_parameter_initializer.h"
 #include "mongo/idl/cluster_server_parameter_op_observer.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
-#include "mongo/logv2/log_tag.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/process_id.h"
@@ -297,7 +295,6 @@
 #include "mongo/watchdog/watchdog_mongod.h"
 
 #ifdef MONGO_CONFIG_GRPC
-#include "mongo/db/query/search/mongot_options.h"
 #include "mongo/transport/grpc/grpc_feature_flag_gen.h"
 #endif
 
@@ -322,7 +319,6 @@ const ntservice::NtServiceDefaultStrings defaultServiceStrings = {
 
 auto makeTransportLayer(ServiceContext* svcCtx) {
     boost::optional<int> routerPort;
-    boost::optional<int> loadBalancerPort;
     boost::optional<int> proxyPort;
 
     if (serverGlobalParams.routerPort) {
@@ -336,20 +332,23 @@ auto makeTransportLayer(ServiceContext* svcCtx) {
         // TODO SERVER-78730: add support for load-balanced connections.
     }
 
-    if (serverGlobalParams.proxyPort) {
-        proxyPort = *serverGlobalParams.proxyPort;
-        if (*proxyPort == serverGlobalParams.port) {
-            LOGV2_ERROR(9967800,
-                        "The proxy port must be different from the public listening port.",
-                        "port"_attr = serverGlobalParams.port);
-            quickExit(ExitCode::badOptions);
-        }
+    // (Ignore FCV check): The proxy port needs to be open before the FCV is set.
+    if (gFeatureFlagMongodProxyProtocolSupport.isEnabledAndIgnoreFCVUnsafe()) {
+        if (serverGlobalParams.proxyPort) {
+            proxyPort = *serverGlobalParams.proxyPort;
+            if (*proxyPort == serverGlobalParams.port) {
+                LOGV2_ERROR(9967800,
+                            "The proxy port must be different from the public listening port.",
+                            "port"_attr = serverGlobalParams.port);
+                quickExit(ExitCode::badOptions);
+            }
 
-        if (routerPort && *proxyPort == *routerPort) {
-            LOGV2_ERROR(9967801,
-                        "The proxy port must be different from the public router port.",
-                        "port"_attr = *routerPort);
-            quickExit(ExitCode::badOptions);
+            if (routerPort && *proxyPort == *routerPort) {
+                LOGV2_ERROR(9967801,
+                            "The proxy port must be different from the public router port.",
+                            "port"_attr = *routerPort);
+                quickExit(ExitCode::badOptions);
+            }
         }
     }
 
@@ -359,21 +358,22 @@ auto makeTransportLayer(ServiceContext* svcCtx) {
     }
 
     bool useEgressGRPC = false;
-#ifdef MONGO_CONFIG_GRPC
     if (globalMongotParams.useGRPC) {
+#ifdef MONGO_CONFIG_GRPC
         uassert(9715900,
                 "Egress GRPC for search is not enabled",
-                feature_flags::gEgressGrpcForSearch.isEnabledUseLatestFCVWhenUninitialized(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+                feature_flags::gEgressGrpcForSearch.isEnabled());
         useEgressGRPC = true;
-    }
+#else
+        LOGV2_ERROR(
+            10049101,
+            "useGRPCForSearch is only supported on Linux platforms built with TLS support.");
+        quickExit(ExitCode::badOptions);
 #endif
+    }
 
-    return transport::TransportLayerManagerImpl::createWithConfig(&serverGlobalParams,
-                                                                  svcCtx,
-                                                                  useEgressGRPC,
-                                                                  std::move(loadBalancerPort),
-                                                                  std::move(routerPort));
+    return transport::TransportLayerManagerImpl::createWithConfig(
+        &serverGlobalParams, svcCtx, useEgressGRPC, std::move(proxyPort), std::move(routerPort));
 }
 
 ExitCode initializeTransportLayer(ServiceContext* serviceContext, BSONObjBuilder* timerReport) {
@@ -632,22 +632,9 @@ ExitCode _initAndListen(ServiceContext* serviceContext) {
 
     admission::initializeExecutionControl(serviceContext);
 
-    // Creating the operation context before initializing the storage engine allows the storage
-    // engine initialization to make use of the lock manager. As the storage engine is not yet
-    // initialized, a noop recovery unit is used until the initialization is complete.
-    auto lastShutdownState = [&] {
-        auto initializeStorageEngineOpCtx = serviceContext->makeOperationContext(&cc());
-        shard_role_details::setRecoveryUnit(initializeStorageEngineOpCtx.get(),
-                                            std::make_unique<RecoveryUnitNoop>(),
-                                            WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
-
-        auto lastShutdownState = initializeStorageEngine(initializeStorageEngineOpCtx.get(),
-                                                         StorageEngineInitFlags{},
-                                                         &startupTimeElapsedBuilder);
-
-        StorageControl::startStorageControls(serviceContext);
-        return lastShutdownState;
-    }();
+    auto lastShutdownState = catalog::startUpStorageEngineAndCollectionCatalog(
+        serviceContext, &cc(), StorageEngineInitFlags{}, &startupTimeElapsedBuilder);
+    StorageControl::startStorageControls(serviceContext);
 
     ScopeGuard logStartupStats([serviceContext,
                                 beginInitAndListen,
@@ -1048,7 +1035,8 @@ ExitCode _initAndListen(ServiceContext* serviceContext) {
             serverGlobalParams.validateFeaturesAsPrimary.store(false);
         }
 
-        storageEngine->startTimestampMonitor();
+        storageEngine->startTimestampMonitor(
+            {&catalog_helper::kCollectionCatalogCleanupTimestampListener});
 
         startFLECrud(serviceContext);
 
@@ -1081,6 +1069,9 @@ ExitCode _initAndListen(ServiceContext* serviceContext) {
     if (storageEngine->supportsReadConcernSnapshot()) {
         try {
             PeriodicThreadToAbortExpiredTransactions::get(serviceContext)->start();
+            if (gCachePressureQueryPeriodMilliseconds.load() != 0) {
+                PeriodicThreadToRollbackUnderCachePressure::get(serviceContext)->start();
+            }
         } catch (ExceptionFor<ErrorCodes::PeriodicJobIsStopped>&) {
             LOGV2_WARNING(4747501, "Not starting periodic jobs as shutdown is in progress");
             // Shutdown has already started before initialization is complete. Wait for the
@@ -1551,7 +1542,7 @@ ServiceContext::ConstructorActionRegisterer registerWireSpec{
 
         WireSpec::getWireSpec(service).initialize(std::move(spec));
     }};
-}
+}  // namespace
 
 #ifdef MONGO_CONFIG_SSL
 MONGO_INITIALIZER_GENERAL(setSSLManagerType, (), ("SSLManager"))
@@ -1773,6 +1764,13 @@ void shutdownTask(const ShutdownTaskArgs& shutdownArgs) {
         globalConnPool.shutdown();
     }
 
+    {
+        TimeElapsedBuilderScopedTimer scopedTimer(serviceContext->getFastClockSource(),
+                                                  "Shutting down the search task executors",
+                                                  &shutdownTimeElapsedBuilder);
+        executor::shutdownSearchExecutorsIfNeeded(serviceContext);
+    }
+
     // Inform Flow Control to stop gating writes on ticket admission. This must be done before the
     // Periodic Runner is shut down (see SERVER-41751).
     if (auto flowControlTicketholder = FlowControlTicketholder::get(serviceContext)) {
@@ -1795,14 +1793,23 @@ void shutdownTask(const ShutdownTaskArgs& shutdownArgs) {
 
     if (auto storageEngine = serviceContext->getStorageEngine()) {
         if (storageEngine->supportsReadConcernSnapshot()) {
-            TimeElapsedBuilderScopedTimer scopedTimer(
-                serviceContext->getFastClockSource(),
-                "Shut down the thread that aborts expired transactions",
-                &shutdownTimeElapsedBuilder);
-            LOGV2(4784908, "Shutting down the PeriodicThreadToAbortExpiredTransactions");
-            PeriodicThreadToAbortExpiredTransactions::get(serviceContext)->stop();
+            {
+                TimeElapsedBuilderScopedTimer scopedTimer(
+                    serviceContext->getFastClockSource(),
+                    "Shut down the thread that aborts expired transactions",
+                    &shutdownTimeElapsedBuilder);
+                LOGV2(4784908, "Shutting down PeriodicThreadToAbortExpiredTransactions");
+                PeriodicThreadToAbortExpiredTransactions::get(serviceContext)->stop();
+            }
+            {
+                TimeElapsedBuilderScopedTimer scopedTimer(
+                    serviceContext->getFastClockSource(),
+                    "Shut down the thread the thread to rollback under cache pressure",
+                    &shutdownTimeElapsedBuilder);
+                LOGV2(10036707, "Shutting down PeriodicThreadToRollbackUnderCachePressure");
+                PeriodicThreadToRollbackUnderCachePressure::get(serviceContext)->stop();
+            }
         }
-
         {
             stdx::lock_guard lg(*client);
             opCtx->setIsExecutingShutdown();
@@ -1956,10 +1963,8 @@ void shutdownTask(const ShutdownTaskArgs& shutdownArgs) {
     LOGV2_OPTIONS(9439300, {LogComponent::kSharding}, "Shutting down the filtering metadata cache");
     FilteringMetadataCache::get(opCtx)->shutDown();
 
-    // (Ignore FCV check): this feature flag is not FCV-gated.
     if (auto configServerRoutingInfoCache = RoutingInformationCache::get(serviceContext);
-        configServerRoutingInfoCache != nullptr &&
-        !feature_flags::gDualCatalogCache.isEnabledAndIgnoreFCVUnsafe()) {
+        configServerRoutingInfoCache != nullptr && !feature_flags::gDualCatalogCache.isEnabled()) {
         LOGV2_OPTIONS(
             8778000, {LogComponent::kSharding}, "Shutting down the RoutingInformationCache");
         configServerRoutingInfoCache->shutDownAndJoin();
@@ -2019,7 +2024,7 @@ void shutdownTask(const ShutdownTaskArgs& shutdownArgs) {
                                                   "Shut down the storage engine",
                                                   &shutdownTimeElapsedBuilder);
         LOGV2(4784930, "Shutting down the storage engine");
-        shutdownGlobalStorageEngineCleanly(serviceContext);
+        catalog::shutDownCollectionCatalogAndGlobalStorageEngineCleanly(serviceContext);
     }
 
     // We drop the scope cache because leak sanitizer can't see across the
@@ -2163,8 +2168,7 @@ int mongod_main(int argc, char* argv[]) {
         ChangeStreamChangeCollectionManager::create(service);
     }
 
-    query_settings::QuerySettingsManager::create(
-        service, {}, query_settings::utils::sanitizeQuerySettingsHints);
+    query_settings::initializeForShard(service);
 
 #if defined(_WIN32)
     if (ntservice::shouldStartService()) {

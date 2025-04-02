@@ -191,20 +191,10 @@ function testCommandAfterDropRecreateDatabase(testCase, st) {
     assertMatchingDatabaseVersion(primaryShardBefore, dbName, dbVersionBefore);
     assertMatchingDatabaseVersion(primaryShardAfter, dbName, {});
 
-    // Drop and recreate the database through the second mongos. Insert the entry for the new
-    // database explicitly to ensure it is assigned the other shard as the primary shard.
+    // Drop and recreate the database through the second mongos.
     assert.commandWorked(st.s1.getDB(dbName).dropDatabase());
-    let currDbVersion = {
-        uuid: UUID(),
-        timestamp: Timestamp(dbVersionBefore.timestamp.getTime() + 1, 0),
-        lastMod: NumberInt(1)
-    };
-    assert.commandWorked(st.s1.getDB("config").getCollection("databases").insert({
-        _id: dbName,
-        partitioned: false,
-        primary: primaryShardAfter.shardName,
-        version: currDbVersion
-    }));
+    assert.commandWorked(
+        st.s1.adminCommand({enableSharding: dbName, primaryShard: primaryShardAfter.shardName}));
 
     const dbVersionAfter =
         st.s1.getDB("config").getCollection("databases").findOne({_id: dbName}).version;
@@ -221,7 +211,6 @@ function testCommandAfterDropRecreateDatabase(testCase, st) {
     // have cleared its dbVersion.
     assertMatchingDatabaseVersion(st.s0, dbName, dbVersionBefore);
     assertMatchingDatabaseVersion(primaryShardBefore, dbName, {});
-    assertMatchingDatabaseVersion(primaryShardAfter, dbName, {});
 
     // Run the test case's command.
     const res = st.s0.getDB(testCase.runsAgainstAdminDb ? "admin" : dbName).runCommand(command);
@@ -249,7 +238,6 @@ function testCommandAfterDropRecreateDatabase(testCase, st) {
         // 2. The old primary shard should have returned an ok response
         assertMatchingDatabaseVersion(st.s0, dbName, dbVersionBefore);
         assertMatchingDatabaseVersion(primaryShardBefore, dbName, {});
-        assertMatchingDatabaseVersion(primaryShardAfter, dbName, {});
     }
 
     // Clean up.
@@ -693,6 +681,7 @@ let testCases = {
     refineCollectionShardKey: {skip: "not on a user database"},
     refreshLogicalSessionCacheNow: {skip: "goes through the cluster write path"},
     refreshSessions: {skip: "executes locally on mongos (not sent to any remote node)"},
+    releaseMemory: {skip: "requires a previously established cursor"},
     removeShard: {skip: "not on a user database"},
     removeShardFromZone: {skip: "not on a user database"},
     renameCollection: {
@@ -712,6 +701,7 @@ let testCases = {
         }
     },
     repairShardedCollectionChunksHistory: {skip: "always targets the config server"},
+    replicateSearchIndexCommand: {skip: "internal command for testing only"},
     replSetGetStatus: {skip: "not supported in mongos"},
     resetPlacementHistory: {skip: "always targets the config server"},
     reshardCollection: {skip: "does not forward command to primary shard"},
@@ -826,6 +816,16 @@ const st = new ShardingTest({shards: 2, mongos: 2});
 const isTrackUnshardedUponCreationEnabled = FeatureFlagUtil.isPresentAndEnabled(
     st.s.getDB('admin'), "TrackUnshardedCollectionsUponCreation");
 if (isTrackUnshardedUponCreationEnabled) {
+    st.stop();
+    quit();
+}
+
+// TODO (SERVER-101777): This test makes a lot of assumptions about database versions stored in
+// shards that are not the primary shard. This test shuld be re-written thinking about that shards
+// are database authoritative and don't need to refresh anymore.
+const isAuthoritativeShardEnabled =
+    FeatureFlagUtil.isPresentAndEnabled(st.s.getDB('admin'), "ShardAuthoritativeDbMetadataDDL");
+if (isAuthoritativeShardEnabled) {
     st.stop();
     quit();
 }

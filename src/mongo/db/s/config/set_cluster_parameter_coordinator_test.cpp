@@ -29,8 +29,7 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/db/s/config/set_cluster_parameter_coordinator.h"
 #include "mongo/db/s/config/set_cluster_parameter_coordinator_document_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -101,8 +100,7 @@ TEST_F(SetClusterParameterCoordinatorTest,
 
 TEST_F(SetClusterParameterCoordinatorTest, ParameterValuesEqualParametersEqual) {
     ASSERT(_parameterValuesEqual(
-        BSON("attr1"
-             << "val"),
+        BSON("attr1" << "val"),
         BSON(SetClusterParameterCoordinatorDocument::kClusterParameterTimeFieldName
              << Timestamp(2, 0) << "_id"
              << "parameterName"
@@ -112,8 +110,7 @@ TEST_F(SetClusterParameterCoordinatorTest, ParameterValuesEqualParametersEqual) 
 
 TEST_F(SetClusterParameterCoordinatorTest, ParameterValuesEqualParametersNotEqual) {
     ASSERT(!_parameterValuesEqual(
-        BSON("attr1"
-             << "val"),
+        BSON("attr1" << "val"),
         BSON(SetClusterParameterCoordinatorDocument::kClusterParameterTimeFieldName
              << Timestamp(2, 0) << "_id"
              << "parameterName"
@@ -123,8 +120,7 @@ TEST_F(SetClusterParameterCoordinatorTest, ParameterValuesEqualParametersNotEqua
 
 TEST_F(SetClusterParameterCoordinatorTest, ParameterValuesEqualParameterCountNotEqual) {
     ASSERT(!_parameterValuesEqual(
-        BSON("attr1"
-             << "val"),
+        BSON("attr1" << "val"),
         BSON(SetClusterParameterCoordinatorDocument::kClusterParameterTimeFieldName
              << Timestamp(2, 0) << "_id"
              << "parameterName"

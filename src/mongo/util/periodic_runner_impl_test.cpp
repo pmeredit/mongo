@@ -40,9 +40,8 @@
 #include "mongo/platform/atomic_word.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/periodic_runner_impl.h"
@@ -74,8 +73,7 @@ private:
 class PeriodicRunnerImplTest : public PeriodicRunnerImplTestNoSetup {
 public:
     auto makeStoppedJob() {
-        PeriodicRunner::PeriodicJob job(
-            "job", [](Client* client) {}, Seconds{1}, false);
+        PeriodicRunner::PeriodicJob job("job", [](Client* client) {}, Seconds{1}, false);
         auto jobAnchor = runner().makeJob(std::move(job));
         jobAnchor.start();
         jobAnchor.stop();

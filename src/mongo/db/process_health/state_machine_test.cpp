@@ -38,9 +38,8 @@
 #include <boost/optional/optional.hpp>
 
 #include "mongo/base/string_data.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -69,7 +68,7 @@ public:
     public:
         using StateMachineTest::StateHandler::StateHandler;
 
-        boost::optional<MachineState> accept(const SM::OptionalMessageType& m) noexcept override {
+        boost::optional<MachineState> accept(const SM::OptionalMessageType& m) override {
             return m->nextState;
         }
     };
@@ -260,7 +259,7 @@ DEATH_TEST_F(StateMachineTestFixture, CrashOnUndefinedHandler, "invariant") {
     subject()->start();
 }
 
-DEATH_TEST_F(StateMachineTestFixture, CrashIfHookThrowsException, "fatal") {
+DEATH_TEST_F(StateMachineTestFixture, CrashIfHookThrowsException, "9894901") {
     auto hook = [](MachineState oldState, MachineState newState, const SM::OptionalMessageType& m) {
         throw std::runtime_error("exception");
     };

@@ -56,8 +56,6 @@
 #include "mongo/executor/egress_connection_closer_manager.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/transport/session.h"
 #include "mongo/transport/session_manager.h"
@@ -125,7 +123,8 @@ void FcvOpObserver::_setVersion(OperationContext* opCtx,
         if (newFcvSnapshot.isUpgradingOrDowngrading()) {
             SessionKiller::Matcher matcherAllSessions(
                 KillAllSessionsByPatternSet{makeKillAllSessionsByPattern(opCtx)});
-            killSessionsAbortUnpreparedTransactions(opCtx, matcherAllSessions);
+            killSessionsAbortUnpreparedTransactions(
+                opCtx, matcherAllSessions, ErrorCodes::InterruptedDueToFCVChange);
         }
     } catch (const DBException&) {
         // Swallow the error when running within a recovery unit to avoid process termination.

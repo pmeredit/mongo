@@ -27,9 +27,7 @@ selector:
     - jstests/core/**/fsync.js # uses fsync.
     - jstests/core/**/geo_s2cursorlimitskip.js # profiling.
     - jstests/core/**/geo_update_btree2.js # notablescan.
-    - jstests/core/**/index9.js # "local" database.
     - jstests/core/**/queryoptimizera.js # "local" database.
-    - jstests/core/**/stages*.js # stageDebug.
     - jstests/core/**/startup_log.js # "local" database.
     - jstests/core/**/tailable_cursor_invalidation.js # capped collections.
     - jstests/core/**/tailable_getmore_batch_size.js # capped collections.
@@ -67,7 +65,7 @@ selector:
 
     # The tests below are disabled because of embedded router role and replica set endpoint.
     # This test runs {find: uuid} commands which are not supported for replica set endpoints.
-    - jstests/core/commands_with_uuid.js
+    - jstests/core/query/commands_with_uuid.js
     # This test cares about command metrics, and fails under this suite.
     - jstests/core/query/query_settings/query_settings_reject_application.js
     # The 'queryShapeHash' is only computed on mongos in sharded clusters, therefore the test will fail

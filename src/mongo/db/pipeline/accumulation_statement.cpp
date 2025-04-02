@@ -35,7 +35,6 @@
 #include <boost/optional/optional.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 
-#include "mongo/db/feature_compatibility_version_documentation.h"
 #include "mongo/db/pipeline/accumulation_statement.h"
 #include "mongo/db/pipeline/accumulator.h"
 #include "mongo/db/query/allowed_contexts.h"
@@ -58,7 +57,7 @@ void AccumulationStatement::registerAccumulator(std::string name,
                                                 AccumulationStatement::Parser parser,
                                                 AllowedWithApiStrict allowedWithApiStrict,
                                                 AllowedWithClientType allowedWithClientType,
-                                                boost::optional<FeatureFlag> featureFlag) {
+                                                CheckableFeatureFlagRef featureFlag) {
     auto it = parserMap.find(name);
     massert(28722,
             str::stream() << "Duplicate accumulator (" << name << ") registered.",

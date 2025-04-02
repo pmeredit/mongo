@@ -46,7 +46,6 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/client/read_preference.h"
 #include "mongo/db/commands.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/expression_context.h"
@@ -74,7 +73,7 @@ ShardsvrReshardCollection makeMoveCollectionRequest(
     const DatabaseName& dbName,
     const NamespaceString& nss,
     const ShardId& destinationShard,
-    ProvenanceEnum provenance,
+    ReshardingProvenanceEnum provenance,
     const boost::optional<bool>& performVerification = boost::none,
     const boost::optional<std::int64_t>& oplogBatchApplierTaskCount = boost::none);
 
@@ -92,13 +91,6 @@ struct RawResponsesResult {
     std::vector<AsyncRequestsSender::Response> successResponses;
     boost::optional<Status> firstStaleConfigError;
 };
-
-/**
- * This function appends the provided WriteConcernErrorDetail to the sharded response.
- */
-void appendWriteConcernErrorDetailToCmdResponse(const ShardId& shardId,
-                                                WriteConcernErrorDetail wcError,
-                                                BSONObjBuilder& responseBuilder);
 
 /**
  * This function appends the provided writeConcernError BSONElement to the sharded response.
@@ -424,7 +416,7 @@ bool appendEmptyResultSet(OperationContext* opCtx,
  * info.
  */
 std::set<ShardId> getTargetedShardsForQuery(boost::intrusive_ptr<ExpressionContext> expCtx,
-                                            const ChunkManager& cm,
+                                            const CollectionRoutingInfo& cri,
                                             const BSONObj& query,
                                             const BSONObj& collation);
 /**
@@ -432,7 +424,7 @@ std::set<ShardId> getTargetedShardsForQuery(boost::intrusive_ptr<ExpressionConte
  * info.
  */
 std::set<ShardId> getTargetedShardsForCanonicalQuery(const CanonicalQuery& query,
-                                                     const ChunkManager& cm);
+                                                     const CollectionRoutingInfo& cri);
 
 /**
  * Determines the shard(s) to which the given query will be targeted, and builds a separate

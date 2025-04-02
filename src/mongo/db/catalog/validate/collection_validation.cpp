@@ -73,9 +73,6 @@
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
@@ -175,6 +172,12 @@ void _validateIndexes(OperationContext* opCtx,
 
         auto& curIndexResults = results->getIndexValidateResult(indexName);
         curIndexResults.addKeysTraversed(numTraversedKeys);
+
+        BSONObj infoObj = validateState->getCollection()
+                              ->getIndexCatalog()
+                              ->findIndexByIdent(opCtx, indexIdent)
+                              ->infoObj();
+        curIndexResults.setSpec(std::move(infoObj));
     }
 }
 
@@ -490,10 +493,6 @@ Status validate(OperationContext* opCtx,
     invariant(!shard_role_details::getLocker(opCtx)->isLocked() || storageGlobalParams.repair ||
               storageGlobalParams.validate);
 
-    // This is deliberately outside of the try-catch block, so that any errors thrown in the
-    // constructor fail the cmd, as opposed to returning OK with valid:false.
-    ValidateState validateState(opCtx, nss, std::move(options));
-
     // Foreground validation needs to ignore prepare conflicts, or else it would deadlock.
     // Repair mode cannot use ignore-prepare because it needs to be able to do writes, and there is
     // no danger of deadlock for this mode anyway since it is only used at startup (or in standalone
@@ -506,6 +505,10 @@ Status validate(OperationContext* opCtx,
             oldPrepareConflictBehavior);
     });
 
+    // This is deliberately outside of the try-catch block, so that any errors thrown in the
+    // constructor fail the cmd, as opposed to returning OK with valid:false.
+    ValidateState validateState(opCtx, nss, std::move(options));
+
     // Relax corruption detection so that we log and continue scanning instead of failing early.
     auto oldDataCorruptionMode =
         shard_role_details::getRecoveryUnit(opCtx)->getDataCorruptionDetectionMode();
@@ -515,6 +518,8 @@ Status validate(OperationContext* opCtx,
         shard_role_details::getRecoveryUnit(opCtx)->setDataCorruptionDetectionMode(
             oldDataCorruptionMode);
     });
+
+    results->setRepairMode(validateState.getRepairMode());
 
     if (validateState.fixErrors()) {
         // Note: cannot set PrepareConflictBehavior here, since the validate command with repair
@@ -532,8 +537,7 @@ Status validate(OperationContext* opCtx,
         invariant(oldPrepareConflictBehavior == PrepareConflictBehavior::kEnforce);
     }
 
-    if (gFeatureFlagPrefetch.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
+    if (gFeatureFlagPrefetch.isEnabled() &&
         !opCtx->getServiceContext()->getStorageEngine()->isEphemeral()) {
         shard_role_details::getRecoveryUnit(opCtx)->setPrefetching(true);
     }

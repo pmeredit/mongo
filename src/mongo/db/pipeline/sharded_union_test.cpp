@@ -84,9 +84,7 @@
 #include "mongo/s/shard_version.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/stale_exception.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/net/hostandport.h"
@@ -251,9 +249,6 @@ TEST_F(ShardedUnionTest, RetriesSubPipelineOnStaleConfigError) {
     expectCollectionAndChunksAggregation(
         kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, {chunk1, chunk2});
 
-    expectCollectionAndIndexesAggregation(
-        kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, boost::none, {});
-
     // That error should be retried, but only the one on that shard.
     onCommand([&](const executor::RemoteCommandRequest& request) {
         return CursorResponse(kTestAggregateNss, CursorId{0}, {expectedResult.toBson()})
@@ -345,9 +340,6 @@ TEST_F(ShardedUnionTest, CorrectlySplitsSubPipelineIfRefreshedDistributionRequir
 
     expectCollectionAndChunksAggregation(
         kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, {chunk1, chunk2, chunk3});
-
-    expectCollectionAndIndexesAggregation(
-        kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, boost::none, {});
 
     // That error should be retried, this time two shards.
     onCommand([&](const executor::RemoteCommandRequest& request) {
@@ -441,9 +433,6 @@ TEST_F(ShardedUnionTest, AvoidsSplittingSubPipelineIfRefreshedDistributionDoesNo
     expectCollectionAndChunksAggregation(
         kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, {chunk1});
 
-    expectCollectionAndIndexesAggregation(
-        kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, boost::none, {});
-
     // That error should be retried, this time targetting only one shard.
     onCommand([&](const executor::RemoteCommandRequest& request) {
         ASSERT_EQ(request.target, HostAndPort(shards[0].getHost())) << request;
@@ -465,8 +454,8 @@ TEST_F(ShardedUnionTest, IncorporatesViewDefinitionAndRetriesWhenViewErrorReceiv
         expCtx()->getNamespaceString().db_forTest(), "view");
     // Mock out the view namespace as emtpy for now - this is what it would be when parsing in a
     // sharded cluster - only later would we learn the actual view definition.
-    expCtx()->setResolvedNamespaces(StringMap<ResolvedNamespace>{
-        {nsToUnionWith.coll().toString(), {nsToUnionWith, std::vector<BSONObj>{}}}});
+    expCtx()->setResolvedNamespaces(
+        ResolvedNamespaceMap{{nsToUnionWith, {nsToUnionWith, std::vector<BSONObj>{}}}});
     auto bson = BSON("$unionWith" << nsToUnionWith.coll());
     auto unionWith = DocumentSourceUnionWith::createFromBson(bson.firstElement(), expCtx());
     expCtx()->setMongoProcessInterface(std::make_shared<ShardServerProcessInterface>(executor()));
@@ -511,9 +500,6 @@ TEST_F(ShardedUnionTest, IncorporatesViewDefinitionAndRetriesWhenViewErrorReceiv
 
     expectCollectionAndChunksAggregation(
         kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, {chunk1, chunk2});
-
-    expectCollectionAndIndexesAggregation(
-        kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, boost::none, {});
 
     // Mock out the sharded view error responses from both shards.
     std::vector<BSONObj> viewPipeline = {fromjson("{$group: {_id: '$groupKey'}}"),

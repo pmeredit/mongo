@@ -29,31 +29,18 @@
 
 #pragma once
 
-#include <algorithm>
 #include <boost/optional/optional.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <memory>
-#include <string>
-#include <utility>
 
-#include "mongo/base/status.h"
-#include "mongo/base/string_data.h"
-#include "mongo/bson/bsonobj.h"
-#include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/curop.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/pipeline/expression_context.h"
-#include "mongo/db/query/client_cursor/cursor_response_gen.h"
 #include "mongo/db/query/partitioned_cache.h"
-#include "mongo/db/query/plan_explainer.h"
 #include "mongo/db/query/query_stats/key.h"
-#include "mongo/db/query/query_stats/optimizer_metrics_stats_entry.h"
 #include "mongo/db/query/query_stats/query_stats_entry.h"
 #include "mongo/db/query/query_stats/rate_limiting.h"
 #include "mongo/db/service_context.h"
@@ -195,7 +182,7 @@ QueryStatsStore& getQueryStatsStore(OperationContext* opCtx);
  */
 void registerRequest(OperationContext* opCtx,
                      const NamespaceString& collection,
-                     std::function<std::unique_ptr<Key>(void)> makeKey,
+                     const std::function<std::unique_ptr<Key>(void)>& makeKey,
                      bool willNeverExhaust = false);
 
 
@@ -215,6 +202,15 @@ inline uint64_t microsecondsToUint64(boost::optional<Microseconds> duration) {
 }
 
 /**
+ * Convert an optional Duration to a count of Nanoseconds int64_t.
+ */
+inline int64_t nanosecondsToInt64(boost::optional<Nanoseconds> duration) {
+    return duration.has_value() && duration.value() >= Nanoseconds::zero()
+        ? static_cast<int64_t>(duration->count())
+        : static_cast<int64_t>(-1);
+}
+
+/**
  * Snapshot of query stats from CurOp::OpDebug to store in query stats store.
  */
 struct QueryStatsSnapshot {
@@ -227,6 +223,7 @@ struct QueryStatsSnapshot {
     uint64_t bytesRead;
     int64_t readTimeMicros;
     int64_t workingTimeMillis;
+    int64_t cpuNanos;
     bool hasSortStage;
     bool usedDisk;
     bool fromMultiPlanner;

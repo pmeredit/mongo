@@ -42,8 +42,6 @@
 #include "mongo/client/replica_set_monitor.h"
 #include "mongo/executor/connection_pool_stats.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/sharding_task_executor_pool_controller.h"
 #include "mongo/util/str.h"
@@ -57,8 +55,8 @@ namespace {
 
 template <typename Map, typename Key>
 auto& getOrInvariant(Map&& map, const Key& key) noexcept {
-    auto it = std::forward<Map>(map).find(key);
-    invariant(it != std::forward<Map>(map).end(), "Unable to find key in map");
+    auto it = map.find(key);
+    invariant(it != map.end(), "Unable to find key in map");
 
     return it->second;
 }
@@ -360,7 +358,8 @@ Milliseconds ShardingTaskExecutorPoolController::toRefreshTimeout() const {
 
 void ShardingTaskExecutorPoolController::updateConnectionPoolStats(
     executor::ConnectionPoolStats* cps) const {
-    cps->strategy = gParameters.matchingStrategy.load();
+    cps->matchingStrategy =
+        matchingStrategyToString(gParameters.matchingStrategy.load()).toString();
 }
 
 }  // namespace mongo

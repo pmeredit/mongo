@@ -2,14 +2,15 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/util/time_support.h"
+#include "streams/management/container_stats.h"
+
 #include <boost/optional.hpp>
 #include <tuple>
 
+#include "mongo/stdx/unordered_map.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/time_support.h"
 #include "streams/management/container_group_stats_provider.h"
-#include "streams/management/container_stats.h"
 #include "streams/util/metric_manager.h"
 
 using namespace mongo;
@@ -77,39 +78,24 @@ public:
         return _histograms;
     }
 
-    void visit(Counter* counter,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _counters[name] = counter;
+    void visit(Counter* counter) {
+        _counters[counter->getName()] = counter;
     }
 
-    void visit(Gauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _gauges[name] = gauge;
+    void visit(Gauge* gauge) {
+        _gauges[gauge->getName()] = gauge;
     }
 
-    void visit(IntGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _intGauges[name] = gauge;
+    void visit(IntGauge* gauge) {
+        _intGauges[gauge->getName()] = gauge;
     }
 
-    void visit(CallbackGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _callbackGauges[name] = gauge;
+    void visit(CallbackGauge* gauge) {
+        _callbackGauges[gauge->getName()] = gauge;
     }
 
-    void visit(Histogram* histogram,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _histograms[name] = histogram;
+    void visit(Histogram* histogram) {
+        _histograms[histogram->getName()] = histogram;
     }
 
 private:

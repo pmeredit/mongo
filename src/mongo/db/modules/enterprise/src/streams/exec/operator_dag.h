@@ -8,13 +8,13 @@
 #include <memory>
 
 #include "mongo/db/operation_context.h"
-#include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/service_context.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/log_util.h"
 #include "streams/exec/operator.h"
 #include "streams/util/metric_manager.h"
 
@@ -39,6 +39,7 @@ public:
         std::unique_ptr<DocumentTimestampExtractor> timestampExtractor;
         std::unique_ptr<EventDeserializer> eventDeserializer;
         bool needsWindowReplay{false};
+        LoggingContext loggingContext;
     };
 
     OperatorDag(Options options, OperatorContainer operators)
@@ -83,12 +84,27 @@ public:
         return std::move(_operators);
     }
 
+    OperatorDag::Options moveOptions() {
+        return std::move(_options);
+    }
+
     bool needsWindowReplay() {
         return _options.needsWindowReplay;
     }
 
+    // Returns true if this DAG should report e2e latency.
+    // Returns false if there is a window in the DAG.
+    bool shouldReportLatency();
+
+    const OperatorDag::Options& options() const {
+        return _options;
+    }
+
 private:
     friend class OperatorDagTest;
+
+    void cleanupOperators(size_t index);
+
     Options _options;
     // Note that Operator instances get destroyed in stop().
     OperatorContainer _operators;

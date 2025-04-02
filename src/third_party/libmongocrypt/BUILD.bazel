@@ -96,6 +96,9 @@ mongo_cc_library(
         "dist/src/mc-range-mincover.c",
         "dist/src/mc-rangeopts.c",
         "dist/src/mc-reader.c",
+        "dist/src/mc-schema-broker.c",
+        "dist/src/mc-str-encode-string-sets.c",
+        "dist/src/mc-text-search-str-encode.c",
         "dist/src/mc-tokens.c",
         "dist/src/mc-writer.c",
         "dist/src/mongocrypt.c",
@@ -123,6 +126,9 @@ mongo_cc_library(
         "dist/src/mongocrypt-status.c",
         "dist/src/mongocrypt-traverse-util.c",
         "dist/src/mongocrypt-util.c",
+        "dist/src/unicode/case-fold-map.c",
+        "dist/src/unicode/diacritic-fold-map.c",
+        "dist/src/unicode/fold.c",
     ] + CRYPTO_SRCS + select({
         "@platforms//os:windows": [
             "dist/src/os_win/os_dll.c",
@@ -163,6 +169,7 @@ mongo_cc_library(
     defines = [
         "KMS_MSG_STATIC",
         "MONGOCRYPT_STATIC_DEFINE",
+        "MONGOCRYPT_INTELDFP",
     ],
     includes = [
         "dist/kms-message/src",

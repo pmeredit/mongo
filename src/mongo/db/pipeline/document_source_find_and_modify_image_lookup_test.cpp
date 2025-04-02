@@ -48,6 +48,7 @@
 #include "mongo/db/commands/txn_cmds_gen.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/matcher/matcher.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
@@ -66,11 +67,7 @@
 #include "mongo/db/session/logical_session_id_gen.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/uuid.h"
@@ -133,11 +130,12 @@ struct MockMongoInterface final : public StubMongoProcessInterface {
         const Document& documentKey,
         boost::optional<BSONObj> readConcern) final {
         Matcher matcher(documentKey.toBson(), expCtx);
-        auto it = std::find_if(_documentsForLookup.begin(),
-                               _documentsForLookup.end(),
-                               [&](const Document& lookedUpDoc) {
-                                   return matcher.matches(lookedUpDoc.toBson(), nullptr);
-                               });
+        auto it =
+            std::find_if(_documentsForLookup.begin(),
+                         _documentsForLookup.end(),
+                         [&](const Document& lookedUpDoc) {
+                             return exec::matcher::matches(&matcher, lookedUpDoc.toBson(), nullptr);
+                         });
         return (it != _documentsForLookup.end() ? *it : boost::optional<Document>{});
     }
 

@@ -5,6 +5,7 @@
 #include "streams/exec/stream_stats.h"
 
 #include "mongo/util/assert_util.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/https_operator.h"
 
 using namespace mongo;
@@ -46,6 +47,11 @@ StreamSummaryStats computeStreamSummaryStats(const std::vector<OperatorStats>& o
             out.numInputBytes += s.numInputBytes;
             out.numOutputBytes += s.numOutputBytes;
         }
+
+        // We add together each operator's timespent to get a total avgTimeSpentMs
+        // for the entire processor. Adding together averages isn't really
+        // statistically valid, but this is a good enough approximation.
+        out.avgTimeSpentMs += duration_cast<Milliseconds>(s.timeSpent);
     }
 
     return out;

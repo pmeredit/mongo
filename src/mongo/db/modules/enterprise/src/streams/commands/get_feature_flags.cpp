@@ -56,7 +56,7 @@ public:
 };
 
 MONGO_REGISTER_COMMAND(GetFeatureFlagsCmd)
-    .requiresFeatureFlag(&mongo::gFeatureFlagStreams)
+    .requiresFeatureFlag(mongo::gFeatureFlagStreams)
     .forShard();
 
 }  // namespace streams

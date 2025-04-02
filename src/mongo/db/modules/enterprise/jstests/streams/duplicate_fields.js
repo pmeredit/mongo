@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {sequentialIds} from "jstests/query_golden/libs/example_data.js";
 import {
     dbName,
@@ -28,7 +34,7 @@ const simpleMergeFunc = function testMergeFunc(docs, expectedResults) {
                         outColl.find().itcount() ==
                     expectedResults.length;
             }, logState());
-            var fieldNames = ['_ts', '_stream_meta', '_id'];
+            var fieldNames = ['_id'];
             let results = outColl.find().toArray().map((doc) => sanitizeDoc(doc, fieldNames));
         }
     });

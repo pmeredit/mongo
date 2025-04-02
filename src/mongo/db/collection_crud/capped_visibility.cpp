@@ -41,8 +41,6 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 
@@ -133,10 +131,10 @@ UncommittedRecords* CappedVisibilityObserver::registerWriter(
     public:
         CappedVisibilityChange(CappedVisibilityObserver* observer, CappedWriter* writer)
             : _observer(observer), _writer(writer) {}
-        void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) final {
+        void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) noexcept final {
             _observer->_onWriterCommittedOrAborted(_writer, true /* commit */);
         }
-        void rollback(OperationContext* opCtx) final {
+        void rollback(OperationContext* opCtx) noexcept final {
             _observer->_onWriterCommittedOrAborted(_writer, false /* commit */);
         }
 

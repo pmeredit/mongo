@@ -98,9 +98,6 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/metadata/metadata_hook.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
@@ -381,8 +378,7 @@ void _initializeGlobalShardingState(OperationContext* opCtx,
         }
     }();
 
-    // (Ignore FCV check): this feature flag is not FCV-gated.
-    auto catalogCache = feature_flags::gDualCatalogCache.isEnabledAndIgnoreFCVUnsafe()
+    auto catalogCache = feature_flags::gDualCatalogCache.isEnabled()
         ? std::make_unique<CatalogCache>(service,
                                          std::make_shared<ConfigServerCatalogCacheLoaderImpl>())
         : std::make_unique<CatalogCache>(service, shardRoleCatalogCacheLoader);
@@ -402,11 +398,10 @@ void _initializeGlobalShardingState(OperationContext* opCtx,
     // List of hooks which will be called by the ShardRegistry when it discovers a shard has been
     // removed.
     std::vector<ShardRegistry::ShardRemovalHook> shardRemovalHooks = {
-        // Invalidate appropriate entries in the CatalogCache when a shard is removed. It's safe to
-        // capture the CatalogCache pointer since the Grid (and therefore CatalogCache and
-        // ShardRegistry) are never destroyed.
+        // It's safe to capture the CatalogCache pointer since the Grid (and therefore CatalogCache
+        // and ShardRegistry) are never destroyed.
         [catCache = catalogCache.get()](const ShardId& removedShard) {
-            catCache->invalidateEntriesThatReferenceShard(removedShard);
+            catCache->advanceTimeInStoreForEntriesThatReferenceShard(removedShard);
         }};
 
     auto shardRegistry = std::make_unique<ShardRegistry>(
@@ -461,8 +456,7 @@ void _initializeGlobalShardingStateForConfigServer(OperationContext* opCtx) {
 
     _initializeGlobalShardingState(opCtx, configCS);
 
-    // (Ignore FCV check): this feature flag is not FCV-gated.
-    if (feature_flags::gDualCatalogCache.isEnabledAndIgnoreFCVUnsafe()) {
+    if (feature_flags::gDualCatalogCache.isEnabled()) {
         // With the feature flag enabled, there is a separate routing and filtering cache, so this
         // cache and the routing cache can be the same.
         RoutingInformationCache::setOverride(service, Grid::get(service)->catalogCache());

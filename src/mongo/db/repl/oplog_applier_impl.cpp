@@ -51,6 +51,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/admission/execution_admission_context.h"
+#include "mongo/db/catalog/validate/validate_state.h"
 #include "mongo/db/client.h"
 #include "mongo/db/collection_crud/collection_write_path.h"
 #include "mongo/db/commands/fsync.h"
@@ -79,9 +80,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/stdx/condition_variable.h"
@@ -360,7 +358,7 @@ namespace {
 class ApplyBatchFinalizer {
 public:
     ApplyBatchFinalizer(ReplicationCoordinator* replCoord) : _replCoord(replCoord) {}
-    virtual ~ApplyBatchFinalizer(){};
+    virtual ~ApplyBatchFinalizer() {};
 
     virtual void record(const OpTimeAndWallTime& newOpTimeAndWallTime) {
         _recordApplied(newOpTimeAndWallTime);
@@ -497,8 +495,7 @@ void OplogApplierImpl::_run(OplogBuffer* oplogBuffer) {
     // arbiterOnly field for any member.
     invariant(!_replCoord->getMemberState().arbiter());
 
-    const auto useOplogWriter = feature_flags::gReduceMajorityWriteLatency.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+    const auto useOplogWriter = feature_flags::gReduceMajorityWriteLatency.isEnabled();
 
     // The OplogWriter will take care of journaling when featureFlagReduceMajorityWriteLatency
     // is enabled.
@@ -558,6 +555,10 @@ void OplogApplierImpl::_run(OplogBuffer* oplogBuffer) {
 
         // Make sure the oplog doesn't go back in time or repeat an entry.
         if (firstOpTimeInBatch <= lastAppliedOpTimeAtStartOfBatch) {
+            LOGV2(10180701,
+                  "Oplog entry that is less than our last applied OpTime",
+                  "entry"_attr = redact(ops.front().toBSONForLogging()));
+
             fassert(34361,
                     Status(ErrorCodes::OplogOutOfOrder,
                            str::stream() << "Attempted to apply an oplog entry ("
@@ -568,6 +569,9 @@ void OplogApplierImpl::_run(OplogBuffer* oplogBuffer) {
 
         // Don't allow the fsync+lock thread to see intermediate states of batch application.
         stdx::lock_guard<stdx::mutex> fsynclk(oplogApplierLockedFsync);
+
+        // Obtain the validation lock to synchronise batch application with validation.
+        auto lk = CollectionValidation::ValidateState::obtainExclusiveValidationLock(&opCtx);
 
         // Apply the operations in this batch. '_applyOplogBatch' returns the optime of the
         // last op that was applied, which should be the last optime in the batch.

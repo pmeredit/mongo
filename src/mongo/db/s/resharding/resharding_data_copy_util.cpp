@@ -186,19 +186,12 @@ void ensureTemporaryReshardingCollectionRenamed(OperationContext* opCtx,
     // because the coordinator will prevent two resharding operations from running for the same
     // namespace at the same time.
 
-    boost::optional<Timestamp> indexVersion;
     auto tempReshardingNssExists = [&] {
         AutoGetCollection tempReshardingColl(opCtx, metadata.getTempReshardingNss(), MODE_IS);
         uassert(ErrorCodes::InvalidUUID,
                 "Temporary resharding collection exists but doesn't have a UUID matching the"
                 " resharding operation",
                 !tempReshardingColl || tempReshardingColl->uuid() == metadata.getReshardingUUID());
-        auto sii = CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(
-                       opCtx, metadata.getTempReshardingNss())
-                       ->getIndexesInCritSec(opCtx);
-        indexVersion = sii
-            ? boost::make_optional<Timestamp>(sii->getCollectionIndexes().indexVersion())
-            : boost::none;
         return bool(tempReshardingColl);
     }();
 
@@ -210,11 +203,6 @@ void ensureTemporaryReshardingCollectionRenamed(OperationContext* opCtx,
         uassert(
             ErrorCodes::InvalidUUID, errmsg, sourceColl->uuid() == metadata.getReshardingUUID());
         return;
-    }
-
-    if (indexVersion) {
-        renameCollectionShardingIndexCatalog(
-            opCtx, metadata.getTempReshardingNss(), metadata.getSourceNss(), *indexVersion);
     }
 
     RenameCollectionOptions options;
@@ -320,7 +308,6 @@ std::vector<InsertStatement> fillBatchForInsert(Pipeline& pipeline, int batchSiz
 
 int insertBatchTransactionally(OperationContext* opCtx,
                                const NamespaceString& nss,
-                               const boost::optional<ShardingIndexesCatalogCache>& sii,
                                TxnNumber& txnNumber,
                                std::vector<InsertStatement>& batch,
                                const UUID& reshardingUUID,
@@ -349,7 +336,7 @@ int insertBatchTransactionally(OperationContext* opCtx,
         try {
             ++txnNumber;
             opCtx->setTxnNumber(txnNumber);
-            runWithTransactionFromOpCtx(opCtx, nss, sii, [&](OperationContext* opCtx) {
+            runWithTransactionFromOpCtx(opCtx, nss, [&](OperationContext* opCtx) {
                 const auto outputColl =
                     acquireCollection(opCtx,
                                       CollectionAcquisitionRequest::fromOpCtx(
@@ -460,63 +447,8 @@ int insertBatch(OperationContext* opCtx,
     });
 }
 
-boost::optional<SharedSemiFuture<void>> withSessionCheckedOut(OperationContext* opCtx,
-                                                              LogicalSessionId lsid,
-                                                              TxnNumber txnNumber,
-                                                              boost::optional<StmtId> stmtId,
-                                                              unique_function<void()> callable) {
-    {
-        auto lk = stdx::lock_guard(*opCtx->getClient());
-        opCtx->setLogicalSessionId(std::move(lsid));
-        opCtx->setTxnNumber(txnNumber);
-    }
-
-    auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
-    auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
-
-    auto txnParticipant = TransactionParticipant::get(opCtx);
-
-    try {
-        txnParticipant.beginOrContinue(opCtx,
-                                       {txnNumber},
-                                       boost::none /* autocommit */,
-                                       TransactionParticipant::TransactionActions::kNone);
-
-        if (stmtId && txnParticipant.checkStatementExecuted(opCtx, *stmtId)) {
-            // Skip the incoming statement because it has already been logged locally.
-            return boost::none;
-        }
-    } catch (const ExceptionFor<ErrorCodes::TransactionTooOld>&) {
-        // txnNumber < txnParticipant.o().activeTxnNumber
-        return boost::none;
-    } catch (const ExceptionFor<ErrorCodes::IncompleteTransactionHistory>&) {
-        // txnNumber == txnParticipant.o().activeTxnNumber &&
-        // !txnParticipant.transactionIsInRetryableWriteMode()
-        //
-        // If the transaction chain is incomplete because the oplog was truncated, just ignore the
-        // incoming write and don't attempt to "patch up" the missing pieces.
-        //
-        // This situation could also happen if the client reused the txnNumber for distinct
-        // operations (which is a violation of the protocol). The client would receive an error if
-        // they attempted to retry the retryable write they had reused the txnNumber with so it is
-        // safe to leave config.transactions as-is.
-        return boost::none;
-    } catch (const ExceptionFor<ErrorCodes::PreparedTransactionInProgress>&) {
-        // txnParticipant.transactionIsPrepared()
-        return txnParticipant.onExitPrepare();
-    } catch (const ExceptionFor<ErrorCodes::RetryableTransactionInProgress>&) {
-        // This is a retryable write that was executed using an internal transaction and there is
-        // a retry in progress.
-        return txnParticipant.onConflictingInternalTransactionCompletion(opCtx);
-    }
-
-    callable();
-    return boost::none;
-}
-
 void runWithTransactionFromOpCtx(OperationContext* opCtx,
                                  const NamespaceString& nss,
-                                 const boost::optional<ShardingIndexesCatalogCache>& sii,
                                  unique_function<void(OperationContext*)> func) {
     auto* const client = opCtx->getClient();
     opCtx->setAlwaysInterruptAtStepDownOrUp_UNSAFE();
@@ -532,9 +464,7 @@ void runWithTransactionFromOpCtx(OperationContext* opCtx,
     ScopedSetShardRole scopedSetShardRole(
         opCtx,
         nss,
-        ShardVersionFactory::make(ChunkVersion::IGNORED(),
-                                  sii ? boost::make_optional(sii->getCollectionIndexes())
-                                      : boost::none) /* shardVersion */,
+        ShardVersionFactory::make(ChunkVersion::IGNORED(), boost::none) /* shardVersion */,
         boost::none /* databaseVersion */);
 
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);

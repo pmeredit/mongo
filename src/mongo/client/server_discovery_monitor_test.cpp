@@ -59,13 +59,10 @@
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
@@ -96,7 +93,7 @@ protected:
         _executor->startup();
         _startDate = _net->now();
         _eventsPublisher = std::make_shared<sdam::TopologyEventsPublisher>(_executor);
-        _topologyListener.reset(new sdam::TopologyListenerMock());
+        _topologyListener = std::make_shared<sdam::TopologyListenerMock>();
         _eventsPublisher->registerListener(_topologyListener);
     }
 

@@ -44,11 +44,8 @@
 #include "mongo/executor/connection_pool.h"
 #include "mongo/executor/connection_pool_stats.h"
 #include "mongo/executor/connection_pool_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/unittest/matcher.h"
-#include "mongo/unittest/matcher_core.h"
 #include "mongo/unittest/thread_assertion_monitor.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/executor_test_util.h"
@@ -125,8 +122,6 @@ protected:
 
     template <typename Ptr>
     void dropConnectionsTest(std::shared_ptr<ConnectionPool> const& pool, Ptr t);
-
-    void singleUseConnectionsTest(bool singleUseConnections);
 
     /**
      * Helper for asserting connection pool time-out behaviours.
@@ -2269,48 +2264,6 @@ TEST_F(ConnectionPoolTest, DismissBeforeCancelGet) {
     ConnectionImpl::pushSetup(Status::OK());
     ASSERT_TRUE(connFuture.isReady());
     doneWith(connFuture.get());
-}
-
-void ConnectionPoolTest::singleUseConnectionsTest(bool singleUseConnections) {
-    auto host = HostAndPort();
-    ConnectionPool::Options options;
-    options.minConnections = 1;
-    options.singleUseConnections = singleUseConnections;
-    auto numExpected = singleUseConnections ? 1 : 2;
-
-    auto pool = makePool(options);
-    ASSERT_EQ(pool->getNumConnectionsPerHost(host), 0);
-
-    // Make two connections
-    auto connFuture1 = getFromPool(host, transport::kGlobalSSLMode, Seconds(1));
-    auto connFuture2 = getFromPool(host, transport::kGlobalSSLMode, Seconds(1));
-    ASSERT_EQ(pool->getNumConnectionsPerHost(host), 2);
-
-    ConnectionImpl::pushSetup(Status::OK());
-    ASSERT_TRUE(connFuture1.isReady());
-
-    // Depending on the value of singleUseConnections, we either return the connection back into the
-    // pool or don't.
-    auto conn1 = std::move(connFuture1).get();
-    doneWith(conn1);
-    ASSERT_EQ(pool->getNumConnectionsPerHost(host), numExpected);
-
-    ConnectionImpl::pushSetup(Status::OK());
-    ASSERT_TRUE(connFuture2.isReady());
-
-    // We should still have at least minConnections connections even if singleUseConnections is
-    // enabled.
-    auto conn2 = std::move(connFuture2).get();
-    doneWith(conn2);
-    ASSERT_EQ(pool->getNumConnectionsPerHost(host), numExpected);
-}
-
-TEST_F(ConnectionPoolTest, SingleUseConnectionsDisabled) {
-    singleUseConnectionsTest(false);
-}
-
-TEST_F(ConnectionPoolTest, SingleUseConnectionsEnabled) {
-    singleUseConnectionsTest(true);
 }
 
 }  // namespace connection_pool_test_details

@@ -22,9 +22,6 @@ import {
 // therefore preventing orphans from being cleaned up.
 TestData.skipCheckOrphans = true;
 
-// Cannot run the filtering metadata check on tests that run refineCollectionShardKey.
-TestData.skipCheckShardFilteringMetadata = true;
-
 export let MongosAPIParametersUtil = (function() {
     function validateTestCase(testCase) {
         assert(testCase.skip || testCase.run,
@@ -1473,7 +1470,10 @@ export let MongosAPIParametersUtil = (function() {
         // mongos command, and that the test cases are well formed.
         for (const command of Object.keys(listCommandsRes.commands)) {
             const matchingCases = testCases.filter(elem => elem.commandName === command);
-            assert(matchingCases !== [],
+            // TODO(SERVER-100573): Fix invariant, this currently is never going to be hit even if
+            // length is zero.
+            // eslint-disable-next-line
+            assert(matchingCases.length !== [],
                    "coverage failure: must define a test case for " + command);
             for (const testCase of matchingCases) {
                 validateTestCase(testCase);
@@ -1599,25 +1599,27 @@ export let MongosAPIParametersUtil = (function() {
 
         for (let i = 0; i < testInstances.length; ++i) {
             const {apiParameters, commandName, runOrExplain} = testInstances[i];
-
-            assert.commandWorked(
-                st.s.adminCommand({enableSharding: "db", primaryShard: st.shard0.shardName}));
-
-            if (shardedCollection) {
-                assert.commandWorked(
-                    st.s.adminCommand({shardCollection: "db.collection", key: {_id: 1}}));
-            }
-
-            assert.commandWorked(
-                st.s.getDB("db")["collection"].insert({_id: 0}, {writeConcern: {w: "majority"}}));
-
-            const configPrimary = st.configRS.getPrimary();
-            const shardPrimary =
-                runOrExplain.shardPrimary ? runOrExplain.shardPrimary() : st.rs0.getPrimary();
             const context = {apiParameters: apiParameters};
+
+            let shardPrimary, configPrimary;
 
             withRetryOnTransientTxnError(
                 () => {
+                    assert.commandWorked(st.s.adminCommand(
+                        {enableSharding: "db", primaryShard: st.shard0.shardName}));
+
+                    if (shardedCollection) {
+                        assert.commandWorked(
+                            st.s.adminCommand({shardCollection: "db.collection", key: {_id: 1}}));
+                    }
+
+                    assert.commandWorked(st.s.getDB("db")["collection"].insert(
+                        {_id: 0}, {writeConcern: {w: "majority"}}));
+
+                    configPrimary = st.configRS.getPrimary();
+                    shardPrimary = runOrExplain.shardPrimary ? runOrExplain.shardPrimary()
+                                                             : st.rs0.getPrimary();
+
                     const commandDbName = runOrExplain.runsAgainstAdminDb ? "admin" : "db";
                     if (inTransaction) {
                         context.session = st.s0.startSession();

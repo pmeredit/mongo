@@ -81,26 +81,9 @@ void insertOplogEntry(OperationContext* opCtx,
 void notifyChangeStreamsOnShardCollection(OperationContext* opCtx,
                                           const NamespaceString& nss,
                                           const UUID& uuid,
-                                          BSONObj cmd,
-                                          CommitPhase commitPhase,
-                                          const boost::optional<std::set<ShardId>>& shardIds) {
+                                          BSONObj cmd) {
     BSONObjBuilder cmdBuilder;
-    std::string opName;
-    switch (commitPhase) {
-        case mongo::CommitPhase::kSuccessful:
-            opName = "shardCollection";
-            break;
-        case CommitPhase::kAborted:
-            opName = "shardCollectionAbort";
-            break;
-        case CommitPhase::kPrepare:
-            // in case of prepare, shardsIds is required
-            cmdBuilder.append("shards", *shardIds);
-            opName = "shardCollectionPrepare";
-            break;
-        default:
-            MONGO_UNREACHABLE;
-    }
+    StringData opName("shardCollection");
 
     const auto nssStr = NamespaceStringUtil::serialize(nss, SerializationContext::stateDefault());
     cmdBuilder.append(opName, nssStr);
@@ -119,45 +102,6 @@ void notifyChangeStreamsOnShardCollection(OperationContext* opCtx,
     oplogEntry.setWallClockTime(opCtx->getServiceContext()->getFastClockSource()->now());
 
     insertOplogEntry(opCtx, std::move(oplogEntry), "ShardCollectionWritesOplog");
-}
-
-void notifyChangeStreamsOnDatabaseAdded(OperationContext* opCtx,
-                                        const DatabasesAdded& databasesAddedNotification) {
-    const std::string operationName = [&] {
-        switch (databasesAddedNotification.getPhase()) {
-            case CommitPhaseEnum::kSuccessful:
-                return "createDatabase";
-            case CommitPhaseEnum::kAborted:
-                return "createDatabaseAbort";
-            case CommitPhaseEnum::kPrepare:
-                return "createDatabasePrepare";
-            default:
-                MONGO_UNREACHABLE;
-        }
-    }();
-
-    for (const auto& dbName : databasesAddedNotification.getNames()) {
-        repl::MutableOplogEntry oplogEntry;
-        const auto dbNameStr =
-            DatabaseNameUtil::serialize(dbName, SerializationContext::stateDefault());
-
-        oplogEntry.setOpType(repl::OpTypeEnum::kNoop);
-        oplogEntry.setNss(NamespaceString(dbName));
-        oplogEntry.setTid(dbName.tenantId());
-        oplogEntry.setObject(BSON("msg" << BSON(operationName << dbNameStr)));
-        BSONObjBuilder o2Builder;
-        o2Builder.append(operationName, dbNameStr);
-        if (databasesAddedNotification.getPhase() == CommitPhaseEnum::kPrepare) {
-            o2Builder.append("primaryShard", *databasesAddedNotification.getPrimaryShard());
-        }
-
-        o2Builder.append("isImported", databasesAddedNotification.getAreImported());
-        oplogEntry.setObject2(o2Builder.obj());
-        oplogEntry.setOpTime(repl::OpTime());
-        oplogEntry.setWallClockTime(opCtx->getServiceContext()->getFastClockSource()->now());
-
-        insertOplogEntry(opCtx, std::move(oplogEntry), "DbAddedToConfigCatalogWritesOplog");
-    }
 }
 
 void notifyChangeStreamsOnMovePrimary(OperationContext* opCtx,
@@ -213,6 +157,12 @@ void notifyChangeStreamsOnReshardCollectionComplete(OperationContext* opCtx,
 
             if (notification.getCollation()) {
                 o2Builder.append("collation", notification.getCollation().value());
+            }
+
+            if (notification.getProvenance().has_value()) {
+                o2Builder.append(
+                    "provenance",
+                    ReshardingProvenance_serializer(notification.getProvenance().value()));
             }
 
             if (!zones.empty()) {

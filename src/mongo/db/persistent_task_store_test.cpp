@@ -37,8 +37,7 @@
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/persistent_task_store.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -110,13 +109,10 @@ TEST_F(PersistentTaskStoreTest, TestForEach) {
 
     // No match.
     int count = 0;
-    store.forEach(opCtx,
-                  BSON("key"
-                       << "four"),
-                  [&count](const TestTask& t) {
-                      ++count;
-                      return true;
-                  });
+    store.forEach(opCtx, BSON("key" << "four"), [&count](const TestTask& t) {
+        ++count;
+        return true;
+    });
     ASSERT_EQ(count, 0);
 
     // Multiple matches.
@@ -137,13 +133,10 @@ TEST_F(PersistentTaskStoreTest, TestForEach) {
 
     // Single match.
     count = 0;
-    store.forEach(opCtx,
-                  BSON("key"
-                       << "one"),
-                  [&count](const TestTask& t) {
-                      ++count;
-                      return true;
-                  });
+    store.forEach(opCtx, BSON("key" << "one"), [&count](const TestTask& t) {
+        ++count;
+        return true;
+    });
     ASSERT_EQ(count, 1);
 }
 
@@ -158,9 +151,7 @@ TEST_F(PersistentTaskStoreTest, TestRemove) {
 
     ASSERT_EQ(store.count(opCtx), 3);
 
-    store.remove(opCtx,
-                 BSON("key"
-                      << "one"));
+    store.remove(opCtx, BSON("key" << "one"));
 
     ASSERT_EQ(store.count(opCtx), 2);
 }
@@ -194,18 +185,12 @@ TEST_F(PersistentTaskStoreTest, TestUpdate) {
 
     ASSERT_EQ(store.count(opCtx), 3);
 
-    store.update(opCtx,
-                 BSON("key"
-                      << "one"),
-                 BSON("$inc" << BSON("min" << 1)));
+    store.update(opCtx, BSON("key" << "one"), BSON("$inc" << BSON("min" << 1)));
 
-    store.forEach(opCtx,
-                  BSON("key"
-                       << "one"),
-                  [&](const TestTask& task) {
-                      ASSERT_EQ(task.min, expectedUpdatedMin);
-                      return false;
-                  });
+    store.forEach(opCtx, BSON("key" << "one"), [&](const TestTask& task) {
+        ASSERT_EQ(task.min, expectedUpdatedMin);
+        return false;
+    });
 }
 
 TEST_F(PersistentTaskStoreTest, TestUpdateOnlyUpdatesOneMatchingDocument) {
@@ -295,9 +280,7 @@ TEST_F(PersistentTaskStoreTest, TestWritesPersistAcrossInstances) {
         auto count = store.count(opCtx, BSON("min" << GTE << 10));
         ASSERT_EQ(count, 2);
 
-        store.remove(opCtx,
-                     BSON("key"
-                          << "two"));
+        store.remove(opCtx, BSON("key" << "two"));
         ASSERT_EQ(store.count(opCtx), 2);
 
         count = store.count(opCtx, BSON("min" << GTE << 10));
@@ -322,18 +305,12 @@ TEST_F(PersistentTaskStoreTest, TestCountWithQuery) {
     store.add(opCtx, TestTask{"two", 10, 20});
     store.add(opCtx, TestTask{"two", 40, 50});
 
-    ASSERT_EQ(store.count(opCtx,
-                          BSON("key"
-                               << "two")),
-              2);
+    ASSERT_EQ(store.count(opCtx, BSON("key" << "two")), 2);
 
     // Remove multipe overlapping ranges.
     store.remove(opCtx, BSON("min" << 10));
 
-    ASSERT_EQ(store.count(opCtx,
-                          BSON("key"
-                               << "two")),
-              1);
+    ASSERT_EQ(store.count(opCtx, BSON("key" << "two")), 1);
 }
 
 }  // namespace

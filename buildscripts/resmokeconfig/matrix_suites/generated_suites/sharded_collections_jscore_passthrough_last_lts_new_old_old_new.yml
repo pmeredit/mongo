@@ -49,9 +49,7 @@ selector:
     - jstests/core/**/fsync.js
     - jstests/core/**/geo_s2cursorlimitskip.js
     - jstests/core/**/geo_update_btree2.js
-    - jstests/core/**/index9.js
     - jstests/core/**/queryoptimizera.js
-    - jstests/core/**/stages*.js
     - jstests/core/**/startup_log.js
     - jstests/core/**/tailable_cursor_invalidation.js
     - jstests/core/**/tailable_getmore_batch_size.js
@@ -86,8 +84,10 @@ selector:
     - cannot_create_unique_index_when_using_hashed_shard_key
     - requires_profiling
     - requires_capped
+    - DISABLED_TEMPORARILY_DUE_TO_FCV_UPGRADE
   roots:
     - jstests/core/**/*.js
+    - jstests/core_sharding/**/*.js
     - jstests/fle2/**/*.js
     - src/mongo/db/modules/*/jstests/fle2/**/*.js
 test_kind: js_test

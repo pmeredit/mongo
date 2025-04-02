@@ -161,9 +161,11 @@ var Explainable = (function() {
             if (options && options.hasOwnProperty("maxTimeMS")) {
                 distinctCmd.maxTimeMS = options.maxTimeMS;
             }
-
             if (options && options.hasOwnProperty("hint")) {
                 distinctCmd.hint = options.hint;
+            }
+            if (options && options.hasOwnProperty("rawData")) {
+                distinctCmd.rawData = options.rawData;
             }
 
             var explainCmd = buildExplainCmd(distinctCmd, this._verbosity);
@@ -176,8 +178,14 @@ var Explainable = (function() {
             var query = parsed.query;
             var justOne = parsed.justOne;
             var collation = parsed.collation;
+            var rawData = parsed.rawData;
 
             var bulk = this._collection.initializeOrderedBulkOp();
+
+            if (rawData) {
+                bulk.setRawData(rawData);
+            }
+
             var removeOp = bulk.find(query);
 
             if (collation) {
@@ -204,8 +212,14 @@ var Explainable = (function() {
             var collation = parsed.collation;
             var arrayFilters = parsed.arrayFilters;
             var hint = parsed.hint;
+            var rawData = parsed.rawData;
 
             var bulk = this._collection.initializeOrderedBulkOp();
+
+            if (rawData) {
+                bulk.setRawData(rawData);
+            }
+
             var updateOp = bulk.find(query);
 
             if (hint) {

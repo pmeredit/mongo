@@ -44,7 +44,8 @@ static constexpr StringData kSearchField = "search"_sd;
 static constexpr StringData kVectorSearchCmd = "vectorSearch"_sd;
 static constexpr StringData kCollectionUuidField = "collectionUUID"_sd;
 static constexpr StringData kQueryField = "query"_sd;
-static constexpr StringData kViewNameField = "viewName"_sd;
+static constexpr StringData kViewField = "view"_sd;
+static constexpr StringData kViewNameField = "name"_sd;
 static constexpr StringData kExplainField = "explain"_sd;
 static constexpr StringData kVerbosityField = "verbosity"_sd;
 static constexpr StringData kIntermediateField = "intermediate"_sd;
@@ -54,6 +55,7 @@ static constexpr StringData kBatchSizeField = "batchSize"_sd;
 static constexpr StringData kRequiresSearchSequenceToken = "requiresSearchSequenceToken"_sd;
 static constexpr StringData kReturnStoredSourceArg = "returnStoredSource"_sd;
 static constexpr StringData kSlowQueryLogFieldName = "slowQueryLog"_sd;
+static constexpr StringData kScoreDetailsFieldName = "scoreDetails"_sd;
 
 static constexpr long long kMinimumMongotBatchSize = 10;
 static constexpr long long kDefaultMongotBatchSize = 101;
@@ -92,7 +94,8 @@ std::vector<std::unique_ptr<executor::TaskExecutorCursor>> establishCursorsForSe
     boost::optional<int64_t> userBatchSize = boost::none,
     std::unique_ptr<PlanYieldPolicy> yieldPolicy = nullptr,
     std::shared_ptr<DocumentSourceInternalSearchIdLookUp::SearchIdLookupMetrics>
-        searchIdLookupMetrics = nullptr);
+        searchIdLookupMetrics = nullptr,
+    boost::optional<NamespaceString> viewNss = boost::none);
 
 /**
  * Parallel to establishCursorsForSearchStage() but limited to the arguments expected for
@@ -103,7 +106,8 @@ std::vector<std::unique_ptr<executor::TaskExecutorCursor>> establishCursorsForSe
     const BSONObj& query,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
     const boost::optional<int>& protocolVersion = boost::none,
-    std::unique_ptr<PlanYieldPolicy> yieldPolicy = nullptr);
+    std::unique_ptr<PlanYieldPolicy> yieldPolicy = nullptr,
+    boost::optional<NamespaceString> viewNss = boost::none);
 
 /**
  * Gets the explain information by issuing an explain command to mongot and blocking
@@ -119,7 +123,8 @@ BSONObj getExplainResponse(const ExpressionContext* expCtx,
  */
 BSONObj getSearchExplainResponse(const ExpressionContext* expCtx,
                                  const BSONObj& query,
-                                 executor::TaskExecutor* taskExecutor);
+                                 executor::TaskExecutor* taskExecutor,
+                                 boost::optional<NamespaceString> viewNss = boost::none);
 
 /**
  * Send the search command `cmdObj` to the remote search server this process is connected to.

@@ -34,14 +34,14 @@ import os
 import sys
 from typing import List
 
+import typer
 import yaml
 
 # Permit imports from "buildscripts".
 sys.path.append(os.path.normpath(os.path.join(os.path.abspath(__file__), "../../..")))
 
-# pylint: disable=wrong-import-position
 from buildscripts.idl import lib
-from buildscripts.idl.idl import parser
+from buildscripts.idl.idl import binder, parser
 
 
 def get_all_feature_flags(idl_dirs: List[str] = None):
@@ -64,7 +64,9 @@ def get_all_feature_flags(idl_dirs: List[str] = None):
             with open(idl_path) as idl_file:
                 doc = parser.parse_file(idl_file, idl_path)
             for feature_flag in doc.spec.feature_flags:
-                all_flags[feature_flag.name] = feature_flag.default.literal
+                all_flags[feature_flag.name] = (
+                    "true" if binder.is_feature_flag_enabled_by_default(feature_flag) else "false"
+                )
 
     return all_flags
 
@@ -87,17 +89,29 @@ def get_all_feature_flags_turned_off_by_default(idl_dirs: List[str] = None):
     return list(set(all_default_false_flags) - set(force_disabled_flags))
 
 
-def gen_all_feature_flags_file(filename: str = "all_feature_flags.txt"):
-    flags = get_all_feature_flags_turned_off_by_default()
+def write_feature_flags_to_file(flags: List[str], filename: str):
+    """Helper function to write feature flags to a file."""
     with open(filename, "w") as output_file:
         output_file.write("\n".join(flags))
-        print("Generated: ", os.path.realpath(output_file.name))
+        print(f"Generated: {os.path.realpath(output_file.name)}")
 
 
-def main():
-    """Run the main function."""
-    gen_all_feature_flags_file()
+cli = typer.Typer()
+
+
+@cli.command("turned-off-by-default")
+def turned_off_by_default(filename: str = "all_feature_flags.txt"):
+    """Generate a list of feature flags that default to OFF."""
+    flags = get_all_feature_flags_turned_off_by_default()
+    write_feature_flags_to_file(flags, filename)
+
+
+@cli.command("turned-on-by-default")
+def turned_on_by_default(filename: str = "all_feature_flags.txt"):
+    """Generate a list of feature flags that default to ON."""
+    flags = get_all_feature_flags_turned_on_by_default()
+    write_feature_flags_to_file(flags, filename)
 
 
 if __name__ == "__main__":
-    main()
+    cli()

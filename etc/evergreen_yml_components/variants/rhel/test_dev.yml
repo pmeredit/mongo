@@ -20,15 +20,10 @@ variables:
   # - etc/evergreen_yml_components/variants/rhel/test_dev.yml
   # ANY MODIFICATIONS HERE SHOULD ALSO BE MADE IN THOSE FILES
   - &linux-x86-dynamic-enterprise-compile-expansions
-    scons_cache_scope: shared
-    scons_cache_mode: all
     has_packages: false
-    compile_flags: >-
-      --ssl
-      MONGO_DISTMOD=rhel88
-      -j$(grep -c ^processor /proc/cpuinfo)
-      --variables-files=etc/scons/mongodbtoolchain_stable_gcc.vars
-      --link-model=dynamic
+    bazel_compile_flags: >-
+      --define=MONGO_DISTMOD=rhel88
+      --linkstatic=False
 
   # THIS HAS COPIES IN:
   # - etc/evergreen_yml_components/variants/rhel/test_dev_master_branch_only.yml
@@ -70,7 +65,6 @@ variables:
     repo_edition: enterprise
     large_distro_name: rhel8.8-medium
     core_analyzer_distro_name: rhel8.8-xlarge
-    num_scons_link_jobs_available: 0.99
     compile_variant: *linux_x86_dynamic_compile_variant_name
 
   # THIS HAS COPIES IN:
@@ -81,8 +75,6 @@ variables:
   # ANY MODIFICATIONS HERE SHOULD ALSO BE MADE IN THOSE FILES
   - &enterprise-rhel-8-64-bit-dynamic-expansions
     <<: *linux_x86_generic_expansions
-    scons_cache_scope: shared
-    scons_cache_mode: all
     has_packages: false
     jstestfuzz_num_generated_files: 40
     jstestfuzz_concurrent_num_files: 10
@@ -100,8 +92,9 @@ buildvariants:
     expansions:
       <<: *linux-x86-dynamic-enterprise-compile-expansions
       compile_variant: *linux-x86-dynamic-compile
+      build_mongot: true
+      download_mongot_release: true
     tasks:
-      - name: compile_ninja_quick_TG
       - name: compile_test_parallel_unittest_stream_TG
       - name: compile_test_parallel_core_stream_TG
       - name: compile_test_parallel_dbtest_stream_TG
@@ -273,7 +266,6 @@ buildvariants:
             variant: *linux_x86_dynamic_compile_variant_name
       - name: check_feature_flag_tags
       - name: check_for_todos
-      - name: check_for_legacy_command_types
       - name: disk_wiredtiger
       - name: initial_sync_fuzzer_gen
       - name: fcv_upgrade_downgrade_replica_sets_jscore_passthrough_gen
@@ -312,6 +304,8 @@ buildvariants:
       - name: retryable_writes_jscore_stepdown_passthrough_gen
       - name: sasl
       - name: search
+      - name: search_community
+      - name: search_community_ssl
       - name: search_auth
       - name: search_no_pinned_connections_auth
       - name: search_ssl
@@ -325,17 +319,14 @@ buildvariants:
       - name: vector_search_ssl
       - name: aggregation_mongos_pqs_fallback_gen
       - name: aggregation_mongos_pqs_hints_gen
-      - name: aggregation_mongos_query_shape_hash_stability_gen
       - name: aggregation_pqs_fallback_gen
       - name: aggregation_pqs_hints_gen
-      - name: aggregation_query_shape_hash_stability_gen
       - name: aggregation_sharded_collections_pqs_fallback_gen
       - name: aggregation_sharded_collections_pqs_hints_gen
       - name: aggregation_sharded_collections_query_shape_hash_stability_gen
       - name: replica_sets_jscore_pqs_fallback_gen
       - name: replica_sets_jscore_pqs_hints_gen
       - name: replica_sets_jscore_pqs_index_filters_gen
-      - name: replica_sets_jscore_query_shape_hash_stability_gen
       - name: sharded_collections_pqs_fallback_gen
       - name: sharded_collections_pqs_hints_gen
       - name: sharded_collections_pqs_index_filters_gen
@@ -343,4 +334,3 @@ buildvariants:
       - name: sharding_pqs_fallback_gen
       - name: sharding_pqs_hints_gen
       - name: sharding_pqs_index_filters_gen
-      - name: sharding_query_shape_hash_stability_gen

@@ -38,7 +38,7 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
 namespace {
@@ -167,7 +167,7 @@ void PlanCacheBenchmarkFixture::benchmarkMatchComplex(benchmark::State& state) {
         "{'g.h': {$eq: 3}}"
         "]}"
         "]}"
-        "]}}");
+        "]}");
     benchmarkQueryMatchProject(state, match, BSONObj());
 }
 

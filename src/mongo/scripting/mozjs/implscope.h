@@ -107,6 +107,15 @@ namespace mongo {
 namespace mozjs {
 
 /**
+ * Error messages or error message prefixes.
+ */
+namespace ErrorMessage {
+const StringData kUncaughtException = "uncaught exception";
+const StringData kOutOfMemory = "Out of memory";
+const StringData kUnknownError = "Unknown Failure from JSInterpreter";
+}  // namespace ErrorMessage
+
+/**
  * Implementation Scope for MozJS
  *
  * The Implementation scope holds the actual mozjs runtime and context objects,
@@ -443,6 +452,18 @@ public:
 
     ModuleLoader* getModuleLoader() const;
 
+    /**
+     * getJSContextForTest and getGlobalForTest should only be used from implscope_test.cpp, as we
+     * need a way to expose these members for some JS API calls.
+     */
+    JSContext* getJSContextForTest() {
+        return _context;
+    }
+
+    JS::HandleObject getGlobalForTest() {
+        return _global;
+    }
+
 private:
     template <typename ImplScopeFunction>
     auto _runSafely(ImplScopeFunction&& functionToRun) -> decltype(functionToRun());
@@ -475,6 +496,7 @@ private:
     static bool _interruptCallback(JSContext* cx);
     static void _gcCallback(JSContext* rt, JSGCStatus status, JS::GCReason reason, void* data);
     bool _checkErrorState(bool success, bool reportError = true, bool assertOnError = true);
+    Status _checkForPendingException();
 
     void installDBAccess();
     void installBSONTypes();
@@ -507,7 +529,6 @@ private:
     Status _killStatus;
     mutable stdx::mutex _mutex;
     stdx::condition_variable _sleepCondition;
-    std::string _error;
     OperationContext* _opCtx;         // Op context for DbEval
     stdx::thread::id _opCtxThreadId;  // Id of the thread that owns '_opCtx'
     std::size_t _inOp;

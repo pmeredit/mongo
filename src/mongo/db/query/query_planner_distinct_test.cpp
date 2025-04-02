@@ -31,8 +31,7 @@
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_test_fixture.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 class QueryPlannerDistinctTest : public QueryPlannerTest {
@@ -120,7 +119,7 @@ TEST_F(QueryPlannerDistinctTest, PredicateCovered) {
     addIndex(fromjson("{x: 1}"));
     addIndex(fromjson("{x: 1, y: 1}"));
     addIndex(fromjson("{y: 1, z: 1}"));
-    runDistinctQuery("x", fromjson("{y: 2, x: {$gt: 2}}}"));
+    runDistinctQuery("x", fromjson("{y: 2, x: {$gt: 2}}"));
 
     assertNumSolutions(3);
     // Index {x: 1, y: 1} is transformed since it covers the filter.

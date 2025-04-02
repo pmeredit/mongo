@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/kafka_resolve_callback.h"
+
 #include <arpa/inet.h>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -9,7 +11,6 @@
 
 #include "mongo/util/assert_util.h"
 #include "streams/exec/context.h"
-#include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/log_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams

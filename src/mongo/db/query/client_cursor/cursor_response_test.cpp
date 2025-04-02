@@ -42,9 +42,7 @@
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/namespace_string_util.h"
 
 namespace mongo {
@@ -60,7 +58,8 @@ static const BSONObj basicMetricsObj = fromjson(R"({
     hasSortStage: true,
     usedDisk: true,
     fromMultiPlanner: true,
-    fromPlanCache: true
+    fromPlanCache: true,
+    cpuNanos: {"$numberLong": "18"}
 })");
 
 static const std::string defaultNssStr = "db.coll";
@@ -180,10 +179,9 @@ TEST(CursorResponseTest, parseFromBSONIdFieldMissing) {
 
 TEST(CursorResponseTest, parseFromBSONIdFieldWrongType) {
     StatusWith<CursorResponse> result = CursorResponse::parseFromBSON(
-        BSON("cursor" << BSON("id"
-                              << "123"
-                              << "ns" << defaultNssStr << "nextBatch"
-                              << BSON_ARRAY(BSON("_id" << 1) << BSON("_id" << 2)))
+        BSON("cursor" << BSON("id" << "123"
+                                   << "ns" << defaultNssStr << "nextBatch"
+                                   << BSON_ARRAY(BSON("_id" << 1) << BSON("_id" << 2)))
                       << "ok" << 1));
     ASSERT_NOT_OK(result.getStatus());
 }
@@ -311,6 +309,7 @@ TEST(CursorResponseTest, parseFromBSONCursorMetrics) {
     ASSERT_TRUE(metrics.getUsedDisk());
     ASSERT_TRUE(metrics.getFromMultiPlanner());
     ASSERT_TRUE(metrics.getFromPlanCache());
+    ASSERT_EQ(metrics.getCpuNanos(), 18);
 }
 
 TEST(CursorResponseTest, parseFromBSONCursorMetricsWrongType) {
@@ -344,7 +343,8 @@ TEST(CursorResponseTest, parseFromBSONCursorMetricsIncomplete) {
                                    CursorMetrics::kHasSortStageFieldName,
                                    CursorMetrics::kUsedDiskFieldName,
                                    CursorMetrics::kFromMultiPlannerFieldName,
-                                   CursorMetrics::kFromPlanCacheFieldName};
+                                   CursorMetrics::kFromPlanCacheFieldName,
+                                   CursorMetrics::kCpuNanosFieldName};
     for (auto fieldName : fields) {
         auto badMetrics = metrics.copy().removeField(fieldName);
         auto badCursor = makeCursorBSON(badMetrics);
@@ -925,7 +925,8 @@ TEST_F(CursorResponseBuilderTest, buildResponseWithAllKnownFields) {
                           false /* hasSortStage */,
                           true /* usedDisk */,
                           true /* fromMultiPlanner */,
-                          false /* fromPlanCache */);
+                          false /* fromPlanCache */,
+                          -1 /* cpuNanos */);
 
     auto pbrToken = BSON("n" << 1);
     builder.setPostBatchResumeToken(pbrToken);
@@ -954,6 +955,7 @@ TEST_F(CursorResponseBuilderTest, buildResponseWithAllKnownFields) {
     ASSERT_TRUE(parsedMetrics->getUsedDisk());
     ASSERT_TRUE(parsedMetrics->getFromMultiPlanner());
     ASSERT_FALSE(parsedMetrics->getFromPlanCache());
+    ASSERT_EQ(parsedMetrics->getCpuNanos(), -1);
 
     ASSERT_TRUE(response.getPartialResultsReturned());
     ASSERT_TRUE(response.getInvalidated());

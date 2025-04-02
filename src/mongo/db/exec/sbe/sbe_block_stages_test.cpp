@@ -48,10 +48,9 @@
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/query/stage_builder/sbe/gen_helpers.h"
 #include "mongo/db/timeseries/bucket_compression.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::sbe {
-using namespace fmt::literals;
 class BlockStagesTest : public PlanStageTestFixture {
 protected:
     BSONObj compressBucket(const BSONObj& bucket) {
@@ -165,7 +164,8 @@ protected:
             if (metaAccessor) {
                 auto metaTagVal = metaAccessor->getViewOfValue();
                 auto expectedTagVal = bson::convertFrom<true>(expectedData[i]["tag"]);
-                ASSERT_THAT(expectedTagVal, ValueEq(metaTagVal)) << "for {}th 'tag'"_format(i);
+                ASSERT_THAT(expectedTagVal, ValueEq(metaTagVal))
+                    << fmt::format("for {}th 'tag'", i);
             }
 
             // Verifies rows.
@@ -174,7 +174,7 @@ protected:
                 auto expectedTagVal = bson::convertFrom<true>(expectedData[i][cellPaths[j]]);
 
                 ASSERT_THAT(expectedTagVal, ValueEq(actualTagVal))
-                    << "for {}th path '{}'"_format(i, cellPaths[j]);
+                    << fmt::format("for {}th path '{}'", i, cellPaths[j]);
             }
 
             if (i == yieldAfter) {
@@ -227,7 +227,7 @@ const BSONObj bucketWithMeta1 = fromjson(R"(
     "control" : {"version" : 1},
     "meta" : "A",
     "data" : {
-        "_id" : {"0" : 0}, "f" : {"0" : 0}, "time" : {"0" : {$date: "2023-06-30T16:47:09.512Z"}}}
+        "_id" : {"0" : 0}, "f" : {"0" : 0}, "time" : {"0" : {$date: "2023-06-30T16:47:09.512Z"}}
     }
 })");
 
@@ -806,7 +806,7 @@ void BlockStagesTest::testBlockToBitmap(
             auto tagVal = accessor->getViewOfValue();
             auto expectedTagVal = expected.getAt(i);
 
-            ASSERT_THAT(tagVal, ValueEq(expectedTagVal)) << "for {}th 'tag'"_format(i);
+            ASSERT_THAT(tagVal, ValueEq(expectedTagVal)) << fmt::format("for {}th 'tag'", i);
 
             // Test out saveState() and restoreState() for 50% of the documents (the first document,
             // the third document, the fifth document, and so on).

@@ -108,9 +108,6 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/shard_version.h"
@@ -126,8 +123,6 @@
 
 namespace mongo {
 namespace repl {
-
-using namespace fmt::literals;
 
 MONGO_FAIL_POINT_DEFINE(rollbackHangAfterTransitionToRollback);
 MONGO_FAIL_POINT_DEFINE(rollbackToTimestampHangCommonPointBeforeReplCommitPoint);
@@ -420,12 +415,7 @@ void RollbackImpl::_stopAndWaitForIndexBuilds(OperationContext* opCtx) {
         IndexBuildsCoordinator::get(opCtx)->stopIndexBuildsForRollback(opCtx);
 
     // Get a list of all databases.
-    StorageEngine* storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    std::vector<DatabaseName> dbs;
-    {
-        Lock::GlobalLock lk(opCtx, MODE_IS);
-        dbs = storageEngine->listDatabases();
-    }
+    std::vector<DatabaseName> dbs = catalog::listDatabases();
 
     // Wait for all background operations to complete by waiting on each database. Single-phase
     // index builds are not stopped before rollback, so we must wait for these index builds to
@@ -495,10 +485,6 @@ RollbackImpl::_namespacesAndUUIDsForOp(const OplogEntry& oplogEntry) {
                 }
                 break;
             }
-            case OplogEntry::CommandType::kDropDatabase: {
-                // There is no specific namespace to save for a drop database operation.
-                break;
-            }
             case OplogEntry::CommandType::kDbCheck:
             case OplogEntry::CommandType::kModifyCollectionShardingIndexCatalog:
             case OplogEntry::CommandType::kCreate:
@@ -520,8 +506,12 @@ RollbackImpl::_namespacesAndUUIDsForOp(const OplogEntry& oplogEntry) {
                 }
                 break;
             }
+            case OplogEntry::CommandType::kDropDatabase:
             case OplogEntry::CommandType::kCommitTransaction:
-            case OplogEntry::CommandType::kAbortTransaction: {
+            case OplogEntry::CommandType::kAbortTransaction:
+            case OplogEntry::CommandType::kCreateDatabaseMetadata:
+            case OplogEntry::CommandType::kDropDatabaseMetadata: {
+                // There is no specific namespace to save for these operations.
                 break;
             }
             case OplogEntry::CommandType::kApplyOps:
@@ -540,20 +530,27 @@ void RollbackImpl::_restoreTxnsTableEntryFromRetryableWrites(OperationContext* o
     // Query for retryable writes oplog entries with a non-null 'prevWriteOpTime' value
     // less than or equal to the 'stableTimestamp'. This query intends to include no-op
     // retryable writes oplog entries that have been applied through a migration process.
-    const auto filter = BSON("op" << BSON("$in" << BSON_ARRAY("i"
-                                                              << "u"
-                                                              << "d")));
+    const auto filter = BSON("op" << BSON("$in" << BSON_ARRAY("i" << "u"
+                                                                  << "d")));
     // We use the 'fromMigrate' field to differentiate migrated retryable writes entries from
     // transactions entries.
-    const auto filterFromMigration = BSON("op"
-                                          << "n"
-                                          << "fromMigrate" << true);
+    const auto filterFromMigration = BSON("op" << "n"
+                                               << "fromMigrate" << true);
+    // When the 'ReplicateVectoredInsertsTransactionally' feature flag is enabled, we batch inserts
+    // into a single applyOps oplog entry with an internal array of operations as inserts, and set
+    // the 'multiOpType' flag. The stmtId then becomes an internal parameter for the array of
+    // batched operations, so we should not look for it in the outer document.
+    const auto filterForVectorInsertsApplyOps =
+        BSON("op" << "c"
+                  << "multiOpType" << repl::MultiOplogEntryType::kApplyOpsAppliedSeparately);
     FindCommandRequest findRequest{NamespaceString::kRsOplogNamespace};
-    findRequest.setFilter(BSON("ts" << BSON("$gt" << stableTimestamp) << "txnNumber"
-                                    << BSON("$exists" << true) << "stmtId"
-                                    << BSON("$exists" << true) << "prevOpTime.ts"
-                                    << BSON("$gte" << Timestamp(1, 0) << "$lte" << stableTimestamp)
-                                    << "$or" << BSON_ARRAY(filter << filterFromMigration)));
+    findRequest.setFilter(BSON(
+        "ts" << BSON("$gt" << stableTimestamp) << "txnNumber" << BSON("$exists" << true) << "$or"
+             << BSON_ARRAY(BSON("stmtId" << BSON("$exists" << true))
+                           << filterForVectorInsertsApplyOps)
+             << "prevOpTime.ts" << BSON("$gte" << Timestamp(1, 0) << "$lte" << stableTimestamp)
+             << "$or"
+             << BSON_ARRAY(filter << filterFromMigration << filterForVectorInsertsApplyOps)));
     auto cursor = client->find(std::move(findRequest));
     while (cursor->more()) {
         auto doc = cursor->next();
@@ -1162,8 +1159,8 @@ StatusWith<RollBackLocalOperations::RollbackCommonPoint> RollbackImpl::_findComm
     // each oplog entry up until the common point. We only need the Timestamp of the common point
     // for the oplog truncate after point. Along the way, we save some information about the
     // rollback ops.
-    auto commonPointSW =
-        syncRollBackLocalOperations(*_localOplog, *_remoteOplog, onLocalOplogEntryFn);
+    auto commonPointSW = syncRollBackLocalOperations(
+        *_localOplog, *_remoteOplog, onLocalOplogEntryFn, shouldCreateDataFiles());
     if (!commonPointSW.isOK()) {
         return commonPointSW.getStatus();
     }
@@ -1404,8 +1401,7 @@ void RollbackImpl::_transitionFromRollbackToSecondary(OperationContext* opCtx) {
 }
 
 void RollbackImpl::_checkForAllIdIndexes(OperationContext* opCtx) {
-    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    std::vector<DatabaseName> dbNames = storageEngine->listDatabases();
+    std::vector<DatabaseName> dbNames = catalog::listDatabases();
     for (const auto& dbName : dbNames) {
         Lock::DBLock dbLock(opCtx, dbName, MODE_X);
         checkForIdIndexes(opCtx, dbName);

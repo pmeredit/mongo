@@ -61,12 +61,6 @@ const auto kTimedPhaseNamesMap = [] {
         {TimedPhase::kCriticalSection, "totalCriticalSectionTimeElapsedSecs"},
         {TimedPhase::kBuildingIndex, "totalIndexBuildTimeElapsedSecs"}};
 }();
-const auto kTimedPhaseNamesMapWithoutReshardingImprovements = [] {
-    return ReshardingMetrics::TimedPhaseNameMap{
-        {TimedPhase::kCloning, "totalCopyTimeElapsedSecs"},
-        {TimedPhase::kApplying, "totalApplyTimeElapsedSecs"},
-        {TimedPhase::kCriticalSection, "totalCriticalSectionTimeElapsedSecs"}};
-}();
 inline ReshardingMetrics::State getDefaultState(ReshardingMetrics::Role role) {
     using Role = ReshardingMetrics::Role;
     switch (role) {
@@ -104,12 +98,12 @@ Date_t readStartTime(const CommonReshardingMetadata& metadata, ClockSource* fall
     }
 }
 
-ProvenanceEnum readProvenance(const CommonReshardingMetadata& metadata) {
+ReshardingProvenanceEnum readProvenance(const CommonReshardingMetadata& metadata) {
     if (const auto& provenance = metadata.getProvenance()) {
         return provenance.get();
     }
 
-    return ProvenanceEnum::kReshardCollection;
+    return ReshardingProvenanceEnum::kReshardCollection;
 }
 
 }  // namespace
@@ -149,7 +143,7 @@ ReshardingMetrics::ReshardingMetrics(UUID instanceId,
                                      ClockSource* clockSource,
                                      ShardingDataTransformCumulativeMetrics* cumulativeMetrics,
                                      State state,
-                                     ProvenanceEnum provenance)
+                                     ReshardingProvenanceEnum provenance)
     : Base{std::move(instanceId),
            createOriginalCommand(nss, std::move(shardKey)),
            nss,
@@ -255,34 +249,25 @@ StringData ReshardingMetrics::getStateString() const noexcept {
 
 BSONObj ReshardingMetrics::reportForCurrentOp() const noexcept {
     BSONObjBuilder builder;
-    if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        reportDurationsForAllPhases<Seconds>(
-            kTimedPhaseNamesMap, getClockSource(), &builder, Seconds{0});
-        switch (_role) {
-            case Role::kCoordinator:
-                builder.append(_reshardingFieldNames->getForIsSameKeyResharding(),
-                               _isSameKeyResharding.load());
-                break;
-            case Role::kRecipient:
-                builder.append(_reshardingFieldNames->getForIndexesToBuild(),
-                               _indexesToBuild.load());
-                builder.append(_reshardingFieldNames->getForIndexesBuilt(), _indexesBuilt.load());
-                break;
-            default:
-                break;
-        }
-    } else {
-        reportDurationsForAllPhases<Seconds>(kTimedPhaseNamesMapWithoutReshardingImprovements,
-                                             getClockSource(),
-                                             &builder,
-                                             Seconds{0});
+    reportDurationsForAllPhases<Seconds>(
+        kTimedPhaseNamesMap, getClockSource(), &builder, Seconds{0});
+    switch (_role) {
+        case Role::kCoordinator:
+            builder.append(_reshardingFieldNames->getForIsSameKeyResharding(),
+                           _isSameKeyResharding.load());
+            break;
+        case Role::kRecipient:
+            builder.append(_reshardingFieldNames->getForIndexesToBuild(), _indexesToBuild.load());
+            builder.append(_reshardingFieldNames->getForIndexesBuilt(), _indexesBuilt.load());
+            break;
+        default:
+            break;
     }
     if (_role == Role::kRecipient) {
         reportOplogApplicationCountMetrics(_reshardingFieldNames, &builder);
     }
     builder.appendElementsUnique(Base::reportForCurrentOp());
-    builder.appendElements(BSON("provenance" << Provenance_serializer(_provenance)));
+    builder.appendElements(BSON("provenance" << ReshardingProvenance_serializer(_provenance)));
     return builder.obj();
 }
 
@@ -308,12 +293,9 @@ void ReshardingMetrics::restoreRecipientSpecificFields(
 
 void ReshardingMetrics::restoreCoordinatorSpecificFields(
     const ReshardingCoordinatorDocument& document) {
-    if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        auto isSameKeyResharding =
-            document.getForceRedistribution() && *document.getForceRedistribution();
-        setIsSameKeyResharding(isSameKeyResharding);
-    }
+    auto isSameKeyResharding =
+        document.getForceRedistribution() && *document.getForceRedistribution();
+    setIsSameKeyResharding(isSameKeyResharding);
     restorePhaseDurationFields(document);
 }
 
@@ -346,23 +328,22 @@ void ReshardingMetrics::restoreIndexBuildDurationFields(const ReshardingRecipien
     }
 }
 
-void ReshardingMetrics::reportOnCompletion(BSONObjBuilder* builder) {
+void ReshardingMetrics::reportPhaseDurationsOnCompletion(BSONObjBuilder* builder) {
     invariant(builder);
-    if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        reportDurationsForAllPhases<Seconds>(
-            kTimedPhaseNamesMap, getClockSource(), builder, Seconds{0});
-    } else {
-        reportDurationsForAllPhases<Seconds>(kTimedPhaseNamesMapWithoutReshardingImprovements,
-                                             getClockSource(),
-                                             builder,
-                                             Seconds{0});
-    }
-    builder->appendElements(BSON("provenance" << Provenance_serializer(_provenance)));
+    const auto fieldNames = ReshardingMetrics::TimedPhaseNameMap{
+        {TimedPhase::kCloning, "copyDurationMs"},
+        {TimedPhase::kBuildingIndex, "buildingIndexDurationMs"},
+        {TimedPhase::kApplying, "applyDurationMs"},
+        {TimedPhase::kCriticalSection, "criticalSectionDurationMs"},
+    };
+    reportDurationsForAllPhases<Milliseconds>(fieldNames, getClockSource(), builder);
 }
 
 void ReshardingMetrics::fillDonorCtxOnCompletion(DonorShardContext& donorCtx) {
     donorCtx.setWritesDuringCriticalSection(getWritesDuringCriticalSection());
+    BSONObjBuilder bob;
+    reportPhaseDurationsOnCompletion(&bob);
+    donorCtx.setPhaseDurations(bob.obj());
 }
 
 void ReshardingMetrics::fillRecipientCtxOnCompletion(RecipientShardContext& recipientCtx) {
@@ -371,6 +352,9 @@ void ReshardingMetrics::fillRecipientCtxOnCompletion(RecipientShardContext& reci
     }
     recipientCtx.setOplogFetched(getOplogEntriesFetched());
     recipientCtx.setOplogApplied(getOplogEntriesApplied());
+    BSONObjBuilder bob;
+    reportPhaseDurationsOnCompletion(&bob);
+    recipientCtx.setPhaseDurations(bob.obj());
 }
 
 void ReshardingMetrics::onStarted() {

@@ -59,8 +59,6 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
@@ -94,7 +92,7 @@ Status insertDatabaseEntryForBackwardCompatibility(OperationContext* opCtx,
         auto dbMetadata =
             DatabaseType(dbName, ShardId::kConfigServerId, DatabaseVersion::makeFixed());
 
-        write_ops::InsertCommandRequest insertOp(NamespaceString::kShardConfigDatabasesNamespace);
+        write_ops::InsertCommandRequest insertOp(NamespaceString::kConfigCacheDatabasesNamespace);
         insertOp.setDocuments({dbMetadata.toBSON()});
         return insertOp.serialize();
     }());
@@ -169,6 +167,15 @@ public:
             uassert(ErrorCodes::IllegalOperation,
                     "Can't call _flushDatabaseCacheUpdates if in read-only mode",
                     !opCtx->readOnly());
+
+            if (feature_flags::gShardAuthoritativeDbMetadataCRUD.isEnabled(
+                    VersionContext::getDecoration(opCtx),
+                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+                // When the feature flag for authoritative database metadata is enabled, this should
+                // act as a noop. Refreshing the database metadata is no longer supported.
+                return;
+            }
+
             const auto dbName = _dbName();
             if (dbName.isAdminDB() || dbName.isConfigDB()) {
                 // The admin and config databases have fixed metadata that does not need to be
@@ -213,14 +220,6 @@ public:
                 LOGV2_DEBUG(21981, 1, "Forcing remote routing table refresh", "db"_attr = dbName);
                 uassertStatusOK(FilteringMetadataCache::get(opCtx)->onDbVersionMismatch(
                     opCtx, dbName, boost::none));
-
-                // TODO (SERVER-97511): Remove the refresh of the routing information.
-                // (Ignore FCV check): this feature flag is not FCV-gated.
-                if (feature_flags::gDualCatalogCache.isEnabledAndIgnoreFCVUnsafe()) {
-                    const auto catalogCache = Grid::get(opCtx)->catalogCache();
-                    catalogCache->onStaleDatabaseVersion(dbName, boost::none /* wantedVersion */);
-                    (void)catalogCache->getDatabase(opCtx, dbName);
-                }
             }
 
             // A config server could receive this command even if not in config shard mode if the CS

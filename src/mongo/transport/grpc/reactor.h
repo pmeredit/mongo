@@ -55,17 +55,17 @@ class GRPCReactorTimer : public ReactorTimer {
 public:
     GRPCReactorTimer(std::weak_ptr<GRPCReactor> reactor) : _reactor(reactor) {}
 
-    ~GRPCReactorTimer() {
+    ~GRPCReactorTimer() override {
         cancel();
     }
 
-    void cancel(const BatonHandle& baton = nullptr) {
+    void cancel(const BatonHandle& baton = nullptr) override {
         if (_alarm) {
             _alarm->Cancel();
         }
     };
 
-    Future<void> waitUntil(Date_t deadline, const BatonHandle& baton = nullptr);
+    Future<void> waitUntil(Date_t deadline, const BatonHandle& baton = nullptr) override;
 
 private:
     std::shared_ptr<::grpc::Alarm> _alarm;
@@ -93,6 +93,8 @@ public:
     friend class StubFactoryImpl;
     friend class EgressSession;
     friend class MockClientStream;
+    friend class Client;
+    friend class Channel;
 
     /**
      * The CompletionQueueEntry is the tag type we provide to gRPC functions. It contains a Promise
@@ -121,7 +123,7 @@ public:
 
     GRPCReactor() : _clkSource(this), _stats(&_clkSource), _cq() {}
 
-    void run() noexcept override;
+    void run() override;
 
     /**
      * Once stop() is called, all calls to schedule() will fail the task with a ShutdownInProgress
@@ -143,6 +145,9 @@ public:
     }
 
     void appendStats(BSONObjBuilder& bob) const override;
+
+    // sleepFor is implemented so that the gRPC reactor is compatible with the AsyncTry API.
+    ExecutorFuture<void> sleepFor(Milliseconds duration, const CancellationToken& token);
 
 private:
     ::grpc::CompletionQueue* _getCompletionQueue() {

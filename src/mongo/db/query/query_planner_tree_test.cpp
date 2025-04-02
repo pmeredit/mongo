@@ -48,8 +48,7 @@
 #include "mongo/db/query/util/cartesian_product.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
 
@@ -367,21 +366,17 @@ TEST_F(QueryPlannerTest, ContainedOrOfAndCollapseIndenticalScansWithFilter) {
         "filter: null}}}");
 }
 
-/**
- * Due to SERVER-78752 this test was modified to disallow collapsing the or branches due to IETs
- * mismatch. To fix this and being able to collapse the $or the {$gte:1,$lte:1} needs to be
- * simplified to {a:1} before parameterization. TODO: SERVER-78962
- */
-TEST_F(QueryPlannerTest, ContainedOrOfAndDoesNotCollapseIndenticalScans) {
-    addIndex(BSON("a" << 1));
-    runQuery(fromjson("{$or: [{a:{$gte:1,$lte:1}}, {a:1}]}"));
+TEST_F(QueryPlannerTest, ContainedOrOfAndCollapseIndenticalScansWithFilter2) {
+    addIndex(BSON("a" << 1 << "b" << 1));
+    runQuery(fromjson("{c: 1, $or: [{a:{$gte:1,$lte:1}, b:2}, {a:1, b:2, d:3}]}"));
 
     assertNumSolutions(2U);
     assertSolutionExists("{cscan: {dir: 1}}");
     assertSolutionExists(
-        "{fetch: {filter: null, node: {or: {nodes: ["
-        "{ixscan: {pattern: {a:1}, bounds: {a: [[1,1,true,true]]}}}, "
-        "{ixscan: {pattern: {a:1}, bounds: {a: [[1,1,true,true]]}}}]}}}}");
+        "{fetch: {filter: {c: 1}, node: {fetch: {filter: null, node: "
+        "{ixscan: {pattern: {a: 1, b: 1}},"
+        "bounds: {a: [[1,1,true,true]], b: [[2,2,true,true]]},"
+        "filter: null}}}}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrOfAndCollapseIdenticalScansTwoFilters) {
@@ -1012,7 +1007,7 @@ TEST_F(QueryPlannerTest, CantExplodeOrForSort) {
     assertNumSolutions(2U);
     assertSolutionExists(
         "{sort: {pattern: {c: 1}, limit: 0, type: 'simple', node: "
-        "{cscan: {dir: 1}}}}}}");
+        "{cscan: {dir: 1}}}}");
     assertSolutionExists(
         "{fetch: {filter: null, node: {sort: {pattern: {c: 1}, "
         "limit: 0, type: 'default', node: {or: {nodes: ["
@@ -1092,7 +1087,7 @@ TEST_F(QueryPlannerTest, ExplodeForSortIxscanFetchOr) {
     assertNumSolutions(2U);
     assertSolutionExists(
         "{sort: {pattern: {x: 1}, limit: 0, type: 'simple', node:"
-        "{cscan: {dir: 1}}}}}");
+        "{cscan: {dir: 1}}}}");
     assertSolutionExists(
         "{mergeSort: {nodes:"
         "[{fetch: {filter: {c: 1}, node:"
@@ -1122,7 +1117,7 @@ TEST_F(QueryPlannerTest, ExplodeForSortIxscanFetchOrAndIxscanOr) {
     assertNumSolutions(2U);
     assertSolutionExists(
         "{sort: {pattern: {x: 1}, limit: 0, type: 'simple', node:"
-        "{cscan: {dir: 1}}}}}");
+        "{cscan: {dir: 1}}}}");
     assertSolutionExists(
         "{fetch: {node:"
         "{mergeSort: {nodes:"
@@ -1157,8 +1152,7 @@ TEST_F(QueryPlannerTest, InWithSortAndLimitTrailingField) {
 }
 
 TEST_F(QueryPlannerTest, InCantUseHashedIndexWithRegex) {
-    addIndex(BSON("a"
-                  << "hashed"));
+    addIndex(BSON("a" << "hashed"));
     runQuery(fromjson("{a: {$in: [/abc/]}}"));
     ASSERT_EQUALS(getNumSolutions(), 1U);
 }
@@ -1488,7 +1482,7 @@ TEST_F(QueryPlannerTest, ContainedOrBase) {
         "{ixscan: {pattern: {c: 1, a: 1}, bounds: {c: [[7, 7, true, true]], a: [[5, 5, true, "
         "true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrOneChildUsesPredicate) {
@@ -1503,7 +1497,7 @@ TEST_F(QueryPlannerTest, ContainedOrOneChildUsesPredicate) {
         "true]]}}},"
         "{ixscan: {pattern: {c: 1}, bounds: {c: [[7, 7, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrCombineWithAnd) {
@@ -1519,7 +1513,7 @@ TEST_F(QueryPlannerTest, ContainedOrCombineWithAnd) {
         "{ixscan: {pattern: {c: 1, d: 1, a: 1}, bounds: {c: [[7, 7, true, true]], d: [[8, 8, true, "
         "true]], a: [[5, 5, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, NestedContainedOr) {
@@ -1541,7 +1535,7 @@ TEST_F(QueryPlannerTest, NestedContainedOr) {
         "true]]}}}"
         "]}}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, NestedContainedOrOneChildUsesPredicate) {
@@ -1567,7 +1561,7 @@ TEST_F(QueryPlannerTest, NestedContainedOrOneChildUsesPredicate) {
         "true]]}}}"
         "]}}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, DoublyContainedOr) {
@@ -1587,7 +1581,7 @@ TEST_F(QueryPlannerTest, DoublyContainedOr) {
         "true]]}}}]}},"
         "{ixscan: {pattern: {d: 1}, bounds: {d: [[8, 8, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrNotNextInIndex) {
@@ -1603,7 +1597,7 @@ TEST_F(QueryPlannerTest, ContainedOrNotNextInIndex) {
         "{ixscan: {pattern: {c: 1, a: 1}, bounds: {c: [[7, 7, true, true]], a: [[5, 5, true, "
         "true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrMultiplePredicates) {
@@ -1619,7 +1613,7 @@ TEST_F(QueryPlannerTest, ContainedOrMultiplePredicates) {
         "{ixscan: {pattern: {d: 1, b: 1, a: 1}, bounds: {d: [[8, 8, true, true]], b: [[6, 6, true, "
         "true]], a: [[5, 5, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrIntersect) {
@@ -1636,7 +1630,7 @@ TEST_F(QueryPlannerTest, ContainedOrIntersect) {
         "{ixscan: {pattern: {c: 1, a: 1}, bounds: {c: [[7, 7, true, true]], a: [[5, 8, true, "
         "true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrNot) {
@@ -1652,7 +1646,7 @@ TEST_F(QueryPlannerTest, ContainedOrNot) {
         "{ixscan: {pattern: {c: 1, a: 1}, bounds: {c: [[7, 7, true, true]], a: [['MinKey', 5, "
         "true, false], [5, 'MaxKey', false, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrNotEqualsNull) {
@@ -1668,7 +1662,7 @@ TEST_F(QueryPlannerTest, ContainedOrNotEqualsNull) {
         "{ixscan: {pattern: {c: 1, a: 1}, bounds: {c: [[7, 7, true, true]], a: [['MinKey', "
         "null, true, false], [null, 'MaxKey', false, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrMoveToNot) {
@@ -1684,7 +1678,7 @@ TEST_F(QueryPlannerTest, ContainedOrMoveToNot) {
         "{ixscan: {pattern: {c: 1, a: 1}, bounds: {c: [[7, 7, true, true]], a: [[5, 5, true, "
         "true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldInIndex) {
@@ -1710,7 +1704,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldInIndex) {
         "{ixscan: {pattern: {a: 1, c: 1}, bounds: {a: [[5, 5, true, true]], c: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldAndTrailingField) {
@@ -1731,7 +1725,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldAndTrailingField) {
         "{ixscan: {pattern: {a: 1, b: 1}, bounds: {a: [[5, 5, true, true]], b: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldForOneOrBranch) {
@@ -1751,7 +1745,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldForOneOrBranch) {
         "{ixscan: {pattern: {a: 1, b: 1}, bounds: {a: [[5, 5, true, true]], b: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicatesAreLeadingFields) {
@@ -1777,7 +1771,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicatesAreLeadingFields) {
         "{ixscan: {pattern: {a: 1, c: 1}, bounds: {a: [[0, 10, true, true]], c: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrOnePredicateIsLeadingField) {
@@ -1803,7 +1797,7 @@ TEST_F(QueryPlannerTest, ContainedOrOnePredicateIsLeadingField) {
         "{ixscan: {pattern: {a: 1, b: 1, d: 1}, bounds: {a: [[5, 5, true, true]], b: [[6, 6, true, "
         "true]], d: [['MinKey', 'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrCombineLeadingFields) {
@@ -1822,7 +1816,7 @@ TEST_F(QueryPlannerTest, ContainedOrCombineLeadingFields) {
         "{fetch: {filter: {$or: [{a: {$lte: 10}}, {b: 6}]}, node: "
         "{ixscan: {pattern: {a: 1}, bounds: {a: [[0, Infinity, true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldMoveToAnd) {
@@ -1848,7 +1842,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldMoveToAnd) {
         "{ixscan: {pattern: {a: 1, d: 1}, bounds: {a: [[5, 5, true, true]], d: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldMoveToAndWithFilter) {
@@ -1875,7 +1869,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldMoveToAndWithFilter) 
         "{ixscan: {pattern: {a: 1, d: 1}, bounds: {a: [[5, 5, true, true]], d: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicatesAreLeadingFieldsMoveToAnd) {
@@ -1902,7 +1896,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicatesAreLeadingFieldsMoveToAnd) {
         "{ixscan: {pattern: {a: 1, d: 1}, bounds: {a: [[0, 10, true, true]], d: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrOnePredicateIsLeadingFieldMoveToAnd) {
@@ -1929,7 +1923,7 @@ TEST_F(QueryPlannerTest, ContainedOrOnePredicateIsLeadingFieldMoveToAnd) {
         "{ixscan: {pattern: {a: 1, b: 1, e: 1}, bounds: {a: [[5, 5, true, true]], b: [[6, 6, true, "
         "true]], e: [['MinKey', 'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrCombineLeadingFieldsMoveToAnd) {
@@ -1951,7 +1945,7 @@ TEST_F(QueryPlannerTest, ContainedOrCombineLeadingFieldsMoveToAnd) {
         "{ixscan: {pattern: {a: 1, b: 1}, bounds: {a: [[0, Infinity, true, true]], b: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldIndexIntersection) {
@@ -1982,7 +1976,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldIndexIntersection) {
         "{ixscan: {pattern: {a: 1, b: 1}, bounds: {a: [[5, 5, true, true]], b: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldInBothBranchesIndexIntersection) {
@@ -2032,7 +2026,7 @@ TEST_F(QueryPlannerTest, ContainedOrPredicateIsLeadingFieldInBothBranchesIndexIn
         "{ixscan: {pattern: {a: 1, c: 1}, bounds: {a: [[5, 5, true, true]], c: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrNotPredicateIsLeadingFieldIndexIntersection) {
@@ -2067,7 +2061,7 @@ TEST_F(QueryPlannerTest, ContainedOrNotPredicateIsLeadingFieldIndexIntersection)
         "{ixscan: {pattern: {a: 1, b: 1}, bounds: {a: [['MinKey', 5, true, false], [5, 'MaxKey', "
         "false, true]], b: [['MinKey', 'MaxKey', true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrNotPredicateIsLeadingFieldInBothBranchesIndexIntersection) {
@@ -2122,7 +2116,7 @@ TEST_F(QueryPlannerTest, ContainedOrNotPredicateIsLeadingFieldInBothBranchesInde
         "{ixscan: {pattern: {a: 1, c: 1}, bounds: {a: [['MinKey', 5, true, false], [5, 'MaxKey', "
         "false, true]], c: [['MinKey', 'MaxKey', true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, MultipleContainedOrWithIndexIntersectionEnabled) {
@@ -2154,7 +2148,7 @@ TEST_F(QueryPlannerTest, MultipleContainedOrWithIndexIntersectionEnabled) {
     assertSolutionExists(
         "{fetch: {filter: {$and: [{$or: [{b: 6}, {c: 7}]}, {$or: [{d: 8}, {e: 9}]}]}, node: "
         "{ixscan: {filter: null, pattern: {a: 1}, bounds: {a: [[5,5,true,true]]}}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 
     // Ixisect solutions.
     assertSolutionExists(
@@ -2193,7 +2187,7 @@ TEST_F(QueryPlannerTest, ContainedOrMultikeyCannotCombineLeadingFields) {
         "{fetch: {filter: {$or: [{a: {$lte: 10}}, {b: 6}]}, node: "
         "{ixscan: {pattern: {a: 1}, bounds: {a: [[0, Infinity, true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCombineLeadingFields) {
@@ -2212,7 +2206,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCombineLeadingFields)
         "{fetch: {filter: {$or: [{a: {$lte: 10}}, {b: 6}]}, node: "
         "{ixscan: {pattern: {a: 1}, bounds: {a: [[0, Infinity, true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCombineLeadingFields) {
@@ -2233,7 +2227,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCombineLeadingFields) {
         "{ixscan: {pattern: {a: 1, c: 1}, bounds: {a: [[0, Infinity, true, true]], c: [['MinKey', "
         "'MaxKey', true, true]]}}}"
         "}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrMultikeyCompoundFields) {
@@ -2249,7 +2243,7 @@ TEST_F(QueryPlannerTest, ContainedOrMultikeyCompoundFields) {
         "true]]}}},"
         "{ixscan: {pattern: {c: 1}, bounds: {c: [[7, 7, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrMultikeyCannotCompoundFields) {
@@ -2265,7 +2259,7 @@ TEST_F(QueryPlannerTest, ContainedOrMultikeyCannotCompoundFields) {
         "[['MinKey', 'MaxKey', true, true]]}}},"
         "{ixscan: {pattern: {d: 1}, bounds: {d: [[7, 7, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCompoundFields) {
@@ -2281,7 +2275,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCompoundFields) {
         "true]]}}},"
         "{ixscan: {pattern: {c: 1}, bounds: {c: [[7, 7, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCompoundDottedFields) {
@@ -2297,7 +2291,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCompoundDottedFields) {
         "[[5, 5, true, true]]}}},"
         "{ixscan: {pattern: {d: 1}, bounds: {d: [[7, 7, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCompoundFields) {
@@ -2313,7 +2307,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCompoundFields) {
         "[['MinKey', 'MaxKey', true, true]]}}},"
         "{ixscan: {pattern: {d: 1}, bounds: {d: [[7, 7, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrMultikeyCannotCombineTrailingFields) {
@@ -2338,7 +2332,7 @@ TEST_F(QueryPlannerTest, ContainedOrMultikeyCannotCombineTrailingFields) {
         "{ixscan: {pattern: {c: 1}, bounds: {c: [[7, 7, true, true]]}}}"
         "]}}}}");
     assertHasOneSolutionOf(alternates);
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCombineTrailingFields) {
@@ -2363,7 +2357,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCombineTrailingFields
         "{ixscan: {pattern: {c: 1}, bounds: {c: [[7, 7, true, true]]}}}"
         "]}}}}");
     assertHasOneSolutionOf(alternates);
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCombineTrailingFields) {
@@ -2380,7 +2374,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCombineTrailingFields) {
         "true]]}}},"
         "{ixscan: {pattern: {c: 1}, bounds: {c: [[7, 7, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrMultikeyCompoundTrailingFields) {
@@ -2396,7 +2390,7 @@ TEST_F(QueryPlannerTest, ContainedOrMultikeyCompoundTrailingFields) {
         "true]], c: [[7, 7, true, true]]}}},"
         "{ixscan: {pattern: {d: 1}, bounds: {d: [[8, 8, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrMultikeyCannotCompoundTrailingFields) {
@@ -2420,7 +2414,7 @@ TEST_F(QueryPlannerTest, ContainedOrMultikeyCannotCompoundTrailingFields) {
         "{ixscan: {pattern: {e: 1}, bounds: {e: [[8, 8, true, true]]}}}"
         "]}}}}");
     assertHasOneSolutionOf(alternates);
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCompoundTrailingFields) {
@@ -2436,7 +2430,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCompoundTrailingFields) {
         "true]], c: [[7, 7, true, true]]}}},"
         "{ixscan: {pattern: {d: 1}, bounds: {d: [[8, 8, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCompoundTrailingFields) {
@@ -2455,7 +2449,7 @@ TEST_F(QueryPlannerTest, ContainedOrPathLevelMultikeyCannotCompoundTrailingField
         "true]]}}}}},"
         "{ixscan: {pattern: {e: 1}, bounds: {e: [[8, 8, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, ContainedOrPushdownIndexedExpr) {
@@ -2471,7 +2465,7 @@ TEST_F(QueryPlannerTest, ContainedOrPushdownIndexedExpr) {
         "{fetch: {node: {ixscan: {pattern: {a: 1, b: 1}, filter: null,"
         "bounds: {a: [['a', 'a', true, true]], b: [['b', 'b', true, true], ['c', 'c', true, "
         "true]]}}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 // SERVER-41872 fixed a case where variable "choice" ordering in the PlanEnumerator memo could lead
@@ -2564,10 +2558,10 @@ TEST_F(QueryPlannerTest, LockstepOrEnumerationSanityCheckTwoChildrenTwoIndexesEa
         "{fetch: {filter: {c: {$eq: 2}}, node: {ixscan: {pattern: {a: 1, b: 1}}}}}]}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: [{b: {$eq: 1}, c: {$eq: 1}}, {b: {$eq: 2}, c: {$eq: 2}}]}, node: "
-        "{ixscan: {pattern: {a: 1, b: 1}}}}}}}");
+        "{ixscan: {pattern: {a: 1, b: 1}}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: [{b: {$eq: 1}, c: {$eq: 1}}, {b: {$eq: 2}, c: {$eq: 2}}]}, node: "
-        "{ixscan: {pattern: {a: 1, c: 1}}}}}}}");
+        "{ixscan: {pattern: {a: 1, c: 1}}}}}");
 }
 
 TEST_F(QueryPlannerTest, TotalPossibleLockstepOrEnumerationReachesTheOrLimit) {
@@ -2585,9 +2579,8 @@ TEST_F(QueryPlannerTest, TotalPossibleLockstepOrEnumerationReachesTheOrLimit) {
         orBuilder.append(BSON("b" << i << "c" << i));
     }
 
-    auto cmd = BSON("find"
-                    << "testns"
-                    << "filter" << BSON("a" << 1 << "$or" << orBuilder.arr()));
+    auto cmd = BSON("find" << "testns"
+                           << "filter" << BSON("a" << 1 << "$or" << orBuilder.arr()));
 
     // Ensure that the query runs fine.
     runQueryAsCommand(cmd);
@@ -2613,10 +2606,10 @@ TEST_F(QueryPlannerTest, LockstepOrEnumerationSanityCheckTwoChildrenOneIndexEach
         "{pattern: {a: 1, c: 1}}}]}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: [{b: {$eq: 1}}, {c: {$eq: 2}}]}, node: {ixscan: {pattern: {a: 1, "
-        "b: 1}}}}}}}");
+        "b: 1}}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: [{b: {$eq: 1}}, {c: {$eq: 2}}]}, node: {ixscan: {pattern: {a: 1, "
-        "c: 1}}}}}}}");
+        "c: 1}}}}}");
 }
 
 // Test that we enumerate the expected plans with the special parameter set. In this test we have
@@ -2640,10 +2633,10 @@ TEST_F(QueryPlannerTest, LockstepOrEnumerationSanityCheckTwoChildrenDifferentNum
         "{filter: {b: {$eq: 2}}, node: {ixscan: {pattern: {a: 1, c: 1}}}}}]}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: [{b: {$eq: 1}}, {b: {$eq: 2}, c: {$eq: 2}}]}, node: {ixscan: "
-        "{pattern: {a: 1, b: 1}}}}}}}");
+        "{pattern: {a: 1, b: 1}}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: [{b: {$eq: 1}}, {b: {$eq: 2}, c: {$eq: 2}}]}, node: {ixscan: "
-        "{pattern: {a: 1, c: 1}}}}}}}");
+        "{pattern: {a: 1, c: 1}}}}}");
 }
 
 // Test that the special parameter does in fact impact the order of enumeration. Here we rely on the
@@ -2692,7 +2685,7 @@ TEST_F(QueryPlannerTest, NormalOrEnumerationDoesNotPrioritizeLockstepIteration) 
         "{b: {$eq: 1}, c: {$eq: 1}, d: {$eq: 1}}, "
         "{b: {$eq: 2}, c: {$eq: 2}, d: {$eq: 2}}, "
         "{b: {$eq: 3}, c: {$eq: 3}, d: {$eq: 3}} "
-        "]}, node: {ixscan: {pattern: {a: 1, b: 1}}}}}}");
+        "]}, node: {ixscan: {pattern: {a: 1, b: 1}}}}}");
 }
 
 TEST_F(QueryPlannerTest, LockstepOrEnumerationDoesPrioritizeLockstepIteration) {
@@ -2736,7 +2729,7 @@ TEST_F(QueryPlannerTest, LockstepOrEnumerationDoesPrioritizeLockstepIteration) {
         "{b: {$eq: 1}, c: {$eq: 1}, d: {$eq: 1}}, "
         "{b: {$eq: 2}, c: {$eq: 2}, d: {$eq: 2}}, "
         "{b: {$eq: 3}, c: {$eq: 3}, d: {$eq: 3}} "
-        "]}, node: {ixscan: {pattern: {a: 1, b: 1}}}}}}");
+        "]}, node: {ixscan: {pattern: {a: 1, b: 1}}}}}");
 }
 
 TEST_F(QueryPlannerTest, LockstepOrEnumerationDoesPrioritizeLockstepIterationMixedChildren) {
@@ -2869,28 +2862,28 @@ TEST_F(QueryPlannerTest, LockstepOrEnumerationDoesPrioritizeLockstepIterationMix
         "{b: {$eq: 2.2}, c: {$eq: 2.2}}, "
         "{b: {$eq: 3}, c: {$eq: 3}, d: {$eq: 3}}, "
         "{b: {$eq: 4}, c: {$eq: 4}, d: {$eq: 4}, e: {$eq: 4}} "
-        "]}, node: {ixscan: {pattern: {a: 1, b: 1}}}}}}");
+        "]}, node: {ixscan: {pattern: {a: 1, b: 1}}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: ["
         "{b: {$eq: 2.1}, c: {$eq: 2.1}}, "
         "{b: {$eq: 2.2}, c: {$eq: 2.2}}, "
         "{b: {$eq: 3}, c: {$eq: 3}, d: {$eq: 3}}, "
         "{b: {$eq: 4}, c: {$eq: 4}, d: {$eq: 4}, e: {$eq: 4}} "
-        "]}, node: {ixscan: {pattern: {a: 1, c: 1}}}}}}");
+        "]}, node: {ixscan: {pattern: {a: 1, c: 1}}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: ["
         "{b: {$eq: 2.1}, c: {$eq: 2.1}}, "
         "{b: {$eq: 2.2}, c: {$eq: 2.2}}, "
         "{b: {$eq: 3}, c: {$eq: 3}, d: {$eq: 3}}, "
         "{b: {$eq: 4}, c: {$eq: 4}, d: {$eq: 4}, e: {$eq: 4}} "
-        "]}, node: {ixscan: {pattern: {a: 1, d: 1}}}}}}");
+        "]}, node: {ixscan: {pattern: {a: 1, d: 1}}}}}");
     assertSolutionExists(
         "{fetch: {filter: {$or: ["
         "{b: {$eq: 2.1}, c: {$eq: 2.1}}, "
         "{b: {$eq: 2.2}, c: {$eq: 2.2}}, "
         "{b: {$eq: 3}, c: {$eq: 3}, d: {$eq: 3}}, "
         "{b: {$eq: 4}, c: {$eq: 4}, d: {$eq: 4}, e: {$eq: 4}} "
-        "]}, node: {ixscan: {pattern: {a: 1, e: 1}}}}}}");
+        "]}, node: {ixscan: {pattern: {a: 1, e: 1}}}}}");
 }
 
 TEST_F(QueryPlannerTest, LockstepOrEnumerationApplysToEachOrInTree) {
@@ -3128,32 +3121,25 @@ TEST_F(QueryPlannerTest, NoEOFForHintedIndex) {
     runInvalidQueryHint(fromjson("{one: 1, $and:[{two:{$in:[]}}]}"), fromjson("{one:1}"));
     runInvalidQueryHint(fromjson("{one: 1, $and:[{two:{$in:[]}}]}"), fromjson("{two:1}"));
     // Verify that if a useable index has been explicitly hinted, that is respected and an EOF
-    // solution is _not_ generated for a trivially false match expression.
+    // solution is generated for a trivially false match expression.
     withIndex(
         [&] {
             runQueryHint(fromjson("{one: 1, $and:[{two:{$in:[]}}]}"), fromjson("{one:1}"));
-            assertSolutionDoesntExist("{eof: 1}");
-            assertSolutionExists(
-                "{fetch: {filter: {'$alwaysFalse':1}, node: {ixscan: "
-                "{filter: null, pattern: {one: 1}}}}}");
+            assertSolutionExists("{eof: 1}");
         },
         BSON("one" << 1));
     withIndex(
         [&] {
             runQueryHint(fromjson("{one: 1, $and:[{two:{$in:[]}}]}"), fromjson("{two:1}"));
-            assertSolutionExists(
-                "{fetch: {filter: {'$alwaysFalse':1}, node: {ixscan: "
-                "{filter: null, pattern: {two: 1}}}}}");
+            assertSolutionExists("{eof: 1}");
         },
         BSON("two" << 1));
 
-    // An irrelevant hinted index should still not allow eof.
+    // An irrelevant hinted index should allow eof.
     withIndex(
         [&] {
             runQueryHint(fromjson("{one: 1, $and:[{two:{$in:[]}}]}"), fromjson("{three:1}"));
-            assertSolutionExists(
-                "{fetch: {filter: {'$alwaysFalse':1}, node: {ixscan: "
-                "{filter: null, pattern: {three: 1}}}}}");
+            assertSolutionExists("{eof: 1}");
         },
         BSON("three" << 1));
 }

@@ -29,8 +29,6 @@
 
 #pragma once
 
-#include "mongo/db/query/find_command.h"
-#include "mongo/db/query/parsed_find_command.h"
 #include <boost/optional.hpp>
 
 #include "mongo/client/read_preference.h"
@@ -38,18 +36,28 @@
 #include "mongo/db/auth/validated_tenancy_scope.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/fle_crud.h"
+#include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/query_request_conversion.h"
 #include "mongo/db/query/client_cursor/cursor_response.h"
+#include "mongo/db/query/find_command.h"
+#include "mongo/db/query/parsed_find_command.h"
 #include "mongo/db/query/query_planner_common.h"
-#include "mongo/db/query/query_settings/query_settings_utils.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
+#include "mongo/db/query/query_shape/query_shape.h"
 #include "mongo/db/query/query_stats/find_key.h"
 #include "mongo/db/query/query_stats/query_stats.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
+#include "mongo/db/query/timeseries/timeseries_rewrites.h"
+#include "mongo/db/raw_data_operation.h"
+#include "mongo/db/server_feature_flags_gen.h"
+#include "mongo/db/timeseries/timeseries_request_util.h"
 #include "mongo/db/views/resolved_view.h"
 #include "mongo/idl/generic_argument_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/cluster_commands_helpers.h"
+#include "mongo/s/collection_routing_info_targeter.h"
 #include "mongo/s/commands/query_cmd/cluster_explain.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/query/planner/cluster_aggregate.h"
@@ -166,6 +174,10 @@ public:
             return ReadConcernSupportResult::allSupportedAndDefaultPermitted();
         }
 
+        bool supportsRawData() const override {
+            return true;
+        }
+
         NamespaceString ns() const override {
             return _ns;
         }
@@ -194,19 +206,36 @@ public:
             setReadConcern(opCtx);
             doFLERewriteIfNeeded(opCtx);
 
+            NamespaceString expNs = ns();
+            if (isRawDataOperation(opCtx) &&
+                _cmdRequest->getNamespaceOrUUID().isNamespaceString() &&
+                CollectionRoutingInfoTargeter{opCtx, _cmdRequest->getNamespaceOrUUID().nss()}
+                    .timeseriesNamespaceNeedsRewrite(_cmdRequest->getNamespaceOrUUID().nss())) {
+                expNs = _cmdRequest->getNamespaceOrUUID().nss().makeTimeseriesBucketsNamespace();
+                _cmdRequest->setNss(expNs);
+            }
+
             auto expCtx = ExpressionContextBuilder{}
                               .fromRequest(opCtx, *_cmdRequest)
                               .explain(verbosity)
                               .build();
+
+            // Create an RAII object that prints useful information about the ExpressionContext in
+            // the case of a tassert or crash.
+            ScopedDebugInfo expCtxDiagnostics(
+                "ExpCtxDiagnostics", diagnostic_printers::ExpressionContextPrinter{expCtx});
+
             auto parsedFind = uassertStatusOK(parsed_find_command::parse(
                 expCtx,
                 {.findCommand = std::move(_cmdRequest),
                  .allowedFeatures = MatchExpressionParser::kAllowAllSpecialFeatures}));
 
-            // Update 'findCommand' by setting the looked up query settings, such that they can be
-            // applied on the shards.
-            auto querySettings =
-                query_settings::lookupQuerySettingsForFind(expCtx, *parsedFind, ns());
+            // Perform the query settings lookup and attach it to 'expCtx'.
+            query_shape::DeferredQueryShape deferredShape{[&]() {
+                return shape_helpers::tryMakeShape<query_shape::FindCmdShape>(*parsedFind, expCtx);
+            }};
+            auto querySettings = query_settings::lookupQuerySettingsWithRejectionCheckOnRouter(
+                expCtx, deferredShape, expNs);
             expCtx->setQuerySettingsIfNotPresent(querySettings);
 
             auto cq = CanonicalQuery(CanonicalQueryParams{
@@ -221,6 +250,12 @@ public:
                          .build();
 
             try {
+                // Handle requests against a viewless timeseries collection.
+                if (convertAndRunAggregateIfViewlessTimeseries(
+                        opCtx, result, cq.getFindCommandRequest(), querySettings, verbosity)) {
+                    return;
+                }
+
                 long long millisElapsed;
                 std::vector<AsyncRequestsSender::Response> shardResponses;
 
@@ -230,7 +265,15 @@ public:
                     uassertStatusOK(Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(
                         opCtx, cq.getFindCommandRequest().getNamespaceOrUUID().nss()));
 
-                auto numShards = getTargetedShardsForCanonicalQuery(cq, cri.cm).size();
+                // Create an RAII object that prints the collection's shard key in the case of a
+                // tassert or crash.
+                ScopedDebugInfo shardKeyDiagnostics(
+                    "ShardKeyDiagnostics",
+                    diagnostic_printers::ShardKeyDiagnosticPrinter{
+                        cri.isSharded() ? cri.getChunkManager().getShardKeyPattern().toBSON()
+                                        : BSONObj()});
+
+                auto numShards = getTargetedShardsForCanonicalQuery(cq, cri).size();
                 // When forwarding the command to multiple shards, need to transform it by adjusting
                 // query parameters such as limits and sorts.
                 if (numShards > 1) {
@@ -238,7 +281,12 @@ public:
                 }
 
                 const auto explainCmd = ClusterExplain::wrapAsExplain(
-                    _cmdRequest->toBSON(), verbosity, querySettings.toBSON());
+                    !isRawDataOperation(opCtx) || expNs == ns()
+                        ? _cmdRequest->toBSON()
+                        : rewriteCommandForRawDataOperation<FindCommandRequest>(
+                              _cmdRequest->toBSON(), expNs.coll()),
+                    verbosity,
+                    querySettings.toBSON());
 
                 shardResponses = scatterGatherVersionedTargetByRoutingTable(
                     opCtx,
@@ -298,26 +346,58 @@ public:
             Impl::checkCanRunHere(opCtx);
             CommandHelpers::handleMarkKillOnClientDisconnect(opCtx);
 
+            if (isRawDataOperation(opCtx) &&
+                _cmdRequest->getNamespaceOrUUID().isNamespaceString() &&
+                CollectionRoutingInfoTargeter{opCtx, _cmdRequest->getNamespaceOrUUID().nss()}
+                    .timeseriesNamespaceNeedsRewrite(_cmdRequest->getNamespaceOrUUID().nss())) {
+                _cmdRequest->setNss(
+                    _cmdRequest->getNamespaceOrUUID().nss().makeTimeseriesBucketsNamespace());
+            }
+
             setReadConcern(opCtx);
             doFLERewriteIfNeeded(opCtx);
 
             auto expCtx = ExpressionContextBuilder{}.fromRequest(opCtx, *_cmdRequest).build();
+
+            // Create an RAII object that prints useful information about the ExpressionContext in
+            // the case of a tassert or crash.
+            ScopedDebugInfo expCtxDiagnostics(
+                "ExpCtxDiagnostics", diagnostic_printers::ExpressionContextPrinter{expCtx});
+
             auto parsedFind = uassertStatusOK(parsed_find_command::parse(
                 expCtx,
                 {.findCommand = std::move(_cmdRequest),
                  .allowedFeatures = MatchExpressionParser::kAllowAllSpecialFeatures}));
 
-            registerRequestForQueryStats(expCtx, *parsedFind);
-
             // Perform the query settings lookup and attach it to 'expCtx'.
-            auto querySettings =
-                query_settings::lookupQuerySettingsForFind(expCtx, *parsedFind, ns());
+            query_shape::DeferredQueryShape deferredShape{[&]() {
+                return shape_helpers::tryMakeShape<query_shape::FindCmdShape>(*parsedFind, expCtx);
+            }};
+            auto querySettings = query_settings::lookupQuerySettingsWithRejectionCheckOnRouter(
+                expCtx, deferredShape, ns());
             expCtx->setQuerySettingsIfNotPresent(querySettings);
+
+            if (!_didDoFLERewrite) {
+                query_stats::registerRequest(
+                    expCtx->getOperationContext(), expCtx->getNamespaceString(), [&]() {
+                        // This callback is either never invoked or invoked immediately within
+                        // registerRequest, so use-after-move of parsedFind isn't an issue.
+                        uassert(8472504, "Failed computing query shape", deferredShape());
+                        return std::make_unique<query_stats::FindKey>(
+                            expCtx, *parsedFind->findCommandRequest, std::move(*deferredShape));
+                    });
+            }
 
             auto cq = std::make_unique<CanonicalQuery>(CanonicalQueryParams{
                 .expCtx = std::move(expCtx), .parsedFind = std::move(parsedFind)});
 
             try {
+                // Handle requests against a viewless timeseries collection.
+                if (convertAndRunAggregateIfViewlessTimeseries(
+                        opCtx, result, cq->getFindCommandRequest(), querySettings)) {
+                    return;
+                }
+
                 // Do the work to generate the first batch of results. This blocks waiting to
                 // get responses from the shard(s).
                 bool partialResultsReturned = false;
@@ -353,17 +433,35 @@ public:
             return _genericArgs;
         }
 
-        void registerRequestForQueryStats(const boost::intrusive_ptr<ExpressionContext> expCtx,
-                                          const ParsedFindCommand& parsedFind) {
-            if (_didDoFLERewrite) {
-                return;
+        /**
+         * Helper function to detect when we are running find on a viewless timeseries query,
+         * converting the request to an agg request, and calling runAggregate(). Returns true if the
+         * conversion to and execution as an aggregate pipeline took place.
+         */
+        bool convertAndRunAggregateIfViewlessTimeseries(
+            OperationContext* const opCtx,
+            rpc::ReplyBuilderInterface* const result,
+            const FindCommandRequest& request,
+            const query_settings::QuerySettings& querySettings,
+            boost::optional<mongo::ExplainOptions::Verbosity> verbosity = boost::none) {
+            if (timeseries::isEligibleForViewlessTimeseriesRewrites(opCtx, ns())) {
+                const auto hasExplain = verbosity.has_value();
+                auto bodyBuilder = result->getBodyBuilder();
+                bodyBuilder.resetToEmpty();
+                auto aggRequest =
+                    query_request_conversion::asAggregateCommandRequest(request, hasExplain);
+                aggRequest.setQuerySettings(querySettings);
+                uassertStatusOK(ClusterAggregate::runAggregate(
+                    opCtx,
+                    ClusterAggregate::Namespaces{ns(), ns()},
+                    aggRequest,
+                    {Privilege(ResourcePattern::forExactNamespace(ns()), ActionType::find)},
+                    verbosity,
+                    &bodyBuilder));
+                return true;
+            } else {
+                return false;
             }
-            query_stats::registerRequest(
-                expCtx->getOperationContext(), expCtx->getNamespaceString(), [&]() {
-                    // This callback is either never invoked or invoked immediately within
-                    // registerRequest, so use-after-move of parsedFind isn't an issue.
-                    return std::make_unique<query_stats::FindKey>(expCtx, parsedFind);
-                });
         }
 
         void retryOnViewError(
@@ -376,16 +474,16 @@ public:
             boost::optional<mongo::ExplainOptions::Verbosity> verbosity = boost::none) {
             auto bodyBuilder = result->getBodyBuilder();
             bodyBuilder.resetToEmpty();
-
+            bool hasExplain = verbosity.has_value();
             auto aggRequestOnView =
-                query_request_conversion::asAggregateCommandRequest(findCommand);
-            aggRequestOnView.setExplain(verbosity);
-            if (!query_settings::utils::isDefault(querySettings)) {
+                query_request_conversion::asAggregateCommandRequest(findCommand, hasExplain);
+
+            if (!query_settings::isDefault(querySettings)) {
                 aggRequestOnView.setQuerySettings(querySettings);
             }
 
             uassertStatusOK(ClusterAggregate::retryOnViewError(
-                opCtx, aggRequestOnView, resolvedView, ns(), privileges, &bodyBuilder));
+                opCtx, aggRequestOnView, resolvedView, ns(), privileges, verbosity, &bodyBuilder));
         }
 
         void setReadConcern(OperationContext* opCtx) {

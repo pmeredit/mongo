@@ -62,8 +62,7 @@
 #include "mongo/s/index_version.h"
 #include "mongo/s/request_types/move_range_request_gen.h"
 #include "mongo/s/shard_version_factory.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/net/hostandport.h"
@@ -284,8 +283,9 @@ TEST_F(BalancerCommandsSchedulerTest, SuccessfulMoveCollectionRequest) {
             IDLParserContext("BalancerCommandsSchedulerTest"), shardDistributionArray.at(0).Obj());
         ASSERT_EQ(kShardId0, shardKeyRange.getShard());
 
-        ASSERT_EQ(Provenance_serializer(ProvenanceEnum::kBalancerMoveCollection),
-                  request.cmdObj.getStringField(ShardsvrReshardCollection::kProvenanceFieldName));
+        ASSERT_EQ(
+            ReshardingProvenance_serializer(ReshardingProvenanceEnum::kBalancerMoveCollection),
+            request.cmdObj.getStringField(ShardsvrReshardCollection::kProvenanceFieldName));
 
         return OkReply().toBSON();
     }});

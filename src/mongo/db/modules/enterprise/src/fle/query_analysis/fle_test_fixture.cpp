@@ -9,6 +9,7 @@
 namespace mongo {
 
 void FLETestFixture::setUp() {
+    registerEncTextSearchExpressions();
     kDefaultSsnSchema = fromjson(R"({
             type: "object",
             properties: {

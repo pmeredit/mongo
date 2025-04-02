@@ -27,7 +27,6 @@
  *    it in the license file.
  */
 
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,13 +37,10 @@
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/exec/docval_to_sbeval.h"
 #include "mongo/db/exec/sbe/values/value.h"
-#include "mongo/db/query/stats/ce_histogram.h"
 #include "mongo/db/query/stats/max_diff.h"
 #include "mongo/db/query/stats/value_utils.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 
@@ -78,8 +74,8 @@ TEST(TypeCollisionTest, ZeroedCollidingTypesHistogram) {
     auto i = 0;
     ASSERT_THROWS(createCEHistogram(data, 0), DBException);
 
-    // We should always fail to build a histogram if we have fewer buckets than type classes.
-    for (i = 1; i < 5; i++) {
+    // We should always fail to build a histogram if we have fewer buckets than type classes + 1.
+    for (i = 1; i < 6; i++) {
         ASSERT_THROWS(createCEHistogram(data, i), DBException);
     }
 

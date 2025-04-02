@@ -65,9 +65,6 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/database_version.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
@@ -75,6 +72,7 @@
 #include "mongo/util/future.h"
 #include "mongo/util/future_impl.h"
 #include "mongo/util/namespace_string_util.h"
+#include "mongo/util/version/releases.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
@@ -127,6 +125,15 @@ public:
     const ForwardableOperationMetadata& getForwardableOpMetadata() const {
         invariant(_forwardableOpMetadata);
         return _forwardableOpMetadata.get();
+    }
+
+    // TODO SERVER-99655: update once the operationFCV is always present for sharded DDLs
+    boost::optional<multiversion::FeatureCompatibilityVersion> getOperationFCV() const {
+        const auto versionContext = getForwardableOpMetadata().getVersionContext();
+        invariant(!versionContext || versionContext->getOperationFCV());
+        return versionContext
+            ? boost::make_optional(versionContext->getOperationFCV()->getVersion())
+            : boost::none;
     }
 
     const boost::optional<mongo::DatabaseVersion>& getDatabaseVersion() const& {
@@ -346,7 +353,18 @@ protected:
 
     std::function<void()> _buildPhaseHandler(const Phase& newPhase,
                                              std::function<void()>&& handlerFn) {
+        return _buildPhaseHandler(newPhase, []() { return true; }, std::move(handlerFn));
+    }
+
+    std::function<void()> _buildPhaseHandler(const Phase& newPhase,
+                                             std::function<bool()>&& shouldExecute,
+                                             std::function<void()>&& handlerFn) {
         return [=, this] {
+            // Do not execute the phase if the passed in condition is not met.
+            if (!shouldExecute()) {
+                return;
+            }
+
             const auto& currPhase = _doc.getPhase();
 
             if (currPhase > newPhase) {
@@ -359,18 +377,6 @@ protected:
             }
             return handlerFn();
         };
-    }
-
-    std::function<void()> _buildPhaseHandler(const Phase& newPhase,
-                                             std::function<bool()>&& shouldExecute,
-                                             std::function<void()>&& handlerFn) {
-        if (!shouldExecute()) {
-            // Do not execute the phase if the passed in condition is not met.
-            return [] {
-            };
-        }
-
-        return _buildPhaseHandler(newPhase, std::move(handlerFn));
     }
 
     auto _getDoc() const {

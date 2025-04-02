@@ -40,12 +40,12 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/basic_types_gen.h"
 #include "mongo/db/exec/multi_plan.h"
+#include "mongo/db/exec/plan_cache_callbacks_impl.h"
 #include "mongo/db/query/canonical_query_encoder.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/query/index_entry.h"
 #include "mongo/db/query/plan_cache/classic_plan_cache.h"
-#include "mongo/db/query/plan_cache/plan_cache_callbacks.h"
 #include "mongo/db/query/plan_cache/plan_cache_key_factory.h"
 #include "mongo/db/query/plan_cache/sbe_plan_cache.h"
 #include "mongo/db/query/plan_explainer_factory.h"
@@ -54,9 +54,6 @@
 #include "mongo/db/query/stage_types.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/overloaded_visitor.h"
 
@@ -153,7 +150,7 @@ void updateClassicPlanCacheFromClassicCandidatesImpl(
         return plan.toString();
     };
     PlanCacheCallbacksImpl<PlanCacheKey, SolutionCacheData, plan_cache_debug_info::DebugInfo>
-        callbacks{query, buildDebugInfoFn, printCachedPlanFn};
+        callbacks{query, buildDebugInfoFn, printCachedPlanFn, collection};
     winningPlan.solution->cacheData->indexFilterApplied = winningPlan.solution->indexFilterApplied;
     winningPlan.solution->cacheData->solutionHash = winningPlan.solution->hash();
     auto isSensitive = CurOp::get(opCtx)->getShouldOmitDiagnosticInformation();
@@ -188,7 +185,7 @@ void updateSbePlanCache(OperationContext* opCtx,
     PlanCacheCallbacksImpl<sbe::PlanCacheKey,
                            sbe::CachedSbePlan,
                            plan_cache_debug_info::DebugInfoSBE>
-        callbacks{query, buildDebugInfoFn, printCachedPlanFn};
+        callbacks{query, buildDebugInfoFn, printCachedPlanFn, collections.getMainCollection()};
 
     auto isSensitive = CurOp::get(opCtx)->getShouldOmitDiagnosticInformation();
 

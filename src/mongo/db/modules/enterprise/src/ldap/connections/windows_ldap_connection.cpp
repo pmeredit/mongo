@@ -113,6 +113,9 @@ public:
         return toWideString(str);
     }
 };
+
+static const wchar_t* EMPTY_PWD = L"";
+
 }  // namespace
 
 class WindowsLDAPConnection::WindowsLDAPConnectionPIMPL
@@ -206,6 +209,7 @@ Status WindowsLDAPConnection::connect() {
 }
 
 Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
+                                         boost::optional<SecureString> pwd,
                                          TickSource* tickSource,
                                          SharedUserAcquisitionStats userAcquisitionStats) {
     if (MONGO_unlikely(ldapNetworkTimeoutOnBind.shouldFail())) {
@@ -227,18 +231,23 @@ Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
     _bindOptions = std::move(bindOptions);
 
     std::wstring user;
-    std::wstring pwd;
+    std::wstring password;
     SEC_WINNT_AUTH_IDENTITY cred;
     if (!_bindOptions->useLDAPConnectionDefaults) {
         user = toNativeString(_bindOptions->bindDN.c_str());
-        pwd = toNativeString(_bindOptions->password->c_str());
+        if (pwd) {
+            const auto& securePwd = pwd.get();
+            password = toNativeString(securePwd->c_str());
+        } else {
+            password = EMPTY_PWD;
+        }
         cred.Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
         cred.User = reinterpret_cast<unsigned short*>(const_cast<wchar_t*>(user.c_str()));
         cred.UserLength = user.size();
         cred.Domain = nullptr;
         cred.DomainLength = 0;
-        cred.Password = reinterpret_cast<unsigned short*>(const_cast<wchar_t*>(pwd.c_str()));
-        cred.PasswordLength = pwd.size();
+        cred.Password = reinterpret_cast<unsigned short*>(const_cast<wchar_t*>(password.c_str()));
+        cred.PasswordLength = password.size();
     }
 
     // If ldapBindTimeoutHangIndefinitely is set, then pause until the failpoint is turned off.
@@ -259,11 +268,14 @@ Status WindowsLDAPConnection::bindAsUser(UniqueBindOptions bindOptions,
         // network call.
         ldapBindDelay.execute([&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
-        result = ldap_bind_sW(
-            _pimpl->getSession(),
-            const_cast<wchar_t*>(toNativeString(_bindOptions->bindDN.c_str()).c_str()),
-            const_cast<wchar_t*>(toNativeString(_bindOptions->password->c_str()).c_str()),
-            LDAP_AUTH_SIMPLE);
+        // Copy password in case cred gets overwritten.
+        auto pass = password;
+
+        result =
+            ldap_bind_sW(_pimpl->getSession(),
+                         const_cast<wchar_t*>(toNativeString(_bindOptions->bindDN.c_str()).c_str()),
+                         const_cast<wchar_t*>(pass.c_str()),
+                         LDAP_AUTH_SIMPLE);
 
         resultStatus = _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform simple bind");
     } else if (_bindOptions->authenticationChoice == LDAPBindType::kSasl &&

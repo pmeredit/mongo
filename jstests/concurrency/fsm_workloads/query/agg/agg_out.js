@@ -93,6 +93,11 @@ export const $config = extendWorkload($baseConfig, function($config, $super) {
             // When running in suites with random migrations $out can fail copying the indexes due
             // to a resharding operation in progress
             ErrorCodes.ReshardCollectionInProgress,
+            // A cluster toplogy change (for example, a replica set step down/step up or a
+            // movePrimary) will cause $out's temporary collection to be dropped part way through.
+            // $out will detect this when it sees that the UUID of the temporary collection has
+            // changed across inserts and throw a CollectionUUIDMismatch error.
+            ErrorCodes.CollectionUUIDMismatch,
         ];
         assert.commandWorkedOrFailedWithCode(res, allowedErrorCodes);
 
@@ -190,8 +195,6 @@ export const $config = extendWorkload($baseConfig, function($config, $super) {
                     ErrorCodes.InvalidNamespace,
                     // Handles the case where the collection/db does not exist
                     ErrorCodes.NamespaceNotFound,
-                    //  TODO (SERVER-96072) remove this error once the command is backported.
-                    ErrorCodes.CommandNotFound,
                 ]);
         }
     };

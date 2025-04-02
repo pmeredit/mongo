@@ -84,10 +84,8 @@
 #include "mongo/db/transaction/session_catalog_mongod_transaction_interface_impl.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction_resources.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/time_support.h"
@@ -196,7 +194,9 @@ public:
         txnParticipant.unstashTransactionResources(opCtx, "prepareTransaction");
 
         // The transaction machinery cannot store an empty locker.
-        { Lock::GlobalLock globalLock(opCtx, MODE_IX); }
+        {
+            Lock::GlobalLock globalLock(opCtx, MODE_IX);
+        }
         auto opTime = [opCtx] {
             TransactionParticipant::SideTransactionBlock sideTxn{opCtx};
 

@@ -145,16 +145,13 @@ std::unique_ptr<MatchExpression> buildOperationFilter(
     std::unique_ptr<ListOfMatchExpression> operationFilter = std::make_unique<OrMatchExpression>();
 
     // (1) CRUD events on a monitored namespace.
-    auto crudEvents = backingBsonObjs.emplace_back(BSON("ns" << BSONRegEx(nsRegex) << "$nor"
-                                                             << BSON_ARRAY(BSON("op"
-                                                                                << "n")
-                                                                           << BSON("op"
-                                                                                   << "c"))));
+    auto crudEvents = backingBsonObjs.emplace_back(
+        BSON("ns" << BSONRegEx(nsRegex) << "$nor"
+                  << BSON_ARRAY(BSON("op" << "n") << BSON("op" << "c"))));
 
     // (2.1) The namespace for matching relevant commands.
-    auto cmdNsMatch = backingBsonObjs.emplace_back(BSON("op"
-                                                        << "c"
-                                                        << "ns" << BSONRegEx(cmdNsRegex)));
+    auto cmdNsMatch = backingBsonObjs.emplace_back(BSON("op" << "c"
+                                                             << "ns" << BSONRegEx(cmdNsRegex)));
 
     // (2.2) Commands that are run on a monitored database and/or collection.
     auto dropEvent = backingBsonObjs.emplace_back(BSON("o.drop" << BSONRegEx(collRegex)));
@@ -231,12 +228,9 @@ std::unique_ptr<MatchExpression> buildViewDefinitionEventFilter(
     //   ]
     // }
     auto nsSystemViewsRegex = DocumentSourceChangeStream::getViewNsRegexForChangeStream(expCtx);
-    auto viewEventsFilter =
-        backingBsonObjs.emplace_back(BSON("ns" << BSONRegEx(nsSystemViewsRegex) << "$nor"
-                                               << BSON_ARRAY(BSON("op"
-                                                                  << "n")
-                                                             << BSON("op"
-                                                                     << "c"))));
+    auto viewEventsFilter = backingBsonObjs.emplace_back(
+        BSON("ns" << BSONRegEx(nsSystemViewsRegex) << "$nor"
+                  << BSON_ARRAY(BSON("op" << "n") << BSON("op" << "c"))));
 
     return MatchExpressionParser::parseAndNormalize(viewEventsFilter, expCtx);
 }
@@ -269,12 +263,12 @@ std::unique_ptr<MatchExpression> buildInvalidationFilter(
     }
 
     // Match only against the target db's command namespace.
-    auto invalidatingFilter = backingBsonObjs.emplace_back(BSON(
-        "op"
-        << "c"
-        << "ns"
-        << NamespaceStringUtil::serialize(nss.getCommandNS(), SerializationContext::stateDefault())
-        << "$or" << invalidatingCommands.arr()));
+    auto invalidatingFilter = backingBsonObjs.emplace_back(
+        BSON("op" << "c"
+                  << "ns"
+                  << NamespaceStringUtil::serialize(nss.getCommandNS(),
+                                                    SerializationContext::stateDefault())
+                  << "$or" << invalidatingCommands.arr()));
     return MatchExpressionParser::parseAndNormalize(invalidatingFilter, expCtx);
 }  // namespace change_stream_filter
 
@@ -288,9 +282,7 @@ std::unique_ptr<MatchExpression> buildTransactionFilter(
 
     // "o.applyOps" stores the list of operations, so it must be an array.
     applyOpsBuilder.append("op", "c");
-    applyOpsBuilder.append("o.applyOps",
-                           BSON("$type"
-                                << "array"));
+    applyOpsBuilder.append("o.applyOps", BSON("$type" << "array"));
     applyOpsBuilder.append("o.prepare", BSON("$not" << BSON("$eq" << true)));
     applyOpsBuilder.append("o.partialTxn", BSON("$not" << BSON("$eq" << true)));
     {
@@ -321,12 +313,10 @@ std::unique_ptr<MatchExpression> buildTransactionFilter(
         }
     }
     auto applyOpsFilter = applyOpsBuilder.obj();
-    auto endOfTransactionFilter = BSON("op"
-                                       << "n"
-                                       << "o2.endOfTransaction" << BSONRegEx(nsRegex));
-    auto commitTransactionFilter = BSON("op"
-                                        << "c"
-                                        << "o.commitTransaction" << 1);
+    auto endOfTransactionFilter = BSON("op" << "n"
+                                            << "o2.endOfTransaction" << BSONRegEx(nsRegex));
+    auto commitTransactionFilter = BSON("op" << "c"
+                                             << "o.commitTransaction" << 1);
 
     auto transactionFilter = MatchExpressionParser::parseAndNormalize(
         backingBsonObjs.emplace_back(
@@ -353,13 +343,10 @@ std::unique_ptr<MatchExpression> buildInternalOpFilter(
     std::vector<BSONObj>& backingBsonObjs) {
     // Noop change events:
     //   - reshardBegin: A resharding operation begins.
-    //   - reshardBlockingWrites: Collection being resharded starts to block writes.
     //   - reshardDoneCatchUp: "Catch up" phase of reshard operation completes.
     //   - shardCollection: A shardCollection operation has completed.
-    std::vector<StringData> internalOpTypes = {"reshardBegin"_sd,
-                                               "reshardBlockingWrites"_sd,
-                                               "reshardDoneCatchUp"_sd,
-                                               "shardCollection"_sd};
+    std::vector<StringData> internalOpTypes = {
+        "reshardBegin"_sd, "reshardDoneCatchUp"_sd, "shardCollection"_sd};
 
     // Noop change events that are only applicable when merging results on router:
     //   - migrateChunkToNewShard: A chunk migrated to a shard that didn't have any chunks.
@@ -367,9 +354,11 @@ std::unique_ptr<MatchExpression> buildInternalOpFilter(
         internalOpTypes.push_back("migrateChunkToNewShard"_sd);
     }
 
-    // Only return the 'migrateLastChunkFromShard' event if 'showSystemEvents' is set.
+    // Only return the 'migrateLastChunkFromShard' event and the 'reshardBlockingWrites' event if
+    // 'showSystemEvents' is set.
     if (expCtx->getChangeStreamSpec()->getShowSystemEvents()) {
         internalOpTypes.push_back("migrateLastChunkFromShard"_sd);
+        internalOpTypes.push_back("reshardBlockingWrites"_sd);
     }
 
     internalOpTypes.push_back("refineCollectionShardKey"_sd);
@@ -386,10 +375,9 @@ std::unique_ptr<MatchExpression> buildInternalOpFilter(
 
     auto nsRegex = DocumentSourceChangeStream::getNsRegexForChangeStream(expCtx);
     return MatchExpressionParser::parseAndNormalize(
-        backingBsonObjs.emplace_back(BSON("op"
-                                          << "n"
-                                          << "ns" << BSONRegEx(nsRegex) << "$or"
-                                          << internalOpTypeOrBuilder.arr())),
+        backingBsonObjs.emplace_back(BSON("op" << "n"
+                                               << "ns" << BSONRegEx(nsRegex) << "$or"
+                                               << internalOpTypeOrBuilder.arr())),
         expCtx);
 }
 

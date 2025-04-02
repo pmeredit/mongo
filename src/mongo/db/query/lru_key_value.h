@@ -83,10 +83,9 @@ public:
     }
 
     void onRemove(const K& k, const V& v) {
-        using namespace fmt::literals;
         size_t budget = _estimator(k, v);
         tassert(5968300,
-                "LRU budget underflow: current={}, budget={} "_format(_current, budget),
+                fmt::format("LRU budget underflow: current={}, budget={} ", _current, budget),
                 _current >= budget);
         _current -= budget;
         _listener.onEvict(k, v, budget);
@@ -224,13 +223,8 @@ public:
             return Status(ErrorCodes::NoSuchKey, "no such key in LRU key-value store");
         }
         KVListIt found = i->second;
-
         // Promote the kv-store entry to the front of the list. It is now the most recently used.
-        const auto& newEntry = _kvList.emplace_front(key, std::move(found->second));
-        _kvMap.erase(i);
-        _kvList.erase(found);
-        _kvMap[&newEntry.first] = _kvList.begin();
-
+        _kvList.splice(_kvList.begin(), _kvList, found);
         return _kvList.begin();
     }
 

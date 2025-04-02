@@ -30,6 +30,12 @@
 #pragma once
 
 #include "mongo/db/matcher/expression.h"
+#include "mongo/db/matcher/schema/expression_internal_schema_all_elem_match_from_index.h"
+#include "mongo/db/matcher/schema/expression_internal_schema_allowed_properties.h"
+#include "mongo/db/matcher/schema/expression_internal_schema_cond.h"
+#include "mongo/db/matcher/schema/expression_internal_schema_match_array_index.h"
+#include "mongo/db/matcher/schema/expression_internal_schema_object_match.h"
+#include "mongo/db/matcher/schema/expression_internal_schema_xor.h"
 #include "mongo/db/query/ce/sampling_estimator.h"
 #include "mongo/db/query/cost_based_ranker/ce_utils.h"
 #include "mongo/db/query/cost_based_ranker/estimates.h"
@@ -90,6 +96,7 @@ private:
     CEResult estimate(const AndSortedNode* node);
     CEResult estimate(const OrNode* node);
     CEResult estimate(const MergeSortNode* node);
+    CEResult estimate(const SortNode* node);
     CEResult estimate(const LimitNode* node);
     CEResult estimate(const SkipNode* node);
 
@@ -99,6 +106,14 @@ private:
     CEResult estimate(const AndMatchExpression* node);
     CEResult estimate(const OrMatchExpression* node, bool isFilterRoot);
     CEResult estimate(const NorMatchExpression* node, bool isFilterRoot);
+    CEResult estimate(const ElemMatchValueMatchExpression* node, bool isFilterRoot);
+    CEResult estimate(const InternalSchemaXorMatchExpression* node, bool isFilterRoot);
+    CEResult estimate(const InternalSchemaAllElemMatchFromIndexMatchExpression* node,
+                      bool isFilterRoot);
+    CEResult estimate(const InternalSchemaCondMatchExpression* node, bool isFilterRoot);
+    CEResult estimate(const InternalSchemaMatchArrayIndexMatchExpression* node, bool isFilterRoot);
+    CEResult estimate(const InternalSchemaObjectMatchExpression* node, bool isFilterRoot);
+    CEResult estimate(const InternalSchemaAllowedPropertiesMatchExpression* node);
 
     // Intervals
     CEResult estimate(const IndexBounds* node);
@@ -131,8 +146,9 @@ private:
     CEResult indexUnionCard(const T* node);
 
     // Cardinality of nodes that do not affect the number of documents - their output cardinality
-    // is the same as their input.
+    // is the same as their input unless the node has a limit.
     CEResult passThroughNodeCard(const QuerySolutionNode* node);
+    CEResult limitNodeCard(const QuerySolutionNode* node, size_t limit);
 
     CardinalityEstimate conjCard(size_t offset, CardinalityEstimate inputCard) {
         std::span selsToEstimate(std::span(_conjSels.begin() + offset, _conjSels.end()));
@@ -151,6 +167,11 @@ private:
         return resultCard;
     }
 
+    /**
+     * Estimate the cardinality of the given vector of MatchExpressions as if they were a
+     * conjunction.
+     */
+    CEResult estimateConjunction(const MatchExpression* conjunction);
     /**
      * Estimate the cardinality of the given vector of MatchExpressions as if they were a
      * disjunction. This is a helper for the implementations of estimation of $or and $nor.
@@ -179,6 +200,10 @@ private:
         size_t oldSize = _conjSels.size() - count;
         _conjSels.erase(_conjSels.end() - oldSize, _conjSels.end());
     }
+
+    // Get the path of the given node. This function consults the '_elemMatchPathStack' to check if
+    // this node is under an $elemMatch, if so it will return that path.
+    StringData getPath(const MatchExpression* node);
 
     const CardinalityEstimate _collCard;
 
@@ -213,6 +238,16 @@ private:
     // may be multikey but not reflected in this set because there may not be an index over the
     // field.
     StringDataSet _multikeyPaths;
+
+    // Set with the paths we know are non-multikey deduced from the catalog. Like '_multikeyPaths',
+    // a field may be non-multikey but not reflected in this set because there are no indexes over
+    // the field.
+    StringDataSet _nonMultikeyPaths;
+
+    // Keep track of the path associated with the current node in $elemMatch contexts. For example,
+    // ElemMatchValueMatchExpression may have a child which looks like GTMatchExpression with an
+    // empty path.
+    std::stack<StringData> _elemMatchPathStack;
 };
 
 }  // namespace mongo::cost_based_ranker

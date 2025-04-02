@@ -27,6 +27,7 @@ MongoRunner.runHangAnalyzer.disable();
 try {
     withEachKindOfWriteStage(target, (stageSpec) => {
         assert.commandWorked(target.remove({}));
+        rst.awaitReplication();
 
         // Start an aggregate cursor with a writing stage, but use batchSize: 0 to prevent any
         // writes from happening in this command.
@@ -55,15 +56,16 @@ try {
         // fails (as we expect due to write concern) it will create a new error object which loses
         // all structure and just preserves the information as text.
         assert(error instanceof Error);
-        assert(tojson(error).indexOf("writeConcernError") != -1, tojson(error));
+        assert(error.writeConcernError, tojson(error));
 
         // Now test without batchSize just to be sure.
         error = assert.throws(
             () => source.aggregate([stageSpec], {writeConcern: {w: 2, wtimeout: 100}}));
         assert(error instanceof Error);
-        assert(tojson(error).indexOf("writeConcernError") != -1, tojson(error));
+        assert(error.writeConcernError, tojson(error));
 
         restartServerReplication(rst.getSecondary());
+        rst.awaitReplication();
     });
 } finally {
     MongoRunner.runHangAnalyzer.enable();

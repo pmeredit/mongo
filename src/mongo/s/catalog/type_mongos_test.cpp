@@ -34,8 +34,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/s/catalog/type_mongos.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/time_support.h"
 
 namespace {
@@ -189,9 +188,8 @@ TEST(Validity, Valid) {
                        << MongosType::ping(Date_t::fromMillisSinceEpoch(1))
                        << MongosType::uptime(100) << MongosType::waiting(false)
                        << MongosType::mongoVersion("x.x.x") << MongosType::configVersion(0)
-                       << MongosType::advisoryHostFQDNs(BSON_ARRAY("foo"
-                                                                   << "bar"
-                                                                   << "baz"))
+                       << MongosType::advisoryHostFQDNs(BSON_ARRAY("foo" << "bar"
+                                                                         << "baz"))
                        << MongosType::embeddedRouter(false));
 
     auto mongosTypeResult = MongosType::fromBSON(obj);

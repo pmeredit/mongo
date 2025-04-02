@@ -3,7 +3,7 @@
  * aggregation stage is introduced.
  *
  * This file runs the same hybrid search with two different score normalization methods:
- * Sigmoid and MinMaxScalar.
+ * Sigmoid and MinMaxScaler.
  */
 
 import {createSearchIndex, dropSearchIndex} from "jstests/libs/search.js";
@@ -12,12 +12,12 @@ import {
     getMoviePlotEmbeddingById,
     getMovieSearchIndexSpec,
     getMovieVectorSearchIndexSpec
-} from "jstests/with_mongot/e2e/lib/data/movies.js";
+} from "jstests/with_mongot/e2e_lib/data/movies.js";
 import {
     assertDocArrExpectedFuzzy,
     buildExpectedResults,
     datasets,
-} from "jstests/with_mongot/e2e/lib/search_e2e_utils.js";
+} from "jstests/with_mongot/e2e_lib/search_e2e_utils.js";
 
 const collName = "search_score_fusion";
 const coll = db.getCollection(collName);
@@ -147,7 +147,7 @@ runQueryTest(
     buildExpectedResults(
         /*expectedResultIds*/[6, 1, 2, 3, 4, 5, 8, 9, 10, 12, 13, 14, 11, 7, 15], datasets.MOVIES));
 
-// Test 2: MinMaxScalar score normalization
+// Test 2: MinMaxScaler score normalization
 runQueryTest(
     vectorSearchPipeline
         .concat([

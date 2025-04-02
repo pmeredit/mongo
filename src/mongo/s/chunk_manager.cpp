@@ -64,6 +64,10 @@ namespace {
 ErrorCodes::Error metadataInconsistencyErrorCode() {
     if (gDistinguishMetadataInconsistencyFromConflictingOperation
             .isEnabledUseLastLTSFCVWhenUninitialized(
+                // The ChunkMetadataInconsistency error was introduced to make it more clear when
+                // inconsistent metadata is fetched. To keep things simple, we ignore the
+                // VersionContext and focus on the node's FCV.
+                kVersionContextIgnored,
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
         return ErrorCodes::ChunkMetadataInconsistency;
     }
@@ -904,7 +908,7 @@ void RoutingTableHistory::getAllChunkRanges(std::set<ChunkRange>* all) const {
 }
 
 ChunkManager ChunkManager::makeAtTime(const ChunkManager& cm, Timestamp clusterTime) {
-    return ChunkManager(cm.dbPrimary(), cm.dbVersion(), cm._rt, clusterTime);
+    return ChunkManager(cm._rt, clusterTime);
 }
 
 bool ChunkManager::allowMigrations() const {

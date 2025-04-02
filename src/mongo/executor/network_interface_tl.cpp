@@ -43,33 +43,26 @@
 #include <tuple>
 #include <type_traits>
 
-#include "mongo/base/checked_cast.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/config.h"  // IWYU pragma: keep
-#include "mongo/db/auth/validated_tenancy_scope.h"
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/connection_health_metrics_parameter_gen.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/wire_version.h"
-#include "mongo/executor/connection_pool_tl.h"
+#include "mongo/executor/async_client_factory.h"
 #include "mongo/executor/exhaust_response_reader_tl.h"
 #include "mongo/executor/network_interface.h"
-#include "mongo/executor/network_interface_tl_gen.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/transport/ssl_connection_context.h"
 #include "mongo/transport/transport_layer.h"
 #include "mongo/transport/transport_layer_manager.h"
 #include "mongo/util/assert_util.h"
@@ -88,38 +81,6 @@
 namespace mongo {
 namespace executor {
 
-
-void OpportunisticSecondaryTargetingParameter::append(OperationContext*,
-                                                      BSONObjBuilder* b,
-                                                      StringData name,
-                                                      const boost::optional<TenantId>&) {
-    return;
-}
-
-Status OpportunisticSecondaryTargetingParameter::set(const BSONElement& newValueElement,
-                                                     const boost::optional<TenantId>&) {
-    LOGV2_WARNING(
-        9206304,
-        "Opportunistic secondary targeting has been deprecated and the "
-        "opportunisticSecondaryTargeting parameter has no effect. For more information please "
-        "see https://dochub.mongodb.org/core/hedged-reads-deprecated");
-
-    return Status::OK();
-}
-
-Status OpportunisticSecondaryTargetingParameter::setFromString(StringData modeStr,
-                                                               const boost::optional<TenantId>&) {
-    LOGV2_WARNING(
-        9206305,
-        "Opportunistic secondary targeting has been deprecated and the "
-        "opportunisticSecondaryTargeting parameter has no effect. For more information please "
-        "see https://dochub.mongodb.org/core/hedged-reads-deprecated");
-
-    return Status::OK();
-}
-
-using namespace fmt::literals;
-
 namespace {
 MONGO_FAIL_POINT_DEFINE(triggerSendRequestNetworkTimeout);
 MONGO_FAIL_POINT_DEFINE(forceConnectionNetworkTimeout);
@@ -137,17 +98,6 @@ void appendMetadata(RemoteCommandRequest* request,
         iassert(hook->writeRequestMetadata(request->opCtx, &bob));
         request->metadata = bob.obj();
     }
-}
-
-template <typename IA, typename IB, typename F>
-int compareTransformed(IA a1, IA a2, IB b1, IB b2, F&& f) {
-    for (;; ++a1, ++b1)
-        if (a1 == a2)
-            return b1 == b2 ? 0 : -1;
-        else if (b1 == b2)
-            return 1;
-        else if (int r = f(*a1) - f(*b1))
-            return r;
 }
 }  // namespace
 
@@ -202,14 +152,10 @@ constexpr auto kNotYetStartedUpMsg = "NetworkInterface has not started yet"_sd;
 }  // namespace
 
 NetworkInterfaceTL::NetworkInterfaceTL(std::string instanceName,
-                                       transport::TransportProtocol protocol,
-                                       ConnectionPool::Options connPoolOpts,
-                                       std::unique_ptr<NetworkConnectionHook> onConnectHook,
+                                       std::shared_ptr<AsyncClientFactory> factory,
                                        std::unique_ptr<rpc::EgressMetadataHook> metadataHook)
     : _instanceName(std::move(instanceName)),
-      _protocol(protocol),
-      _connPoolOpts(std::move(connPoolOpts)),
-      _onConnectHook(std::move(onConnectHook)),
+      _clientFactory(std::move(factory)),
       _metadataHook(std::move(metadataHook)),
       _state(kDefault) {}
 
@@ -236,7 +182,7 @@ void NetworkInterfaceTL::appendConnectionStats(ConnectionPoolStats* stats) const
         return;
     }
 
-    _pool->appendConnectionStats(stats);
+    _clientFactory->appendConnectionStats(stats);
 }
 
 void NetworkInterfaceTL::appendStats(BSONObjBuilder& bob) const {
@@ -246,6 +192,7 @@ void NetworkInterfaceTL::appendStats(BSONObjBuilder& bob) const {
 
     BSONObjBuilder builder = bob.subobjStart(_instanceName);
     _reactor->appendStats(builder);
+    _clientFactory->appendStats(builder);
 }
 
 NetworkInterface::Counters NetworkInterfaceTL::getCounters() const {
@@ -259,9 +206,11 @@ std::string NetworkInterfaceTL::getHostName() {
 
 void NetworkInterfaceTL::startup() {
     stdx::lock_guard lk(_mutex);
+    invariant(_state != kStarted, "NetworkInterface has already started");
+
     if (_state != kDefault) {
         LOGV2_INFO(9446800,
-                   "Skipping NetworkInterface startup: interface is in an invalid startup state",
+                   "Skipping NetworkInterface startup due to shutdown",
                    "state"_attr = toString(_state));
         return;
     }
@@ -270,22 +219,10 @@ void NetworkInterfaceTL::startup() {
     auto tlm = _svcCtx->getTransportLayerManager();
     invariant(tlm, "Cannot start NetworkInterface without a TransportLayer!");
 
-    auto tl = tlm->getTransportLayer(_protocol);
+    auto tl = tlm->getTransportLayer(_clientFactory->getTransportProtocol());
     invariant(tl && tl->isEgress());
-
-    std::shared_ptr<const transport::SSLConnectionContext> transientSSLContext;
-#ifdef MONGO_CONFIG_SSL
-    if (_connPoolOpts.transientSSLParams) {
-        transientSSLContext = uassertStatusOK(
-            tl->createTransientSSLContext(_connPoolOpts.transientSSLParams.value()));
-    }
-#endif
-
     _reactor = tl->getReactor(transport::TransportLayer::kNewReactor);
-    auto typeFactory = std::make_unique<connection_pool_tl::TLTypeFactory>(
-        _reactor, tl, std::move(_onConnectHook), _connPoolOpts, transientSSLContext);
-    _pool = std::make_shared<ConnectionPool>(
-        std::move(typeFactory), std::string("NetworkInterfaceTL-") + _instanceName, _connPoolOpts);
+    _clientFactory->startup(_svcCtx, tl, _reactor);
     _initialized.store(true);
 
     if (TestingProctor::instance().isEnabled()) {
@@ -357,7 +294,7 @@ void NetworkInterfaceTL::shutdown() {
 
     // This prevents new timers from being set, cancels any ongoing operations on all connections,
     // and destructs all connections for all existing pools.
-    _pool->shutdown();
+    _clientFactory->shutdown();
 
     // Now that the commands have been canceled, ensure they've fully finished and cleaned up before
     // stopping the reactor.
@@ -464,7 +401,7 @@ NetworkInterfaceTL::CommandStateBase::CommandStateBase(
       cancelSource(token) {}
 
 NetworkInterfaceTL::CommandStateBase::~CommandStateBase() {
-    invariant(!conn);
+    invariant(!clientHandle);
     interface->_unregisterCommand(cbHandle);
 }
 
@@ -492,15 +429,6 @@ void NetworkInterfaceTL::CommandStateBase::cancel(Status status) {
                     "reason"_attr = status);
     }
     cancelSource.cancel();
-}
-
-AsyncDBClient* NetworkInterfaceTL::CommandStateBase::getClient(
-    const ConnectionPool::ConnectionHandle& conn) noexcept {
-    if (!conn) {
-        return nullptr;
-    }
-
-    return checked_cast<connection_pool_tl::TLConnection*>(conn.get())->client();
 }
 
 void NetworkInterfaceTL::CommandStateBase::setTimer() {
@@ -556,18 +484,18 @@ void NetworkInterfaceTL::CommandStateBase::setTimer() {
         });
 }
 
-void NetworkInterfaceTL::CommandStateBase::returnConnection(Status status) noexcept {
-    invariant(conn);
+void NetworkInterfaceTL::CommandStateBase::releaseClientHandle(Status status) {
+    invariant(clientHandle);
 
-    auto connToReturn = std::exchange(conn, {});
+    auto clientHandleToRelease = std::exchange(clientHandle, {});
 
     if (!status.isOK()) {
-        connToReturn->indicateFailure(std::move(status));
+        clientHandleToRelease->indicateFailure(std::move(status));
         return;
     }
 
-    connToReturn->indicateUsed();
-    connToReturn->indicateSuccess();
+    clientHandleToRelease->indicateUsed();
+    clientHandleToRelease->indicateSuccess();
 }
 
 void NetworkInterfaceTL::_unregisterCommand(const TaskExecutor::CallbackHandle& cbHandle) {
@@ -605,7 +533,7 @@ void NetworkInterfaceTL::testEgress(const HostAndPort& hostAndPort,
                                     Status status) {
     uassert(ErrorCodes::NotYetInitialized, kNotYetStartedUpMsg, _initialized.load());
 
-    auto handle = _pool->get(hostAndPort, sslMode, timeout).get();
+    auto handle = _clientFactory->get(hostAndPort, sslMode, timeout).get();
     if (status.isOK()) {
         handle->indicateSuccess();
     } else {
@@ -616,17 +544,15 @@ void NetworkInterfaceTL::testEgress(const HostAndPort& hostAndPort,
 ExecutorFuture<RemoteCommandResponse> NetworkInterfaceTL::CommandState::sendRequestImpl(
     RemoteCommandRequest req) {
     return makeReadyFutureWith([this, req = std::move(req)] {
-               const auto connAcquiredTimer =
-                   checked_cast<connection_pool_tl::TLConnection*>(conn.get())
-                       ->getConnAcquiredTimer();
-               return getClient(conn)->runCommandRequest(
+               const auto connAcquiredTimer = clientHandle->getAcquiredTimer();
+               return clientHandle->getClient().runCommandRequest(
                    std::move(req), baton, std::move(connAcquiredTimer), cancelSource.token());
            })
         .thenRunOn(makeGuaranteedExecutor())
         .onCompletion(
             [this, anchor = shared_from_this()](StatusWith<RemoteCommandResponse> swResp) {
                 auto status = swResp.isOK() ? swResp.getValue().status : swResp.getStatus();
-                returnConnection(status);
+                releaseClientHandle(status);
                 return swResp;
             });
 }
@@ -639,8 +565,8 @@ void NetworkInterfaceTL::CommandStateBase::doMetadataHook(const RemoteCommandRes
 
 ExecutorFuture<RemoteCommandResponse> NetworkInterfaceTL::ExhaustCommandState::sendRequestImpl(
     RemoteCommandRequest req) try {
-    return getClient(conn)
-        ->beginExhaustCommandRequest(req, baton, cancelSource.token())
+    return clientHandle->getClient()
+        .beginExhaustCommandRequest(req, baton, cancelSource.token())
         .thenRunOn(makeGuaranteedExecutor());
 } catch (const DBException& ex) {
     return ExecutorFuture<RemoteCommandResponse>(makeGuaranteedExecutor(), ex.toStatus());
@@ -670,19 +596,20 @@ NetworkInterfaceTL::startExhaustCommand(const TaskExecutor::CallbackHandle& cbHa
             auto& resp = swr.getValue();
 
             if (!resp.isOK()) {
-                if (cmdState->conn) {
-                    cmdState->returnConnection(resp.status);
+                if (cmdState->clientHandle) {
+                    cmdState->releaseClientHandle(resp.status);
                 }
                 return resp.status;
             }
 
-            invariant(cmdState->conn);
-            return std::make_shared<ExhaustResponseReaderTL>(cmdState->request,
-                                                             resp,
-                                                             std::exchange(cmdState->conn, {}),
-                                                             cmdState->baton,
-                                                             _reactor,
-                                                             cancelToken);
+            invariant(cmdState->clientHandle);
+            return std::make_shared<ExhaustResponseReaderTL>(
+                cmdState->request,
+                resp,
+                std::exchange(cmdState->clientHandle, {}),
+                cmdState->baton,
+                _reactor,
+                cancelToken);
         })
         .semi();
 }
@@ -724,7 +651,8 @@ void NetworkInterfaceTL::_killOperation(CommandStateBase* cmdStateToKill) try {
         DatabaseName::kAdmin,
         BSON("_killOperations" << 1 << "operationKeys" << BSON_ARRAY(*operationKey)),
         nullptr,
-        kCancelCommandTimeout);
+        TestingProctor::instance().isEnabled() ? kCancelCommandTimeout_forTest
+                                               : kCancelCommandTimeout);
     auto cbHandle = executor::TaskExecutor::CallbackHandle();
     auto killOpCmdState = std::make_shared<CommandState>(
         this, killOpRequest, cbHandle, nullptr, CancellationToken::uncancelable());
@@ -848,30 +776,30 @@ void NetworkInterfaceTL::dropConnections(const HostAndPort& hostAndPort) {
         return;
     }
 
-    _pool->dropConnections(hostAndPort);
+    _clientFactory->dropConnections(hostAndPort);
 }
 
 AsyncDBClient* NetworkInterfaceTL::LeasedStream::getClient() {
-    return checked_cast<connection_pool_tl::TLConnection*>(_conn.get())->client();
+    return &_clientHandle->getClient();
 }
 
 void NetworkInterfaceTL::LeasedStream::indicateSuccess() {
-    return _conn->indicateSuccess();
+    return _clientHandle->indicateSuccess();
 }
 
 void NetworkInterfaceTL::LeasedStream::indicateFailure(Status status) {
-    _conn->indicateFailure(status);
+    _clientHandle->indicateFailure(status);
 }
 
 void NetworkInterfaceTL::LeasedStream::indicateUsed() {
-    _conn->indicateUsed();
+    _clientHandle->indicateUsed();
 }
 
 SemiFuture<std::unique_ptr<NetworkInterface::LeasedStream>> NetworkInterfaceTL::leaseStream(
     const HostAndPort& hostAndPort, transport::ConnectSSLMode sslMode, Milliseconds timeout) {
     invariant(_initialized.load());
 
-    return _pool->lease(hostAndPort, sslMode, timeout)
+    return _clientFactory->lease(hostAndPort, sslMode, timeout)
         .thenRunOn(_reactor)
         .then([](auto conn) -> std::unique_ptr<NetworkInterface::LeasedStream> {
             auto ptr = std::make_unique<NetworkInterfaceTL::LeasedStream>(std::move(conn));
@@ -880,8 +808,8 @@ SemiFuture<std::unique_ptr<NetworkInterface::LeasedStream>> NetworkInterfaceTL::
         .semi();
 }
 
-SemiFuture<ConnectionPool::ConnectionHandle> NetworkInterfaceTL::CommandStateBase::getConnection(
-    ConnectionPool& pool) {
+SemiFuture<std::shared_ptr<AsyncClientFactory::AsyncClientHandle>>
+NetworkInterfaceTL::CommandStateBase::getClient(AsyncClientFactory& factory) {
     Status failPointStatus = Status::OK();
     forceConnectionNetworkTimeout.executeIf(
         [&](const BSONObj& data) {
@@ -899,12 +827,12 @@ SemiFuture<ConnectionPool::ConnectionHandle> NetworkInterfaceTL::CommandStateBas
     if (!failPointStatus.isOK()) {
         return failPointStatus;
     }
-    return pool.get(request.target, request.sslMode, request.timeout, cancelSource.token());
+    return factory.get(request.target, request.sslMode, request.timeout, cancelSource.token());
 }
 
 ExecutorFuture<RemoteCommandResponse> NetworkInterfaceTL::CommandStateBase::sendRequest(
-    ConnectionPool::ConnectionHandle retrievedConn) {
-    checked_cast<connection_pool_tl::TLConnection*>(retrievedConn.get())->startConnAcquiredTimer();
+    std::shared_ptr<AsyncClientFactory::AsyncClientHandle> retrievedClient) {
+    retrievedClient->startAcquiredTimer();
 
     LOGV2_DEBUG(4630601,
                 2,
@@ -914,7 +842,7 @@ ExecutorFuture<RemoteCommandResponse> NetworkInterfaceTL::CommandStateBase::send
 
     RemoteCommandRequest requestToSend = request;
 
-    conn = std::move(retrievedConn);
+    clientHandle = std::move(retrievedClient);
 
     if (interface->_svcCtx && requestToSend.timeout != RemoteCommandRequest::kNoTimeout &&
         WireSpec::getWireSpec(interface->_svcCtx).get()->isInternalClient) {
@@ -947,24 +875,28 @@ ExecutorFuture<RemoteCommandResponse> NetworkInterfaceTL::CommandStateBase::send
     return sendRequestImpl(std::move(requestToSend));
 }
 
-Status NetworkInterfaceTL::CommandStateBase::handleConnectionAcquisitionError(Status status) {
-    // Time limit exceeded from ConnectionPool waiting to acquire a connection.
-    if (status == ErrorCodes::PooledConnectionAcquisitionExceededTimeLimit) {
-        auto connTimeoutWaitTime = stopwatch.elapsed();
-        numConnectionNetworkTimeouts.increment(1);
-        timeSpentWaitingBeforeConnectionTimeoutMillis.increment(
-            durationCount<Milliseconds>(connTimeoutWaitTime));
-        auto timeoutCode = request.timeoutCode;
-        if (timeoutCode && connTimeoutWaitTime >= request.timeout) {
-            status = Status(*timeoutCode, status.reason());
-        }
-        if (gEnableDetailedConnectionHealthMetricLogLines.load()) {
-            LOGV2(6496500,
-                  "Operation timed out while waiting to acquire connection",
-                  "requestId"_attr = request.id,
-                  "duration"_attr = connTimeoutWaitTime);
-        }
+Status NetworkInterfaceTL::CommandStateBase::handleClientAcquisitionError(Status status) {
+    if (!ErrorCodes::isExceededTimeLimitError(status)) {
+        return status;
     }
+
+    auto connTimeoutWaitTime = stopwatch.elapsed();
+    numConnectionNetworkTimeouts.increment(1);
+    timeSpentWaitingBeforeConnectionTimeoutMillis.increment(
+        durationCount<Milliseconds>(connTimeoutWaitTime));
+
+    auto timeoutCode = request.timeoutCode;
+    if (timeoutCode && connTimeoutWaitTime >= request.timeout) {
+        status = Status(*timeoutCode, status.reason());
+    }
+
+    if (gEnableDetailedConnectionHealthMetricLogLines.load()) {
+        LOGV2(6496500,
+              "Operation timed out while waiting to acquire connection",
+              "requestId"_attr = request.id,
+              "duration"_attr = connTimeoutWaitTime);
+    }
+
     return status;
 }
 
@@ -974,25 +906,27 @@ ExecutorPtr NetworkInterfaceTL::CommandStateBase::makeGuaranteedExecutor() {
 
 ExecutorFuture<RemoteCommandResponse> NetworkInterfaceTL::_runCommand(
     std::shared_ptr<CommandStateBase> cmdState) {
-    return cmdState->getConnection(*_pool)
+    return cmdState->getClient(*_clientFactory)
         .thenRunOn(cmdState->makeGuaranteedExecutor())
-        .onError([cmdState](Status status) -> StatusWith<ConnectionPool::ConnectionHandle> {
-            return cmdState->handleConnectionAcquisitionError(status);
+        .onError([cmdState](Status status)
+                     -> StatusWith<std::shared_ptr<AsyncClientFactory::AsyncClientHandle>> {
+            return cmdState->handleClientAcquisitionError(status);
         })
-        .then([this, cmdState](ConnectionPool::ConnectionHandle retrievedConn) {
-            return cmdState->sendRequest(std::move(retrievedConn))
-                .then([cmdState](RemoteCommandResponse resp) {
-                    cmdState->doMetadataHook(resp);
-                    return resp;
-                })
-                .onError([this, cmdState](Status err) -> StatusWith<RemoteCommandResponse> {
-                    if (auto opKey = cmdState->request.operationKey) {
-                        _killOperation(cmdState.get());
-                    }
-                    return err;
-                });
-        })
-        .onCompletion([cmdState, this](StatusWith<RemoteCommandResponse> swResponse) noexcept {
+        .then(
+            [this, cmdState](std::shared_ptr<AsyncClientFactory::AsyncClientHandle> retrievedConn) {
+                return cmdState->sendRequest(std::move(retrievedConn))
+                    .then([cmdState](RemoteCommandResponse resp) {
+                        cmdState->doMetadataHook(resp);
+                        return resp;
+                    })
+                    .onError([this, cmdState](Status err) -> StatusWith<RemoteCommandResponse> {
+                        if (auto opKey = cmdState->request.operationKey) {
+                            _killOperation(cmdState.get());
+                        }
+                        return err;
+                    });
+            })
+        .onCompletion([cmdState, this](StatusWith<RemoteCommandResponse> swResponse) {
             // If the command was cancelled for a reason, return a status that reflects that.
             if (swResponse == ErrorCodes::CallbackCanceled) {
                 stdx::lock_guard<stdx::mutex> lk(cmdState->cancelMutex);

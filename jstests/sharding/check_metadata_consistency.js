@@ -7,6 +7,7 @@
  */
 
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 // Configure initial sharding cluster
@@ -605,6 +606,24 @@ function isFcvGraterOrEqualTo(fcvRequired) {
     assertNoInconsistencies();
 })();
 
+(function testUnexpectedAdminDatabaseInGlobalCatalog() {
+    jsTest.log("Executing testUnexpectedAdminDatabaseInGlobalCatalog");
+
+    // Register the 'admin' database in the global catalog.
+    assert.commandWorked(st.configRS.getPrimary().getDB("config").databases.insertOne({
+        _id: "admin",
+        primary: "config",
+        version: {uuid: UUID(), lastMod: NumberInt(1), timestamp: Timestamp(1, 0)}
+    }));
+
+    // Check no inconsistencies are present, but with a successful run of checkMetadataConsistency.
+    assertNoInconsistencies();
+
+    // Clean up the inconsistency for following test cases.
+    assert.commandWorked(
+        st.configRS.getPrimary().getDB("config").databases.deleteOne({_id: "admin"}));
+})();
+
 (function testDefaultCollationMismatch1() {
     jsTest.log("Executing testDefaultCollationMismatch1");
 
@@ -980,10 +999,17 @@ function isFcvGraterOrEqualTo(fcvRequired) {
 })();
 
 (function testFindingInconsistenciesWithDbPrimaryShardWithUnknownDbMetadata() {
+    if (FeatureFlagUtil.isPresentAndEnabled(st.s, "ShardAuthoritativeDbMetadataDDL")) {
+        jsTestLog(
+            "Skipping test since featureFlagShardAuthoritativeDbMetadataDDL is enabled and do " +
+            "not refresh database metadata.");
+        return;
+    }
+
     if (jsTest.options().storageEngine === "inMemory") {
         jsTestLog(
-            "Skipping testFindingInconsistenciesWithDbPrimaryShardWithUnknownDbMetadata because we \
-            need persistance to restart nodes");
+            "Skipping testFindingInconsistenciesWithDbPrimaryShardWithUnknownDbMetadata because " +
+            "we need persistance to restart nodes");
         return;
     }
 

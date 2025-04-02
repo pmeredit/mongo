@@ -58,8 +58,6 @@
 #include "mongo/db/server_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
@@ -71,7 +69,6 @@
 
 namespace mongo {
 namespace repl {
-using namespace fmt::literals;
 
 // Allow the heartbeat interval to be forcibly overridden on this node.
 MONGO_FAIL_POINT_DEFINE(forceHeartbeatIntervalMS);
@@ -451,6 +448,9 @@ Status ReplSetConfig::_validate(bool allowSplitHorizonIP) const {
         // fasserts (on startup or replication) if the shard identity document matches the server's
         // cluster role. For why this is correct and for more context see: SERVER-80249
         if (!gFeatureFlagAllMongodsAreSharded.isEnabledUseLatestFCVWhenUninitialized(
+                // This code will be removed since master is 8.1 already (see SERVER-82024).
+                // Ignore the versionContext for simplicity.
+                kVersionContextIgnored,
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             return Status(ErrorCodes::BadValue,
                           "Nodes started with the --configsvr flag must have configsvr:true in "
@@ -597,8 +597,8 @@ StatusWith<ReplSetTagPattern> ReplSetConfig::findCustomWriteMode(StringData patt
     if (iter == _customWriteConcernModes.end()) {
         return StatusWith<ReplSetTagPattern>(
             ErrorCodes::UnknownReplWriteConcern,
-            "No write concern mode named '{}' found in replica set configuration"_format(
-                str::escape(patternName.toString())));
+            fmt::format("No write concern mode named '{}' found in replica set configuration",
+                        str::escape(patternName.toString())));
     }
     return StatusWith<ReplSetTagPattern>(iter->second);
 }

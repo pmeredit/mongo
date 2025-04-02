@@ -203,7 +203,9 @@ server_parameters:
         description: >-
             Set this to specify the maximum number of times the oplog fetcher will
             consecutively restart the oplog tailing query on non-cancellation errors
-            during steady state replication.
+            during steady state replication. Exponential backoff is implemented between 
+            each restart, starting by waiting 5ms on the first restart and doubling 
+            the wait on each subsequent restart, with an upper limit of 500ms.
         set_at: [ startup, runtime ]
         cpp_vartype: AtomicWord<int>
         cpp_varname: oplogFetcherSteadyStateMaxFetcherRestarts
@@ -217,7 +219,11 @@ server_parameters:
             Set this to specify the maximum number of times the oplog fetcher will
             consecutively restart the oplog tailing query on non-cancellation errors
             during initial sync. By default we provide a generous amount of restarts
-            to avoid potentially restarting an entire initial sync from scratch.
+            to avoid potentially restarting an entire initial sync from scratch. 
+            Exponential backoff is implemented between each restart, starting
+            by waiting 5ms on the first restart and doubling the wait on each 
+            subsequent restart, with an upper limit of 500ms. As a result, the default 
+            of 10 total restarts will take approximately ~2 seconds total.
         set_at: [ startup, runtime ]
         cpp_vartype: AtomicWord<int>
         cpp_varname: oplogFetcherInitialSyncMaxFetcherRestarts
@@ -658,7 +664,7 @@ server_parameters:
             The number of retries that be made by writeConflictRetry(). It is used in secondary
             oplog application to catch unexpected behavior.
         set_at: [ startup, runtime ]
-        cpp_vartype: int
+        cpp_vartype: AtomicWord<int>
         cpp_varname: writeConflictRetryLimit
         default: 10000
         validator:
@@ -681,8 +687,9 @@ feature_flags:
         description: When enabled, dbCheck runs document and secondary index consistency checks in addition to replica set data consistency checks.
         cpp_varname: feature_flags::gSecondaryIndexChecksInDbCheck
         default: true
-        version: 8.1
+        version: 8.0
         shouldBeFCVGated: true
+        fcv_context_unaware: true
 
     featureFlagReduceMajorityWriteLatency:
         description: When enabled, Secondaries acknowledge writes as durable after an oplog entry is written durably to disk, without waiting for it to be applied.
@@ -698,6 +705,7 @@ feature_flags:
         default: true
         version: 8.0
         shouldBeFCVGated: true
+        fcv_context_unaware: true
 
     featureFlagOplogVisibility:
         description: When enabled, the Oplog visibility will be tracked at the Replication layer.

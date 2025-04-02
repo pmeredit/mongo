@@ -30,16 +30,10 @@
 
 #include "mongo/db/s/sharding_ddl_util.h"
 
-#include <algorithm>
-#include <array>
 #include <boost/cstdint.hpp>
 #include <boost/smart_ptr.hpp>
 #include <cstddef>
-#include <cstdint>
-#include <iterator>
-#include <ostream>
 #include <string>
-#include <tuple>
 
 #include <absl/container/node_hash_map.h>
 #include <boost/move/utility_core.hpp>
@@ -74,7 +68,6 @@
 #include "mongo/db/query/write_ops/write_ops_parsers.h"
 #include "mongo/db/repl/read_concern_level.h"
 #include "mongo/db/repl/repl_client_info.h"
-#include "mongo/db/resource_yielder.h"
 #include "mongo/db/s/config/initial_split_policy.h"
 #include "mongo/db/s/remove_tags_gen.h"
 #include "mongo/db/s/sharding_logging.h"
@@ -84,8 +77,6 @@
 #include "mongo/db/vector_clock.h"
 #include "mongo/db/vector_clock_mutable.h"
 #include "mongo/db/write_concern.h"
-#include "mongo/executor/async_rpc.h"
-#include "mongo/executor/async_rpc_util.h"
 #include "mongo/executor/inline_executor.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -95,7 +86,6 @@
 #include "mongo/s/analyze_shard_key_documents_gen.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/catalog/type_collection.h"
-#include "mongo/s/catalog/type_collection_gen.h"
 #include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/catalog/type_index_catalog_gen.h"
 #include "mongo/s/catalog/type_namespace_placement_gen.h"
@@ -117,7 +107,6 @@
 #include "mongo/util/future_impl.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/out_of_line_executor.h"
-#include "mongo/util/read_through_cache.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 #include "mongo/util/uuid.h"
@@ -128,9 +117,7 @@
 
 namespace mongo {
 
-using namespace fmt::literals;
-
-static const size_t kSerializedErrorStatusMaxSize = 1024 * 2;
+static const size_t kSerializedErrorStatusMaxSizeBytes = 2048ULL;
 
 void sharding_ddl_util_serializeErrorStatusToBSON(const Status& status,
                                                   StringData fieldName,
@@ -141,10 +128,10 @@ void sharding_ddl_util_serializeErrorStatusToBSON(const Status& status,
     status.serialize(&tmpBuilder);
 
     if (status != ErrorCodes::TruncatedSerialization &&
-        (size_t)tmpBuilder.asTempObj().objsize() > kSerializedErrorStatusMaxSize) {
+        (size_t)tmpBuilder.asTempObj().objsize() > kSerializedErrorStatusMaxSizeBytes) {
         const auto statusStr = status.toString();
         const auto truncatedStatusStr =
-            str::UTF8SafeTruncation(statusStr, kSerializedErrorStatusMaxSize);
+            str::UTF8SafeTruncation(statusStr, kSerializedErrorStatusMaxSizeBytes);
         const Status truncatedStatus{ErrorCodes::TruncatedSerialization, truncatedStatusStr};
 
         tmpBuilder.resetToEmpty();
@@ -296,8 +283,7 @@ void deleteShardingIndexCatalogMetadata(OperationContext* opCtx,
 
 write_ops::UpdateCommandRequest buildNoopWriteRequestCommand() {
     write_ops::UpdateCommandRequest updateOp(NamespaceString::kServerConfigurationNamespace);
-    auto queryFilter = BSON("_id"
-                            << "shardingDDLCoordinatorRecoveryDoc");
+    auto queryFilter = BSON("_id" << "shardingDDLCoordinatorRecoveryDoc");
     auto updateModification =
         write_ops::UpdateModification(write_ops::UpdateModification::parseFromClassicUpdate(
             BSON("$inc" << BSON("noopWriteCount" << 1))));
@@ -452,10 +438,8 @@ void removeCollAndChunksMetadataFromConfig(
     const auto& nss = coll.getNss();
     const auto& uuid = coll.getUuid();
 
-    ON_BLOCK_EXIT([&] {
-        Grid::get(opCtx)->catalogCache()->invalidateCollectionEntry_LINEARIZABLE(nss);
-        Grid::get(opCtx)->catalogCache()->invalidateIndexEntry_LINEARIZABLE(nss);
-    });
+    ON_BLOCK_EXIT(
+        [&] { Grid::get(opCtx)->catalogCache()->invalidateCollectionEntry_LINEARIZABLE(nss); });
 
     /*
     Data from config.collection are deleted using a transaction to guarantee an atomic update on
@@ -631,10 +615,11 @@ void sendDropCollectionParticipantCommandToShards(OperationContext* opCtx,
 
 BSONObj getCriticalSectionReasonForRename(const NamespaceString& from, const NamespaceString& to) {
     return BSON(
-        "command"
-        << "rename"
-        << "from" << NamespaceStringUtil::serialize(from, SerializationContext::stateDefault())
-        << "to" << NamespaceStringUtil::serialize(to, SerializationContext::stateDefault()));
+        "command" << "rename"
+                  << "from"
+                  << NamespaceStringUtil::serialize(from, SerializationContext::stateDefault())
+                  << "to"
+                  << NamespaceStringUtil::serialize(to, SerializationContext::stateDefault()));
 }
 
 void runTransactionOnShardingCatalog(OperationContext* opCtx,
@@ -869,13 +854,75 @@ void assertDataMovementAllowed() {
 void assertNamespaceLengthLimit(const NamespaceString& nss, bool isUnsharded) {
     auto maxNsLen = isUnsharded ? NamespaceString::MaxUserNsCollectionLen
                                 : NamespaceString::MaxUserNsShardedCollectionLen;
-    uassert(
-        ErrorCodes::InvalidNamespace,
-        "Namespace too log. The namespace {} is {} characters long, but the maximum allowed is {}"_format(
-            nss.toStringForErrorMsg(), nss.size(), maxNsLen),
-        nss.size() <= maxNsLen);
+    uassert(ErrorCodes::InvalidNamespace,
+            fmt::format("Namespace too log. The namespace {} is {} characters long, but the "
+                        "maximum allowed is {}",
+                        nss.toStringForErrorMsg(),
+                        nss.size(),
+                        maxNsLen),
+            nss.size() <= maxNsLen);
 }
 
+void commitCreateDatabaseMetadataToShardCatalog(
+    OperationContext* opCtx,
+    const DatabaseType& db,
+    const OperationSessionInfo& osi,
+    const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+    const CancellationToken& token) {
+    ShardsvrCommitCreateDatabaseMetadata shardsvrRequest{NamespaceString{db.getDbName()}};
+    shardsvrRequest.setDbName(db.getDbName());
+    shardsvrRequest.setDbVersion(db.getVersion());
+
+    generic_argument_util::setMajorityWriteConcern(shardsvrRequest);
+    generic_argument_util::setOperationSessionInfo(shardsvrRequest, osi);
+
+    auto opts = std::make_shared<async_rpc::AsyncRPCOptions<ShardsvrCommitCreateDatabaseMetadata>>(
+        **executor, token, std::move(shardsvrRequest));
+
+    sendAuthenticatedCommandToShards(opCtx, opts, {db.getPrimary()});
+}
+
+void commitDropDatabaseMetadataToShardCatalog(
+    OperationContext* opCtx,
+    const DatabaseName& dbName,
+    const ShardId& shardId,
+    const OperationSessionInfo& osi,
+    const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+    const CancellationToken& token) {
+    ShardsvrCommitDropDatabaseMetadata shardsvrRequest{NamespaceString{dbName}};
+    shardsvrRequest.setDbName(dbName);
+
+    generic_argument_util::setMajorityWriteConcern(shardsvrRequest);
+    generic_argument_util::setOperationSessionInfo(shardsvrRequest, osi);
+
+    auto opts = std::make_shared<async_rpc::AsyncRPCOptions<ShardsvrCommitDropDatabaseMetadata>>(
+        **executor, token, std::move(shardsvrRequest));
+
+    sendAuthenticatedCommandToShards(opCtx, opts, {shardId});
+}
+
+AuthoritativeMetadataAccessLevelEnum getGrantedAuthoritativeMetadataAccessLevel(
+    const VersionContext& vCtx, const ServerGlobalParams::FCVSnapshot& snapshot) {
+    const bool isAuthoritativeDDLEnabled =
+        feature_flags::gShardAuthoritativeDbMetadataDDL.isEnabled(vCtx, snapshot);
+    const bool isAuthoritativeCRUDEnabled =
+        feature_flags::gShardAuthoritativeDbMetadataCRUD.isEnabled(vCtx, snapshot);
+
+    tassert(10162502,
+            "shardAuthoritativeDbMetadataCRUD should not be enabled if "
+            "shardAuthoritativeDbMetadataDDL is disabled",
+            isAuthoritativeDDLEnabled || !isAuthoritativeCRUDEnabled);
+
+    if (!isAuthoritativeDDLEnabled) {
+        return AuthoritativeMetadataAccessLevelEnum::kNone;
+    }
+
+    if (!isAuthoritativeCRUDEnabled) {
+        return AuthoritativeMetadataAccessLevelEnum::kWritesAllowed;
+    }
+
+    return AuthoritativeMetadataAccessLevelEnum::kWritesAndReadsAllowed;
+}
 
 }  // namespace sharding_ddl_util
 }  // namespace mongo

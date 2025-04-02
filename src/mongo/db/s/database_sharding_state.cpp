@@ -51,8 +51,7 @@
 #include "mongo/db/shard_id.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
+#include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/s/stale_exception.h"
 #include "mongo/stdx/mutex.h"
@@ -78,11 +77,9 @@ public:
 
     struct DSSAndLock {
         DSSAndLock(const DatabaseName& dbName)
-            : dssMutex("DSSMutex::" +
-                       DatabaseNameUtil::serialize(dbName, SerializationContext::stateDefault())),
-              dss(std::make_unique<DatabaseShardingState>(dbName)) {}
+            : dss(std::make_unique<DatabaseShardingState>(dbName)) {}
 
-        const Lock::ResourceMutex dssMutex;
+        std::shared_mutex dssMutex;  // NOLINT
         std::unique_ptr<DatabaseShardingState> dss;
     };
 
@@ -161,12 +158,12 @@ void checkPlacementConflictTimestamp(const boost::optional<LogicalTime> atCluste
 DatabaseShardingState::DatabaseShardingState(const DatabaseName& dbName) : _dbName(dbName) {}
 
 DatabaseShardingState::ScopedExclusiveDatabaseShardingState::ScopedExclusiveDatabaseShardingState(
-    Lock::ResourceLock lock, DatabaseShardingState* dss)
+    std::unique_lock<std::shared_mutex> lock, DatabaseShardingState* dss)  // NOLINT
     : _lock(std::move(lock)), _dss(dss) {}
 
 DatabaseShardingState::ScopedSharedDatabaseShardingState::ScopedSharedDatabaseShardingState(
-    Lock::ResourceLock lock, DatabaseShardingState* dss)
-    : DatabaseShardingState::ScopedExclusiveDatabaseShardingState(std::move(lock), dss) {}
+    std::shared_lock<std::shared_mutex> lock, DatabaseShardingState* dss)  // NOLINT
+    : _lock(std::move(lock)), _dss(dss) {}
 
 DatabaseShardingState::ScopedExclusiveDatabaseShardingState DatabaseShardingState::acquireExclusive(
     OperationContext* opCtx, const DatabaseName& dbName) {
@@ -174,12 +171,11 @@ DatabaseShardingState::ScopedExclusiveDatabaseShardingState DatabaseShardingStat
     DatabaseShardingStateMap::DSSAndLock* dssAndLock =
         DatabaseShardingStateMap::get(opCtx->getServiceContext()).getOrCreate(dbName);
 
-    // First lock the RESOURCE_MUTEX associated to this dbName to guarantee stability of the
+    // First lock the shared_mutex associated to this dbName to guarantee stability of the
     // DatabaseShardingState pointer. After that, it is safe to get and store the
-    // DatabaseShadingState*, as long as the RESOURCE_MUTEX is kept locked.
-    Lock::ResourceLock lock(opCtx, dssAndLock->dssMutex.getRid(), MODE_X);
-
-    return ScopedExclusiveDatabaseShardingState(std::move(lock), dssAndLock->dss.get());
+    // DatabaseShadingState*, as long as the shared_mutex is kept locked.
+    return ScopedExclusiveDatabaseShardingState(std::unique_lock(dssAndLock->dssMutex),
+                                                dssAndLock->dss.get());
 }
 
 DatabaseShardingState::ScopedSharedDatabaseShardingState DatabaseShardingState::acquireShared(
@@ -188,12 +184,11 @@ DatabaseShardingState::ScopedSharedDatabaseShardingState DatabaseShardingState::
     DatabaseShardingStateMap::DSSAndLock* dssAndLock =
         DatabaseShardingStateMap::get(opCtx->getServiceContext()).getOrCreate(dbName);
 
-    // First lock the RESOURCE_MUTEX associated to this dbName to guarantee stability of the
+    // First lock the shared_mutex associated to this dbName to guarantee stability of the
     // DatabaseShardingState pointer. After that, it is safe to get and store the
-    // DatabaseShadingState*, as long as the RESOURCE_MUTEX is kept locked.
-    Lock::ResourceLock lock(opCtx, dssAndLock->dssMutex.getRid(), MODE_IS);
-
-    return ScopedSharedDatabaseShardingState(std::move(lock), dssAndLock->dss.get());
+    // DatabaseShadingState*, as long as the shared_mutex is kept locked.
+    return ScopedSharedDatabaseShardingState(std::shared_lock(dssAndLock->dssMutex),  // NOLINT
+                                             dssAndLock->dss.get());
 }
 
 DatabaseShardingState::ScopedExclusiveDatabaseShardingState
@@ -257,11 +252,10 @@ void DatabaseShardingState::assertMatchingDbVersion(OperationContext* opCtx,
 }
 
 void DatabaseShardingState::assertIsPrimaryShardForDb(OperationContext* opCtx) const {
-    using namespace fmt::literals;
     if (_dbName == DatabaseName::kConfig || _dbName == DatabaseName::kAdmin) {
         uassert(7393700,
-                "The config server is the primary shard for database: {}"_format(
-                    _dbName.toStringForErrorMsg()),
+                fmt::format("The config server is the primary shard for database: {}",
+                            _dbName.toStringForErrorMsg()),
                 serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer));
         return;
     }
@@ -285,16 +279,64 @@ void DatabaseShardingState::assertIsPrimaryShardForDb(OperationContext* opCtx) c
 }
 
 void DatabaseShardingState::setDbInfo(OperationContext* opCtx, const DatabaseType& dbInfo) {
+    if (feature_flags::gShardAuthoritativeDbMetadataCRUD.isEnabled(
+            VersionContext::getDecoration(opCtx),
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        // When the feature flag for authoritative database metadata is enabled, this should act as
+        // a noop. Clearing and setting the database metadata is only managed by the recover from
+        // disk during startup/rollback or as part of a DDL commit to the shard catalog.
+        return;
+    }
+
     invariant(shard_role_details::getLocker(opCtx)->isDbLockedForMode(_dbName, MODE_IX));
 
     LOGV2(7286900,
           "Setting this node's cached database info",
           logAttrs(_dbName),
           "dbVersion"_attr = dbInfo.getVersion());
+
     _dbInfo.emplace(dbInfo);
 }
 
-void DatabaseShardingState::clearDbInfo(OperationContext* opCtx, bool cancelOngoingRefresh) {
+void DatabaseShardingState::setAuthoritativeDbInfo(OperationContext* opCtx,
+                                                   const DatabaseType& dbInfo) {
+    tassert(10003603,
+            "Expected to find the authoritative database metadata feature flag enabled",
+            feature_flags::gShardAuthoritativeDbMetadataDDL.isEnabled(
+                VersionContext::getDecoration(opCtx),
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+
+    const auto thisShardId = ShardingState::get(opCtx)->shardId();
+    tassert(10003604,
+            fmt::format(
+                "Expected to be setting this node's cached database info with its corresponding "
+                "database version. Found primary shard in the database info: {}, expected: {} for "
+                "database: {} and dbVersion: {}.",
+                dbInfo.getPrimary().toString(),
+                thisShardId.toString(),
+                _dbName.toStringForErrorMsg(),
+                dbInfo.getVersion().toString()),
+            !thisShardId.isValid() || dbInfo.getPrimary() == thisShardId);
+
+    LOGV2(10003605,
+          "Setting this node's cached database info",
+          logAttrs(_dbName),
+          "dbVersion"_attr = dbInfo.getVersion());
+
+    _dbInfo.emplace(dbInfo);
+}
+
+void DatabaseShardingState::clearDbInfo_DEPRECATED(OperationContext* opCtx,
+                                                   bool cancelOngoingRefresh) {
+    tassert(
+        10250100,
+        "Clearing the database metadata should only be done through the authoritative model, "
+        "which is managed by the DDL commit to the shard catalog. This method is being called in a "
+        "non-authoritative way, which is not correct in the current implementation.",
+        !feature_flags::gShardAuthoritativeDbMetadataDDL.isEnabled(
+            VersionContext::getDecoration(opCtx),
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+
     invariant(shard_role_details::getLocker(opCtx)->isDbLockedForMode(_dbName, MODE_IX));
 
     if (cancelOngoingRefresh) {
@@ -302,6 +344,19 @@ void DatabaseShardingState::clearDbInfo(OperationContext* opCtx, bool cancelOngo
     }
 
     LOGV2(7286901, "Clearing this node's cached database info", logAttrs(_dbName));
+
+    _dbInfo = boost::none;
+}
+
+void DatabaseShardingState::clearDbInfo(OperationContext* opCtx) {
+    tassert(10003601,
+            "Expected to find the authoritative database metadata feature flag enabled",
+            feature_flags::gShardAuthoritativeDbMetadataDDL.isEnabled(
+                VersionContext::getDecoration(opCtx),
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+
+    LOGV2(10003602, "Clearing this node's cached database info", logAttrs(_dbName));
+
     _dbInfo = boost::none;
 }
 

@@ -46,8 +46,6 @@
 #include "mongo/bson/util/builder.h"
 #include "mongo/bson/util/builder_fwd.h"
 #include "mongo/db/catalog/collection.h"
-#include "mongo/db/catalog/health_log_gen.h"
-#include "mongo/db/catalog/health_log_interface.h"
 #include "mongo/db/catalog/index_catalog.h"
 #include "mongo/db/catalog/index_catalog_entry.h"
 #include "mongo/db/exec/document_value/document.h"
@@ -56,9 +54,9 @@
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index/multikey_paths.h"
+#include "mongo/db/index/preallocated_container_pool.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/record_id.h"
-#include "mongo/db/storage/execution_context.h"
 #include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/key_string/key_string.h"
 #include "mongo/db/storage/record_data.h"
@@ -69,11 +67,7 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
-#include "mongo/logv2/redaction.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/shared_buffer_fragment.h"
 #include "mongo/util/stacktrace.h"
@@ -145,29 +139,6 @@ bool WorkingSetCommon::fetch(OperationContext* opCtx,
                 return builder.obj();
             };
 
-            HealthLogEntry entry;
-            entry.setNss(ns);
-            entry.setTimestamp(Date_t::now());
-            entry.setSeverity(SeverityEnum::Error);
-            entry.setScope(ScopeEnum::Index);
-            entry.setOperation("Index scan");
-            entry.setMsg("Erroneous index key found with reference to non-existent record id");
-
-            BSONObjBuilder bob;
-            bob.append("recordId", member->recordId.toString());
-
-            const BSONArray indexKeyData =
-                logv2::seqLog(
-                    boost::make_transform_iterator(member->keyData.begin(), indexKeyEntryToObjFn),
-                    boost::make_transform_iterator(member->keyData.end(), indexKeyEntryToObjFn))
-                    .toBSONArray();
-            bob.append("indexKeyData", indexKeyData);
-
-            bob.appendElements(getStackTrace().getBSONRepresentation());
-            entry.setData(bob.obj());
-
-            HealthLogInterface::get(opCtx)->log(entry);
-
             auto options = [&] {
                 if (shard_role_details::getRecoveryUnit(opCtx)->getDataCorruptionDetectionMode() ==
                     DataCorruptionDetectionMode::kThrow) {
@@ -177,6 +148,12 @@ bool WorkingSetCommon::fetch(OperationContext* opCtx,
                     return logv2::LogOptions(logv2::LogComponent::kAutomaticDetermination);
                 }
             }();
+
+            const BSONArray indexKeyData =
+                logv2::seqLog(
+                    boost::make_transform_iterator(member->keyData.begin(), indexKeyEntryToObjFn),
+                    boost::make_transform_iterator(member->keyData.end(), indexKeyEntryToObjFn))
+                    .toBSONArray();
             LOGV2_ERROR_OPTIONS(
                 4615603,
                 options,
@@ -199,7 +176,7 @@ bool WorkingSetCommon::fetch(OperationContext* opCtx,
     // TODO provide a way for the query planner to opt out of this checking if it is unneeded due to
     // the structure of the plan.
     if (member->getState() == WorkingSetMember::RID_AND_IDX) {
-        auto& executionCtx = StorageExecutionContext::get(opCtx);
+        auto& containerPool = PreallocatedContainerPool::get(opCtx);
         for (size_t i = 0; i < member->keyData.size(); i++) {
             auto&& memberKey = member->keyData[i];
             // If this key was obtained in the current snapshot, then move on to the next key. There
@@ -208,7 +185,7 @@ bool WorkingSetCommon::fetch(OperationContext* opCtx,
                 continue;
             }
 
-            auto keys = executionCtx.keys();
+            auto keys = containerPool.keys();
             SharedBufferFragmentBuilder pool(key_string::HeapBuilder::kHeapAllocatorDefaultBytes);
             // There's no need to compute the prefixes of the indexed fields that cause the
             // index to be multikey when ensuring the keyData is still valid.

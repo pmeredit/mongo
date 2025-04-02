@@ -52,9 +52,7 @@
 #include "mongo/db/query/stage_builder/sbe/gen_filter.h"
 #include "mongo/db/query/stage_builder/sbe/sbexpr_helpers.h"
 #include "mongo/db/query/stage_builder/sbe/tests/sbe_builder_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::stage_builder {
 
@@ -163,8 +161,7 @@ TEST_F(GoldenGenFilternTest, TestSimpleExpr) {
     {
         InMatchExpression inExpr("str"_sd);
         ASSERT_OK(inExpr.addRegex(std::make_unique<RegexMatchExpression>(""_sd, "ABc", "i")));
-        BSONArray arr = BSON_ARRAY("3"
-                                   << "4" << BSONNULL);
+        BSONArray arr = BSON_ARRAY("3" << "4" << BSONNULL);
         ASSERT_OK(inExpr.setEqualitiesArray(std::move(arr)));
         runTest(&inExpr,
                 rootSlot,

@@ -38,9 +38,10 @@
 #include <grpcpp/security/tls_certificate_verifier.h>
 #include <grpcpp/security/tls_credentials_options.h>
 #include <grpcpp/support/async_stream.h>
+#include <src/core/lib/security/security_connector/ssl_utils.h>
 
-#include "src/core/tsi/ssl_transport_security.h"
-#include "src/core/tsi/transport_security_interface.h"
+#include <src/core/tsi/ssl_transport_security.h>
+#include <src/core/tsi/transport_security_interface.h>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/service_context.h"
@@ -69,6 +70,11 @@ namespace {
 inline Status makeShutdownTerminationStatus() {
     return {ErrorCodes::ShutdownInProgress, "gRPC client is shutting down"};
 }
+
+inline Status makeDroppedConnectionCancelStatus() {
+    return {ErrorCodes::CallbackCanceled,
+            "Cancelled stream establishment due to dropping the associated connection"};
+}
 }  // namespace
 
 Client::Client(TransportLayer* tl, ServiceContext* svcCtx, const BSONObj& clientMetadata)
@@ -88,19 +94,22 @@ void Client::start() {
 
 void Client::shutdown() {
     decltype(_sessions) sessions;
-    decltype(_pendingStreamStates) pendingStreamStates;
+    decltype(_remoteStates) remoteStates;
     {
         stdx::lock_guard lk(_mutex);
         invariant(std::exchange(_state, ClientState::kShutdown) != ClientState::kShutdown,
                   "Cannot shut down a gRPC client more than once");
         sessions = _sessions;
-        pendingStreamStates = _pendingStreamStates;
+        remoteStates = _remoteStates;
     }
 
     // Cancel all outstanding connect timers and stream establishment attempts.
-    for (auto& streamState : pendingStreamStates) {
-        streamState->cancel(Status(ErrorCodes::ShutdownInProgress,
-                                   "Cancelled stream establishment due to gRPC client shutdown"));
+    for (auto&& it : remoteStates) {
+        for (auto&& streamState : it.second.pendingStreamStates) {
+            streamState->cancel(
+                Status(ErrorCodes::ShutdownInProgress,
+                       "Cancelled stream establishment due to gRPC client shutdown"));
+        }
     }
 
     size_t terminated = 0;
@@ -138,8 +147,7 @@ void Client::setMetadataOnClientContext(ClientContext& ctx, const ConnectOptions
 }
 
 bool Client::_isShutdownComplete_inlock() {
-    return _state == ClientState::kShutdown && _pendingStreamStates.size() == 0 &&
-        _sessions.empty();
+    return _state == ClientState::kShutdown && _numPendingStreams == 0 && _sessions.empty();
 }
 
 Future<std::shared_ptr<EgressSession>> Client::connect(
@@ -147,10 +155,12 @@ Future<std::shared_ptr<EgressSession>> Client::connect(
     const std::shared_ptr<GRPCReactor>& reactor,
     Milliseconds timeout,
     ConnectOptions options,
+    const CancellationToken& token,
     std::shared_ptr<ConnectionMetrics> connectionMetrics) {
     // TODO SERVER-98254: this implementation currently acquires _mutex twice, which will have
     // negative performance implications. Egress performance is not a priority at the moment, but we
     // should revisit how lock contention can be reduced here in the future.
+
     std::shared_ptr<PendingStreamState> streamState;
     {
         std::lock_guard lk(_mutex);
@@ -161,115 +171,212 @@ Future<std::shared_ptr<EgressSession>> Client::connect(
                 makeShutdownTerminationStatus());
         }
 
-        streamState = std::make_shared<PendingStreamState>();
-        auto iter = _pendingStreamStates.insert(_pendingStreamStates.end(), streamState);
-        _pendingStreamStates.back()->iter = iter;
+        streamState = std::make_shared<PendingStreamState>(
+            remote, options.sslMode, std::move(connectionMetrics), token);
+        streamState->registerWithClient(lk, remote, *this);
+        _numPendingStreams++;
     }
 
-    LOGV2_DEBUG(9715300,
-                3,
-                "Establishing gRPC stream",
-                "remote"_attr = remote,
-                "sslMode"_attr = options.sslMode,
-                "timeout"_attr = timeout);
-    if (connectionMetrics) {
-        connectionMetrics->onConnectionStarted();
+    if (timeout > Milliseconds(0) && timeout < Milliseconds::max()) {
+        streamState->setDeadline(reactor->now() + timeout);
     }
 
-    if (timeout > Milliseconds(0)) {
-        streamState->setTimer(reactor->makeTimer());
-        streamState->getTimer()
-            ->waitUntil(reactor->now() + timeout)
-            .getAsync([streamState](Status s) mutable {
-                if (!s.isOK()) {
-                    return;
+    return _streamFactory(remote,
+                          reactor,
+                          streamState->getDeadline() ? streamState->getDeadline().get()
+                                                     : Date_t::max(),
+                          options,
+                          streamState->getCancellationToken())
+        .then([this, reactor, streamState](CallContext call) -> Future<CallContext> {
+            LOGV2_DEBUG(9715300,
+                        3,
+                        "Acquired an established gRPC channel, now starting gRPC call",
+                        "remote"_attr = streamState->getRemote(),
+                        "deadline"_attr = streamState->getDeadline(),
+                        "sslMode"_attr = connectSSLModeToString(streamState->getSSLMode()));
+            if (auto& connMetrics = streamState->getConnectionMetrics(); connMetrics) {
+                // We don't have visibility into these events in gRPC, so mark them
+                // all as complete once the connection has been established.
+                connMetrics->onDNSResolved();
+                connMetrics->onTCPConnectionEstablished();
+                connMetrics->onTLSHandshakeFinished();
+            }
+
+            // Start the gRPC call.
+            Future<void> fut;
+            {
+                auto shutdownLock = reactor->_shutdownMutex.readLock();
+                if (reactor->_inShutdownFlag) {
+                    return Future<CallContext>::makeReady(
+                        Status(ErrorCodes::ShutdownInProgress,
+                               "Cannot create a gRPC stream after reactor shutdown"));
                 }
+                auto pf = makePromiseFuture<void>();
+                call.stream->startCall(
+                    reactor->_registerCompletionQueueEntry(std::move(pf.promise)));
+                fut = std::move(pf.future);
+            }
 
-                streamState->cancel(Status(ErrorCodes::NetworkTimeout,
-                                           "Timed out waiting for gRPC stream to establish"));
-            });
-    }
+            // Set the timeout for the call to start.
+            if (auto& deadline = streamState->getDeadline(); deadline) {
+                streamState->setTimer(reactor->makeTimer());
 
-    return future_util::withCancellation(
-               _streamFactory(
-                   remote, reactor, timeout, options, streamState->getCancellationToken())
-                   .then([this, reactor, connMetrics = std::move(connectionMetrics)](
-                             CallContext call) -> StatusWith<std::shared_ptr<EgressSession>> {
-                       if (connMetrics) {
-                           // We don't have visibility into these events in gRPC, so mark them
-                           // all as complete once the rpc call has been started.
-                           connMetrics->onDNSResolved();
-                           connMetrics->onTCPConnectionEstablished();
-                           connMetrics->onTLSHandshakeFinished();
-                       }
+                streamState->getTimer()
+                    ->waitUntil(deadline.get())
+                    .getAsync([streamState, deadline](Status s) mutable {
+                        if (!s.isOK()) {
+                            return;
+                        }
 
-                       auto session = std::make_shared<EgressSession>(_tl,
-                                                                      reactor,
-                                                                      std::move(call.ctx),
-                                                                      std::move(call.stream),
-                                                                      std::move(call.sslConfig),
-                                                                      _id,
-                                                                      _sharedState);
+                        streamState->cancel(Status(
+                            ErrorCodes::ExceededTimeLimit,
+                            fmt::format("Exceeded time limit waiting for gRPC call to start")));
+                    });
+            }
 
-                       stdx::lock_guard lk(_mutex);
-                       if (MONGO_unlikely(_state == ClientState::kShutdown)) {
-                           auto status = makeShutdownTerminationStatus();
-                           session->cancel(status);
-                           return status;
-                       }
+            // Cancel the StartCall attempt if a timeout or arbitrary cancellation has occurred.
+            streamState->getCancellationToken().onCancel().unsafeToInlineFuture().getAsync(
+                [ctx = call.ctx, reactor](Status s) {
+                    if (!s.isOK()) {
+                        return;
+                    }
 
-                       auto it = _sessions.insert(_sessions.begin(), session);
-                       _numCurrentStreams.increment();
+                    // Send a best-effort attempt to cancel the ongoing stream establishment.
+                    reactor->schedule([ctx](Status s) {
+                        if (!s.isOK()) {
+                            return;
+                        }
+                        ctx->tryCancel();
+                    });
+                });
 
-                       session->setCleanupCallback(
-                           [this, client = weak_from_this(), it = std::move(it)]() {
-                               if (auto anchor = client.lock()) {
-                                   stdx::lock_guard lk(_mutex);
-                                   _sessions.erase(it);
-                                   _numCurrentStreams.decrement();
+            return std::move(fut).then([c = std::move(call)]() { return c; });
+        })
+        .then([this, reactor, streamState](
+                  CallContext call) -> StatusWith<std::shared_ptr<EgressSession>> {
+            LOGV2_DEBUG(9715301,
+                        3,
+                        "Successfully started gRPC call",
+                        "remote"_attr = streamState->getRemote(),
+                        "deadline"_attr = streamState->getDeadline(),
+                        "sslMode"_attr = connectSSLModeToString(streamState->getSSLMode()));
+            auto session = std::make_shared<EgressSession>(_tl,
+                                                           reactor,
+                                                           std::move(call.ctx),
+                                                           std::move(call.stream),
+                                                           std::move(call.sslConfig),
+                                                           std::move(call.channelUUID),
+                                                           _id,
+                                                           _sharedState);
 
-                                   if (MONGO_unlikely(_isShutdownComplete_inlock())) {
-                                       _shutdownCV.notify_one();
-                                   }
-                               }
-                           });
+            stdx::lock_guard lk(_mutex);
+            if (MONGO_unlikely(_state == ClientState::kShutdown)) {
+                auto status = makeShutdownTerminationStatus();
+                session->cancel(status);
+                return status;
+            }
 
-                       return session;
-                   })
-                   .onError<ErrorCodes::CallbackCanceled>(
-                       [streamState](
-                           const Status& s) -> StatusWith<std::shared_ptr<EgressSession>> {
-                           if (streamState->getCancellationToken().isCanceled()) {
-                               // Use the outer Future's cancellation reason if stream establishment
-                               // failed due to token cancellation.
-                               return s;
-                           }
+            auto it = _sessions.insert(_sessions.begin(), session);
+            _numActiveStreams.increment();
 
-                           return Status(ErrorCodes::HostUnreachable,
-                                         "Could not contact remote host to establish gRPC stream");
-                       })
-                   .onCompletion(
-                       [this, streamState](StatusWith<std::shared_ptr<EgressSession>> swSession) {
-                           streamState->cancelTimer();
+            session->setCleanupCallback(
+                [this, client = weak_from_this(), it = std::move(it)](Status terminationStatus) {
+                    if (terminationStatus.isOK()) {
+                        _numSuccessfulStreams.increment();
+                    } else {
+                        _numFailedStreams.increment();
+                    }
+                    if (auto anchor = client.lock()) {
+                        stdx::lock_guard lk(_mutex);
+                        _sessions.erase(it);
+                        _numActiveStreams.decrement();
 
-                           stdx::lock_guard lk(_mutex);
-                           _pendingStreamStates.erase(streamState->iter);
-                           if (MONGO_unlikely(_isShutdownComplete_inlock())) {
-                               _shutdownCV.notify_one();
-                           }
+                        if (MONGO_unlikely(_isShutdownComplete_inlock())) {
+                            _shutdownCV.notify_one();
+                        }
+                    }
+                });
 
-                           return swSession;
-                       }),
-               streamState->getCancellationToken())
-        .thenRunOn(reactor)
+            return session;
+        })
+        .tapAll([this, streamState](const StatusWith<std::shared_ptr<EgressSession>>& swSession) {
+            streamState->cancelTimer();
+
+            stdx::lock_guard lk(_mutex);
+            _numPendingStreams--;
+            streamState->unregisterFromClient(lk, streamState->getRemote(), *this);
+            if (MONGO_unlikely(_isShutdownComplete_inlock())) {
+                _shutdownCV.notify_one();
+            }
+        })
         .onError<ErrorCodes::CallbackCanceled>(
             [streamState](const Status& s) -> StatusWith<std::shared_ptr<EgressSession>> {
-                return streamState->getCancellationReason();
+                // The completion queue produces CallbackCanceled errors for any tag that does not
+                // complete successfully, so we need to catch them here and add more
+                // context-specific information to them.
+                if (auto reason = streamState->getCancellationReason(); !reason.isOK()) {
+                    return reason;
+                }
+
+                // If the failure was not due to cancellation, we can assume it is because the
+                // remote is unreachable.
+                return Status(ErrorCodes::HostUnreachable, "gRPC stream establishment failed");
             })
-        .unsafeToInlineFuture();  // If cancellation occurred, this will be guaranteed to be running
-                                  // on the reactor thread due to the onError continuation, and in a
-                                  // success case this will already be running on the reactor
-                                  // thread.
+        .tapError([](const Status& s) {
+            LOGV2_DEBUG(9936109, 1, "Stream establishment failed", "error"_attr = s);
+        });
+}
+
+void Client::PendingStreamState::registerWithClient(WithLock,
+                                                    const HostAndPort& remote,
+                                                    Client& client) {
+    auto& streamList = client._remoteStates[remote].pendingStreamStates;
+    _iter = streamList.insert(streamList.end(), shared_from_this());
+}
+
+void Client::PendingStreamState::unregisterFromClient(WithLock,
+                                                      const HostAndPort& remote,
+                                                      Client& client) {
+    auto streamStateIt = client._remoteStates.find(remote);
+    invariant(streamStateIt != client._remoteStates.end());
+    streamStateIt->second.pendingStreamStates.erase(_iter);
+}
+
+void Client::PendingStreamState::cancel(Status reason) {
+    invariant(!reason.isOK());
+
+    {
+        stdx::lock_guard lg(_mutex);
+        if (!_cancellationReason.isOK()) {
+            // Already cancelled, can early return.
+            return;
+        }
+        _cancellationReason = reason;
+    }
+
+    LOGV2_DEBUG(9936110, 3, "Canceling gRPC stream establishment", "reason"_attr = reason);
+    _cancelSource.cancel();
+    cancelTimer();
+}
+
+Status Client::PendingStreamState::getCancellationReason() {
+    if (!_cancelSource.token().isCanceled()) {
+        return Status::OK();
+    }
+
+    stdx::lock_guard lg(_mutex);
+    if (!_cancellationReason.isOK()) {
+        return _cancellationReason;
+    }
+    return Status(ErrorCodes::CallbackCanceled, "gRPC stream establishment was cancelled");
+}
+
+size_t Client::getPendingStreamEstablishments(const HostAndPort& target) {
+    stdx::lock_guard lg(_mutex);
+    if (auto it = _remoteStates.find(target); it != _remoteStates.end()) {
+        return it->second.pendingStreamStates.size();
+    }
+    return 0;
 }
 
 namespace {
@@ -305,15 +412,112 @@ private:
 };
 }  // namespace
 
+class Channel {
+public:
+    static constexpr auto kChannelPollingIntervalMs = Milliseconds(100);
+
+    Channel(std::shared_ptr<::grpc::Channel> ch, boost::optional<SSLConfiguration> ssl, UUID id)
+        : _grpcChannel(std::move(ch)), _sslConfig(std::move(ssl)), _uuid(std::move(id)) {}
+
+    const boost::optional<SSLConfiguration>& getSSLConfiguration() {
+        return _sslConfig;
+    }
+
+    const std::shared_ptr<::grpc::Channel>& getGRPCChannel() {
+        return _grpcChannel;
+    }
+
+    const UUID& getId() {
+        return _uuid;
+    }
+
+    Future<void> waitForConnected(std::shared_ptr<GRPCReactor> reactor,
+                                  Date_t deadline,
+                                  const CancellationToken& token) {
+        // Check for the happy case first to avoid unnecessary polling.
+        auto channelState = _grpcChannel->GetState(true /*try_to_connect*/);
+        if (MONGO_likely(channelState == GRPC_CHANNEL_READY)) {
+            return Future<void>::makeReady();
+        }
+
+        return AsyncTry([channel = _grpcChannel, reactor, deadline] {
+                   // Check for the happy case first to avoid unnecessary polling.
+                   auto channelState = channel->GetState(true /*try_to_connect*/);
+                   if (MONGO_likely(channelState == GRPC_CHANNEL_READY)) {
+                       return Future<grpc_connectivity_state>::makeReady(channelState);
+                   }
+
+                   // We poll every kChannelPollingIntervalMs to allow us to notice cancellation, as
+                   // the gRPC NotifyOnStateChange API does not support cancellation:
+                   // https://github.com/grpc/grpc/issues/3064
+                   auto nextPoll = reactor->now() + kChannelPollingIntervalMs;
+
+                   PromiseAndFuture<void> pf;
+                   {
+                       auto shutdownLock = reactor->_shutdownMutex.readLock();
+                       if (reactor->_inShutdownFlag) {
+                           return Future<grpc_connectivity_state>::makeReady(
+                               Status(ErrorCodes::ShutdownInProgress,
+                                      "Cannot create a gRPC stream after reactor shutdown"));
+                       }
+                       pf = makePromiseFuture<void>();
+                       channel->NotifyOnStateChange(
+                           channelState,
+                           (deadline > nextPoll ? nextPoll : deadline).toSystemTimePoint(),
+                           reactor->_getCompletionQueue(),
+                           reactor->_registerCompletionQueueEntry(std::move(pf.promise)));
+                   }
+
+                   return std::move(pf.future).then(
+                       [channel]() { return channel->GetState(true /*try_to_connect*/); });
+               })
+            .until([reactor, deadline](const StatusWith<grpc_connectivity_state>& swChannelState) {
+                // The channel is ready.
+                if (MONGO_likely(swChannelState.isOK() &&
+                                 swChannelState.getValue() == GRPC_CHANNEL_READY)) {
+                    return true;
+                }
+
+                // We've exceeded the deadline.
+                if (deadline < reactor->now()) {
+                    uasserted(
+                        ErrorCodes::HostUnreachable,
+                        fmt::format(
+                            "Failed to establish connectivity of gRPC channel before deadline {}",
+                            deadline.toString()));
+                }
+
+                if (swChannelState.getStatus().code() == ErrorCodes::CallbackCanceled) {
+                    return false;  // Retry if the timeout expired without a state change.
+                }
+
+                uassertStatusOK(swChannelState);  // Any other failure should terminate the loop.
+
+                // The channel will never be ready.
+                if (MONGO_unlikely(swChannelState.getValue() == GRPC_CHANNEL_SHUTDOWN)) {
+                    uasserted(ErrorCodes::HostUnreachable,
+                              "GRPC channel has encountered an unrecoverable error and is unable "
+                              "to connect");
+                }
+
+                // If the channel state is CONNECTING, TRANSIENT_FAILURE, or IDLE and we have not
+                // yet exceeded the deadline or been cancelled, then retry.
+                return false;
+            })
+            .on(reactor, token)
+            .onCompletion([](const StatusWith<grpc_connectivity_state>& swChannelState) {
+                return Future<void>::makeReady(swChannelState.getStatus());
+            })
+            .unsafeToInlineFuture();
+    }
+
+private:
+    std::shared_ptr<::grpc::Channel> _grpcChannel;
+    boost::optional<SSLConfiguration> _sslConfig;
+    UUID _uuid;
+};
+
 class StubFactoryImpl : public GRPCClient::StubFactory {
-    struct Channel {
-        std::shared_ptr<::grpc::Channel> grpcChannel;
-        boost::optional<SSLConfiguration> sslConfig;
-
-        Channel(std::shared_ptr<::grpc::Channel> ch, boost::optional<SSLConfiguration> ssl)
-            : grpcChannel(std::move(ch)), sslConfig(std::move(ssl)) {}
-    };
-
     class Stub {
     public:
         using ReadMessageType = SharedBuffer;
@@ -324,58 +528,42 @@ class StubFactoryImpl : public GRPCClient::StubFactory {
               _unauthenticatedCommandStreamMethod(
                   util::constants::kUnauthenticatedCommandStreamMethodName,
                   ::grpc::internal::RpcMethod::BIDI_STREAMING,
-                  channel->grpcChannel),
+                  channel->getGRPCChannel()),
               _authenticatedCommandStreamMethod(
                   util::constants::kAuthenticatedCommandStreamMethodName,
                   ::grpc::internal::RpcMethod::BIDI_STREAMING,
-                  channel->grpcChannel) {}
+                  channel->getGRPCChannel()) {}
 
-        Future<std::shared_ptr<ClientStream>> authenticatedCommandStream(
+        std::shared_ptr<ClientStream> authenticatedCommandStream(
             GRPCClientContext* context, const std::shared_ptr<GRPCReactor>& reactor) {
             return _makeStream(_authenticatedCommandStreamMethod, context, reactor);
         }
 
-        Future<std::shared_ptr<ClientStream>> unauthenticatedCommandStream(
+        std::shared_ptr<ClientStream> unauthenticatedCommandStream(
             GRPCClientContext* context, const std::shared_ptr<GRPCReactor>& reactor) {
             return _makeStream(_unauthenticatedCommandStreamMethod, context, reactor);
         }
 
-        boost::optional<SSLConfiguration>& getSSLConfiguration() {
-            return _channel->sslConfig;
+        const std::shared_ptr<Channel>& getChannel() {
+            return _channel;
         }
 
     private:
-        Future<std::shared_ptr<ClientStream>> _makeStream(
-            ::grpc::internal::RpcMethod& method,
-            GRPCClientContext* context,
-            const std::shared_ptr<GRPCReactor>& reactor) {
+        std::shared_ptr<ClientStream> _makeStream(::grpc::internal::RpcMethod& method,
+                                                  GRPCClientContext* context,
+                                                  const std::shared_ptr<GRPCReactor>& reactor) {
             using StreamType = ::grpc::ClientAsyncReaderWriter<ConstSharedBuffer, SharedBuffer>;
-            auto pf = makePromiseFuture<void>();
-            std::unique_ptr<StreamType> readerWriter;
-
-            {
-                auto shutdownLock = reactor->_shutdownMutex.readLock();
-                if (reactor->_inShutdownFlag) {
-                    return Future<std::shared_ptr<ClientStream>>::makeReady(
-                        Status(ErrorCodes::ShutdownInProgress,
-                               "Cannot create a gRPC stream after reactor shutdown"));
-                }
-
-                readerWriter = std::unique_ptr<StreamType>(
-                    ::grpc::internal::
-                        ClientAsyncReaderWriterFactory<ConstSharedBuffer, SharedBuffer>::Create(
-                            _channel->grpcChannel.get(),
-                            reactor->_getCompletionQueue(),
-                            method,
-                            context->getGRPCClientContext(),
-                            true,
-                            reactor->_registerCompletionQueueEntry(std::move(pf.promise))));
-            }
-
-            return std::move(pf.future).then(
-                [rw = std::move(readerWriter)]() mutable -> std::shared_ptr<ClientStream> {
-                    return std::make_shared<GRPCClientStream>(std::move(rw));
-                });
+            // Create the stream using gRPC's Async "Prepare" API, which creates the stream/call
+            // object, but doesn't initiate it. The call is initiated via startCall in the
+            // Client::connect function.
+            return std::make_shared<GRPCClientStream>(std::unique_ptr<StreamType>(
+                ::grpc::internal::ClientAsyncReaderWriterFactory<ConstSharedBuffer, SharedBuffer>::
+                    Create(_channel->getGRPCChannel().get(),
+                           reactor->_getCompletionQueue(),
+                           method,
+                           context->getGRPCClientContext(),
+                           false,
+                           nullptr)));
         }
 
         std::shared_ptr<Channel> _channel;
@@ -393,12 +581,13 @@ public:
         // operations.
         _pool = std::make_shared<ChannelPool<std::shared_ptr<Channel>, Stub>>(
             svcCtx->getFastClockSource(),
-            [](ConnectSSLMode sslMode) {
+            [](ConnectSSLMode sslMode) -> bool {
 #ifndef MONGO_CONFIG_SSL
                 if (sslMode == kEnableSSL) {
                     uasserted(ErrorCodes::InvalidSSLConfiguration,
                               "SSL requested but not supported");
                 }
+                return false;
 #else
                 auto globalSSLMode =
                     static_cast<SSLParams::SSLModes>(getSSLGlobalParams().sslMode.load());
@@ -422,6 +611,7 @@ public:
                     return {::grpc::experimental::TlsCredentials(_makeTlsOptions(**tlsCache)),
                             (*tlsCache)->sslConfig};
                 }();
+                auto uuid = UUID::gen();
 
                 ::grpc::ChannelArguments channel_args;
                 channel_args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS,
@@ -432,12 +622,14 @@ public:
                 channel_args.SetMaxSendMessageSize(MaxMessageSizeBytes);
                 channel_args.SetCompressionAlgorithm(
                     ::grpc_compression_algorithm::GRPC_COMPRESS_NONE);
-                return std::make_shared<StubFactoryImpl::Channel>(
-                    ::grpc::CreateCustomChannel(uri, credentials, channel_args), sslConfig);
+                // We must set unique channel arguments on each channel object to force gRPC to use
+                // a separate TCP connection per channel:
+                // https://stackoverflow.com/questions/53564748
+                channel_args.SetString("channelId", uuid.toString());
+                return std::make_shared<Channel>(
+                    ::grpc::CreateCustomChannel(uri, credentials, channel_args), sslConfig, uuid);
             },
-            [](std::shared_ptr<Channel>& channel, Milliseconds connectTimeout) {
-                return Stub(channel);
-            });
+            [](std::shared_ptr<Channel>& channel) { return Stub(channel); });
     }
 
     void start() {
@@ -449,14 +641,8 @@ public:
         _prunerService.start(_svcCtx, _pool);
     }
 
-    auto createStub(const HostAndPort& remote,
-                    ConnectSSLMode sslMode,
-                    Milliseconds connectTimeout) {
-        return _pool->createStub(std::move(remote), sslMode, connectTimeout);
-    }
-
-    auto getPoolSize() const {
-        return _pool->size();
+    auto createStub(const HostAndPort& remote, ConnectSSLMode sslMode) {
+        return _pool->createStub(std::move(remote), sslMode);
     }
 
     void stop() {
@@ -474,8 +660,8 @@ public:
     }
 #endif
 
-    void dropAllChannels_forTest() {
-        _pool->dropAllChannels();
+    const std::shared_ptr<ChannelPool<std::shared_ptr<Channel>, Stub>>& getChannelPool() {
+        return _pool;
     }
 
 private:
@@ -508,9 +694,16 @@ private:
 
         tsi_result result =
             tsi_create_ssl_client_handshaker_factory_with_options(&options, &handshakerFactory);
-        uassert(ErrorCodes::InvalidSSLConfiguration,
-                "Invalid certificates provided.",
-                result == TSI_OK);
+
+        if (result != TSI_OK) {
+            if (_options.tlsAllowInvalidCertificates) {
+                LOGV2_WARNING(9977700, "Invalid certificates provided");
+                return;
+            } else {
+                uasserted(ErrorCodes::InvalidSSLConfiguration, "Invalid certificates provided");
+            }
+        }
+
         tsi_ssl_client_handshaker_factory_unref(handshakerFactory);
     }
 
@@ -530,7 +723,17 @@ private:
 
             boost::optional<std::string> caCert;
             if (_options.tlsCAFile) {
+                uassert(
+                    9985600,
+                    "The use of both tlsCAFile and the System Certificate store is not supported.",
+                    !sslGlobalParams.sslUseSystemCA);
                 caCert.emplace(ssl_util::readPEMFile(_options.tlsCAFile.get()).getValue());
+            } else if (sslGlobalParams.sslUseSystemCA) {
+                caCert.emplace(grpc_core::DefaultSslRootStore::GetPemRootCerts());
+            } else if (_options.tlsAllowInvalidCertificates) {
+                LOGV2_WARNING(9985603, "No tlsCAFile specified, and tlsUseSystemCA not specified");
+            } else {
+                uasserted(9985604, "No tlsCAFile specified, and tlsUseSystemCA not specified");
             }
 
             boost::optional<const ::grpc::experimental::IdentityKeyCertPair&> certPair;
@@ -561,7 +764,7 @@ private:
             tlsOps.watch_identity_key_cert_pairs();
         }
 
-        if (_options.tlsCAFile) {
+        if (_options.tlsCAFile || sslGlobalParams.sslUseSystemCA) {
             tlsOps.watch_root_certs();
         }
 
@@ -620,15 +823,12 @@ void GRPCClient::shutdown() {
     static_cast<StubFactoryImpl&>(*_stubFactory).stop();
 }
 
-void GRPCClient::appendStats(BSONObjBuilder* section) const {
-    auto numCurrentChannels = static_cast<StubFactoryImpl&>(*_stubFactory).getPoolSize();
-
-    section->append(kCurrentChannelsFieldName, numCurrentChannels);
-
-    {
-        BSONObjBuilder streamSection(section->subobjStart(kStreamsSubsectionFieldName));
-        streamSection.append(kCurrentStreamsFieldName, _numCurrentStreams.get());
-    }
+void GRPCClient::appendStats(GRPCConnectionStats& stats) const {
+    stats.setTotalOpenChannels(
+        static_cast<StubFactoryImpl&>(*_stubFactory).getChannelPool()->size());
+    stats.setTotalActiveStreams(_numActiveStreams.get());
+    stats.setTotalSuccessfulStreams(_numSuccessfulStreams.get());
+    stats.setTotalFailedStreams(_numFailedStreams.get());
 }
 
 #ifdef MONGO_CONFIG_SSL
@@ -637,44 +837,78 @@ Status GRPCClient::rotateCertificates(const SSLConfiguration& config) {
 }
 #endif
 
-void GRPCClient::dropAllChannels_forTest() {
-    static_cast<StubFactoryImpl&>(*_stubFactory).dropAllChannels_forTest();
+void GRPCClient::dropConnections() {
+    _dropPendingStreamEstablishments([](const HostAndPort& remote) { return true; });
+
+    // Now drop all of the channels themselves.
+    static_cast<StubFactoryImpl&>(*_stubFactory).getChannelPool()->dropAllChannels();
+}
+
+void GRPCClient::dropConnections(const HostAndPort& target) {
+    _dropPendingStreamEstablishments(
+        [target](const HostAndPort& remote) { return remote == target; });
+
+    // Now drop all of the channels themselves.
+    static_cast<StubFactoryImpl&>(*_stubFactory).getChannelPool()->dropChannelsByTarget(target);
+}
+
+void GRPCClient::_dropPendingStreamEstablishments(
+    std::function<bool(const HostAndPort&)> shouldDrop) {
+    stdx::lock_guard lk(_mutex);
+    // Cancel all outstanding connect timers and stream establishment attempts.
+    for (auto&& it : _remoteStates) {
+        if (!it.second.keepOpen && shouldDrop(it.first)) {
+            for (auto&& streamState : it.second.pendingStreamStates) {
+                streamState->cancel(makeDroppedConnectionCancelStatus());
+            }
+        }
+    }
+}
+
+void GRPCClient::setKeepOpen(const HostAndPort& hostAndPort, bool keepOpen) {
+    stdx::lock_guard lk(_mutex);
+    _remoteStates[hostAndPort].keepOpen = keepOpen;
+
+    static_cast<StubFactoryImpl&>(*_stubFactory)
+        .getChannelPool()
+        ->setKeepOpen(hostAndPort, keepOpen);
 }
 
 Future<Client::CallContext> GRPCClient::_streamFactory(const HostAndPort& remote,
                                                        const std::shared_ptr<GRPCReactor>& reactor,
-                                                       Milliseconds connectTimeout,
+                                                       boost::optional<Date_t> deadline,
                                                        const ConnectOptions& options,
                                                        const CancellationToken& token) {
-    auto stub = static_cast<StubFactoryImpl&>(*_stubFactory)
-                    .createStub(std::move(remote), options.sslMode, connectTimeout);
+    auto stub =
+        static_cast<StubFactoryImpl&>(*_stubFactory).createStub(std::move(remote), options.sslMode);
     auto ctx = std::make_shared<GRPCClientContext>();
     setMetadataOnClientContext(*ctx, options);
-    token.onCancel().unsafeToInlineFuture().getAsync([ctx, reactor](Status s) {
-        if (!s.isOK()) {
-            return;
-        }
-        // Send a best-effort attempt to cancel the ongoing stream establishment.
-        reactor->schedule([ctx](Status s) {
-            if (!s.isOK()) {
-                return;
-            }
-            ctx->tryCancel();
-        });
-    });
+    // Rather than using gRPC's wait for ready functionality, we call waitForConnected for better
+    // visibility into timeouts.
+    ctx->setWaitForReady(false);
 
-    auto fut = [&]() {
-        if (options.authToken) {
-            return stub->stub().authenticatedCommandStream(ctx.get(), reactor);
-        } else {
-            return stub->stub().unauthenticatedCommandStream(ctx.get(), reactor);
-        }
-    }();
+    return stub->stub()
+        .getChannel()
+        ->waitForConnected(reactor, deadline ? deadline.get() : Date_t::max(), token)
+        .then([stub = stub.get(), clientContext = std::move(ctx), reactor, options]() {
+            auto stream = [&]() {
+                if (options.authToken) {
+                    return stub->stub().authenticatedCommandStream(clientContext.get(), reactor);
+                } else {
+                    return stub->stub().unauthenticatedCommandStream(clientContext.get(), reactor);
+                }
+            }();
 
-    return std::move(fut).then(
-        [clientContext = std::move(ctx),
-         sslConfig = stub->stub().getSSLConfiguration()](std::shared_ptr<ClientStream> stream) {
-            return Client::CallContext{std::move(clientContext), std::move(stream), sslConfig};
+            return Client::CallContext{std::move(clientContext),
+                                       std::move(stream),
+                                       stub->stub().getChannel()->getSSLConfiguration(),
+                                       stub->stub().getChannel()->getId()};
+        })
+        .onCompletion([stub = std::move(stub)](const StatusWith<CallContext>& swCall) mutable {
+            // We manually reset the stub unique_ptr here so that the Promise/Future used here
+            // doesn't hold onto the stub after we are finished with it.
+            stub.reset();
+            return swCall;
         });
 }
 

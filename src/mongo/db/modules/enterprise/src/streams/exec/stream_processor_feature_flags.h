@@ -4,15 +4,17 @@
 
 #pragma once
 
-#include <any>
 #include <chrono>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/util/duration.h"
 #include "streams/exec/feature_flag.h"
 
 namespace streams {
+
+struct LoggingContext;
 
 // Class holding all feature flags for a stream processor.
 class StreamProcessorFeatureFlags {
@@ -26,13 +28,14 @@ public:
     mongo::stdx::unordered_map<std::string, mongo::Value> testOnlyGetFeatureFlags() {
         return _featureFlags;
     }
-    static StreamProcessorFeatureFlags parseFeatureFlags(const mongo::BSONObj& bsonObj);
+    static StreamProcessorFeatureFlags parseFeatureFlags(const mongo::BSONObj& bsonObj,
+                                                         const LoggingContext& context);
 
     // gets feature flag value for feature flag.
     FeatureFlagValue getFeatureFlagValue(const FeatureFlagDefinition& featureFlag) const;
 
     // checks if the feature flag has overridden value.
-    bool isOverridden(const streams::FeatureFlagDefinition& ff) const {
+    bool isOverridden(const FeatureFlagDefinition& ff) const {
         return _featureFlags.find(ff.name) != _featureFlags.end();
     }
 
@@ -51,7 +54,15 @@ boost::optional<mongo::Seconds> getChangestreamSourceStalenessMonitorPeriod(
 boost::optional<int64_t> getKafkaTotalQueuedBytes(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 bool getOldStreamMetaEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
+bool getPerTargetStatsEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 bool enableMetadataRefreshInterval(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
+int64_t getHttpsRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);
+int64_t getExternalFunctionRateLimitPerSec(
+    boost::optional<StreamProcessorFeatureFlags> featureFlags);
+boost::optional<int64_t> getKafkaMessageMaxBytes(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
+boost::optional<mongo::Milliseconds> getKafkaEmitMessageTimeoutMillis(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags);
 
 }  // namespace streams

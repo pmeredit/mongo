@@ -3,9 +3,13 @@
  */
 
 #include "streams/exec/tests/test_utils.h"
-#include "mongo/db/matcher/parsed_match_expression_for_test.h"
+
+#include <memory>
+#include <sstream>
+
+#include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
@@ -14,6 +18,8 @@
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/test_constants.h"
+#include "streams/util/concurrent_memory_aggregator.h"
+#include "streams/util/metric_manager.h"
 
 using namespace mongo;
 
@@ -55,13 +61,16 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->opCtx = svcCtx->makeOperationContext(context->client.get());
     context->tenantId = tenantId;
     context->streamProcessorId = streamProcessorId;
-    // TODO(STREAMS-219)-PrivatePreview: We should make sure we're constructing the context
-    // appropriately here
+
+    // Streams has it's own $lookup semantics and syntax that aren't allowed in regular MQL. We set
+    // 'allowGenericForeignDbLookup' to true so this syntax can be parsed in DocumentSourceLookup
+    // without throwing errors.
     context->expCtx =
         ExpressionContextBuilder{}
             .opCtx(context->opCtx.get())
             .ns(NamespaceString(DatabaseName::createDatabaseName_forTest(boost::none, "test")))
             .allowDiskUse(false)
+            .allowGenericForeignDbLookup(true)
             .build();
     context->dlq = std::make_unique<InMemoryDeadLetterQueue>(context.get());
     auto executor = std::make_unique<Executor>(
@@ -70,6 +79,7 @@ std::tuple<std::unique_ptr<Context>, std::unique_ptr<Executor>> getTestContext(
     context->streamMetaFieldName = "_stream_meta";
     context->featureFlags = StreamProcessorFeatureFlags{{}, Date_t::now()};
     context->concurrentCheckpointController = std::make_shared<ConcurrentCheckpointController>(1);
+    context->region = "us-east-1";
 
     return std::make_tuple(std::move(context), std::move(executor));
 }
@@ -95,24 +105,24 @@ std::vector<BSONObj> parseBsonVector(std::string json) {
     return parsePipelineFromBSON(inputBson["pipeline"]);
 }
 
-mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRegistry() {
+std::unique_ptr<ConnectionCollection> testKafkaConnections() {
     KafkaConnectionOptions kafkaOptions("");
     kafkaOptions.setIsTestKafka(true);
     mongo::Connection connection("kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
-    return {{"kafka1", connection}};
+    return std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
 }
 
 
-mongo::stdx::unordered_map<std::string, mongo::Connection> testInMemoryConnectionRegistry() {
+std::vector<mongo::Connection> testInMemoryConnections() {
     mongo::Connection connection(std::string(kTestMemoryConnectionName),
                                  mongo::ConnectionTypeEnum::InMemory,
                                  /* options */ mongo::BSONObj());
-    return {{std::string(kTestMemoryConnectionName), connection}};
+    return {connection};
 }
 
 mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
-    auto sourceOptions = BSON("connectionName"
-                              << "kafka1"
+    auto sourceOptions =
+        BSON("connectionName" << "kafka1"
                               << "topic"
                               << "topic1"
                               << "timeField"
@@ -123,19 +133,6 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount) {
 
 BSONObj sanitizeDoc(const BSONObj& obj) {
     return obj.removeFields(StringDataSet{"_ts", "_stream_meta"});
-}
-
-std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
-    ServiceContext* serviceContext,
-    const std::string& uri,
-    const std::string& database,
-    const std::string& collection) {
-    MongoCxxClientOptions options;
-    options.svcCtx = serviceContext;
-    options.uri = uri;
-    options.database = database;
-    options.collection = collection;
-    return std::make_shared<MongoDBProcessInterface>(std::move(options));
 }
 
 size_t getNumDlqDocsFromOperatorDag(const OperatorDag& dag) {
@@ -172,6 +169,20 @@ std::vector<StreamMsgUnion> queueToVector(std::deque<StreamMsgUnion> queue) {
         queue.pop_front();
     }
     return result;
+}
+
+std::string TestMetricsVisitor::getLabelsAsStrs(const Metric::LabelsVec& labels) {
+    std::stringstream labelsStr;
+    for (const auto& label : labels) {
+        if (label.first == kProcessorIdLabelKey || label.first == kTenantIdLabelKey ||
+            label.first == kProcessorNameLabelKey) {
+            continue;
+        }
+
+        labelsStr << label.first << "=" << label.second << ",";
+    }
+
+    return labelsStr.str();
 }
 
 StubbableMockHttpClient::StubbableMockHttpClient(boost::optional<std::function<void()>> stubFn)

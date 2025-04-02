@@ -45,10 +45,7 @@
 #include "mongo/bson/util/builder_fwd.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/matcher/expression.h"
-#include "mongo/db/matcher/expression_tree.h"
 #include "mongo/db/matcher/expression_visitor.h"
-#include "mongo/db/matcher/match_details.h"
-#include "mongo/db/matcher/matchable.h"
 #include "mongo/db/matcher/rewrite_expr.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context.h"
@@ -76,18 +73,6 @@ public:
                         const boost::intrusive_ptr<ExpressionContext>& expCtx,
                         clonable_ptr<ErrorAnnotation> annotation = nullptr);
 
-    bool matchesSingleElement(const BSONElement& e, MatchDetails* details = nullptr) const final {
-        MONGO_UNREACHABLE;
-    }
-
-    bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const final;
-
-    /**
-     * Evaluates the aggregation expression of this match expression on document 'doc' and returns
-     * the result.
-     */
-    Value evaluateExpression(const MatchableDocument* doc) const;
-
     std::unique_ptr<MatchExpression> clone() const final;
 
     void debugString(StringBuilder& debug, int indentationLevel = 0) const final {
@@ -101,6 +86,8 @@ public:
                    bool includePath = true) const final;
 
     bool isTriviallyTrue() const final;
+
+    bool isTriviallyFalse() const final;
 
     bool equivalent(const MatchExpression* other) const final;
 
@@ -118,7 +105,11 @@ public:
 
     void resetChild(size_t, MatchExpression*) override {
         MONGO_UNREACHABLE;
-    };
+    }
+
+    const boost::optional<RewriteExpr::RewriteResult>& getRewriteResult() const {
+        return _rewriteResult;
+    }
 
     std::vector<std::unique_ptr<MatchExpression>>* getChildVector() final {
         return nullptr;

@@ -42,8 +42,7 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/bsontypes_util.h"
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/hex.h"
 
@@ -117,9 +116,8 @@ TEST(ResumeToken, TimestampOnlyTokenShouldRoundTripThroughHexEncoding) {
 }
 
 TEST(ResumeToken, NonDocumentKeyResumeTokenRoundTripsThroughHexEncoding) {
-    auto eventIdentifier = Value(BSON("operationType"
-                                      << "create"
-                                      << "operationDescription" << BSONObj()));
+    auto eventIdentifier = Value(BSON("operationType" << "create"
+                                                      << "operationDescription" << BSONObj()));
     ResumeTokenData resumeTokenDataIn{Timestamp{1001, 3},
                                       ResumeTokenData::kDefaultTokenVersion,
                                       /* txnOpIndex */ 0,

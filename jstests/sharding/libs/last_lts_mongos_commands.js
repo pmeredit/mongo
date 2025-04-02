@@ -4,7 +4,6 @@
 // coverage and allow us to run on same- and mixed-version suites, we allow these commands to have a
 // test defined without always existing on the servers being used.
 export const commandsRemovedFromMongosSinceLastLTS = [
-    "waitForOngoingChunkSplits",
     "_getAuditConfigGeneration",  // Removed in 8.1
 ];
 
@@ -12,22 +11,6 @@ export const commandsRemovedFromMongosSinceLastLTS = [
 // listCommands output of a last LTS version mongos. We will allow these commands to have a test
 // defined without always existing on the mongos being used.
 export const commandsAddedToMongosSinceLastLTS = [
-    "_clusterQueryWithoutShardKey",
-    "_clusterWriteWithoutShardKey",
-    "abortMoveCollection",
-    "abortUnshardCollection",
-    "cleanupStructuredEncryptionData",
-    "cpuload",
-    "createUnsplittableCollection",
-    "getDatabaseVersion",
-    "fsyncUnlock",
-    "lockInfo",
-    "moveCollection",
-    "setQuerySettings",
-    "removeQuerySettings",
-    "unshardCollection",
-    "untrackUnshardedCollection",  // TODO (SERVER-96072) remove once the command is backported.
-    "changePrimary",
-    "autoSplitVector",
-    "transitionFromDedicatedConfigServer"
+    "releaseMemory",
+    "replicateSearchIndexCommand",
 ];

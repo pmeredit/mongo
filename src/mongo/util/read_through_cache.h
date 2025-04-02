@@ -286,10 +286,10 @@ public:
      *  is called for 'key'.
      */
     template <typename KeyType>
-    requires(IsComparable<KeyType>&& std::is_constructible_v<Key, KeyType>)
-        SharedSemiFuture<ValueHandle> acquireAsync(const KeyType& key,
-                                                   CacheCausalConsistency causalConsistency,
-                                                   LookupArgs&&... lookupArgs) {
+    requires(IsComparable<KeyType> && std::is_constructible_v<Key, KeyType>)
+    SharedSemiFuture<ValueHandle> acquireAsync(const KeyType& key,
+                                               CacheCausalConsistency causalConsistency,
+                                               LookupArgs&&... lookupArgs) {
 
         // Fast path
         if (auto cachedValue = _cache.get(key, causalConsistency))
@@ -320,15 +320,18 @@ public:
 
         ul.unlock();
 
-        _doLookupWhileNotValid(Key(key), Status(ErrorCodes::Error(461540), "")).getAsync([](auto) {
-        });
+        // The initial (kick-off) status is failed, but its value is ignored because the
+        // InProgressLookup for 'key' that was just installed has _valid = false. This means the
+        // first round will ignore this status completely and will kick-off the lookup function.
+        const Status kKickOffStatus{ErrorCodes::Error(461540), ""};
+        _doLookupWhileNotValid(Key(key), kKickOffStatus).getAsync([](auto) {});
 
         return sharedFutureToReturn;
     }
 
     template <typename KeyType>
-    requires(IsComparable<KeyType>&& std::is_constructible_v<Key, KeyType>)
-        SharedSemiFuture<ValueHandle> acquireAsync(const KeyType& key, LookupArgs&&... lookupArgs) {
+    requires(IsComparable<KeyType> && std::is_constructible_v<Key, KeyType>)
+    SharedSemiFuture<ValueHandle> acquireAsync(const KeyType& key, LookupArgs&&... lookupArgs) {
         return acquireAsync(
             key, CacheCausalConsistency::kLatestCached, std::forward<LookupArgs>(lookupArgs)...);
     }
@@ -340,18 +343,18 @@ public:
      *  This is a potentially blocking method.
      */
     template <typename KeyType>
-    requires IsComparable<KeyType> ValueHandle acquire(OperationContext* opCtx,
-                                                       const KeyType& key,
-                                                       CacheCausalConsistency causalConsistency,
-                                                       LookupArgs&&... lookupArgs) {
+    requires IsComparable<KeyType>
+    ValueHandle acquire(OperationContext* opCtx,
+                        const KeyType& key,
+                        CacheCausalConsistency causalConsistency,
+                        LookupArgs&&... lookupArgs) {
         return acquireAsync(key, causalConsistency, std::forward<LookupArgs>(lookupArgs)...)
             .get(opCtx);
     }
 
     template <typename KeyType>
-    requires IsComparable<KeyType> ValueHandle acquire(OperationContext* opCtx,
-                                                       const KeyType& key,
-                                                       LookupArgs&&... lookupArgs) {
+    requires IsComparable<KeyType>
+    ValueHandle acquire(OperationContext* opCtx, const KeyType& key, LookupArgs&&... lookupArgs) {
         return acquire(opCtx,
                        key,
                        CacheCausalConsistency::kLatestCached,
@@ -366,7 +369,8 @@ public:
      * in-progress keys or keys whose time in store is newer than what is currently cached.
      */
     template <typename KeyType>
-    requires IsComparable<KeyType> ValueHandle peekLatestCached(const KeyType& key) {
+    requires IsComparable<KeyType>
+    ValueHandle peekLatestCached(const KeyType& key) {
         return {_cache.get(key, CacheCausalConsistency::kLatestCached)};
     }
 
@@ -505,22 +509,6 @@ public:
     }
 
     /**
-     * The method below guarantees only that the affected key/value(s) already in the cache (or
-     * returned to callers) will be invalidated and removed from the cache. However, any affected
-     * keys, which are in the process of being loaded (i.e., acquireAsync has not yet completed)
-     * will not be interrupted and will eventually end-up on the cache.
-     *
-     * Because the behaviour described above does not provide any guarantees about the in-progress
-     * lookups, it should be considered as "best-effort".
-     */
-    template <typename Pred>
-    void invalidateLatestCachedValueIf_IgnoreInProgress(const Pred& pred) {
-        stdx::lock_guard lg(_mutex);
-        _cache.invalidateIf(
-            [&](const Key& key, const StoredValue* value) { return pred(key, value->value); });
-    }
-
-    /**
      * Returns statistics information about the cache for reporting purposes.
      */
     std::vector<typename Cache::CachedItemInfo> getCacheInfo() const {
@@ -604,16 +592,22 @@ private:
             // 'invalidate'. Place the value on the cache and return the necessary promises to
             // signal (those which are waiting for time < time at the store).
             auto& result = sw.getValue();
-            const auto timeOfOldestPromise = inProgressLookup.getTimeOldestPromise(ul);
-            auto promisesToSet = inProgressLookup.getPromisesLessThanOrEqualToTime(ul, result.t);
-            tassert(6493100,
-                    str::stream() << "Time monotonicity violation: lookup time "
-                                  << result.t.toString()
-                                  << " which is less than the earliest expected timeInStore "
-                                  << timeOfOldestPromise.toString() << ".",
-                    !promisesToSet.empty());
 
-            auto valueHandleToSet = [&] {
+            auto [promisesToSet, timeOfOldestPromise] =
+                inProgressLookup.getPromisesLessThanOrEqualToTime(ul, result.t);
+            if (promisesToSet.empty()) {
+                return std::make_tuple(
+                    inProgressLookup.getAllPromisesOnError(ul),
+                    StatusWith<ValueHandle>{Status(
+                        ErrorCodes::ReadThroughCacheTimeMonotonicityViolation,
+                        str::stream()
+                            << "Time monotonicity violation: lookup time " << result.t.toString()
+                            << " which is less than the earliest expected timeInStore "
+                            << timeOfOldestPromise.toString() << ".")},
+                    false);
+            }
+
+            auto valueHandleToSetFn = [&] {
                 if (result.v) {
                     ValueHandle valueHandle(
                         _cache.insertOrAssignAndGet(key, {std::move(*result.v), _now()}, result.t));
@@ -627,11 +621,18 @@ private:
 
                 _cache.invalidate(key);
                 return ValueHandle();
-            }();
+            };
 
-            return std::make_tuple(std::move(promisesToSet),
-                                   StatusWith<ValueHandle>(std::move(valueHandleToSet)),
-                                   !inProgressLookup.empty(ul));
+            return std::make_tuple(
+                std::move(promisesToSet),
+                [&]() -> StatusWith<ValueHandle> {
+                    try {
+                        return valueHandleToSetFn();
+                    } catch (const DBException& ex) {
+                        return ex.toStatus();
+                    }
+                }(),
+                !inProgressLookup.empty(ul));
         }();
 
         if (!mustDoAnotherLoop) {
@@ -776,8 +777,10 @@ public:
         return _valid;
     }
 
-    std::vector<std::unique_ptr<SharedPromise<ValueHandle>>> getAllPromisesOnError(WithLock) {
-        std::vector<std::unique_ptr<SharedPromise<ValueHandle>>> ret;
+    using VectorOfPromises = std::vector<std::unique_ptr<SharedPromise<ValueHandle>>>;
+
+    VectorOfPromises getAllPromisesOnError(WithLock) {
+        VectorOfPromises ret;
         for (auto it = _outstanding.begin(); it != _outstanding.end();) {
             ret.emplace_back(std::move(it->second));
             it = _outstanding.erase(it);
@@ -785,27 +788,20 @@ public:
         return ret;
     }
 
-    /**
-     * Returns the time associated to the oldest promise. This function will invariant if there are
-     * no promises.
-     */
-    Time getTimeOldestPromise(WithLock) const {
+    std::pair<VectorOfPromises, Time> getPromisesLessThanOrEqualToTime(WithLock, Time time) {
         invariant(_valid);
-        invariant(!_outstanding.empty());
-        return _outstanding.begin()->first;
-    }
+        auto it = _outstanding.begin();
+        invariant(it != _outstanding.end());
+        Time timeOfOldestPromise = it->first;
 
-    std::vector<std::unique_ptr<SharedPromise<ValueHandle>>> getPromisesLessThanOrEqualToTime(
-        WithLock, Time time) {
-        invariant(_valid);
-        std::vector<std::unique_ptr<SharedPromise<ValueHandle>>> ret;
-        for (auto it = _outstanding.begin(); it != _outstanding.end();) {
+        VectorOfPromises ret;
+        while (it != _outstanding.end()) {
             if (it->first > time)
                 break;
             ret.emplace_back(std::move(it->second));
             it = _outstanding.erase(it);
         }
-        return ret;
+        return std::make_pair(std::move(ret), std::move(timeOfOldestPromise));
     }
 
     bool empty(WithLock) const {

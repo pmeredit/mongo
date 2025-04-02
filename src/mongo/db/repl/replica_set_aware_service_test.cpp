@@ -44,8 +44,7 @@
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/fail_point.h"
@@ -319,6 +318,9 @@ protected:
     FailPointEnableBlock disableQueryAnalysisWriter{"disableQueryAnalysisWriter"};
     // Disable direct connection checks because this fixture doesn't set up the ShardingState
     FailPointEnableBlock _skipDirectConnectionChecks{"skipDirectConnectionChecks"};
+    // ShardCatalog recovery uses a DBDirectClient which requires initialization of the
+    // serviceEntryPoint.
+    FailPointEnableBlock skipShardCatalogRecovery{"skipShardCatalogRecovery"};
 };
 
 

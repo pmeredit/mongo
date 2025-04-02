@@ -6,8 +6,8 @@
  *  - Issue reads that imply encrypted fields can be nested beneath an array.
  */
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
-import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 import {
+    generateSchema,
     kDeterministicAlgo,
     kRandomAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
@@ -154,7 +154,6 @@ assertInsertFails([{_id: 1, foo: {bar: [1, 2, 3]}}], fooEncryptedSchema, 31041);
 
 // Can insert an encrypted object, even if that object contains a nested array, when the
 // encryption algorithm is random.
-// TODO SERVER-61427 remove the optional bsonType.
 let fooEncryptedRandomSchema = {
     foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID(), UUID()], bsonType: "object"}}
 };

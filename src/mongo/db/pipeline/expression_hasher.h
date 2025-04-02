@@ -100,6 +100,9 @@ public:
         kLog10,
         kInternalFLEBetween,
         kInternalFLEEqual,
+        kEncStrStartsWith,
+        kEncStrEndsWith,
+        kEncStrContains,
         kInternalRawSortKey,
         kMap,
         kMeta,
@@ -204,6 +207,7 @@ public:
         kInternalIndexKey,
         kInternalKeyStringValue,
         kCurrentDate,
+        kUUID,
     };
 
     explicit ExpressionHashVisitor(H hashState) : _hashState(std::move(hashState)) {}
@@ -282,10 +286,6 @@ public:
 
     void visit(const ExpressionCeil* expr) final {
         combine(OpType::kCeil);
-    }
-
-    void visit(const ExpressionCoerceToBool* expr) final {
-        combine(OpType::kCoerceToBool);
     }
 
     void visit(const ExpressionCompare* expr) final {
@@ -412,6 +412,18 @@ public:
 
     void visit(const ExpressionInternalFLEEqual* expr) final {
         combine(OpType::kInternalFLEEqual);
+    }
+
+    void visit(const ExpressionEncStrStartsWith* expr) final {
+        combine(OpType::kEncStrStartsWith);
+    }
+
+    void visit(const ExpressionEncStrEndsWith* expr) final {
+        combine(OpType::kEncStrEndsWith);
+    }
+
+    void visit(const ExpressionEncStrContains* expr) final {
+        combine(OpType::kEncStrContains);
     }
 
     void visit(const ExpressionInternalRawSortKey* expr) final {
@@ -836,6 +848,10 @@ public:
 
     void visit(const ExpressionInternalKeyStringValue* expr) final {
         combine(OpType::kInternalKeyStringValue);
+    }
+
+    void visit(const ExpressionUUID* expr) final {
+        combine(OpType::kUUID);
     }
 
     H moveHashState() {

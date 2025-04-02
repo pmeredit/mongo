@@ -22,7 +22,6 @@
 namespace mongo::aggregate_expression_intender {
 
 
-using namespace fmt::literals;
 using namespace std::string_literals;
 
 std::string toString(const decltype(Subtree::output)& outputType) {
@@ -42,15 +41,16 @@ std::string toString(const decltype(Subtree::output)& outputType) {
 
 void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             const ResolvedEncryptionInfo& encryptedType,
-                            ExpressionConstant* literal) {
+                            ExpressionConstant* literal,
+                            EncryptionPlaceholderContext placeholderContext) {
     using namespace query_analysis;
     auto constVal = literal->getValue();
     if (isEncryptedPayload(constVal)) {
         // This field path was encrypted by a different walker.
         return;
     }
-    literal->setValue(buildEncryptPlaceholder(
-        constVal, encryptedType, EncryptionPlaceholderContext::kComparison, expCtx.getCollator()));
+    literal->setValue(
+        buildEncryptPlaceholder(constVal, encryptedType, placeholderContext, expCtx.getCollator()));
 }
 
 void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& subtreeStack) {
@@ -148,8 +148,6 @@ auto getEncryptionTypeForPathEnsureNotPrefix(const EncryptionSchemaTreeNode& sch
                                              const ExpressionFieldPath& fieldPath) {
     const auto path = fieldPath.getFieldPathWithoutCurrentPrefix();
     auto encryptedType = schema.getEncryptionMetadataForPath(FieldRef(path.fullPath()));
-    // TODO SERVER-41337: Handle the case where a field reference points to the prefix of an
-    // encrypted field in a more accepting manner.
     uassert(31131,
             "Found forbidden reference to prefix of encrypted field "s + path.fullPath(),
             encryptedType || !schema.mayContainEncryptedNodeBelowPrefix(FieldRef(path.fullPath())));

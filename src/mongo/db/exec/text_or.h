@@ -171,8 +171,6 @@ private:
     // Current estimated memory consumption by _scores map in bytes.
     int64_t _currentMemoryBytes = 0;
 
-    // Only used when the stage didn't spill.
-    ScoreMap::const_iterator _scoreIterator;
     struct TextRecordDataForSorter {
         SortableWorkingSetMember document;
         double score;
@@ -200,7 +198,7 @@ private:
                                                             const SorterDeserializeSettings&) {
             TextRecordDataForSorter result;
             result.document = SortableWorkingSetMember::deserializeForSorter(buf, {});
-            buf.read(result.score);
+            result.score = buf.read<LittleEndian<double>>();
             return result;
         }
     };

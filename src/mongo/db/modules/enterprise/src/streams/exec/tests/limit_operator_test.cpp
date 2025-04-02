@@ -2,15 +2,15 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/limit_operator.h"
+
 #include <fmt/format.h>
 
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
-#include "streams/exec/limit_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/window_assigner.h"

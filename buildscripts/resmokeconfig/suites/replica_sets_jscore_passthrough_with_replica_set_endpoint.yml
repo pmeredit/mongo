@@ -40,7 +40,7 @@ selector:
     # enters a wait state. Additionally, since the AquireCollection is not even obtained,
     # the curOp (current operation) does not get logged.
     - jstests/core/administrative/current_op/currentop.js
-    - jstests/core/fsync.js
+    - jstests/core/administrative/fsync.js
     # When a transaction is in a prepared state, as seen in that test, it prevents the document edited
     # within it from being read by the dbcheck process. Therefore, if the test keeps the transaction
     # in a prepared state for an extended period, it will result in a timeout for the dbcheck process.
@@ -67,8 +67,8 @@ selector:
     # The tests below drop a collection in the config database, which is not allowed via a router
     # on a sharded cluster.
     # TODO (SERVER-87512): Support role-aware serverStatus on mongod with router role.
-    - jstests/core/write/find_and_modify/find_and_modify_metrics.js
-    - jstests/core/write/update/update_metrics.js
+    - jstests/core/query/find_and_modify/find_and_modify_metrics.js
+    - jstests/core/query/update/update_metrics.js
     # TODO (SERVER-86777): Investigate why timeseries_delete_with_meta_concurrent.js and
     # timeseries_update_concurrent.js can't run on sharded cluster with replica set endpoint.
     - jstests/core/timeseries/write/timeseries_delete_with_meta_concurrent.js
@@ -80,17 +80,17 @@ selector:
     # clusters for non-existent dbs.
     - jstests/core/query/explain/explain_missing_database.js
     # This test runs {find: uuid} commands which are not supported for replica set endpoints.
-    - jstests/core/commands_with_uuid.js
+    - jstests/core/query/commands_with_uuid.js
     # TODO (SERVER-80416): cloneCollectionAsCapped command stops working after a replica set
     # is bootstrapped as a sharded cluster.
     - jstests/core/query/collation/collation.js
-    - jstests/core/ddl/capped_convertToCapped1.js
+    - jstests/core/ddl/clone_collection_as_capped.js
     - jstests/core/replicate_record_ids/disallow_capped.js
-    # TODO (SERVER-84243): Separate Shard-Role Catalog Cache and Loader.
+    # TODO (SERVER-100771): Reenable this test.
     - jstests/core/txns/speculative_snapshot_includes_all_writes.js
     # A renameCollection command against a collection with invalid views fails on sharded cluster
     # but succeeds on replica set.
-    - jstests/core/views/invalid_system_views.js
+    - jstests/core/catalog/views/invalid_system_views.js
     # The following test requires query settings / cluster parameter modification.
     - jstests/core/query/query_settings/query_settings_size_limits.js
     # This test cares about command metrics, and fails under this suite.

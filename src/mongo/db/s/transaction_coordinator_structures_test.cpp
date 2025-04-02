@@ -38,8 +38,7 @@
 #include "mongo/db/s/transaction_coordinator_document_gen.h"
 #include "mongo/db/s/transaction_coordinator_structures.h"
 #include "mongo/idl/idl_parser.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace txn {
@@ -51,9 +50,8 @@ TEST(CoordinatorCommitDecisionTest, SerializeCommitHasTimestampAndNoAbortStatus)
 
     auto obj = decision.toBSON();
 
-    ASSERT_BSONOBJ_EQ(BSON("decision"
-                           << "commit"
-                           << "commitTimestamp" << Timestamp(100, 200)),
+    ASSERT_BSONOBJ_EQ(BSON("decision" << "commit"
+                                      << "commitTimestamp" << Timestamp(100, 200)),
                       obj);
 }
 
@@ -62,13 +60,12 @@ TEST(CoordinatorCommitDecisionTest, SerializeAbortHasNoTimestampAndAbortStatus) 
     decision.setAbortStatus(Status(ErrorCodes::InternalError, "Test error"));
 
     auto obj = decision.toBSON();
-    auto expectedObj = BSON("decision"
-                            << "abort"
-                            << "abortStatus"
-                            << BSON("code" << 1 << "codeName"
-                                           << "InternalError"
-                                           << "errmsg"
-                                           << "Test error"));
+    auto expectedObj = BSON("decision" << "abort"
+                                       << "abortStatus"
+                                       << BSON("code" << 1 << "codeName"
+                                                      << "InternalError"
+                                                      << "errmsg"
+                                                      << "Test error"));
 
     ASSERT_BSONOBJ_EQ(expectedObj, obj);
 

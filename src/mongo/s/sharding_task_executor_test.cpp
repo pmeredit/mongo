@@ -51,8 +51,7 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
 #include "mongo/s/sharding_task_executor.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/uuid.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kExecutor
@@ -123,12 +122,11 @@ TEST_F(ShardingTaskExecutorTest, MissingLsidAddsLsidInCommand) {
 
     NetworkInterfaceMock::InNetworkGuard ing(_network);
 
-    const RemoteCommandRequest request(HostAndPort("localhost", 27017),
-                                       DatabaseName::createDatabaseName_forTest(boost::none,
-                                                                                "mydb"),
-                                       BSON("whatsUp"
-                                            << "doc"),
-                                       operationContext());
+    const RemoteCommandRequest request(
+        HostAndPort("localhost", 27017),
+        DatabaseName::createDatabaseName_forTest(boost::none, "mydb"),
+        BSON("whatsUp" << "doc"),
+        operationContext());
 
     TaskExecutor::CallbackHandle cbHandle =
         unittest::assertGet(getExecutor()->scheduleRemoteCommand(

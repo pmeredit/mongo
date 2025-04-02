@@ -33,8 +33,6 @@
 #include "mongo/rpc/metadata/audit_client_attrs.h"
 #include "mongo/transport/mock_session.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/options_parser/environment.h"
@@ -79,22 +77,16 @@ const BSONObj kCustomData{};
 const PrivilegeVector kPrivilegeVector({Privilege(
     ResourcePattern::forAnyNormalResource(boost::none), ActionType::refineCollectionShardKey)});
 
-const auto kOldReplsetConfig = BSON("_id"
-                                    << "ABCD"
-                                    << "members"
-                                    << BSONArray(BSON("0"
-                                                      << "a")));
-const auto kNewReplsetConfig = BSON("_id"
-                                    << "ABCD"
-                                    << "members"
-                                    << BSONArray(BSON("0"
-                                                      << "a"
-                                                      << "1"
-                                                      << "b")));
+const auto kOldReplsetConfig = BSON("_id" << "ABCD"
+                                          << "members" << BSONArray(BSON("0" << "a")));
+const auto kNewReplsetConfig = BSON("_id" << "ABCD"
+                                          << "members"
+                                          << BSONArray(BSON("0" << "a"
+                                                                << "1"
+                                                                << "b")));
 
-const auto kUsersBefore = BSONArray(BSON("0" << BSON("user"
-                                                     << "john"
-                                                     << "database" << DB_NAME)));
+const auto kUsersBefore = BSONArray(BSON("0" << BSON("user" << "john"
+                                                            << "database" << DB_NAME)));
 const auto kUsersAfter = BSONArray();
 
 const auto kFooDoc = BSON("foo" << 1);
@@ -111,7 +103,7 @@ public:
         return {};
     }
 
-    void snipForLogging(mutablebson::Document* cmdObj) const override{};
+    void snipForLogging(mutablebson::Document* cmdObj) const override {};
 
     StringData getName() const override {
         return COMMAND_NAME;
@@ -464,7 +456,8 @@ TEST_F(AuditOCSFTest, basicLogClientMetadataOCSF) {
     logClientMetadata(getClient());
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 4, class_uid: 4001, severity_id: 1, type_uid: "
-        "400199, actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, "
+        "400199, actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: "
+        "'anonymous' }, "
         "dst_endpoint: { interface_name: 'unix', ip: 'anonymous' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -484,7 +477,8 @@ TEST_F(AuditOCSFTest, basicLogAuthenticationOCSF) {
     logAuthentication(getClient(), kAuthEvent);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3002, severity_id: 1, type_uid: 300201, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, dst_endpoint: "
         "{ interface_name: 'unix', ip: 'anonymous' }, user: { type_id: 1, name: 'test.user' }, "
         "auth_protocol: 'SCRAM-SHA256', unmapped: { atype: 'authenticate' } }";
     BSONObj log = getLastNormalized();
@@ -505,7 +499,8 @@ TEST_F(AuditOCSFTest, basicLogCommandAuthzCheckOCSF) {
     logCommandAuthzCheck(getClient(), {}, CommandInterfaceMock(), ErrorCodes::BadValue);
     auto expectedOutputOCSF =
         "{ activity_id: 0, category_uid: 6, class_uid: 6003, severity_id: 1, type_uid: 600300, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, dst_endpoint: "
         "{ interface_name: 'unix', ip: 'anonymous' }, api: { operation: 'command', request: { uid: "
         "'test.coll' }, response: { code: 2, error: 'BadValue' } }, unmapped: { args: {} } }";
     BSONObj log = getLastNormalized();
@@ -526,7 +521,8 @@ TEST_F(AuditOCSFTest, basicLogKillCursorsAuthzCheckOCSF) {
     logKillCursorsAuthzCheck(getClient(), kNamespaceString, 100ll, ErrorCodes::BadValue);
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 6, class_uid: 6003, severity_id: 1, type_uid: "
-        "600399, actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, "
+        "600399, actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: "
+        "'anonymous' }, "
         "dst_endpoint: { interface_name: 'unix', ip: 'anonymous' }, api: { operation: "
         "'killCursors', request: { uid: 'test.coll' }, response: { code: 2, error: 'BadValue' } }, "
         "unmapped: { args: { killCursors: 'coll', cursorId: 100 } } }";
@@ -549,7 +545,9 @@ TEST_F(AuditOCSFTest, basicLogCreateUserOCSF) {
     logCreateUser(getClient(), kUserName, false, &kCustomData, kRolesVector, boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300101, "
-        "actor: {}, user: { type_id: 1, name: 'test.user', groups: [ { name: 'test.role' } ] "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, user: { type_id: 1, name: 'test.user', groups: [ { name: "
+        "'test.role' } ] "
         "}, unmapped: { atype: 'createUser', customData: {} } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -569,7 +567,8 @@ TEST_F(AuditOCSFTest, basicLogDropUserOCSF) {
     logDropUser(getClient(), kUserName);
     auto expectedOutputOCSF =
         "{ activity_id: 6, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300106, "
-        "actor: {}, user: { type_id: 1, name: 'test.user' } }";
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, user: { type_id: 1, name: 'test.user' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -587,7 +586,9 @@ TEST_F(AuditOCSFTest, basicLogDropAllUsersFromDatabaseOCSF) {
     logDropAllUsersFromDatabase(getClient(), kDatabaseName);
     auto expectedOutputOCSF =
         "{ activity_id: 6, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300106, "
-        "actor: {}, unmapped: { atype: 'dropAllUsersFromDatabase', allUsersFromDatabase: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'dropAllUsersFromDatabase', "
+        "allUsersFromDatabase: "
         "'test' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -607,7 +608,9 @@ TEST_F(AuditOCSFTest, basicLogUpdateUserOCSF) {
     logUpdateUser(getClient(), kUserName, false, {}, &kRolesVector, boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: "
-        "300199, actor: {}, user: { type_id: 1, name: 'test.user', groups: [ { name: "
+        "300199, actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: "
+        "'anonymous' }, user: { type_id: 1, name: 'test.user', groups: [ "
+        "{ name: "
         "'test.role' } ] } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -627,7 +630,9 @@ TEST_F(AuditOCSFTest, basicLogGrantRolesToUserOCSF) {
     logGrantRolesToUser(getClient(), kUserName, kRolesVector);
     auto expectedOutputOCSF =
         "{ activity_id: 7, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300107, "
-        "actor: {}, user: { type_id: 1, name: 'test.user' }, unmapped: { atype: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, user: { type_id: 1, name: 'test.user' }, unmapped: { "
+        "atype: "
         "'grantRolesToUser', roles: [ 'test.role' ] } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -647,7 +652,9 @@ TEST_F(AuditOCSFTest, basicLogRevokeRolesFromUserOCSF) {
     logRevokeRolesFromUser(getClient(), kUserName, kRolesVector);
     auto expectedOutputOCSF =
         "{ activity_id: 8, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300108, "
-        "actor: {}, user: { type_id: 1, name: 'test.user' }, unmapped: { atype: "
+        "actor: { user: { type_id: 1 } }, user: { type_id: 1, name: 'test.user' }, src_endpoint: { "
+        "interface_name: 'unix', ip: 'anonymous' }, unmapped: { "
+        "atype: "
         "'revokeRolesFromUser', roles: [ 'test.role' ] } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -668,7 +675,9 @@ TEST_F(AuditOCSFTest, basicLogCreateRoleOCSF) {
     logCreateRole(getClient(), kRoleName, {}, kPrivilegeVector, boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300101, "
-        "actor: {}, unmapped: { atype: 'createRole', role: 'test.role', roles: [], privileges: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'createRole', role: 'test.role', "
+        "roles: [], privileges: "
         "[ { resource: { db: '', collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] "
         "} }";
     BSONObj log = getLastNormalized();
@@ -690,7 +699,9 @@ TEST_F(AuditOCSFTest, basicLogUpdateRoleOCSF) {
     logUpdateRole(getClient(), kRoleName, &kRolesVector, &kPrivilegeVector, boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: "
-        "300199, actor: {}, unmapped: { atype: 'updateRole', role: 'test.role', roles: [ "
+        "300199, actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: "
+        "'anonymous' }, unmapped: { atype: 'updateRole', role: "
+        "'test.role', roles: [ "
         "'test.role' ], privileges: [ { resource: { db: '', collection: '' }, actions: [ "
         "'refineCollectionShardKey' ] } ] } }";
     BSONObj log = getLastNormalized();
@@ -710,7 +721,8 @@ TEST_F(AuditOCSFTest, basicLogDropRoleOCSF) {
     logDropRole(getClient(), kRoleName);
     auto expectedOutputOCSF =
         "{ activity_id: 6, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300106, "
-        "actor: {}, unmapped: { atype: 'dropRole', role: 'test.role' } }";
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'dropRole', role: 'test.role' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -728,7 +740,9 @@ TEST_F(AuditOCSFTest, basicLogDropAllRolesFromDatabaseOCSF) {
     logDropAllRolesFromDatabase(getClient(), kDatabaseName);
     auto expectedOutputOCSF =
         "{ activity_id: 6, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300106, "
-        "actor: {}, unmapped: { atype: 'dropAllRolesFromDatabase', db: 'test' } }";
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'dropAllRolesFromDatabase', db: "
+        "'test' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -747,7 +761,9 @@ TEST_F(AuditOCSFTest, basicLogGrantRolesToRoleOCSF) {
     logGrantRolesToRole(getClient(), kRoleName, kRolesVector);
     auto expectedOutputOCSF =
         "{ activity_id: 7, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300107, "
-        "actor: {}, unmapped: { atype: 'grantRolesToRole', role: 'test.role', roles: [ "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'grantRolesToRole', role: "
+        "'test.role', roles: [ "
         "'test.role' ] } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -767,7 +783,9 @@ TEST_F(AuditOCSFTest, basicLogRevokeRolesFromRoleOCSF) {
     logRevokeRolesFromRole(getClient(), kRoleName, kRolesVector);
     auto expectedOutputOCSF =
         "{ activity_id: 8, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300108, "
-        "actor: {}, unmapped: { atype: 'revokeRolesFromRole', role: 'test.role', roles: [ "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'revokeRolesFromRole', role: "
+        "'test.role', roles: [ "
         "'test.role' ] } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -788,7 +806,9 @@ TEST_F(AuditOCSFTest, basicLogGrantPrivilegesToRoleOCSF) {
     logGrantPrivilegesToRole(getClient(), kRoleName, kPrivilegeVector);
     auto expectedOutputOCSF =
         "{ activity_id: 7, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300107, "
-        "actor: {}, unmapped: { atype: 'grantPrivilegesToRole', role: 'test.role', privileges: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'grantPrivilegesToRole', role: "
+        "'test.role', privileges: "
         "[ { resource: { db: '', collection: '' }, actions: [ 'refineCollectionShardKey' ] } ] "
         "} }";
     BSONObj log = getLastNormalized();
@@ -810,7 +830,9 @@ TEST_F(AuditOCSFTest, basicLogRevokePrivilegesFromRoleOCSF) {
     logRevokePrivilegesFromRole(getClient(), kRoleName, kPrivilegeVector);
     auto expectedOutputOCSF =
         "{ activity_id: 8, category_uid: 3, class_uid: 3001, severity_id: 1, type_uid: 300108, "
-        "actor: {}, unmapped: { atype: 'revokePrivilegesFromRole', role: 'test.role', "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'revokePrivilegesFromRole', role: "
+        "'test.role', "
         "privileges: [ { resource: { db: '', collection: '' }, actions: [ "
         "'refineCollectionShardKey' ] } ] } }";
     BSONObj log = getLastNormalized();
@@ -831,7 +853,8 @@ TEST_F(AuditOCSFTest, basicLogReplSetReconfigOCSF) {
     logReplSetReconfig(getClient(), &kOldReplsetConfig, &kNewReplsetConfig);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 4, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'replSetReconfig', old: { _id: 'ABCD', members: [ 'a' ] "
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'replSetReconfig', old: { _id: "
+        "'ABCD', members: [ 'a' ] "
         "}, new: { _id: 'ABCD', members: [ 'a', 'b' ] } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -850,7 +873,8 @@ TEST_F(AuditOCSFTest, basicLogApplicationMessageOCSF) {
     logApplicationMessage(getClient(), "Test Application Message.");
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 1, class_uid: 1007, severity_id: 1, type_uid: "
-        "100799, actor: {}, unmapped: { atype: 'applicationMessage', msg: 'Test Application "
+        "100799, actor: { user: { type_id: 1 } }, unmapped: { atype: 'applicationMessage', msg: "
+        "'Test Application "
         "Message.' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -901,7 +925,8 @@ TEST_F(AuditOCSFTest, basicLogStartupOptionsOCSF) {
     logStartupOptions(getClient(), moe::Environment().toBSON());
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 1, class_uid: 1007, severity_id: 1, type_uid: 100701, "
-        "actor: {}, type_id: 0, status_id: 1, unmapped: { atype: 'startup', startup_options: {}, "
+        "actor: { user: { type_id: 1 } }, type_id: 0, status_id: 1, unmapped: { atype: 'startup', "
+        "startup_options: {}, "
         "cluster_parameters: [ { _id: 'addOrRemoveShardInProgress', clusterParameterTime: "
         "Timestamp(0, 0), inProgress: false }, { _id: 'changeStreamOptions', clusterParameterTime: "
         "Timestamp(0, 0), preAndPostImages: { expireAfterSeconds: 'off' } },{ _id: 'changeStreams',"
@@ -942,7 +967,7 @@ TEST_F(AuditOCSFTest, basicLogShutdownOCSF) {
     logShutdown(getClient());
     auto expectedOutputOCSF =
         "{ activity_id: 2, category_uid: 1, class_uid: 1007, severity_id: 1, type_uid: 100702, "
-        "actor: {}, type_id: 0 }";
+        "actor: { user: { type_id: 1 } }, type_id: 0 }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -961,7 +986,8 @@ TEST_F(AuditOCSFTest, basicLogLogoutOCSF) {
     logLogout(getClient(), "Kill the test!", kUsersBefore, kUsersAfter, boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 2, category_uid: 3, class_uid: 3002, severity_id: 1, type_uid: 300202, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, dst_endpoint: "
         "{ interface_name: 'unix', ip: 'anonymous' }, message: 'Reason: Kill the test!' }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -994,7 +1020,9 @@ TEST_F(AuditOCSFTest, basicLogCreateIndexOCSF) {
                    ErrorCodes::IndexAlreadyExists);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300401, "
-        "actor: {}, entity: { name: 'test.id@test.coll', type: 'create_index', data: { id: 1, "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test.id@test.coll', type: "
+        "'create_index', data: { id: 1, "
         "name: 'test.id' } }, comment: 'IndexBuildState: FAILED' }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1013,8 +1041,8 @@ TEST_F(AuditOCSFTest, basicLogCreateCollectionOCSF) {
     logCreateCollection(getClient(), kNamespaceString);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300401, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test.coll', type: "
         "'create_collection' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1042,7 +1070,8 @@ TEST_F(AuditOCSFTest, basicLogCreateViewOCSF) {
                   ErrorCodes::InvalidViewDefinition);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300401, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, dst_endpoint: "
         "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
         "'collection' }, entity_result: { name: 'test.view', type: 'create_view', data: {} } }";
     BSONObj log = getLastNormalized();
@@ -1062,8 +1091,8 @@ TEST_F(AuditOCSFTest, basicLogImportCollectionOCSF) {
     logImportCollection(getClient(), kNamespaceString);
     auto expectedOutputOCSF =
         "{ activity_id: 3, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300403, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test.coll', type: "
         "'import_collection' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1082,8 +1111,8 @@ TEST_F(AuditOCSFTest, basicLogCreateDatabaseOCSF) {
     logCreateDatabase(getClient(), kDatabaseName);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300401, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test', type: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test', type: "
         "'create_database' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1102,8 +1131,8 @@ TEST_F(AuditOCSFTest, basicLogDropIndexOCSF) {
     logDropIndex(getClient(), "test.id", kNamespaceString);
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.id@test.coll', type: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test.id@test.coll', type: "
         "'drop_index' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1122,8 +1151,8 @@ TEST_F(AuditOCSFTest, basicLogDropCollectionOCSF) {
     logDropCollection(getClient(), kNamespaceString);
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test.coll', type: "
         "'drop_collection' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1151,7 +1180,8 @@ TEST_F(AuditOCSFTest, basicLogDropViewOCSF) {
                 ErrorCodes::CommandNotSupportedOnView);
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, dst_endpoint: "
         "{ interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.coll', type: "
         "'collection' }, entity_result: { name: 'test.view', type: 'drop_view' }, comment: { "
         "pipeline: [] } }";
@@ -1172,8 +1202,8 @@ TEST_F(AuditOCSFTest, basicLogDropDatabaseOCSF) {
     logDropDatabase(getClient(), kDatabaseName);
     auto expectedOutputOCSF =
         "{ activity_id: 4, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300404, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: { "
-        "interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test', type: 'drop_database' "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test', type: 'drop_database' "
         "} }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1192,8 +1222,8 @@ TEST_F(AuditOCSFTest, basicLogRenameCollectionOCSF) {
     logRenameCollection(getClient(), kNamespaceStringAlt, kNamespaceString);
     auto expectedOutputOCSF =
         "{ activity_id: 3, category_uid: 3, class_uid: 3004, severity_id: 1, type_uid: 300403, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: { "
-        "interface_name: 'unix', ip: 'anonymous' }, entity: { name: 'test.view', type: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, entity: { name: 'test.view', type: "
         "'rename_collection_source' }, entity_result: { "
         "name: 'test.coll', type: 'rename_collection_destination' } }";
     BSONObj log = getLastNormalized();
@@ -1213,7 +1243,7 @@ TEST_F(AuditOCSFTest, basicLogEnableShardingOCSF) {
     logEnableSharding(getClient(), "test");
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 4, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'enableSharding', ns: 'test' } }";
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'enableSharding', ns: 'test' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
@@ -1232,7 +1262,8 @@ TEST_F(AuditOCSFTest, basicLogAddShardOCSF) {
     logAddShard(getClient(), "newShard", "rs1://localhost:27017,localhost:27018,localhost:27019");
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 3, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'addShard', shard: 'newShard', connectionString: "
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'addShard', shard: 'newShard', "
+        "connectionString: "
         "'rs1://localhost:27017,localhost:27018,localhost:27019' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1251,17 +1282,13 @@ TEST_F(AuditOCSFTest, basicLogRemoveShardOCSF) {
     logRemoveShard(getClient(), "newShard");
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 4, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'removeShard', shard: 'newShard' } }";
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'removeShard', shard: 'newShard' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
 
 TEST_F(AuditMongoTest, basicLogShardCollectionMongo) {
-    logShardCollection(getClient(),
-                       kNamespaceString,
-                       BSON("key"
-                            << "DOB"),
-                       true);
+    logShardCollection(getClient(), kNamespaceString, BSON("key" << "DOB"), true);
     auto expectedOutputMongo =
         "{ atype: 'shardCollection', local: { unix: 'anonymous' }, remote: { unix: 'anonymous' }, "
         "users: [], roles: [], param: { ns: 'test.coll', key: { key: 'DOB' }, options: { unique: "
@@ -1271,24 +1298,18 @@ TEST_F(AuditMongoTest, basicLogShardCollectionMongo) {
 }
 
 TEST_F(AuditOCSFTest, basicLogShardCollectionOCSF) {
-    logShardCollection(getClient(),
-                       kNamespaceString,
-                       BSON("key"
-                            << "DOB"),
-                       true);
+    logShardCollection(getClient(), kNamespaceString, BSON("key" << "DOB"), true);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 1, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'shardCollection', ns: 'test.coll', key: { key: 'DOB' "
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'shardCollection', ns: 'test.coll', "
+        "key: { key: 'DOB' "
         "}, options: { unique: true } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }
 
 TEST_F(AuditMongoTest, basicLogRefineCollectionShardKeyMongo) {
-    logRefineCollectionShardKey(getClient(),
-                                kNamespaceString,
-                                BSON("key"
-                                     << "age"));
+    logRefineCollectionShardKey(getClient(), kNamespaceString, BSON("key" << "age"));
     auto expectedOutputMongo =
         "{ atype: 'refineCollectionShardKey',local: { unix: 'anonymous' }, remote: { unix: "
         "'anonymous' }, users: [], roles: [], param: { ns: 'test.coll', key: { key: 'age' } }, "
@@ -1298,13 +1319,11 @@ TEST_F(AuditMongoTest, basicLogRefineCollectionShardKeyMongo) {
 }
 
 TEST_F(AuditOCSFTest, basicLogRefineCollectionShardKeyOCSF) {
-    logRefineCollectionShardKey(getClient(),
-                                kNamespaceString,
-                                BSON("key"
-                                     << "age"));
+    logRefineCollectionShardKey(getClient(), kNamespaceString, BSON("key" << "age"));
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 3, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'refineCollectionShardKey', ns: 'test.coll', key: { "
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'refineCollectionShardKey', ns: "
+        "'test.coll', key: { "
         "key: 'age' } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1324,8 +1343,8 @@ TEST_F(AuditOCSFTest, basicLogInsertOperationOCSF) {
     logInsertOperation(getClient(), kNamespaceStringPrivilege, BSON("foo" << 1));
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 3, class_uid: 3001, severity_id: 5, type_uid: 300101, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: "
-        "{ interface_name: 'unix', ip: 'anonymous' }, unmapped: { atype: 'directAuthMutation', "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'directAuthMutation', "
         "directAuthMutation: { namespace: 'admin.system.users', document: { foo: 1 } } } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1349,8 +1368,9 @@ TEST_F(AuditOCSFTest, basicLogUpdateOperationOCSF) {
                        BSON("old" << BSON("foo" << 1) << "new" << BSON("foo" << 2)));
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 3, class_uid: 3001, severity_id: 5, type_uid: "
-        "300199, actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, "
-        "dst_endpoint: { interface_name: 'unix', ip: 'anonymous' }, unmapped: { atype: "
+        "300199, actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: "
+        "'anonymous' }, "
+        "unmapped: { atype: "
         "'directAuthMutation', directAuthMutation: { namespace: 'admin.system.users', document: { "
         "old: { foo: 1 }, new: { foo: 2 } } } } }";
     BSONObj log = getLastNormalized();
@@ -1371,8 +1391,8 @@ TEST_F(AuditOCSFTest, basicLogRemoveOperationOCSF) {
     logRemoveOperation(getClient(), kNamespaceStringPrivilege, BSON("foo" << 2));
     auto expectedOutputOCSF =
         "{ activity_id: 6, category_uid: 3, class_uid: 3001, severity_id: 5, type_uid: 300106, "
-        "actor: {}, src_endpoint: { interface_name: 'unix', ip: 'anonymous' }, dst_endpoint: { "
-        "interface_name: 'unix', ip: 'anonymous' }, unmapped: { atype: 'directAuthMutation', "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, unmapped: { atype: 'directAuthMutation', "
         "directAuthMutation: { namespace: "
         "'admin.system.users', document: { foo: 2 } } } }";
     BSONObj log = getLastNormalized();
@@ -1393,7 +1413,9 @@ TEST_F(AuditOCSFTest, basicLogGetClusterParameterOCSF) {
     logGetClusterParameter(getClient(), "replication.localPingThresholdMs");
     auto expectedOutputOCSF =
         "{ activity_id: 2, category_uid: 6, class_uid: 6003, severity_id: 1, type_uid: 600302, "
-        "actor: {}, unmapped: { requestedClusterServerParameters: "
+        "actor: { user: { type_id: 1 } }, src_endpoint: { interface_name: 'unix', ip: 'anonymous' "
+        "}, dst_endpoint: { interface_name: 'unix', ip: 'anonymous' }, unmapped: { "
+        "requestedClusterServerParameters: "
         "'replication.localPingThresholdMs' } }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
@@ -1420,7 +1442,8 @@ TEST_F(AuditOCSFTest, basicLogSetClusterParameterOCSF) {
                            boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 1, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'setClusterParameter', originalClusterServerParameter: "
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'setClusterParameter', "
+        "originalClusterServerParameter: "
         "{ 'replication.localPingThresholdMs': 1 }, updatedClusterServerParameter: { "
         "'replication.localPingThresholdMs': 100 } } }";
     BSONObj log = getLastNormalized();
@@ -1429,10 +1452,8 @@ TEST_F(AuditOCSFTest, basicLogSetClusterParameterOCSF) {
 
 TEST_F(AuditMongoTest, basicLogUpdateCachedClusterParameterMongo) {
     logUpdateCachedClusterParameter(getClient(),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost"),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost2"),
+                                    BSON("security.sasl.hostName" << "localhost"),
+                                    BSON("security.sasl.hostName" << "localhost2"),
                                     boost::none);
     auto expectedOutputMongo =
         "{ atype: 'updateCachedClusterServerParameter', local: { unix: 'anonymous' }, remote: { "
@@ -1445,14 +1466,12 @@ TEST_F(AuditMongoTest, basicLogUpdateCachedClusterParameterMongo) {
 
 TEST_F(AuditOCSFTest, basicLogUpdateCachedClusterParameterOCSF) {
     logUpdateCachedClusterParameter(getClient(),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost"),
-                                    BSON("security.sasl.hostName"
-                                         << "localhost2"),
+                                    BSON("security.sasl.hostName" << "localhost"),
+                                    BSON("security.sasl.hostName" << "localhost2"),
                                     boost::none);
     auto expectedOutputOCSF =
         "{ activity_id: 1, category_uid: 5, class_uid: 5002, severity_id: 1, type_uid: 500201, "
-        "actor: {}, unmapped: { atype: 'updateCachedClusterServerParameter', "
+        "actor: { user: { type_id: 1 } }, unmapped: { atype: 'updateCachedClusterServerParameter', "
         "originalClusterServerParameter: { 'security.sasl.hostName': 'localhost' }, "
         "updatedClusterServerParameter: { 'security.sasl.hostName': 'localhost2' } } }";
     BSONObj log = getLastNormalized();
@@ -1477,7 +1496,7 @@ TEST_F(AuditOCSFTest, basicLogRotateLogOCSF) {
     logRotateLog(getClient(), Status::OK(), {}, "_new.log");
     auto expectedOutputOCSF =
         "{ activity_id: 99, category_uid: 1, class_uid: 1007, severity_id: 1, type_uid: "
-        "100799, actor: {}, type_id: 0, status_id: 1, enrichments: [] }";
+        "100799, actor: { user: { type_id: 1 } }, type_id: 0, status_id: 1, enrichments: [] }";
     BSONObj log = getLastNormalized();
     checkPartialLogLine(log, fromjson(expectedOutputOCSF));
 }

@@ -2,16 +2,15 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/checkpoint_storage.h"
+
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/checkpoint_data_gen.h"
-#include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/common_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/stats_utils.h"
@@ -19,6 +18,7 @@
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/unflushed_state_container.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 
 using namespace mongo;
@@ -58,17 +58,27 @@ Metrics getMetrics(Executor* executor, std::string processorId) {
     TestMetricsVisitor metrics;
     executor->getMetricManager()->visitAllMetrics(&metrics);
     const auto& callbackGauges = metrics.callbackGauges().find(processorId);
-    double durationSinceLastCommitted = -1;
-    if (callbackGauges != metrics.callbackGauges().end()) {
-        auto it = callbackGauges->second.find(std::string{"duration_since_last_checkpoint_ms"});
-        if (it != callbackGauges->second.end()) {
-            durationSinceLastCommitted = it->second->value();
-        }
-    }
-    const auto& gauges = metrics.gauges().find(processorId)->second;
-    auto numOngoing = gauges.find(std::string{"checkpoint_num_ongoing"});
+    ASSERT_NOT_EQUALS(callbackGauges, metrics.callbackGauges().end());
+
+    auto callbackGaugesByLabel = callbackGauges->second.find("duration_since_last_checkpoint_ms");
+    ASSERT_NOT_EQUALS(callbackGaugesByLabel, callbackGauges->second.end());
+
+    auto callbackGaugesIt = callbackGaugesByLabel->second.find("");
+    ASSERT_NOT_EQUALS(callbackGaugesIt, callbackGaugesByLabel->second.end());
+    auto durationSinceLastCommitted = callbackGaugesIt->second->value();
+
+    const auto& gauges = metrics.gauges().find(processorId);
+    ASSERT_NOT_EQUALS(gauges, metrics.gauges().end());
+
+    auto gaugesByLabel = gauges->second.find(std::string{"checkpoint_num_ongoing"});
+    ASSERT_NOT_EQUALS(gaugesByLabel, gauges->second.end());
+
+    auto gaugesIt = gaugesByLabel->second.find("");
+    ASSERT_NOT_EQUALS(gaugesIt, gaugesByLabel->second.end());
+    auto numOngoing = gaugesIt->second->value();
+
     return Metrics{.durationSinceLastCommittedMs = durationSinceLastCommitted,
-                   .numOngoing = numOngoing != gauges.end() ? numOngoing->second->value() : -1};
+                   .numOngoing = numOngoing};
 }
 
 void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
@@ -150,7 +160,7 @@ void testBasicIdAndCommitLogic(InMemoryCheckpointStorage* storage,
 class CheckpointStorageTest : public AggregationContextFixture {
 protected:
     auto makeContext(std::string tenantId, std::string streamProcessorId) {
-        MetricManager::LabelsVec labels;
+        Metric::LabelsVec labels;
         labels.push_back(std::make_pair(kTenantIdLabelKey, tenantId));
         labels.push_back(std::make_pair(kProcessorIdLabelKey, streamProcessorId));
         auto context = std::make_unique<Context>();

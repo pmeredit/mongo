@@ -35,7 +35,7 @@ a notice will be included in
 | [dcleblanc/SafeInt]                                  | MIT                                                                                                 | 3.0.26                                   |                      | ✗                               |
 | [derickr/timelib]                                    | MIT                                                                                                 | 2022.13                                  |                      | ✗                               |
 | [discover]                                           | BSD-3-Clause                                                                                        | 0.4.0                                    | unknown              |                                 |
-| [fmtlib/fmt]                                         | MIT                                                                                                 | 7.1.3                                    |                      | ✗                               |
+| [fmtlib/fmt]                                         | MIT                                                                                                 | 11.1.3                                   |                      | ✗                               |
 | [google-re2]                                         | BSD-3-Clause                                                                                        | 2023-11-01                               |                      | ✗                               |
 | [google-snappy]                                      | BSD-3-Clause                                                                                        | 1.1.10                                   | ✗                    | ✗                               |
 | [google/s2geometry]                                  | Apache-2.0                                                                                          | Unknown                                  | ✗                    | ✗                               |
@@ -50,8 +50,8 @@ a notice will be included in
 | [LibTomCrypt]                                        | WTFPL, Public Domain                                                                                | 1.18.2                                   | ✗                    | ✗                               |
 | [libunwind/libunwind]                                | MIT                                                                                                 | v1.8.1                                   |                      | ✗                               |
 | [linenoise]                                          | BSD-2-Clause                                                                                        | Unknown                                  |                      | ✗                               |
-| [MongoDB C Driver]                                   | Apache-2.0                                                                                          | 1.27.6                                   | ✗                    | ✗                               |
-| [Mozilla Firefox]                                    | MPL-2.0                                                                                             | 115.7.0esr                               | unknown              | ✗                               |
+| [MongoDB C Driver]                                   | Apache-2.0                                                                                          | 1.28.1                                   | ✗                    | ✗                               |
+| [Mozilla Firefox]                                    | MPL-2.0                                                                                             | 128.8.0esr                               | unknown              | ✗                               |
 | [nlohmann-json]                                      | MIT                                                                                                 | 3.11.3                                   | ✗                    |                                 |
 | [nlohmann.json.decomposed]                           | MIT                                                                                                 | 3.10.5                                   | unknown              |                                 |
 | [node]                                               | ISC                                                                                                 | 22.1.0                                   | unknown              |                                 |
@@ -64,7 +64,6 @@ a notice will be included in
 | [pyiso8601]                                          | MIT                                                                                                 | 2.1.0                                    | unknown              |                                 |
 | [RoaringBitmap/CRoaring]                             | Unknown License                                                                                     | v3.0.1                                   |                      | ✗                               |
 | [SchemaStore/schemastore]                            | Apache-2.0                                                                                          | Unknown                                  |                      |                                 |
-| [SCons - a Software Construction tool]               | MIT                                                                                                 | 3.1.2                                    |                      | ✗                               |
 | [smhasher]                                           | Unknown License                                                                                     | Unknown                                  | unknown              | ✗                               |
 | [Snowball Stemming Algorithms]                       | BSD-3-Clause                                                                                        | 7b264ffa0f767c579d052fd8142558dc8264d795 | ✗                    | ✗                               |
 | [subunit]                                            | BSD-3-Clause, Apache-2.0                                                                            | 1.4.4                                    | unknown              |                                 |
@@ -90,7 +89,6 @@ a notice will be included in
 [PCRE2]: http://www.pcre.org/
 [Protobuf]: https://github.com/protocolbuffers/protobuf
 [RoaringBitmap/CRoaring]: https://github.com/RoaringBitmap/CRoaring
-[SCons - a Software Construction tool]: https://github.com/SCons/scons
 [SchemaStore/schemastore]: https://www.schemastore.org/json/
 [Snowball Stemming Algorithms]: https://github.com/snowballstem/snowball
 [arximboldi/immer]: https://github.com/arximboldi/immer

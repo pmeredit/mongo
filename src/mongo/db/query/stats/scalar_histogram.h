@@ -30,9 +30,7 @@
 #pragma once
 
 #include <cstddef>
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
@@ -102,10 +100,6 @@ public:
 
     // Print a human-readable representation of a histogram.
     std::string toString() const;
-    std::string plot() const;
-    // Help function to dump the content of the histogram as needed by the manual histogram creation
-    // in the unit tests (without cummulative frequency and NDV).
-    std::string dump() const;
 
     const sbe::value::Array& getBounds() const;
     const std::vector<Bucket>& getBuckets() const;

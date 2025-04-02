@@ -43,6 +43,7 @@
 #include "mongo/db/pipeline/change_stream_preimage_gen.h"
 #include "mongo/db/pipeline/document_source_change_stream_add_pre_image.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
+#include "mongo/db/version_context.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
@@ -129,8 +130,9 @@ DocumentSource::GetNextResult DocumentSourceChangeStreamAddPreImage::doGetNext()
 boost::optional<Document> DocumentSourceChangeStreamAddPreImage::lookupPreImage(
     boost::intrusive_ptr<ExpressionContext> pExpCtx, const Document& preImageId) {
     // Look up the pre-image document on the local node by id.
-    const auto tenantId =
-        change_stream_serverless_helpers::resolveTenantId(pExpCtx->getNamespaceString().tenantId());
+    const auto tenantId = change_stream_serverless_helpers::resolveTenantId(
+        VersionContext::getDecoration(pExpCtx->getOperationContext()),
+        pExpCtx->getNamespaceString().tenantId());
     auto lookedUpDoc = pExpCtx->getMongoProcessInterface()->lookupSingleDocumentLocally(
         pExpCtx,
         NamespaceString::makePreImageCollectionNSS(tenantId),
@@ -149,7 +151,7 @@ boost::optional<Document> DocumentSourceChangeStreamAddPreImage::lookupPreImage(
 }
 
 Value DocumentSourceChangeStreamAddPreImage::doSerialize(const SerializationOptions& opts) const {
-    return opts.verbosity
+    return opts.isSerializingForExplain()
         ? Value(Document{
               {DocumentSourceChangeStream::kStageName,
                Document{{"stage"_sd, "internalAddPreImage"_sd},

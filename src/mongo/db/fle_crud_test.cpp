@@ -67,6 +67,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/fle_crud.h"
 #include "mongo/db/fle_query_interface_mock.h"
+#include "mongo/db/fts/unicode/string.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/query_knobs_gen.h"
@@ -79,13 +80,12 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/idl/idl_parser.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/random.h"
 #include "mongo/shell/kms_gen.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/hex.h"
 #include "mongo/util/intrusive_counter.h"
@@ -220,7 +220,6 @@ int32_t getTestSeed() {
 
     return rnd->nextInt32();
 }
-
 class FleCrudTest : public ServiceContextMongoDTest {
 protected:
     void setUp() override;
@@ -272,6 +271,10 @@ protected:
     void assertECOCDocumentCountByField(StringData fieldName, uint64_t expect);
 
     std::vector<char> generatePlaceholder(UUID keyId, BSONElement value);
+
+    BSONObj transformElementForInsertUpdate(BSONElement element,
+                                            const std::vector<char>& placeholder,
+                                            const EncryptedFieldConfig& efc);
 
 protected:
     /**
@@ -418,40 +421,40 @@ EncryptedFieldConfig getTestEncryptedFieldConfig(
     Fle2AlgorithmInt alg = Fle2AlgorithmInt::kEquality) {
 
     constexpr auto schemaV2 = R"({
-    "escCollection": "enxcol_.coll.esc",
-    "ecocCollection": "enxcol_.coll.ecoc",
-    "fields": [
-        {
-            "keyId":
-                            {
-                                "$uuid": "12345678-1234-9876-1234-123456789012"
-                            }
-                        ,
-            "path": "encrypted",
-            "bsonType": "string",
-            "queries": {"queryType": "equality"}
+        "escCollection": "enxcol_.coll.esc",
+        "ecocCollection": "enxcol_.coll.ecoc",
+        "fields": [
+            {
+                "keyId":
+                                {
+                                    "$uuid": "12345678-1234-9876-1234-123456789012"
+                                }
+                            ,
+                "path": "encrypted",
+                "bsonType": "string",
+                "queries": {"queryType": "equality"}
 
-        }
-    ]
-})";
+            }
+        ]
+    })";
 
     constexpr auto rangeSchemaV2 = R"({
-    "escCollection": "enxcol_.coll.esc",
-    "ecocCollection": "enxcol_.coll.ecoc",
-    "fields": [
-        {
-            "keyId":
-                            {
-                                "$uuid": "12345678-1234-9876-1234-123456789012"
-                            }
-                        ,
-            "path": "encrypted",
-            "bsonType": "int",
-            "queries": {"queryType": "range", "min": 0, "max": 15, "sparsity": 1, "trimFactor": 0}
+        "escCollection": "enxcol_.coll.esc",
+        "ecocCollection": "enxcol_.coll.ecoc",
+        "fields": [
+            {
+                "keyId":
+                                {
+                                    "$uuid": "12345678-1234-9876-1234-123456789012"
+                                }
+                            ,
+                "path": "encrypted",
+                "bsonType": "int",
+                "queries": {"queryType": "range", "min": 0, "max": 15, "sparsity": 1, "trimFactor": 0}
 
-        }
-    ]
-})";
+            }
+        ]
+    })";
 
     if (alg == Fle2AlgorithmInt::kEquality) {
         return EncryptedFieldConfig::parse(IDLParserContext("root"), fromjson(schemaV2));
@@ -495,22 +498,20 @@ void FleCrudTest::doSingleWideInsert(int id, uint64_t fieldCount, ValueGenerator
     builder.append("_id", id);
     builder.append("plainText", "sample");
 
+    auto efc = getTestEncryptedFieldConfig();
+
     for (uint64_t i = 0; i < fieldCount; i++) {
         auto name = fieldNameFromInt(i);
         auto value = func(name, id);
-        auto doc = BSON("I" << value);
+        auto doc = BSON(name << value);
         UUID uuid = fieldNameToUUID(name);
         auto buf = generatePlaceholder(uuid, doc.firstElement());
-        builder.appendBinData(name, buf.size(), BinDataType::Encrypt, buf.data());
+        builder.append(
+            transformElementForInsertUpdate(doc.firstElement(), buf, efc).firstElement());
     }
-
-    auto clientDoc = builder.obj();
-
-    auto result = FLEClientCrypto::transformPlaceholders(clientDoc, &_keyVault);
+    auto result = builder.obj();
 
     auto serverPayload = EDCServerCollection::getEncryptedFieldInfo(result);
-
-    auto efc = getTestEncryptedFieldConfig();
 
     uassertStatusOK(processInsert(_queryImpl.get(), _edcNs, serverPayload, efc, 0, result, false));
 }
@@ -555,6 +556,7 @@ BSONObj generateFLE2RangeInsertSpec(BSONElement value) {
 std::vector<char> generateSinglePlaceholder(BSONElement value,
                                             Fle2AlgorithmInt alg = Fle2AlgorithmInt::kEquality,
                                             int64_t cm = 0) {
+
     FLE2EncryptionPlaceholder ep;
     ep.setAlgorithm(alg);
     ep.setUserKeyId(userKeyId);
@@ -591,24 +593,56 @@ void FleCrudTest::testValidateTags(BSONObj obj) {
     FLEClientCrypto::validateTagsArray(obj);
 }
 
+// Given a BSON element containing the plaintext value and fieldname, the placeholder
+// generated for the value, and the EncryptedFieldConfig with a schema for the fieldname,
+// returns a document {fieldname: BinData(<InsertUpdatePayloadV2>))}
+BSONObj FleCrudTest::transformElementForInsertUpdate(BSONElement element,
+                                                     const std::vector<char>& placeholder,
+                                                     const EncryptedFieldConfig& efc) {
+    // Wrap the element in a document in an insert command, so libmongocrypt can transform
+    // the placeholders.
+    auto origCmd = write_ops::InsertCommandRequest(_edcNs, {element.wrap()}).toBSON();
+    auto cryptdResponse = [&]() {
+        BSONObjBuilder docbob;
+        docbob.appendBinData(element.fieldNameStringData(),
+                             placeholder.size(),
+                             BinDataType::Encrypt,
+                             placeholder.data());
+        BSONObjBuilder bob;
+        bob.append("hasEncryptionPlaceholders", true);
+        bob.append("schemaRequiresEncryption", true);
+        bob.append("result", write_ops::InsertCommandRequest(_edcNs, {docbob.obj()}).toBSON());
+        return bob.obj();
+    }();
+    auto finalCmd =
+        FLEClientCrypto::transformPlaceholders(origCmd,
+                                               cryptdResponse,
+                                               BSON(_edcNs.toString_forTest() << efc.toBSON()),
+                                               &_keyVault,
+                                               _edcNs.db_forTest())
+            .addField(BSON("$db" << _edcNs.db_forTest()).firstElement());
+    return write_ops::InsertCommandRequest::parse(IDLParserContext("finalCmd"), finalCmd)
+        .getDocuments()
+        .front()
+        .getOwned();
+}
+
 void FleCrudTest::doSingleInsert(int id,
                                  BSONElement element,
                                  Fle2AlgorithmInt alg,
                                  bool bypassDocumentValidation) {
+
     auto buf = generateSinglePlaceholder(element, alg);
+    auto efc = getTestEncryptedFieldConfig(alg);
+
     BSONObjBuilder builder;
     builder.append("_id", id);
     builder.append("counter", 1);
     builder.append("plainText", "sample");
-    builder.appendBinData("encrypted", buf.size(), BinDataType::Encrypt, buf.data());
-
-    auto clientDoc = builder.obj();
-
-    auto result = FLEClientCrypto::transformPlaceholders(clientDoc, &_keyVault);
+    builder.append(transformElementForInsertUpdate(element, buf, efc).firstElement());
+    auto result = builder.obj();
 
     auto serverPayload = EDCServerCollection::getEncryptedFieldInfo(result);
-
-    auto efc = getTestEncryptedFieldConfig(alg);
 
     uassertStatusOK(processInsert(_queryImpl.get(), _edcNs, serverPayload, efc, 0, result, false));
 }
@@ -647,12 +681,13 @@ void FleCrudTest::doSingleUpdate(int id, BSONObj obj) {
 
 void FleCrudTest::doSingleUpdate(int id, BSONElement element, Fle2AlgorithmInt alg) {
     auto buf = generateSinglePlaceholder(element, alg);
+    auto efc = getTestEncryptedFieldConfig(alg);
+
     BSONObjBuilder builder;
     builder.append("$inc", BSON("counter" << 1));
-    builder.append("$set",
-                   BSON("encrypted" << BSONBinData(buf.data(), buf.size(), BinDataType::Encrypt)));
-    auto clientDoc = builder.obj();
-    auto result = FLEClientCrypto::transformPlaceholders(clientDoc, &_keyVault);
+    builder.append("$set", transformElementForInsertUpdate(element, buf, efc));
+
+    auto result = builder.obj();
 
     doSingleUpdateWithUpdateDoc(id, result, alg);
 }
@@ -784,8 +819,7 @@ protected:
 
 // Insert one document
 TEST_F(FleCrudTest, InsertOne) {
-    auto doc = BSON("encrypted"
-                    << "secret");
+    auto doc = BSON("encrypted" << "secret");
     auto element = doc.firstElement();
 
     doSingleInsert(1, element, Fle2AlgorithmInt::kEquality);
@@ -810,8 +844,7 @@ TEST_F(FleCrudTest, InsertOneRange) {
 // Insert two documents with same values
 TEST_F(FleCrudTest, InsertTwoSame) {
 
-    auto doc = BSON("encrypted"
-                    << "secret");
+    auto doc = BSON("encrypted" << "secret");
     auto element = doc.firstElement();
     doSingleInsert(1, element, Fle2AlgorithmInt::kEquality);
     doSingleInsert(2, element, Fle2AlgorithmInt::kEquality);
@@ -829,30 +862,22 @@ TEST_F(FleCrudTest, InsertTwoSame) {
 // Insert two documents with different values
 TEST_F(FleCrudTest, InsertTwoDifferent) {
 
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
-    doSingleInsert(2,
-                   BSON("encrypted"
-                        << "topsecret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
+    doSingleInsert(2, BSON("encrypted" << "topsecret"));
 
     assertDocumentCounts(2, 2, 2);
     assertECOCDocumentCountByField("encrypted", 2);
 
-    ASSERT_FALSE(
-        _queryImpl
-            ->getById(_escNs,
-                      ESCCollection::generateNonAnchorId(getTestESCToken(BSON("encrypted"
-                                                                              << "secret")),
-                                                         1))
-            .isEmpty());
-    ASSERT_FALSE(
-        _queryImpl
-            ->getById(_escNs,
-                      ESCCollection::generateNonAnchorId(getTestESCToken(BSON("encrypted"
-                                                                              << "topsecret")),
-                                                         1))
-            .isEmpty());
+    ASSERT_FALSE(_queryImpl
+                     ->getById(_escNs,
+                               ESCCollection::generateNonAnchorId(
+                                   getTestESCToken(BSON("encrypted" << "secret")), 1))
+                     .isEmpty());
+    ASSERT_FALSE(_queryImpl
+                     ->getById(_escNs,
+                               ESCCollection::generateNonAnchorId(
+                                   getTestESCToken(BSON("encrypted" << "topsecret")), 1))
+                     .isEmpty());
 }
 
 // Insert 1 document with 100 fields
@@ -1009,11 +1034,29 @@ TEST_F(FleCrudTest, InsertUnindexedV1AgainstV2Protocol) {
         6379103);
 }
 
+// Test insert update payloads containing both the range edgeTokenSet array ('g') and the text
+// search token sets ('b') is rejected.
+TEST_F(FleCrudTest, InsertPayloadIsBothRangeAndTextSearch) {
+    auto bogusEncryptedTokens = StateCollectionTokensV2({{}}, false).encrypt({{}});
+    FLE2InsertUpdatePayloadV2 payload(
+        {}, {}, bogusEncryptedTokens, indexKeyId, BSONType::String, {}, {}, {}, 0);
+    payload.setEdgeTokenSet(std::vector<EdgeTokenSetV2>{{{}, {}, {}, bogusEncryptedTokens}});
+    payload.setTextSearchTokenSets(
+        TextSearchTokenSets{{{}, {}, {}, bogusEncryptedTokens}, {}, {}, {}});
+    auto iup = payload.toBSON();
+    std::vector<uint8_t> buf(iup.objsize() + 1);
+    buf[0] = static_cast<uint8_t>(EncryptedBinDataType::kFLE2InsertUpdatePayloadV2);
+    std::copy(iup.objdata(), iup.objdata() + iup.objsize(), buf.data() + 1);
+    BSONObjBuilder builder;
+    builder.appendBinData("encrypted", buf.size(), BinDataType::Encrypt, buf.data());
+    BSONObj document = builder.obj();
+
+    ASSERT_THROWS_CODE(EDCServerCollection::getEncryptedFieldInfo(document), DBException, 9783801);
+}
 
 // Insert and delete one document
 TEST_F(FleCrudTest, InsertAndDeleteOne) {
-    auto doc = BSON("encrypted"
-                    << "secret");
+    auto doc = BSON("encrypted" << "secret");
     auto element = doc.firstElement();
 
     doSingleInsert(1, element, Fle2AlgorithmInt::kEquality);
@@ -1047,8 +1090,7 @@ TEST_F(FleCrudTest, InsertAndDeleteOneRange) {
 
 // Insert two documents, and delete both
 TEST_F(FleCrudTest, InsertTwoSameAndDeleteTwo) {
-    auto doc = BSON("encrypted"
-                    << "secret");
+    auto doc = BSON("encrypted" << "secret");
     auto element = doc.firstElement();
 
     doSingleInsert(1, element, Fle2AlgorithmInt::kEquality);
@@ -1069,12 +1111,8 @@ TEST_F(FleCrudTest, InsertTwoSameAndDeleteTwo) {
 
 // Insert two documents with different values and delete them
 TEST_F(FleCrudTest, InsertTwoDifferentAndDeleteTwo) {
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
-    doSingleInsert(2,
-                   BSON("encrypted"
-                        << "topsecret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
+    doSingleInsert(2, BSON("encrypted" << "topsecret"));
 
     assertDocumentCounts(2, 2, 2);
 
@@ -1087,9 +1125,7 @@ TEST_F(FleCrudTest, InsertTwoDifferentAndDeleteTwo) {
 
 // Insert one document but delete another document
 TEST_F(FleCrudTest, InsertOneButDeleteAnother) {
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
     assertDocumentCounts(1, 1, 1);
 
     doSingleDelete(2, Fle2AlgorithmInt::kEquality);
@@ -1101,15 +1137,11 @@ TEST_F(FleCrudTest, InsertOneButDeleteAnother) {
 // Update one document
 TEST_F(FleCrudTest, UpdateOne) {
 
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
-    doSingleUpdate(1,
-                   BSON("encrypted"
-                        << "top secret"));
+    doSingleUpdate(1, BSON("encrypted" << "top secret"));
 
     assertDocumentCounts(1, 2, 2);
     assertECOCDocumentCountByField("encrypted", 2);
@@ -1146,15 +1178,11 @@ TEST_F(FleCrudTest, UpdateOneRange) {
 
 // Update one document but to the same value
 TEST_F(FleCrudTest, UpdateOneSameValue) {
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
-    doSingleUpdate(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleUpdate(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 2, 2);
     assertECOCDocumentCountByField("encrypted", 2);
@@ -1169,23 +1197,19 @@ TEST_F(FleCrudTest, UpdateOneSameValue) {
 
 // Update one document with replacement
 TEST_F(FleCrudTest, UpdateOneReplace) {
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
-    auto replace = BSON("encrypted"
-                        << "top secret");
+    auto replace = BSON("encrypted" << "top secret");
 
     auto buf = generateSinglePlaceholder(replace.firstElement());
+    auto efc = getTestEncryptedFieldConfig();
 
-    auto replaceEP = BSON("plainText"
-                          << "fake"
-                          << "encrypted"
-                          << BSONBinData(buf.data(), buf.size(), BinDataType::Encrypt));
-
-    auto result = FLEClientCrypto::transformPlaceholders(replaceEP, &_keyVault);
+    auto result =
+        BSON("plainText"
+             << "fake"
+             << transformElementForInsertUpdate(replace.firstElement(), buf, efc).firstElement());
 
     doSingleUpdateWithUpdateDoc(
         1,
@@ -1214,13 +1238,12 @@ TEST_F(FleCrudTest, UpdateOneReplaceRange) {
 
     auto replace = BSON("encrypted" << 2);
     auto buf = generateSinglePlaceholder(replace.firstElement(), Fle2AlgorithmInt::kRange);
+    auto efc = getTestEncryptedFieldConfig(Fle2AlgorithmInt::kRange);
 
-    auto replaceEP = BSON("plaintext"
-                          << "fake"
-                          << "encrypted"
-                          << BSONBinData(buf.data(), buf.size(), BinDataType::Encrypt));
-
-    auto result = FLEClientCrypto::transformPlaceholders(replaceEP, &_keyVault);
+    auto result =
+        BSON("plaintext"
+             << "fake"
+             << transformElementForInsertUpdate(replace.firstElement(), buf, efc).firstElement());
 
     doSingleUpdateWithUpdateDoc(
         1,
@@ -1239,9 +1262,7 @@ TEST_F(FleCrudTest, UpdateOneReplaceRange) {
 // Rename safeContent
 TEST_F(FleCrudTest, RenameSafeContent) {
 
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
@@ -1256,9 +1277,7 @@ TEST_F(FleCrudTest, RenameSafeContent) {
 
 // Mess with __safeContent__ and ensure the update errors
 TEST_F(FleCrudTest, SetSafeContent) {
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
@@ -1293,23 +1312,19 @@ TEST_F(FleCrudTest, testValidateEncryptedFieldConfigFields) {
 
 // Update one document via findAndModify
 TEST_F(FleCrudTest, FindAndModify_UpdateOne) {
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
-    auto doc = BSON("encrypted"
-                    << "top secret");
+    auto doc = BSON("encrypted" << "top secret");
     auto element = doc.firstElement();
     auto buf = generateSinglePlaceholder(element);
+    auto efc = getTestEncryptedFieldConfig();
+
     BSONObjBuilder builder;
     builder.append("$inc", BSON("counter" << 1));
-    builder.append("$set",
-                   BSON("encrypted" << BSONBinData(buf.data(), buf.size(), BinDataType::Encrypt)));
-    auto clientDoc = builder.obj();
-    auto result = FLEClientCrypto::transformPlaceholders(clientDoc, &_keyVault);
-
+    builder.append("$set", transformElementForInsertUpdate(element, buf, efc));
+    auto result = builder.obj();
 
     write_ops::FindAndModifyCommandRequest req(_edcNs);
     req.setQuery(BSON("_id" << 1));
@@ -1340,13 +1355,12 @@ TEST_F(FleCrudTest, FindAndModify_UpdateOneRange) {
     auto doc = BSON("encrypted" << 2);
     auto element = doc.firstElement();
     auto buf = generateSinglePlaceholder(element, Fle2AlgorithmInt::kRange);
+    auto efc = getTestEncryptedFieldConfig(Fle2AlgorithmInt::kRange);
+
     BSONObjBuilder builder;
     builder.append("$inc", BSON("counter" << 1));
-    builder.append("$set",
-                   BSON("encrypted" << BSONBinData(buf.data(), buf.size(), BinDataType::Encrypt)));
-    auto clientDoc = builder.obj();
-    auto result = FLEClientCrypto::transformPlaceholders(clientDoc, &_keyVault);
-
+    builder.append("$set", transformElementForInsertUpdate(element, buf, efc));
+    auto result = builder.obj();
 
     write_ops::FindAndModifyCommandRequest req(_edcNs);
     req.setQuery(BSON("_id" << 1));
@@ -1366,8 +1380,7 @@ TEST_F(FleCrudTest, FindAndModify_UpdateOneRange) {
 
 // Insert and delete one document via findAndModify
 TEST_F(FleCrudTest, FindAndModify_InsertAndDeleteOne) {
-    auto doc = BSON("encrypted"
-                    << "secret");
+    auto doc = BSON("encrypted" << "secret");
     auto element = doc.firstElement();
 
     doSingleInsert(1, element, Fle2AlgorithmInt::kEquality);
@@ -1386,9 +1399,7 @@ TEST_F(FleCrudTest, FindAndModify_InsertAndDeleteOne) {
 // Rename safeContent
 TEST_F(FleCrudTest, FindAndModify_RenameSafeContent) {
 
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
@@ -1412,9 +1423,7 @@ TEST_F(FleCrudTest, validateTagsTest) {
 
 // Mess with __safeContent__ and ensure the update errors
 TEST_F(FleCrudTest, FindAndModify_SetSafeContent) {
-    doSingleInsert(1,
-                   BSON("encrypted"
-                        << "secret"));
+    doSingleInsert(1, BSON("encrypted" << "secret"));
 
     assertDocumentCounts(1, 1, 1);
 
@@ -1477,8 +1486,7 @@ TEST_F(FleCrudTest, validateIndexKeyInvalid) {
 }
 
 TEST_F(FleTagsTest, InsertOne) {
-    auto doc = BSON("encrypted"
-                    << "a");
+    auto doc = BSON("encrypted" << "a");
 
     doSingleInsert(1, doc);
 
@@ -1486,8 +1494,7 @@ TEST_F(FleTagsTest, InsertOne) {
 }
 
 TEST_F(FleTagsTest, InsertTwoSame) {
-    auto doc = BSON("encrypted"
-                    << "a");
+    auto doc = BSON("encrypted" << "a");
 
     doSingleInsert(1, doc);
     doSingleInsert(2, doc);
@@ -1496,10 +1503,8 @@ TEST_F(FleTagsTest, InsertTwoSame) {
 }
 
 TEST_F(FleTagsTest, InsertTwoDifferent) {
-    auto doc1 = BSON("encrypted"
-                     << "a");
-    auto doc2 = BSON("encrypted"
-                     << "b");
+    auto doc1 = BSON("encrypted" << "a");
+    auto doc2 = BSON("encrypted" << "b");
 
     doSingleInsert(1, doc1);
     doSingleInsert(2, doc2);
@@ -1509,8 +1514,7 @@ TEST_F(FleTagsTest, InsertTwoDifferent) {
 }
 
 TEST_F(FleTagsTest, InsertAndDeleteOne) {
-    auto doc = BSON("encrypted"
-                    << "a");
+    auto doc = BSON("encrypted" << "a");
 
     doSingleInsert(1, doc);
     doSingleDelete(1, Fle2AlgorithmInt::kEquality);
@@ -1519,8 +1523,7 @@ TEST_F(FleTagsTest, InsertAndDeleteOne) {
 }
 
 TEST_F(FleTagsTest, InsertTwoSameAndDeleteOne) {
-    auto doc = BSON("encrypted"
-                    << "a");
+    auto doc = BSON("encrypted" << "a");
 
     doSingleInsert(1, doc);
     doSingleInsert(2, doc);
@@ -1530,10 +1533,8 @@ TEST_F(FleTagsTest, InsertTwoSameAndDeleteOne) {
 }
 
 TEST_F(FleTagsTest, InsertTwoDifferentAndDeleteOne) {
-    auto doc1 = BSON("encrypted"
-                     << "a");
-    auto doc2 = BSON("encrypted"
-                     << "b");
+    auto doc1 = BSON("encrypted" << "a");
+    auto doc2 = BSON("encrypted" << "b");
 
     doSingleInsert(1, doc1);
     doSingleInsert(2, doc2);
@@ -1544,10 +1545,8 @@ TEST_F(FleTagsTest, InsertTwoDifferentAndDeleteOne) {
 }
 
 TEST_F(FleTagsTest, InsertAndUpdate) {
-    auto doc1 = BSON("encrypted"
-                     << "a");
-    auto doc2 = BSON("encrypted"
-                     << "b");
+    auto doc1 = BSON("encrypted" << "a");
+    auto doc2 = BSON("encrypted" << "b");
 
     doSingleInsert(1, doc1);
     doSingleUpdate(1, doc2);
@@ -1569,10 +1568,8 @@ TEST_F(FleTagsTest, ContentionFactor) {
         }]
     })"));
 
-    auto doc1 = BSON("encrypted"
-                     << "a");
-    auto doc2 = BSON("encrypted"
-                     << "b");
+    auto doc1 = BSON("encrypted" << "a");
+    auto doc2 = BSON("encrypted" << "b");
 
     // Insert doc1 twice with a contention factor of 0 and once with a contention factor or 3.
     doSingleInsertWithContention(1, doc1, 4, 0, efc);
@@ -1623,8 +1620,7 @@ TEST_F(FleTagsTest, ContentionFactor) {
 }
 
 TEST_F(FleTagsTest, MemoryLimit) {
-    auto doc = BSON("encrypted"
-                    << "a");
+    auto doc = BSON("encrypted" << "a");
 
     const auto tagLimit = 10;
 
@@ -1702,6 +1698,535 @@ TEST_F(FleTagsTest, SampleMemoryLimit) {
         auto size = mongo::fle::sizeArrayElementsMemory(xp.count);
         ASSERT_EQ(xp.size, size);
     }
+}
+
+struct TextSearchSchema {
+    QueryTypeEnum type;
+    uint32_t lb;
+    uint32_t ub;
+    uint32_t mlen;
+    bool casef;
+    bool diacf;
+};
+
+class QETextSearchCrudTest : public FleCrudTest {
+protected:
+    void setUp() override {
+        FleCrudTest::setUp();
+        _ffctrl.emplace("featureFlagQETextSearchPreview", true);
+    }
+    void tearDown() override {
+        FleCrudTest::tearDown();
+    }
+
+    // Note - we don't do any validation here; we assume none of the schemas added conflict.
+    void addSchema(TextSearchSchema schema) {
+        _schemas.push_back(std::move(schema));
+    }
+    EncryptedFieldConfig getEFC();
+    BSONObj generateInsertSpec(BSONElement value);
+    std::vector<char> generatePlaceholder(BSONElement value);
+    void doInsert(int id, BSONElement element);
+    ESCTwiceDerivedTagToken getTestESCToken(BSONElement value, boost::optional<QueryTypeEnum> type);
+    BSONObj findESCNonAnchor(BSONElement element,
+                             uint64_t cpos,
+                             boost::optional<QueryTypeEnum> qtype);
+    void checkExactInserted(StringData exactString, uint32_t exactCount);
+    void checkPaddingInserted(StringData exactString, uint32_t padCount, QueryTypeEnum qtype);
+    stdx::unordered_set<std::string> getExpectedSubstrings(const unicode::String& foldedString,
+                                                           uint32_t lb,
+                                                           uint32_t ub);
+    stdx::unordered_set<std::string> getExpectedSuffixes(const unicode::String& foldedString,
+                                                         uint32_t lb,
+                                                         uint32_t ub);
+    stdx::unordered_set<std::string> getExpectedPrefixes(const unicode::String& foldedString,
+                                                         uint32_t lb,
+                                                         uint32_t ub);
+    uint32_t getMsizeForSubstring(StringData unfoldedString,
+                                  uint32_t lb,
+                                  uint32_t ub,
+                                  uint32_t mlen);
+    uint32_t getMsizeForPrefixSuffix(StringData unfoldedString, uint32_t lb, uint32_t ub);
+    void verifyExpectationsAfterInsertions(
+        const std::vector<std::pair<StringData, StringData>>& inserted);
+    void doInsertsAndVerifyExpectations(
+        const std::vector<std::pair<StringData, StringData>>& inserts);
+
+    std::vector<TextSearchSchema> _schemas;
+    StackBufBuilder _stackBuf;
+    boost::optional<RAIIServerParameterControllerForTest> _ffctrl;
+};
+
+EncryptedFieldConfig QETextSearchCrudTest::getEFC() {
+    std::vector<QueryTypeConfig> qtcs;
+    for (const auto& schema : _schemas) {
+        QueryTypeConfig qtc;
+        qtc.setQueryType(schema.type);
+        if (schema.type == QueryTypeEnum::SubstringPreview) {
+            qtc.setStrMaxLength(schema.mlen);
+        }
+        qtc.setStrMinQueryLength(schema.lb);
+        qtc.setStrMaxQueryLength(schema.ub);
+        qtc.setCaseSensitive(!schema.casef);
+        qtc.setDiacriticSensitive(!schema.diacf);
+        qtcs.push_back(std::move(qtc));
+    }
+    EncryptedField ef(UUID::gen(), "field");
+    std::variant<std::vector<QueryTypeConfig>, QueryTypeConfig> vqtcs = std::move(qtcs);
+    ef.setBsonType("string"_sd);
+    ef.setQueries(vqtcs);
+    EncryptedFieldConfig efc({std::move(ef)});
+    efc.setEscCollection("enxcol_.coll.esc"_sd);
+    efc.setEcocCollection("enxcol_.coll.ecoc"_sd);
+    efc.setStrEncodeVersion(1);
+    return efc;
+}
+
+BSONObj QETextSearchCrudTest::generateInsertSpec(BSONElement value) {
+    FLE2TextSearchInsertSpec spec;
+    spec.setValue(value.String());
+    spec.setCaseFold(_schemas[0].casef);
+    spec.setDiacriticFold(_schemas[0].diacf);
+    for (const auto& schema : _schemas) {
+        switch (schema.type) {
+            case QueryTypeEnum::SubstringPreview:
+                spec.setSubstringSpec(FLE2SubstringInsertSpec(schema.mlen, schema.ub, schema.lb));
+                break;
+            case QueryTypeEnum::SuffixPreview:
+                spec.setSuffixSpec(FLE2SuffixInsertSpec(schema.ub, schema.lb));
+                break;
+            case QueryTypeEnum::PrefixPreview:
+                spec.setPrefixSpec(FLE2PrefixInsertSpec(schema.ub, schema.lb));
+                break;
+            default:
+                MONGO_UNREACHABLE;
+        }
+    }
+    return BSON("s" << spec.toBSON());
+}
+
+std::vector<char> QETextSearchCrudTest::generatePlaceholder(BSONElement value) {
+    FLE2EncryptionPlaceholder ep;
+    ep.setAlgorithm(Fle2AlgorithmInt::kTextSearch);
+    ep.setUserKeyId(userKeyId);
+    ep.setIndexKeyId(indexKeyId);
+    ep.setType(mongo::Fle2PlaceholderType::kInsert);
+
+    BSONObj spec = generateInsertSpec(value);
+    ep.setValue(spec.firstElement());
+
+    ep.setMaxContentionCounter(0);
+
+    BSONObj obj = ep.toBSON();
+
+    std::vector<char> v;
+    v.resize(obj.objsize() + 1);
+    v[0] = static_cast<uint8_t>(EncryptedBinDataType::kFLE2Placeholder);
+    std::copy(obj.objdata(), obj.objdata() + obj.objsize(), v.begin() + 1);
+    return v;
+}
+
+void QETextSearchCrudTest::doInsert(int id, BSONElement element) {
+    auto buf = generatePlaceholder(element);
+    auto efc = getEFC();
+
+    BSONObjBuilder builder;
+    builder.append("_id", id);
+    builder.append("counter", 1);
+    builder.append("plainText", "sample");
+    builder.append(transformElementForInsertUpdate(element, buf, efc).firstElement());
+    auto result = builder.obj();
+
+    auto serverPayload = EDCServerCollection::getEncryptedFieldInfo(result);
+    uassertStatusOK(processInsert(_queryImpl.get(), _edcNs, serverPayload, efc, 0, result, false));
+}
+
+ESCTwiceDerivedTagToken QETextSearchCrudTest::getTestESCToken(BSONElement element,
+                                                              boost::optional<QueryTypeEnum> type) {
+    auto c1token = CollectionsLevel1Token::deriveFrom(_keyVault.getIndexKeyById(indexKeyId).key);
+    auto escToken = ESCToken::deriveFrom(c1token);
+
+    PrfBlock escDataTokenBlk;
+    if (!type.has_value()) {
+        auto escTextToken = ESCTextExactToken::deriveFrom(escToken);
+        auto escDataToken =
+            ESCTextExactDerivedFromDataToken::deriveFrom(escTextToken, toCDR(element));
+        escDataTokenBlk =
+            ESCTextExactDerivedFromDataTokenAndContentionFactorToken::deriveFrom(escDataToken, 0)
+                .asPrfBlock();
+    } else {
+        switch (*type) {
+            case QueryTypeEnum::SubstringPreview: {
+                auto escTextToken = ESCTextSubstringToken::deriveFrom(escToken);
+                auto escDataToken =
+                    ESCTextSubstringDerivedFromDataToken::deriveFrom(escTextToken, toCDR(element));
+                escDataTokenBlk =
+                    ESCTextSubstringDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                        escDataToken, 0)
+                        .asPrfBlock();
+                break;
+            }
+            case QueryTypeEnum::SuffixPreview: {
+                auto escTextToken = ESCTextSuffixToken::deriveFrom(escToken);
+                auto escDataToken =
+                    ESCTextSuffixDerivedFromDataToken::deriveFrom(escTextToken, toCDR(element));
+                escDataTokenBlk =
+                    ESCTextSuffixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                        escDataToken, 0)
+                        .asPrfBlock();
+                break;
+            }
+            case QueryTypeEnum::PrefixPreview: {
+                auto escTextToken = ESCTextPrefixToken::deriveFrom(escToken);
+                auto escDataToken =
+                    ESCTextPrefixDerivedFromDataToken::deriveFrom(escTextToken, toCDR(element));
+                escDataTokenBlk =
+                    ESCTextPrefixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                        escDataToken, 0)
+                        .asPrfBlock();
+                break;
+            }
+            default:
+                MONGO_UNREACHABLE;
+        }
+    }
+    return ESCTwiceDerivedTagToken::deriveFrom(
+        ESCDerivedFromDataTokenAndContentionFactorToken{escDataTokenBlk});
+}
+
+BSONObj QETextSearchCrudTest::findESCNonAnchor(BSONElement element,
+                                               uint64_t cpos,
+                                               boost::optional<QueryTypeEnum> qtype) {
+    return _queryImpl->getById(
+        _escNs, ESCCollection::generateNonAnchorId(getTestESCToken(element, qtype), cpos));
+}
+
+void QETextSearchCrudTest::checkExactInserted(StringData exactString, uint32_t exactCount) {
+    auto doc = BSON("field" << exactString);
+    auto element = doc.firstElement();
+
+    // check expected number of exact match ESC entries were inserted
+    for (uint32_t ct = 1; ct <= exactCount; ct++) {
+        ASSERT_FALSE(findESCNonAnchor(element, ct, boost::none).isEmpty());
+    }
+    ASSERT_TRUE(findESCNonAnchor(element, exactCount + 1, boost::none).isEmpty());
+}
+
+void QETextSearchCrudTest::checkPaddingInserted(StringData exactString,
+                                                uint32_t padCount,
+                                                QueryTypeEnum qtype) {
+    const std::string padString = exactString.toString() + "\xff";
+    auto padDoc = BSON("field" << padString);
+    auto padElement = padDoc.firstElement();
+
+    // check expected number of ESC entries of the expected type were inserted
+    for (uint32_t ct = 1; ct <= padCount; ct++) {
+        ASSERT_FALSE(findESCNonAnchor(padElement, ct, qtype).isEmpty());
+    }
+    ASSERT_TRUE(findESCNonAnchor(padElement, padCount + 1, qtype).isEmpty());
+}
+
+stdx::unordered_set<std::string> QETextSearchCrudTest::getExpectedSubstrings(
+    const unicode::String& foldedString, uint32_t lb, uint32_t ub) {
+    stdx::unordered_set<std::string> res;
+    for (uint32_t ss_len = lb; ss_len <= std::min(ub, uint32_t(foldedString.size())); ss_len++) {
+        for (uint32_t i = 0; i <= foldedString.size() - ss_len; i++) {
+            res.insert(foldedString.substrToBuf(&_stackBuf, i, ss_len).toString());
+        }
+    }
+    return res;
+}
+stdx::unordered_set<std::string> QETextSearchCrudTest::getExpectedSuffixes(
+    const unicode::String& foldedString, uint32_t lb, uint32_t ub) {
+    stdx::unordered_set<std::string> res;
+    for (uint32_t suff_len = lb; suff_len <= std::min(ub, uint32_t(foldedString.size()));
+         suff_len++) {
+        res.insert(foldedString.substrToBuf(&_stackBuf, foldedString.size() - suff_len, suff_len)
+                       .toString());
+    }
+    return res;
+}
+stdx::unordered_set<std::string> QETextSearchCrudTest::getExpectedPrefixes(
+    const unicode::String& foldedString, uint32_t lb, uint32_t ub) {
+    stdx::unordered_set<std::string> res;
+    for (uint32_t pref_len = lb; pref_len <= std::min(ub, uint32_t(foldedString.size()));
+         pref_len++) {
+        res.insert(foldedString.substrToBuf(&_stackBuf, 0, pref_len).toString());
+    }
+    return res;
+}
+
+uint32_t QETextSearchCrudTest::getMsizeForSubstring(StringData unfoldedString,
+                                                    uint32_t lb,
+                                                    uint32_t ub,
+                                                    uint32_t mlen) {
+    // See
+    // https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/docs/fle/fle_string_search.md#strencode-substring
+    // for an explanation of this calculation.
+    uint32_t padded_len = uint32_t((unfoldedString.size() + 5 + 15) / 16) * 16 - 5;
+    if (lb > padded_len) {
+        return 0;
+    }
+    padded_len = std::min(mlen, padded_len);
+    uint32_t largest_substring = std::min(padded_len, ub);
+    uint32_t largest_substring_count = padded_len - largest_substring + 1;
+    uint32_t smallest_substring_count = padded_len - lb + 1;
+    return (largest_substring_count + smallest_substring_count) *
+        (smallest_substring_count - largest_substring_count + 1) / 2;
+}
+
+uint32_t QETextSearchCrudTest::getMsizeForPrefixSuffix(StringData unfoldedString,
+                                                       uint32_t lb,
+                                                       uint32_t ub) {
+    // See
+    // https://github.com/10gen/mongo/blob/master/src/mongo/db/modules/enterprise/docs/fle/fle_string_search.md#strencode-suffix-and-prefix
+    // for an explanation of this calculation.
+    const uint32_t padded_len = uint32_t((unfoldedString.size() + 5 + 15) / 16) * 16 - 5;
+    if (lb > padded_len) {
+        return 0;
+    }
+    return std::min(ub, padded_len) - lb + 1;
+}
+
+static uint8_t queryTypeToIndex(QueryTypeEnum qt) {
+    switch (qt) {
+        case QueryTypeEnum::SubstringPreview:
+            return 0;
+        case QueryTypeEnum::SuffixPreview:
+            return 1;
+        case QueryTypeEnum::PrefixPreview:
+            return 2;
+        default:
+            MONGO_UNREACHABLE;
+    }
+}
+
+static QueryTypeEnum indexToQueryType(uint8_t idx) {
+    switch (idx) {
+        case 0:
+            return QueryTypeEnum::SubstringPreview;
+        case 1:
+            return QueryTypeEnum::SuffixPreview;
+        case 2:
+            return QueryTypeEnum::PrefixPreview;
+        default:
+            MONGO_UNREACHABLE;
+    }
+}
+
+void QETextSearchCrudTest::verifyExpectationsAfterInsertions(
+    const std::vector<std::pair<StringData, StringData>>& inserted) {
+    stdx::unordered_map<std::string, int> affixCounts[3];
+    stdx::unordered_map<std::string, int> exactCounts;
+    stdx::unordered_map<std::string, uint32_t> paddingCounts[3];
+    uint32_t totalTags = 0;
+    for (const auto& [unfoldedStr, foldedStr] : inserted) {
+        totalTags++;  // exact
+        unicode::String unicodeFoldedStr(foldedStr);
+        auto foldedStrStd = foldedStr.toString();
+        exactCounts[foldedStrStd]++;
+        for (const auto& schema : _schemas) {
+            uint32_t msize;
+            stdx::unordered_set<std::string> affixes;
+            switch (schema.type) {
+                case QueryTypeEnum::SubstringPreview:
+                    msize = getMsizeForSubstring(unfoldedStr, schema.lb, schema.ub, schema.mlen);
+                    affixes = getExpectedSubstrings(unicodeFoldedStr, schema.lb, schema.ub);
+                    break;
+                case QueryTypeEnum::SuffixPreview:
+                    msize = getMsizeForPrefixSuffix(unfoldedStr, schema.lb, schema.ub);
+                    affixes = getExpectedSuffixes(unicodeFoldedStr, schema.lb, schema.ub);
+                    break;
+                case QueryTypeEnum::PrefixPreview:
+                    msize = getMsizeForPrefixSuffix(unfoldedStr, schema.lb, schema.ub);
+                    affixes = getExpectedPrefixes(unicodeFoldedStr, schema.lb, schema.ub);
+                    break;
+                default:
+                    MONGO_UNREACHABLE;
+            }
+
+            auto qt_index = queryTypeToIndex(schema.type);
+            uint32_t padCount = msize - affixes.size();
+            paddingCounts[qt_index][foldedStrStd] += padCount;
+            for (const auto& affix : affixes) {
+                affixCounts[qt_index][affix]++;
+            }
+            totalTags += msize;
+        }
+    }
+    for (const auto& [exactStr, count] : exactCounts) {
+        checkExactInserted(exactStr, count);
+    }
+    for (auto qt : {QueryTypeEnum::SubstringPreview,
+                    QueryTypeEnum::SuffixPreview,
+                    QueryTypeEnum::PrefixPreview}) {
+        auto qt_index = queryTypeToIndex(qt);
+        for (const auto& [exactStr, count] : paddingCounts[qt_index]) {
+            checkPaddingInserted(exactStr, count, qt);
+        }
+        for (const auto& [affix, count] : affixCounts[qt_index]) {
+            auto strDoc = BSON("k" << affix);
+            auto strElement = strDoc.firstElement();
+            // If we inserted a substring ct times, we should expect to find matching non-anchors up
+            // to and including ct, but not beyond.
+            for (int ct = 1; ct <= count; ct++) {
+                ASSERT_FALSE(findESCNonAnchor(strElement, ct, qt).isEmpty());
+            }
+            ASSERT_TRUE(findESCNonAnchor(strElement, count + 1, qt).isEmpty());
+        }
+    }
+
+    assertDocumentCounts(inserted.size(), totalTags, totalTags);
+    assertECOCDocumentCountByField("field", totalTags);
+}
+
+void QETextSearchCrudTest::doInsertsAndVerifyExpectations(
+    const std::vector<std::pair<StringData, StringData>>& inserts) {
+    std::vector<std::pair<StringData, StringData>> inserted;
+    verifyExpectationsAfterInsertions(inserted);
+    for (size_t i = 0; i < inserts.size(); i++) {
+        auto toInsert = BSON("field" << inserts[i].first);
+        doInsert(i + 1, toInsert.firstElement());
+        inserted.push_back(inserts[i]);
+        verifyExpectationsAfterInsertions(inserted);
+    }
+}
+
+TEST_F(QETextSearchCrudTest, BasicSubstring) {
+    addSchema({.type = QueryTypeEnum::SubstringPreview,
+               .lb = 10,
+               .ub = 100,
+               .mlen = 1000,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"}});
+}
+TEST_F(QETextSearchCrudTest, BasicSuffix) {
+    addSchema({.type = QueryTypeEnum::SuffixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"}});
+}
+TEST_F(QETextSearchCrudTest, BasicPrefix) {
+    addSchema({.type = QueryTypeEnum::PrefixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"}});
+}
+TEST_F(QETextSearchCrudTest, BasicPrefixAndSuffix) {
+    addSchema({.type = QueryTypeEnum::SuffixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    addSchema({.type = QueryTypeEnum::PrefixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"}});
+}
+TEST_F(QETextSearchCrudTest, RepeatingSubstring) {
+    addSchema({.type = QueryTypeEnum::SubstringPreview,
+               .lb = 10,
+               .ub = 100,
+               .mlen = 1000,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"aaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaa"}});
+}
+TEST_F(QETextSearchCrudTest, FoldAsciiSuffix) {
+    addSchema({.type = QueryTypeEnum::SuffixPreview,
+               .lb = 10,
+               .ub = 100,
+               .mlen = 1000,
+               .casef = true,
+               .diacf = true});
+    doInsertsAndVerifyExpectations(
+        {{"D^e`````^^M^o^^^^n``st```rA^^`^`^`^tI``on", "demonstration"}});
+}
+TEST_F(QETextSearchCrudTest, UnicodeSubstring) {
+    addSchema({.type = QueryTypeEnum::SubstringPreview,
+               .lb = 1,
+               .ub = 5,
+               .mlen = 1000,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"私はぺんです.", "私はぺんです."}});
+}
+TEST_F(QETextSearchCrudTest, FoldUnicodeSubstring) {
+    addSchema({.type = QueryTypeEnum::SubstringPreview,
+               .lb = 3,
+               .ub = 5,
+               .mlen = 1000,
+               .casef = true,
+               .diacf = true});
+    doInsertsAndVerifyExpectations(
+        {{"私\xf0\x90\xb4\xa5はẂ𑂚^ぺ\xcc\x86\xcc\x86ん\xef\xad\x83`.𓀈\xf0\x90\xb4\xa5𓀍`AЃ",
+          "私はw𑂙へん\xd7\xa3.𓀈𓀍aг"}});
+}
+
+TEST_F(QETextSearchCrudTest, BasicSubstringMultipleInserts) {
+    addSchema({.type = QueryTypeEnum::SubstringPreview,
+               .lb = 10,
+               .ub = 100,
+               .mlen = 1000,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"},
+                                    {"hello to the world", "hello to the world"},
+                                    {"goodbye to the world", "goodbye to the world"},
+                                    {"demonstration", "demonstration"},
+                                    {"aaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaa"},
+                                    {"aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa"}});
+}
+TEST_F(QETextSearchCrudTest, BasicSuffixMultipleInserts) {
+    addSchema({.type = QueryTypeEnum::SuffixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"},
+                                    {"hello to the world", "hello to the world"},
+                                    {"goodbye to the world", "goodbye to the world"},
+                                    {"demonstration", "demonstration"},
+                                    {"aaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaa"},
+                                    {"aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa"}});
+}
+TEST_F(QETextSearchCrudTest, BasicPrefixMultipleInserts) {
+    addSchema({.type = QueryTypeEnum::PrefixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"},
+                                    {"hello to the world", "hello to the world"},
+                                    {"goodbye to the world", "goodbye to the world"},
+                                    {"demonstration", "demonstration"},
+                                    {"aaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaa"},
+                                    {"aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa"}});
+}
+TEST_F(QETextSearchCrudTest, BasicPrefixAndSuffixMultipleInserts) {
+    addSchema({.type = QueryTypeEnum::SuffixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    addSchema({.type = QueryTypeEnum::PrefixPreview,
+               .lb = 10,
+               .ub = 100,
+               .casef = false,
+               .diacf = false});
+    doInsertsAndVerifyExpectations({{"demonstration", "demonstration"},
+                                    {"hello to the world", "hello to the world"},
+                                    {"goodbye to the world", "goodbye to the world"},
+                                    {"demonstration", "demonstration"},
+                                    {"aaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaa"},
+                                    {"aaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaa"}});
 }
 
 }  // namespace

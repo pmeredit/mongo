@@ -11,15 +11,16 @@ import {Thread} from "jstests/libs/parallelTester.js";
 import {
     getDefaultSp,
     Streams,
-} from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
-import {
-    test as testConstants
+    test as testConstants,
 } from "src/mongo/db/modules/enterprise/jstests/streams/fake_client.js";
 import {
     TEST_TENANT_ID,
     waitForCount,
     waitWhenThereIsMoreData
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+const lastCheckpointFieldName = "lastCheckpoint";
+const sourceStateFieldName = "sourceState";
+const commitTimeFieldName = "commitTime";
 
 export function uuidStr() {
     return UUID().toString().split('"')[1];
@@ -30,174 +31,6 @@ export function removeProjections(doc) {
     delete doc._stream_meta;
     delete doc._id;
     return doc;
-}
-
-// Used in commonTest to force the next document to be in a new batch after previous documents
-// have all been processed.
-export const batchBreakerField = "__batchBreaker";
-export function makeBatchBreakerDoc() {
-    let doc = {};
-    doc[batchBreakerField] = 1;
-    return doc;
-}
-// Makes comparisons easier in commonTest.
-export function sanitizeDlqDoc(d) {
-    delete d["_stream_meta"];
-    delete d["processorName"];
-    delete d["dlqTime"];
-    delete d["doc"]["_ts"];
-    delete d["doc"]["_stream_meta"];
-    return d;
-}
-
-/**
- * Helper function to test that the pipeline returns the expectedOutput for the given input.
- * First, the $source.documents test source is used.
- * Then, then a mock Kafka $source is used.
- * Then, a change stream source is used, and there is a checkpoint in the middle.
- */
-export function commonTest({
-    input,
-    pipeline,
-    expectedOutput,
-    timeField = "$ts",
-    expectedGeneratedOutput,
-    expectedChangestreamOutput,
-    expectedTestKafkaOutput,
-    useTimeField = true,
-    featureFlags = {},
-    expectedDlq = [],
-    useKafka = true
-}) {
-    const sp = getDefaultSp();
-
-    assert(expectedOutput ||
-           (expectedGeneratedOutput && expectedChangestreamOutput && expectedTestKafkaOutput));
-
-    // Test with a test source and no checkpoints.
-    const documentsSourceInput = input.filter(d => !d.hasOwnProperty(batchBreakerField));
-    let generatedSource = {$source: {documents: documentsSourceInput}};
-    if (useTimeField) {
-        generatedSource["$source"]["timeField"] = timeField;
-    }
-    const output = sp.process(
-        [
-            generatedSource,
-            ...pipeline,
-        ],
-        3 /* maxLoops */,
-        featureFlags);
-    const dlqMessageField = "_dlqMessage";
-    const dlqOutput = output.filter(d => d.hasOwnProperty(dlqMessageField))
-                          .map(d => sanitizeDlqDoc(d[dlqMessageField]));
-    const actualOutput = output.filter(d => !d.hasOwnProperty(dlqMessageField));
-    const exOutput = expectedGeneratedOutput ? expectedGeneratedOutput : expectedOutput;
-    assert(resultsEq(actualOutput, exOutput, true /* verbose */));
-    assert(resultsEq(dlqOutput, expectedDlq, true /* verbose */));
-
-    if (useKafka) {
-        // Test with a test Kafka source and no checkpoints.
-        const outputColl =
-            db.getSiblingDB(testConstants.dbName).getCollection(testConstants.outputCollName);
-        outputColl.drop();
-        let kafkaPipeline = [
-            {
-                $source: {
-                    connectionName: testConstants.kafkaConnection,
-                    testOnlyPartitionCount: NumberInt(1),
-                    topic: "t1",
-                }
-            },
-            ...pipeline,
-            {
-                $merge: {
-                    into: {
-                        connectionName: testConstants.atlasConnection,
-                        db: testConstants.dbName,
-                        coll: testConstants.outputCollName
-                    }
-                }
-            }
-        ];
-        if (useTimeField) {
-            kafkaPipeline[0]["$source"]["timeField"] = timeField;
-        }
-        sp.createStreamProcessor("foo", kafkaPipeline);
-        sp.foo.start({featureFlags: featureFlags});
-        sp.foo.testInsert(...documentsSourceInput);
-        const exKafkaOutput = expectedTestKafkaOutput ? expectedTestKafkaOutput : expectedOutput;
-        assert.soon(() => {
-            jsTestLog(outputColl.find({}).toArray());
-            return outputColl.count() == exKafkaOutput.length;
-        }, "waiting for output from kafka", 1000 * 10);
-        assert(
-            resultsEq(outputColl.find({}).toArray(), exKafkaOutput, true /* verbose */, ["_id"]));
-        sp.foo.stop();
-    }
-
-    // Test with a changestream source and a checkpoint in the middle.
-    const newPipeline = [
-        {$match: {operationType: "insert"}},
-        {$replaceRoot: {newRoot: "$fullDocument"}},
-        ...pipeline,
-    ];
-    const test = new TestHelper(input,
-                                newPipeline,
-                                undefined,  // interval
-                                "atlas",    // sourcetype
-                                undefined,  // useNewCheckpointing
-                                undefined,  // useRestoredExecutionPlan
-                                undefined,  // writeDir
-                                undefined,  // restoreDir
-                                undefined,  // dbForTest
-                                undefined,  // targetSourceMergeDb
-                                useTimeField);
-    test.startOptions.featureFlags = Object.assign(test.startOptions.featureFlags, featureFlags);
-
-    jsTestLog(`Running with input length ${input.length}, first doc ${input[tojson(0)]}`);
-
-    const insertData = (docs) => {
-        let numInserts = 0;
-        for (const doc of docs) {
-            if (doc.hasOwnProperty(batchBreakerField)) {
-                // Wait for all other docs to be processed.
-                assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
-                            `waiting for inputMessageCount of ${numInserts}`,
-                            1000 * 10);
-            } else {
-                assert.commandWorked(test.inputColl.insertOne(doc));
-                numInserts += 1;
-            }
-        }
-
-        assert.soon(() => { return test.stats().inputMessageCount == numInserts; },
-                    `waiting for inputMessageCount of ${numInserts}`,
-                    1000 * 10);
-    };
-
-    // Start the processor and write part of the input.
-    const csOutput = expectedChangestreamOutput ? expectedChangestreamOutput : expectedOutput;
-    test.startFromLatestCheckpoint();
-    const firstInput = input.slice(0, input.length - 1);
-    insertData(firstInput);
-    // Stop the processor and write the rest of the input.
-    test.stop();
-    assert.commandWorked(test.inputColl.insertOne(input[input.length - 1]));
-    // Start the processor from its last checkpoint.
-    test.startFromLatestCheckpoint();
-    // Validate the expected results are obtained.
-    assert.soon(() => { return test.stats().outputMessageCount == csOutput.length; });
-    assert(resultsEq(test.outputColl.find({}).toArray(), csOutput, true /* verbose */, ["_id"]));
-    // Wait for expected DLQ results.
-    assert.soon(() => { return test.stats().dlqMessageCount == expectedDlq.length; },
-                "waiting for expected DLQ stats",
-                10 * 1000);
-    assert(resultsEq(test.dlqColl.find({}).toArray().map(d => sanitizeDlqDoc(d)),
-                     expectedDlq,
-                     true /* verbose */,
-                     ["_id"]));
-
-    test.stop();
 }
 
 // Utilities to interact with the new local disk checkpoint storage.
@@ -343,23 +176,23 @@ export function flushUntilStopped(
 }
 
 export class TestHelper {
-    constructor(
-        input,
-        middlePipeline,
-        interval = 0,
-        sourceType = "kafka",
-        useNewCheckpointing = true,
-        useRestoredExecutionPlan = true,
-        writeDir = null,
-        restoreDir = null,
-        dbForTest = null,
-        targetSourceMergeDb = null,
-        useTimeField = true,
-        sinkType = "atlas",
-        changestreamStalenessMonitoring = false,
-        oplogSizeMB = undefined,
-        kafkaIsTest = true,
-    ) {
+    constructor(input,
+                middlePipeline,
+                interval = 0,
+                sourceType = "kafka",
+                useNewCheckpointing = true,
+                useRestoredExecutionPlan = true,
+                writeDir = null,
+                restoreDir = null,
+                dbForTest = null,
+                targetSourceMergeDb = null,
+                useTimeField = true,
+                sinkType = "atlas",
+                changestreamStalenessMonitoring = false,
+                oplogSizeMB = undefined,
+                kafkaIsTest = true,
+                featureFlags = {},
+                extraMergeParams) {
         assert(useNewCheckpointing);
         this.sourceType = sourceType;
         this.sinkType = sinkType;
@@ -379,7 +212,7 @@ export class TestHelper {
         this.kafkaConnectionName = "kafka1";
         this.kafkaBootstrapServers = "localhost:9092";
         this.kafkaIsTest = kafkaIsTest;
-        this.kafkaTopic = "topic1";
+        this.kafkaTopic = "t1";
         this.dbConnectionName = "db1";
         this.dbName = "test";
         this.dlqCollName = uuidStr();
@@ -405,6 +238,10 @@ export class TestHelper {
         this.spName = uuidStr();
         this.processorId = this.spName;
         this.checkpointIntervalMs = null;  // Use the default.
+        this.extraMergeParams = null;
+        if (extraMergeParams) {
+            this.extraMergeParams = extraMergeParams;
+        }
 
         this.useNewCheckpointing = useNewCheckpointing;
         if (writeDir == null) {
@@ -432,17 +269,18 @@ export class TestHelper {
         checkpointOptions.storage = null;
         checkpointOptions.localDisk = {writeDirectory: this.writeDir};
 
-        let featureFlags = {
+        let testFeatureFlags = {
             useExecutionPlanFromCheckpoint: useRestoredExecutionPlan,
-            enableSessionWindow: true
+            enableSessionWindow: true,
+            ...featureFlags
         };
         if (changestreamStalenessMonitoring) {
-            featureFlags.changestreamSourceStalenessMonitorPeriod = NumberInt(5);
+            testFeatureFlags.changestreamSourceStalenessMonitorPeriod = NumberInt(5);
         }
         this.startOptions = {
             dlq: {connectionName: this.dbConnectionName, db: this.dbName, coll: this.dlqCollName},
             checkpointOptions: checkpointOptions,
-            featureFlags: featureFlags,
+            featureFlags: testFeatureFlags,
             checkpointOnStart: false
         };
         this.connectionRegistry = [
@@ -465,6 +303,27 @@ export class TestHelper {
                 type: 'sample_solar',
                 options: {},
             },
+            {
+                name: testConstants.awsIAMLambdaConnection,
+                type: 'aws_iam_lambda',
+                options: {
+                    accessKey: "myAccessKey",
+                    accessSecret: "myAccessSecret",
+                    sessionToken: "mySessionToken",
+                    expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+                }
+            },
+            {
+                name: testConstants.awsIAMS3Connection,
+                type: 'aws_iam_s3',
+                options: {
+                    accessKey: "myAccessKey",
+                    accessSecret: "myAccessSecret",
+                    sessionToken:
+                        "",  // Local Minio doesn't take temporary access keys with session tokens
+                    expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+                }
+            },
         ];
         this.useTimeField = useTimeField;
 
@@ -474,6 +333,14 @@ export class TestHelper {
         this.checkpointUtil =
             new LocalDiskCheckpointUtil(this.writeDir, this.tenantId, this.processorId);
     }
+
+    // get all metrics for this stream processor
+    gaugeMetrics() {
+        const gauges = this.sp.metrics()["gauges"];
+        return gauges.filter((m) => {
+            return m.labels.some(l => l.key === "processor_id" && l.value === this.processorId);
+        });
+    };
 
     _buildPipeline(middlePipeline) {
         // Setup the pipeline.
@@ -515,8 +382,8 @@ export class TestHelper {
         }
         if (this.sinkType == 'memory') {
             this.pipeline.push({$emit: {connectionName: '__testMemory'}});
-        } else {
-            this.pipeline.push({
+        } else if (this.sinkType != 'included') {
+            var merge = {
                 $merge: {
                     into: {
                         connectionName: this.dbConnectionName,
@@ -524,7 +391,19 @@ export class TestHelper {
                         coll: this.outputCollName
                     },
                 }
-            });
+            };
+            if (this.extraMergeParams && this.extraMergeParams !== null) {
+                Object.assign(merge["$merge"], this.extraMergeParams);
+            }
+            if (merge["$merge"].hasOwnProperty("on")) {
+                // Create the required unique index for the on field.
+                let index = {};
+                for (let field of merge["$merge"]["on"]) {
+                    index[field] = 1;
+                }
+                assert.commandWorked(this.outputColl.createIndex(index, {unique: true}));
+            }
+            this.pipeline.push(merge);
         }
     }
 
@@ -770,7 +649,10 @@ export class CheckPointTestHelper extends TestHelper {
                 sourceType = "kafka",
                 useNewCheckpointing = false,
                 writeDir = null,
-                restoreDir = null) {
+                restoreDir = null,
+                useTimeField = true,
+                featureFlags = {},
+                extraMergeParams) {
         super(inputDocs,
               pipeline,
               interval,
@@ -778,9 +660,18 @@ export class CheckPointTestHelper extends TestHelper {
               useNewCheckpointing,
               true,
               writeDir,
-              restoreDir);
+              restoreDir,
+              null,
+              null,
+              useTimeField,
+              "atlas",
+              false,
+              undefined,
+              true,
+              featureFlags,
+              extraMergeParams);
     }
-    runWithInputSlice(endRange, firstStart = true) {
+    runWithInputSlice(startRange, endRange, firstStart = true) {
         this.sp.createStreamProcessor(this.spName, this.pipeline);
         this.sp[this.spName].start(this.startOptions);
         if (this.sourceType === 'kafka') {
@@ -789,7 +680,7 @@ export class CheckPointTestHelper extends TestHelper {
                 streams_testOnlyInsert: '',
                 tenantId: this.tenantId,
                 name: this.spName,
-                documents: this.input.slice(0, endRange),
+                documents: this.input.slice(startRange, endRange),
             }));
         } else if (firstStart == true) {
             // For a changestream source, we only insert data into the colletion
@@ -850,7 +741,7 @@ export function checkpointInTheMiddleTest(
     assert.gt(randomPoint, inputDocs.length / 4 - 1);
     assert.lt(randomPoint, inputDocs.length);
     assert.gt(randomPoint, 0);
-    test2.runWithInputSlice(randomPoint);
+    test2.runWithInputSlice(0, randomPoint);
     test2.stop();  // this will force the checkpoint
     let ids2 = test2.getCheckpointIds();
     assert.eq(ids2.length, 2, `expected some checkpoints`);  // not sure why we get 2 checkpoints.
@@ -866,7 +757,6 @@ export function checkpointInTheMiddleTest(
         writeBsonArrayToFile(intermediateStateDumpDir + "/inputDocs.bson", inputDocs);
         // eslint-disable-next-line
         writeBsonArrayToFile(intermediateStateDumpDir + "/expectedResults.bson", originalResults);
-        // eslint-disable-next-line
         copyDir(test2.spWriteDir + "/" + id, intermediateStateDumpDir);
     }
     // Run the streamProcessor.
@@ -885,4 +775,21 @@ export function checkpointInTheMiddleTest(
     for (let i = 0; i < originalResults.length; i++) {
         compareFunc(results[i], originalResults[i]);
     }
+}
+
+export function validateLastCheckpointStat(sourceType, verboseStats) {
+    assert(lastCheckpointFieldName in verboseStats);
+    const lastCheckpoint = verboseStats[lastCheckpointFieldName];
+    assert(sourceStateFieldName in lastCheckpoint);
+    const sourceState = lastCheckpoint[sourceStateFieldName];
+    if (sourceType == "kafka") {
+        assert(sourceState.length > 0);
+        for (const partition of sourceState) {
+            assert("partition" in partition && "offset" in partition && "topic" in partition);
+        }
+    } else {
+        assert("resumeToken" in sourceState && "clusterTime" in sourceState);
+    }
+
+    assert(commitTimeFieldName in lastCheckpoint);
 }

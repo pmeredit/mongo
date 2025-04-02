@@ -40,12 +40,14 @@
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/query/canonical_query.h"
+#include "mongo/db/query/query_utils.h"
 #include "mongo/db/query/write_ops/delete_request_gen.h"
 #include "mongo/db/query/write_ops/parsed_writes_common.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/storage/storage_parameters_gen.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/db/timeseries/timeseries_update_delete_util.h"
+#include "mongo/db/version_context.h"
 #include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kWrite
@@ -66,6 +68,7 @@ ParsedDelete::ParsedDelete(OperationContext* opCtx,
           isTimeseriesDelete
               ? createTimeseriesWritesQueryExprsIfNecessary(
                     feature_flags::gTimeseriesDeletesSupport.isEnabled(
+                        VersionContext::getDecoration(opCtx),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()),
                     collection)
               : nullptr),
@@ -93,7 +96,7 @@ Status ParsedDelete::parseRequest() {
                   .build();
 
     // The '_id' field of a time-series collection needs to be handled as other fields.
-    if (CanonicalQuery::isSimpleIdQuery(_request->getQuery()) && !_timeseriesDeleteQueryExprs) {
+    if (isSimpleIdQuery(_request->getQuery()) && !_timeseriesDeleteQueryExprs) {
         return Status::OK();
     }
 

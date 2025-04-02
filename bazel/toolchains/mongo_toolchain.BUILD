@@ -1,7 +1,14 @@
 # This file exists to describe "mongo_toolchain", the http_archive defined in WORKSPACE.bazel
 
-load("@//bazel/toolchains:mongo_cc_toolchain_config.bzl", "mongo_cc_toolchain_config")
-load("@mongo_toolchain_{version}//:mongo_toolchain_flags.bzl", "CLANG_INCLUDE_DIRS", "COMMON_BINDIRS", "COMMON_BUILTIN_INCLUDE_DIRECTORIES", "COMMON_INCLUDE_DIRECTORIES", "COMMON_LINK_FLAGS", "GCC_INCLUDE_DIRS")
+load("@//bazel/toolchains:mongo_linux_cc_toolchain_config.bzl", "mongo_linux_cc_toolchain_config")
+load("@mongo_toolchain_{version}//:mongo_toolchain_flags.bzl",
+    "CLANG_INCLUDE_DIRS",
+    "COMMON_BINDIRS",
+    "COMMON_BUILTIN_INCLUDE_DIRECTORIES",
+    "COMMON_INCLUDE_DIRECTORIES",
+    "COMMON_LINK_FLAGS",
+    "GCC_INCLUDE_DIRS",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -44,9 +51,19 @@ LINKER_LINKFLAGS = select(
     no_match_error = LINKER_ERROR_MESSAGE,
 )
 
+LINKSTATIC_ENABLED = select({
+    "@//bazel/config:linkstatic_enabled": True,
+    "@//conditions:default": False,
+})
+
+SHARED_ARCHIVE_ENABLED = select({
+    "@//bazel/config:shared_archive_enabled": True,
+    "@//conditions:default": False,
+})
+
 LINK_FLAGS = ["-L" + flag for flag in COMMON_LINK_FLAGS] + LINKER_LINKFLAGS
 
-mongo_cc_toolchain_config(
+mongo_linux_cc_toolchain_config(
     name = "cc_gcc_toolchain_config",
     bin_dirs = COMMON_BINDIRS,
     compiler = "gcc",
@@ -74,9 +91,11 @@ mongo_cc_toolchain_config(
     },
     toolchain_identifier = "gcc_toolchain",
     verbose = True,
+    linkstatic = LINKSTATIC_ENABLED,
+    shared_archive = SHARED_ARCHIVE_ENABLED,
 )
 
-mongo_cc_toolchain_config(
+mongo_linux_cc_toolchain_config(
     name = "cc_clang_toolchain_config",
     bin_dirs = COMMON_BINDIRS,
     compiler = "clang",
@@ -109,6 +128,8 @@ mongo_cc_toolchain_config(
     },
     toolchain_identifier = "clang_toolchain",
     verbose = True,
+    linkstatic = LINKSTATIC_ENABLED,
+    shared_archive = SHARED_ARCHIVE_ENABLED,
 )
 
 cc_toolchain(
@@ -159,5 +180,12 @@ filegroup(
     name = "llvm_symbolizer",
     srcs = [
         "{version}/bin/llvm-symbolizer",
+    ],
+)
+
+filegroup(
+    name = "clang_format",
+    srcs = [
+        "{version}/bin/clang-format",
     ],
 )

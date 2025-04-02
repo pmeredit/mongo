@@ -44,6 +44,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/expression_bm_fixture.h"
+#include "mongo/db/server_options.h"
 #include "mongo/platform/decimal128.h"
 #include "mongo/util/time_support.h"
 
@@ -154,13 +155,12 @@ void ExpressionBenchmarkFixture::benchmarkArrayArrayElemAtLast(benchmark::State&
 void ExpressionBenchmarkFixture::benchmarkArrayFilter0(benchmark::State& state) {
     BSONArray array = rangeBSONArray(0, 10);
 
-    benchmarkExpression(BSON("$filter" << BSON("input"
-                                               << "$array"
-                                               << "cond"
-                                               << BSON("$gte" << BSON_ARRAY("$$this"
-                                                                            << "A"_sd)))),
-                        state,
-                        std::vector<Document>(1, {{"array"_sd, array}}));
+    benchmarkExpression(
+        BSON("$filter" << BSON("input" << "$array"
+                                       << "cond"
+                                       << BSON("$gte" << BSON_ARRAY("$$this" << "A"_sd)))),
+        state,
+        std::vector<Document>(1, {{"array"_sd, array}}));
 }
 
 /**
@@ -174,13 +174,12 @@ void ExpressionBenchmarkFixture::benchmarkArrayFilter0(benchmark::State& state) 
 void ExpressionBenchmarkFixture::benchmarkArrayFilter10(benchmark::State& state) {
     BSONArray array = rangeBSONArray(0, 10);
 
-    benchmarkExpression(BSON("$filter" << BSON("input"
-                                               << "$array"
-                                               << "cond"
-                                               << BSON("$gte" << BSON_ARRAY("$$this"
-                                                                            << "0"_sd)))),
-                        state,
-                        std::vector<Document>(1, {{"array"_sd, array}}));
+    benchmarkExpression(
+        BSON("$filter" << BSON("input" << "$array"
+                                       << "cond"
+                                       << BSON("$gte" << BSON_ARRAY("$$this" << "0"_sd)))),
+        state,
+        std::vector<Document>(1, {{"array"_sd, array}}));
 }
 
 /**
@@ -192,8 +191,7 @@ void ExpressionBenchmarkFixture::benchmarkArrayFilter10(benchmark::State& state)
 void ExpressionBenchmarkFixture::benchmarkArrayInFound0(benchmark::State& state) {
     BSONArray array = rangeBSONArray(0, 10);
 
-    benchmarkExpression(BSON("$in" << BSON_ARRAY("0"_sd
-                                                 << "$array")),
+    benchmarkExpression(BSON("$in" << BSON_ARRAY("0"_sd << "$array")),
                         state,
                         std::vector<Document>(1, {{"array"_sd, array}}));
 }
@@ -207,8 +205,7 @@ void ExpressionBenchmarkFixture::benchmarkArrayInFound0(benchmark::State& state)
 void ExpressionBenchmarkFixture::benchmarkArrayInFound9(benchmark::State& state) {
     BSONArray array = rangeBSONArray(0, 10);
 
-    benchmarkExpression(BSON("$in" << BSON_ARRAY("9"_sd
-                                                 << "$array")),
+    benchmarkExpression(BSON("$in" << BSON_ARRAY("9"_sd << "$array")),
                         state,
                         std::vector<Document>(1, {{"array"_sd, array}}));
 }
@@ -222,8 +219,7 @@ void ExpressionBenchmarkFixture::benchmarkArrayInFound9(benchmark::State& state)
 void ExpressionBenchmarkFixture::benchmarkArrayInNotFound(benchmark::State& state) {
     BSONArray array = rangeBSONArray(0, 10);
 
-    benchmarkExpression(BSON("$in" << BSON_ARRAY("A"_sd
-                                                 << "$array")),
+    benchmarkExpression(BSON("$in" << BSON_ARRAY("A"_sd << "$array")),
                         state,
                         std::vector<Document>(1, {{"array"_sd, array}}));
 }
@@ -235,8 +231,7 @@ void ExpressionBenchmarkFixture::benchmarkArrayInNotFound(benchmark::State& stat
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkCompareEq(benchmark::State& state) {
-    benchmarkExpression(BSON("$eq" << BSON_ARRAY("1"
-                                                 << "$value")),
+    benchmarkExpression(BSON("$eq" << BSON_ARRAY("1" << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -248,8 +243,7 @@ void ExpressionBenchmarkFixture::benchmarkCompareEq(benchmark::State& state) {
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkCompareGte(benchmark::State& state) {
-    benchmarkExpression(BSON("$gte" << BSON_ARRAY("1"
-                                                  << "$value")),
+    benchmarkExpression(BSON("$gte" << BSON_ARRAY("1" << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -261,8 +255,7 @@ void ExpressionBenchmarkFixture::benchmarkCompareGte(benchmark::State& state) {
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkCompareLte(benchmark::State& state) {
-    benchmarkExpression(BSON("$lte" << BSON_ARRAY("1"
-                                                  << "$value")),
+    benchmarkExpression(BSON("$lte" << BSON_ARRAY("1" << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -274,8 +267,7 @@ void ExpressionBenchmarkFixture::benchmarkCompareLte(benchmark::State& state) {
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkCompareNe(benchmark::State& state) {
-    benchmarkExpression(BSON("$ne" << BSON_ARRAY("1"
-                                                 << "$value")),
+    benchmarkExpression(BSON("$ne" << BSON_ARRAY("1" << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -287,12 +279,11 @@ void ExpressionBenchmarkFixture::benchmarkCompareNe(benchmark::State& state) {
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkConditionalCond(benchmark::State& state) {
-    benchmarkExpression(BSON("$cond" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("1"_sd
-                                                                            << "$value"))
-                                                   << "1"_sd
-                                                   << "0"_sd)),
-                        state,
-                        std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
+    benchmarkExpression(
+        BSON("$cond" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("1"_sd << "$value")) << "1"_sd
+                                                                                 << "0"_sd)),
+        state,
+        std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
 
 /**
@@ -302,8 +293,7 @@ void ExpressionBenchmarkFixture::benchmarkConditionalCond(benchmark::State& stat
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkConditionalIfNullFalse(benchmark::State& state) {
-    benchmarkExpression(BSON("$ifNull" << BSON_ARRAY("$value"
-                                                     << "0"_sd)),
+    benchmarkExpression(BSON("$ifNull" << BSON_ARRAY("$value" << "0"_sd)),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -315,8 +305,7 @@ void ExpressionBenchmarkFixture::benchmarkConditionalIfNullFalse(benchmark::Stat
  *   {"_id": ObjectId(...), "value": null}
  */
 void ExpressionBenchmarkFixture::benchmarkConditionalIfNullTrue(benchmark::State& state) {
-    benchmarkExpression(BSON("$ifNull" << BSON_ARRAY("$value"
-                                                     << "0"_sd)),
+    benchmarkExpression(BSON("$ifNull" << BSON_ARRAY("$value" << "0"_sd)),
                         state,
                         std::vector<Document>(1, {Document(fromjson("{value: null}"))}));
 }
@@ -337,14 +326,13 @@ void ExpressionBenchmarkFixture::benchmarkConditionalIfNullTrue(benchmark::State
  */
 void ExpressionBenchmarkFixture::benchmarkConditionalSwitchCase0(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$switch" << BSON("branches"
-                               << BSON_ARRAY(BSON("case" << BSON("$eq" << BSON_ARRAY("$value"
-                                                                                     << "1"_sd))
-                                                         << "then" << 0)
-                                             << BSON("case" << BSON("$eq" << BSON_ARRAY("$value"
-                                                                                        << "0"_sd))
-                                                            << "then" << 1))
-                               << "default" << -1)),
+        BSON("$switch" << BSON(
+                 "branches"
+                 << BSON_ARRAY(
+                        BSON("case" << BSON("$eq" << BSON_ARRAY("$value" << "1"_sd)) << "then" << 0)
+                        << BSON("case" << BSON("$eq" << BSON_ARRAY("$value" << "0"_sd)) << "then"
+                                       << 1))
+                 << "default" << -1)),
         state,
         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -365,14 +353,13 @@ void ExpressionBenchmarkFixture::benchmarkConditionalSwitchCase0(benchmark::Stat
  */
 void ExpressionBenchmarkFixture::benchmarkConditionalSwitchCase1(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$switch" << BSON("branches"
-                               << BSON_ARRAY(BSON("case" << BSON("$eq" << BSON_ARRAY("$value"
-                                                                                     << "0"_sd))
-                                                         << "then" << 0)
-                                             << BSON("case" << BSON("$eq" << BSON_ARRAY("$value"
-                                                                                        << "1"_sd))
-                                                            << "then" << 1))
-                               << "default" << -1)),
+        BSON("$switch" << BSON(
+                 "branches"
+                 << BSON_ARRAY(
+                        BSON("case" << BSON("$eq" << BSON_ARRAY("$value" << "0"_sd)) << "then" << 0)
+                        << BSON("case" << BSON("$eq" << BSON_ARRAY("$value" << "1"_sd)) << "then"
+                                       << 1))
+                 << "default" << -1)),
         state,
         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -393,14 +380,13 @@ void ExpressionBenchmarkFixture::benchmarkConditionalSwitchCase1(benchmark::Stat
  */
 void ExpressionBenchmarkFixture::benchmarkConditionalSwitchDefault(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$switch" << BSON("branches"
-                               << BSON_ARRAY(BSON("case" << BSON("$eq" << BSON_ARRAY("$value"
-                                                                                     << "0"_sd))
-                                                         << "then" << 0)
-                                             << BSON("case" << BSON("$eq" << BSON_ARRAY("$value"
-                                                                                        << "2"_sd))
-                                                            << "then" << 1))
-                               << "default" << -1)),
+        BSON("$switch" << BSON(
+                 "branches"
+                 << BSON_ARRAY(
+                        BSON("case" << BSON("$eq" << BSON_ARRAY("$value" << "0"_sd)) << "then" << 0)
+                        << BSON("case" << BSON("$eq" << BSON_ARRAY("$value" << "2"_sd)) << "then"
+                                       << 1))
+                 << "default" << -1)),
         state,
         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -1023,18 +1009,14 @@ void ExpressionBenchmarkFixture::benchmarkGetFieldEvaluateExpression(benchmark::
     BSONObjBuilder objBuilder;
     objBuilder << "field"
                << "x.y$z"
-               << "input"
-               << BSON("$const" << BSON("x.y$z"
-                                        << "abc"));
+               << "input" << BSON("$const" << BSON("x.y$z" << "abc"));
 
     benchmarkExpression(BSON("$getField" << objBuilder.obj()), state);
 }
 
 void ExpressionBenchmarkFixture::benchmarkGetFieldEvaluateShortSyntaxExpression(
     benchmark::State& state) {
-    benchmarkExpression(BSON("$getField" << BSON("$const"
-                                                 << "$foo")),
-                        state);
+    benchmarkExpression(BSON("$getField" << BSON("$const" << "$foo")), state);
 }
 
 void ExpressionBenchmarkFixture::benchmarkGetFieldNestedExpression(benchmark::State& state) {
@@ -1058,10 +1040,8 @@ void ExpressionBenchmarkFixture::benchmarkGetFieldNestedExpression(benchmark::St
  */
 void ExpressionBenchmarkFixture::benchmarkLogicalAndFalse0(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$and" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value0"
-                                                           << "1"_sd))
-                                  << BSON("$eq" << BSON_ARRAY("$value1"
-                                                              << "0"_sd)))),
+        BSON("$and" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value0" << "1"_sd))
+                                  << BSON("$eq" << BSON_ARRAY("$value1" << "0"_sd)))),
         state,
         std::vector<Document>(1, {Document(fromjson("{value0: \"0\", value1: \"1\"}"))}));
 }
@@ -1075,10 +1055,8 @@ void ExpressionBenchmarkFixture::benchmarkLogicalAndFalse0(benchmark::State& sta
  */
 void ExpressionBenchmarkFixture::benchmarkLogicalAndFalse1(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$and" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value0"
-                                                           << "0"_sd))
-                                  << BSON("$eq" << BSON_ARRAY("$value1"
-                                                              << "2"_sd)))),
+        BSON("$and" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value0" << "0"_sd))
+                                  << BSON("$eq" << BSON_ARRAY("$value1" << "2"_sd)))),
         state,
         std::vector<Document>(1, {Document(fromjson("{value0: \"0\", value1: \"1\"}"))}));
 }
@@ -1092,10 +1070,8 @@ void ExpressionBenchmarkFixture::benchmarkLogicalAndFalse1(benchmark::State& sta
  */
 void ExpressionBenchmarkFixture::benchmarkLogicalAndTrue(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$and" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value0"
-                                                           << "0"_sd))
-                                  << BSON("$eq" << BSON_ARRAY("$value1"
-                                                              << "1"_sd)))),
+        BSON("$and" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value0" << "0"_sd))
+                                  << BSON("$eq" << BSON_ARRAY("$value1" << "1"_sd)))),
         state,
         std::vector<Document>(1, {Document(fromjson("{value0: \"0\", value1: \"1\"}"))}));
 }
@@ -1108,10 +1084,8 @@ void ExpressionBenchmarkFixture::benchmarkLogicalAndTrue(benchmark::State& state
  * This returns true on the first condition (position 0).
  */
 void ExpressionBenchmarkFixture::benchmarkLogicalOrTrue0(benchmark::State& state) {
-    benchmarkExpression(BSON("$or" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value"
-                                                                          << "1"_sd))
-                                                 << BSON("$eq" << BSON_ARRAY("$value"
-                                                                             << "0"_sd)))),
+    benchmarkExpression(BSON("$or" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value" << "1"_sd))
+                                                 << BSON("$eq" << BSON_ARRAY("$value" << "0"_sd)))),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -1124,10 +1098,8 @@ void ExpressionBenchmarkFixture::benchmarkLogicalOrTrue0(benchmark::State& state
  * This returns true on the second condition (position 1).
  */
 void ExpressionBenchmarkFixture::benchmarkLogicalOrTrue1(benchmark::State& state) {
-    benchmarkExpression(BSON("$or" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value"
-                                                                          << "0"_sd))
-                                                 << BSON("$eq" << BSON_ARRAY("$value"
-                                                                             << "1"_sd)))),
+    benchmarkExpression(BSON("$or" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value" << "0"_sd))
+                                                 << BSON("$eq" << BSON_ARRAY("$value" << "1"_sd)))),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -1140,10 +1112,8 @@ void ExpressionBenchmarkFixture::benchmarkLogicalOrTrue1(benchmark::State& state
  * This returns false as neither condition is met.
  */
 void ExpressionBenchmarkFixture::benchmarkLogicalOrFalse(benchmark::State& state) {
-    benchmarkExpression(BSON("$or" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value"
-                                                                          << "0"_sd))
-                                                 << BSON("$eq" << BSON_ARRAY("$value"
-                                                                             << "2"_sd)))),
+    benchmarkExpression(BSON("$or" << BSON_ARRAY(BSON("$eq" << BSON_ARRAY("$value" << "0"_sd))
+                                                 << BSON("$eq" << BSON_ARRAY("$value" << "2"_sd)))),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
@@ -1163,9 +1133,8 @@ void ExpressionBenchmarkFixture::benchmarkUnsetFieldEvaluateExpression(benchmark
     objBuilder << "field"
                << "a$b.c"
                << "input"
-               << BSON("$const" << BSON("a$b.c"
-                                        << "x"
-                                        << "f1" << 1 << "f2" << 2));
+               << BSON("$const" << BSON("a$b.c" << "x"
+                                                << "f1" << 1 << "f2" << 2));
 
     benchmarkExpression(BSON("$unsetField" << objBuilder.obj()), state);
 }
@@ -1198,8 +1167,7 @@ void ExpressionBenchmarkFixture::benchmarkSetIntersection(benchmark::State& stat
     BSONArray lhs = randomBSONArray(100000, kMax);
     BSONArray rhs = randomBSONArray(100000, kMax);
 
-    benchmarkExpression(BSON("$setIntersection" << BSON_ARRAY("$lhs"
-                                                              << "$rhs")),
+    benchmarkExpression(BSON("$setIntersection" << BSON_ARRAY("$lhs" << "$rhs")),
                         state,
                         std::vector<Document>(100, {{"lhs", lhs}, {"rhs", rhs}}));
 }
@@ -1209,8 +1177,7 @@ void ExpressionBenchmarkFixture::benchmarkSetDifference(benchmark::State& state)
     BSONArray lhs = randomBSONArray(100000, kMax);
     BSONArray rhs = randomBSONArray(100000, kMax);
 
-    benchmarkExpression(BSON("$setDifference" << BSON_ARRAY("$lhs"
-                                                            << "$rhs")),
+    benchmarkExpression(BSON("$setDifference" << BSON_ARRAY("$lhs" << "$rhs")),
                         state,
                         std::vector<Document>(100, {{"lhs", lhs}, {"rhs", rhs}}));
 }
@@ -1220,8 +1187,7 @@ void ExpressionBenchmarkFixture::benchmarkSetEquals(benchmark::State& state) {
     BSONArray lhs = randomBSONArray(100000, kMax);
     BSONArray rhs = randomBSONArray(100000, kMax);
 
-    benchmarkExpression(BSON("$setEquals" << BSON_ARRAY("$lhs"
-                                                        << "$rhs")),
+    benchmarkExpression(BSON("$setEquals" << BSON_ARRAY("$lhs" << "$rhs")),
                         state,
                         std::vector<Document>(100, {{"lhs", lhs}, {"rhs", rhs}}));
 }
@@ -1231,8 +1197,7 @@ void ExpressionBenchmarkFixture::benchmarkSetUnion(benchmark::State& state) {
     BSONArray lhs = randomBSONArray(100000, kMax);
     BSONArray rhs = randomBSONArray(100000, kMax);
 
-    benchmarkExpression(BSON("$setUnion" << BSON_ARRAY("$lhs"
-                                                       << "$rhs")),
+    benchmarkExpression(BSON("$setUnion" << BSON_ARRAY("$lhs" << "$rhs")),
                         state,
                         std::vector<Document>(100, {{"lhs"_sd, lhs}, {"rhs"_sd, rhs}}));
 }
@@ -1461,10 +1426,8 @@ void ExpressionBenchmarkFixture::benchmarkPowNullAndMissing(benchmark::State& st
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkValueConst(benchmark::State& state) {
-    benchmarkExpression(BSON("$const"
-                             << "1"_sd),
-                        state,
-                        std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
+    benchmarkExpression(
+        BSON("$const" << "1"_sd), state, std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
 
 /**
@@ -1474,10 +1437,8 @@ void ExpressionBenchmarkFixture::benchmarkValueConst(benchmark::State& state) {
  *   {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkValueLiteral(benchmark::State& state) {
-    benchmarkExpression(BSON("$literal"
-                             << "1"_sd),
-                        state,
-                        std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
+    benchmarkExpression(
+        BSON("$literal" << "1"_sd), state, std::vector<Document>(1, {{"value"_sd, "1"_sd}}));
 }
 
 void ExpressionBenchmarkFixture::benchmarkObjectToArray(benchmark::State& state) {
@@ -1487,8 +1448,7 @@ void ExpressionBenchmarkFixture::benchmarkObjectToArray(benchmark::State& state)
         auto value = "value" + std::to_string(i);
         builder.append(key, value);
     }
-    benchmarkExpression(BSON("$objectToArray"
-                             << "$input"_sd),
+    benchmarkExpression(BSON("$objectToArray" << "$input"_sd),
                         state,
                         std::vector<Document>(1, {{"input"_sd, builder.obj()}}));
 }
@@ -1500,8 +1460,7 @@ void ExpressionBenchmarkFixture::benchmarkArrayToObject1(benchmark::State& state
         auto value = "value" + std::to_string(i);
         builder.append(BSON_ARRAY(key << value));
     }
-    benchmarkExpression(BSON("$arrayToObject"
-                             << "$input"_sd),
+    benchmarkExpression(BSON("$arrayToObject" << "$input"_sd),
                         state,
                         std::vector<Document>(1, {{"input"_sd, builder.arr()}}));
 }
@@ -1513,8 +1472,7 @@ void ExpressionBenchmarkFixture::benchmarkArrayToObject2(benchmark::State& state
         auto value = "value" + std::to_string(i);
         builder.append(BSON("k" << key << "v" << value));
     }
-    benchmarkExpression(BSON("$arrayToObject"
-                             << "$input"_sd),
+    benchmarkExpression(BSON("$arrayToObject" << "$input"_sd),
                         state,
                         std::vector<Document>(1, {{"input"_sd, builder.arr()}}));
 }
@@ -1640,8 +1598,7 @@ void ExpressionBenchmarkFixture::testSetFieldExpression(std::string fieldname,
 void ExpressionBenchmarkFixture::testBinaryOpExpression(const std::string& binaryOp,
                                                         const std::vector<Document>& documents,
                                                         benchmark::State& state) {
-    BSONObj expr = BSON(binaryOp << BSON_ARRAY("$lhs"
-                                               << "$rhs"));
+    BSONObj expr = BSON(binaryOp << BSON_ARRAY("$lhs" << "$rhs"));
     benchmarkExpression(std::move(expr), state, documents);
 }
 
@@ -1659,11 +1616,14 @@ BSONArray ExpressionBenchmarkFixture::randomBSONArray(int count, int max, int of
 void ExpressionBenchmarkFixture::benchmarkPercentile(benchmark::State& state,
                                                      int arraySize,
                                                      const std::vector<double>& ps) {
+    // (Generic FCV reference): Must be initialized to check the AccuratePercentiles feature flag
+    serverGlobalParams.mutableFCV.setVersion(multiversion::GenericFCV::kLatest);
+    ON_BLOCK_EXIT([&] { serverGlobalParams.mutableFCV.reset(); });
+
     std::vector<double> inputs = generateNormal(arraySize);
-    benchmarkExpression(BSON("$percentile" << BSON("input"
-                                                   << "$data"
-                                                   << "p" << vectorToBSON(ps) << "method"
-                                                   << "approximate")),
+    benchmarkExpression(BSON("$percentile" << BSON("input" << "$data"
+                                                           << "p" << vectorToBSON(ps) << "method"
+                                                           << "approximate")),
                         state,
                         std::vector<Document>(1, {{"data"_sd, vectorToBSON(inputs)}}));
 }
@@ -1672,30 +1632,26 @@ void ExpressionBenchmarkFixture::benchmarkPercentile(benchmark::State& state,
  * Tests performance of $strLenBytes expression against a single string field.
  */
 void ExpressionBenchmarkFixture::benchmarkStrLenBytes(benchmark::State& state) {
-    benchmarkExpression(BSON("$strLenBytes"
-                             << "$data"),
+    benchmarkExpression(BSON("$strLenBytes" << "$data"),
                         state,
                         std::vector<Document>(1, {{"data"_sd, "hello world"_sd}}));
 }
 
 void ExpressionBenchmarkFixture::benchmarkStrLenCP(benchmark::State& state) {
-    benchmarkExpression(BSON("$strLenCP"
-                             << "$data"),
+    benchmarkExpression(BSON("$strLenCP" << "$data"),
                         state,
                         std::vector<Document>(1, {{"data"_sd, "hello world"_sd}}));
 }
 
 void ExpressionBenchmarkFixture::benchmarkStrLenCPMultiBytes(benchmark::State& state) {
-    benchmarkExpression(BSON("$strLenCP"
-                             << "$data"),
+    benchmarkExpression(BSON("$strLenCP" << "$data"),
                         state,
                         std::vector<Document>(1, {{"data"_sd, "ψϒϒϒЁϴЁЁ"_sd}}));
 }
 
 void ExpressionBenchmarkFixture::benchmarkStrLenCPLargeString(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$strLenCP"
-             << "$data"),
+        BSON("$strLenCP" << "$data"),
         state,
         std::vector<Document>(
             1,
@@ -1707,9 +1663,8 @@ void ExpressionBenchmarkFixture::benchmarkStrLenCPLargeString(benchmark::State& 
  * Tests performance of $trim expression against a single string field.
  */
 void ExpressionBenchmarkFixture::benchmarkTrim(benchmark::State& state, std::string chars) {
-    benchmarkExpression(BSON("$trim" << BSON("input"
-                                             << "$data"
-                                             << "chars" << chars)),
+    benchmarkExpression(BSON("$trim" << BSON("input" << "$data"
+                                                     << "chars" << chars)),
                         state,
                         std::vector<Document>(1, {{"data"_sd, " hello world   "_sd}}));
 }
@@ -1727,15 +1682,13 @@ void ExpressionBenchmarkFixture::benchmarkTrunc(benchmark::State& state, int pla
  * Tests performance of aggregation expression {"$strcasecmp": ["hello", "$value"]}
  */
 void ExpressionBenchmarkFixture::benchmarkStrcasecmp(benchmark::State& state) {
-    benchmarkExpression(BSON("$strcasecmp" << BSON_ARRAY("hello"
-                                                         << "$value")),
+    benchmarkExpression(BSON("$strcasecmp" << BSON_ARRAY("hello" << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "Hello"_sd}}));
 }
 void ExpressionBenchmarkFixture::benchmarkStrcasecmpLargeString(benchmark::State& state) {
     benchmarkExpression(
-        BSON("$strcasecmp" << BSON_ARRAY("hello"
-                                         << "$value")),
+        BSON("$strcasecmp" << BSON_ARRAY("hello" << "$value")),
         state,
         std::vector<Document>(
             1,
@@ -1797,9 +1750,8 @@ void ExpressionBenchmarkFixture::benchmarkSortArrayInt(benchmark::State& state) 
     for (int i = 0; i < n; i++) {
         vectorOfInts.push_back(i);
     }
-    benchmarkExpression(BSON("$sortArray" << BSON("input"
-                                                  << "$array"
-                                                  << "sortBy" << BSON("a" << 1))),
+    benchmarkExpression(BSON("$sortArray" << BSON("input" << "$array"
+                                                          << "sortBy" << BSON("a" << 1))),
                         state,
                         std::vector<Document>(1, {{"array"_sd, vectorToBSON<int>(vectorOfInts)}}));
 }
@@ -1814,9 +1766,8 @@ void ExpressionBenchmarkFixture::benchmarkSortArrayString(benchmark::State& stat
     for (int i = 0; i < n; i++) {
         v.push_back("This is a long string that will provide another set of benchmarks");
     }
-    benchmarkExpression(BSON("$sortArray" << BSON("input"
-                                                  << "$array"
-                                                  << "sortBy" << BSON("a" << 1))),
+    benchmarkExpression(BSON("$sortArray" << BSON("input" << "$array"
+                                                          << "sortBy" << BSON("a" << 1))),
                         state,
                         std::vector<Document>(1, {{"array"_sd, vectorToBSON<std::string>(v)}}));
 }
@@ -1831,9 +1782,8 @@ void ExpressionBenchmarkFixture::benchmarkSortArrayBSONObj(benchmark::State& sta
     for (int i = 0; i < n; i++) {
         v.push_back(BSON("a" << 1));
     }
-    benchmarkExpression(BSON("$sortArray" << BSON("input"
-                                                  << "$array"
-                                                  << "sortBy" << BSON("a" << 1))),
+    benchmarkExpression(BSON("$sortArray" << BSON("input" << "$array"
+                                                          << "sortBy" << BSON("a" << 1))),
                         state,
                         std::vector<Document>(1, {{"array"_sd, vectorToBSON<BSONObj>(v)}}));
 }
@@ -1848,9 +1798,8 @@ void ExpressionBenchmarkFixture::benchmarkSortArray2D(benchmark::State& state) {
     for (int i = 0; i < n; i++) {
         v.push_back(rangeBSONArray(i * n, (i + 1) * n));
     }
-    benchmarkExpression(BSON("$sortArray" << BSON("input"
-                                                  << "$array"
-                                                  << "sortBy" << BSON("a" << 1))),
+    benchmarkExpression(BSON("$sortArray" << BSON("input" << "$array"
+                                                          << "sortBy" << BSON("a" << 1))),
                         state,
                         std::vector<Document>(1, {{"array"_sd, vectorToBSON<BSONArray>(v)}}));
 }
@@ -1876,9 +1825,8 @@ void ExpressionBenchmarkFixture::benchmarkMaxSingleInput(benchmark::State& state
  * {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkMaxSingleArrayInput(benchmark::State& state) {
-    benchmarkExpression(BSON("$max" << BSON_ARRAY("a"
-                                                  << "$value"
-                                                  << "$value")),
+    benchmarkExpression(BSON("$max" << BSON_ARRAY("a" << "$value"
+                                                      << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, 1}}));
 }
@@ -1897,9 +1845,8 @@ void ExpressionBenchmarkFixture::benchmarkMinSingleInput(benchmark::State& state
  * {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkMinSingleArrayInput(benchmark::State& state) {
-    benchmarkExpression(BSON("$min" << BSON_ARRAY("a"
-                                                  << "$value"
-                                                  << "$value")),
+    benchmarkExpression(BSON("$min" << BSON_ARRAY("a" << "$value"
+                                                      << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, 1}}));
 }
@@ -1909,9 +1856,8 @@ void ExpressionBenchmarkFixture::benchmarkMinSingleArrayInput(benchmark::State& 
  * against document {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkStdDevPop(benchmark::State& state) {
-    benchmarkExpression(BSON("$stdDevPop" << BSON_ARRAY("$value"
-                                                        << "$value"
-                                                        << "$value")),
+    benchmarkExpression(BSON("$stdDevPop" << BSON_ARRAY("$value" << "$value"
+                                                                 << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, 1}}));
 }
@@ -1921,9 +1867,8 @@ void ExpressionBenchmarkFixture::benchmarkStdDevPop(benchmark::State& state) {
  * against document {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkStdDevSamp(benchmark::State& state) {
-    benchmarkExpression(BSON("$stdDevSamp" << BSON_ARRAY("$value"
-                                                         << "$value"
-                                                         << "$value")),
+    benchmarkExpression(BSON("$stdDevSamp" << BSON_ARRAY("$value" << "$value"
+                                                                  << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, 1}}));
 }
@@ -1933,9 +1878,8 @@ void ExpressionBenchmarkFixture::benchmarkStdDevSamp(benchmark::State& state) {
  * document {"_id": ObjectId(...), "value": "1"}
  */
 void ExpressionBenchmarkFixture::benchmarkAvg(benchmark::State& state) {
-    benchmarkExpression(BSON("$avg" << BSON_ARRAY("$value"
-                                                  << "$value"
-                                                  << "$value")),
+    benchmarkExpression(BSON("$avg" << BSON_ARRAY("$value" << "$value"
+                                                           << "$value")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, 1}}));
 }
@@ -1946,24 +1890,20 @@ void ExpressionBenchmarkFixture::benchmarkAvg(benchmark::State& state) {
  */
 void ExpressionBenchmarkFixture::benchmarkSum(benchmark::State& state) {
     BSONArray array = rangeBSONArray(0, 10);
-    benchmarkExpression(BSON("$sum"
-                             << "$array"),
-                        state,
-                        std::vector<Document>(1, {{"array"_sd, array}}));
+    benchmarkExpression(
+        BSON("$sum" << "$array"), state, std::vector<Document>(1, {{"array"_sd, array}}));
 }
 
 void ExpressionBenchmarkFixture::benchmarkRegexMatch(benchmark::State& state) {
-    benchmarkExpression(BSON("$regexFind" << BSON("input"
-                                                  << "$value"
-                                                  << "regex"
-                                                  << "cafe")),
+    benchmarkExpression(BSON("$regexFind" << BSON("input" << "$value"
+                                                          << "regex"
+                                                          << "cafe")),
                         state,
                         std::vector<Document>(1, {{"value"_sd, "cafe"_sd}}));
 }
 
 void ExpressionBenchmarkFixture::benchmarkAddWithDottedFieldPath(benchmark::State& state) {
-    benchmarkExpression(BSON("$add" << BSON_ARRAY("$lhs.a.b.c.d"
-                                                  << "$rhs.a.b.c.d")),
+    benchmarkExpression(BSON("$add" << BSON_ARRAY("$lhs.a.b.c.d" << "$rhs.a.b.c.d")),
                         state,
                         std::vector<Document>(
                             1,

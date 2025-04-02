@@ -76,8 +76,6 @@
 #include "mongo/db/query/stage_builder/sbe/sbexpr_helpers.h"
 #include "mongo/db/storage/sorted_data_interface.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/id_generator.h"
@@ -661,10 +659,11 @@ generateSingleIntervalIndexScanAndSlotsImpl(StageBuilderState& state,
     // return EOF. This does not apply when the interval is a point interval, since the interval
     // should always exist in that case.
     if (shouldRegisterLowHighKeyInRuntimeEnv && !isPointInterval) {
-        stage = b.makeConstFilter(std::move(stage),
-                                  b.makeBinaryOp(sbe::EPrimBinary::logicAnd,
-                                                 b.makeFunction("exists", lowKeyExpr.clone()),
-                                                 b.makeFunction("exists", highKeyExpr.clone())));
+        stage =
+            b.makeConstFilter(std::move(stage),
+                              b.makeBooleanOpTree(optimizer::Operations::And,
+                                                  b.makeFunction("exists", lowKeyExpr.clone()),
+                                                  b.makeFunction("exists", highKeyExpr.clone())));
     }
 
     return {std::move(stage),
@@ -936,7 +935,11 @@ std::pair<SbStage, PlanStageSlots> generateIndexScanImpl(StageBuilderState& stat
     }
 
     if (ixn->shouldDedup) {
-        stage = b.makeUnique(std::move(stage), outputs.get(PlanStageSlots::kRecordId));
+        if (collection->isClustered()) {
+            stage = b.makeUnique(std::move(stage), outputs.get(PlanStageSlots::kRecordId));
+        } else {
+            stage = b.makeUniqueRoaring(std::move(stage), outputs.get(PlanStageSlots::kRecordId));
+        }
     }
 
     if (ixn->filter) {
@@ -1130,7 +1133,11 @@ std::pair<SbStage, PlanStageSlots> generateIndexScanWithDynamicBoundsImpl(
     }
 
     if (ixn->shouldDedup) {
-        stage = b.makeUnique(std::move(stage), outputs.get(PlanStageSlots::kRecordId));
+        if (collection->isClustered()) {
+            stage = b.makeUnique(std::move(stage), outputs.get(PlanStageSlots::kRecordId));
+        } else {
+            stage = b.makeUniqueRoaring(std::move(stage), outputs.get(PlanStageSlots::kRecordId));
+        }
     }
 
     if (ixn->filter) {

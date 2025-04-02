@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
     connectionName,

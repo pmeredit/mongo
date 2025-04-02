@@ -57,6 +57,7 @@
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/plan_yield_policy.h"
+#include "mongo/db/query/query_utils.h"
 #include "mongo/db/query/write_ops/parsed_update.h"
 #include "mongo/db/query/write_ops/parsed_update_array_filters.h"
 #include "mongo/db/query/write_ops/parsed_writes_common.h"
@@ -69,6 +70,7 @@
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/db/timeseries/timeseries_update_delete_util.h"
 #include "mongo/db/update/update_driver.h"
+#include "mongo/db/version_context.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
@@ -109,6 +111,7 @@ ParsedUpdateBase::ParsedUpdateBase(OperationContext* opCtx,
           isRequestToTimeseries
               ? createTimeseriesWritesQueryExprsIfNecessary(
                     feature_flags::gTimeseriesUpdatesSupport.isEnabled(
+                        VersionContext::getDecoration(opCtx),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()),
                     collection)
               : nullptr),
@@ -224,7 +227,7 @@ Status ParsedUpdateBase::parseQuery() {
     dassert(!_canonicalQuery.get());
 
     if (!_timeseriesUpdateQueryExprs && !_driver.needMatchDetails() &&
-        CanonicalQuery::isSimpleIdQuery(_request->getQuery())) {
+        isSimpleIdQuery(_request->getQuery())) {
         return Status::OK();
     }
 

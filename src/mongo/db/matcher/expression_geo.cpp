@@ -35,6 +35,7 @@
 #include <boost/optional/optional.hpp>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <s2cellid.h>
 #include <utility>
 
@@ -46,9 +47,6 @@
 #include "mongo/db/matcher/expression_geo_serializer.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/util/str.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
@@ -104,7 +102,7 @@ Status GeoExpression::parseQuery(const BSONObj& obj) {
             LOGV2_WARNING(23847, "Deprecated $uniqueDocs option", "query"_attr = redact(obj));
         } else {
             // The element must be a geo specifier. "$box", "$center", "$geometry", etc.
-            geoContainer.reset(new GeometryContainer());
+            geoContainer = std::make_shared<GeometryContainer>();
             Status status = geoContainer->parseFromQuery(elt);
             if (!status.isOK())
                 return status;
@@ -200,10 +198,9 @@ bool GeoNearExpression::parseLegacyQuery(const BSONObj& obj) {
             if (!e.isABSONObj()) {
                 return false;
             }
-            BSONObj embeddedObj = e.embeddedObject();
 
             if (GeoParser::parseQueryPoint(e, centroid.get()).isOK() ||
-                GeoParser::parsePointWithMaxDistance(embeddedObj, centroid.get(), &maxDistance)) {
+                GeoParser::parsePointWithMaxDistance(e, centroid.get(), &maxDistance).isOK()) {
                 uassert(18522, "max distance must be non-negative", maxDistance >= 0.0);
                 hasGeometry = true;
                 isNearSphere = (e.fieldNameStringData() == kNearSphereField);
@@ -386,68 +383,6 @@ GeoMatchExpression::GeoMatchExpression(boost::optional<StringData> path,
       _query(query),
       _canSkipValidation(false) {}
 
-bool GeoMatchExpression::matchesSingleElement(const BSONElement& e, MatchDetails* details) const {
-    return contains(_query->getGeometry(), _query->getPred(), _canSkipValidation, e, details);
-}
-
-bool GeoMatchExpression::contains(const GeometryContainer& queryGeom,
-                                  const GeoExpression::Predicate& queryPredicate,
-                                  bool skipValidation,
-                                  const BSONElement& e,
-                                  MatchDetails*) {
-    if (!e.isABSONObj())
-        return false;
-
-    GeometryContainer geometry;
-    if (!geometry.parseFromStorage(e, skipValidation).isOK())
-        return false;
-
-    // Never match big polygon
-    if (geometry.getNativeCRS() == STRICT_SPHERE)
-        return false;
-
-    // Project this geometry into the CRS of the larger geometry.
-
-    // In the case of index validation, we are projecting the geometry of the query
-    // into the CRS of the index to confirm that the index region convers/includes
-    // the region described by the predicate.
-
-    if (!geometry.supportsProject(queryGeom.getNativeCRS()))
-        return false;
-
-    return contains(queryGeom, queryPredicate, &geometry);
-}
-
-bool GeoMatchExpression::contains(const GeometryContainer& queryGeom,
-                                  const GeoExpression::Predicate& queryPredicate,
-                                  GeometryContainer* geometry) {
-    geometry->projectInto(queryGeom.getNativeCRS());
-    if (GeoExpression::WITHIN == queryPredicate) {
-        return queryGeom.contains(*geometry);
-    } else {
-        MONGO_verify(GeoExpression::INTERSECT == queryPredicate);
-        return queryGeom.intersects(*geometry);
-    }
-}
-
-bool GeoMatchExpression::matchesGeoContainer(const GeometryContainer& input) const {
-    // Never match big polygon
-    if (input.getNativeCRS() == STRICT_SPHERE)
-        return false;
-
-    // Project this geometry into the CRS of the larger geometry.
-
-    // In the case of index validation, we are projecting the geometry of the query
-    // into the CRS of the index to confirm that the index region convers/includes
-    // the region described by the predicate.
-
-    if (!input.supportsProject(_query->getGeometry().getNativeCRS()))
-        return false;
-
-    GeometryContainer geometry{input};
-    return contains(_query->getGeometry(), _query->getPred(), &geometry);
-}
-
 void GeoMatchExpression::debugString(StringBuilder& debug, int indentationLevel) const {
     _debugAddSpace(debug, indentationLevel);
 
@@ -460,7 +395,7 @@ void GeoMatchExpression::debugString(StringBuilder& debug, int indentationLevel)
 void GeoMatchExpression::appendSerializedRightHandSide(BSONObjBuilder* bob,
                                                        const SerializationOptions& opts,
                                                        bool includePath) const {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kUnchanged) {
+    if (!opts.isKeepingLiteralsUnchanged()) {
         geoExpressionCustomSerialization(*bob, _rawObj, opts, includePath);
         return;
     }
@@ -503,10 +438,6 @@ GeoNearMatchExpression::GeoNearMatchExpression(boost::optional<StringData> path,
                                                const BSONObj& rawObj)
     : LeafMatchExpression(GEO_NEAR, path), _rawObj(rawObj), _query(query) {}
 
-bool GeoNearMatchExpression::matchesSingleElement(const BSONElement& e,
-                                                  MatchDetails* details) const {
-    return true;
-}
 
 void GeoNearMatchExpression::debugString(StringBuilder& debug, int indentationLevel) const {
     _debugAddSpace(debug, indentationLevel);
@@ -517,7 +448,7 @@ void GeoNearMatchExpression::debugString(StringBuilder& debug, int indentationLe
 void GeoNearMatchExpression::appendSerializedRightHandSide(BSONObjBuilder* bob,
                                                            const SerializationOptions& opts,
                                                            bool includePath) const {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kUnchanged) {
+    if (!opts.isKeepingLiteralsUnchanged()) {
         geoNearExpressionCustomSerialization(*bob, _rawObj, opts, includePath);
         return;
     }

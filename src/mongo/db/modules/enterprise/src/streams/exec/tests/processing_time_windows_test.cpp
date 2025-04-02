@@ -2,12 +2,12 @@
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <memory>
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/tick_source_mock.h"
@@ -40,9 +40,8 @@ public:
         atlasConn.setOptions(atlasConnOptions.toBSON());
         atlasConn.setType(ConnectionTypeEnum::Atlas);
 
-        _context->connections = {
-            {atlasConn.getName().toString(), atlasConn},
-        };
+        _context->connections =
+            std::make_unique<ConnectionCollection>(std::vector<Connection>{atlasConn});
     }
 
     std::string makePipelineStr(std::string windowStr) {
@@ -99,6 +98,66 @@ $tumblingWindow: {
     auto bson = parsePipeline(makePipelineStr(tumblingWindowStr));
     const auto expectedWhat =
         "StreamProcessorInvalidOptions: Cannot specify allowed lateness value for a processing "
+        "time window";
+
+    ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
+                                AssertionException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                expectedWhat);
+}
+
+TEST_F(ProcessingTimeWindowsTest, TumblingWindowIncompatibleOptionsTimeField) {
+    setupFFTest();
+    Planner planner(_context.get(), Planner::Options());
+    std::string timeFieldSourceStr = R"([
+{
+    $source: {
+        connectionName: "atlas",
+        timeField: "timeFieldName"
+    }
+},)";
+    std::string tumblingWindowStr = R"(
+{
+$tumblingWindow: {
+    boundary: "processingTime",
+    interval: {size: 5, unit: "second"},
+    pipeline: []
+}
+},
+    )";
+    auto bson = parsePipeline(timeFieldSourceStr + tumblingWindowStr + _mergeStr);
+    const auto expectedWhat =
+        "StreamProcessorInvalidOptions: Cannot specify timeField with processing "
+        "time window";
+
+    ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
+                                AssertionException,
+                                ErrorCodes::StreamProcessorInvalidOptions,
+                                expectedWhat);
+}
+
+TEST_F(ProcessingTimeWindowsTest, TumblingWindowIncompatibleOptionsTsFieldName) {
+    setupFFTest();
+    Planner planner(_context.get(), Planner::Options());
+    std::string timeFieldSourceStr = R"([
+{
+    $source: {
+        connectionName: "atlas",
+        tsFieldName: "timeFieldName"
+    }
+},)";
+    std::string tumblingWindowStr = R"(
+{
+$tumblingWindow: {
+    boundary: "processingTime",
+    interval: {size: 5, unit: "second"},
+    pipeline: []
+}
+},
+    )";
+    auto bson = parsePipeline(timeFieldSourceStr + tumblingWindowStr + _mergeStr);
+    const auto expectedWhat =
+        "StreamProcessorInvalidOptions: Cannot specify tsFieldName with processing "
         "time window";
 
     ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
@@ -183,6 +242,13 @@ $hoppingWindow: {
 
 TEST_F(ProcessingTimeWindowsTest, FeatureFlagDisabled) {
     setupConnections();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kProcessingTimeWindows.name] = mongo::Value(false);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
     Planner planner(_context.get(), Planner::Options());
     std::string hoppingWindowStr = R"(
 {
@@ -209,9 +275,9 @@ $hoppingWindow: {
 TEST_F(ProcessingTimeWindowsTest, WindowsClosingAsExpected) {
     auto innerTest = [&](std::string windowPipeline) {
         setupFFTest();
-        auto prevConnections = _context->connections;
-        _context->connections = testInMemoryConnectionRegistry();
-        ScopeGuard guard([&] { _context->connections = prevConnections; });
+        auto prevConnections = std::move(_context->connections);
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
+        ScopeGuard guard([&] { _context->connections = std::move(prevConnections); });
         Planner planner(_context.get(), {});
         std::string pipeline = R"(
     [

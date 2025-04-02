@@ -50,7 +50,7 @@ public:
 
     ~RemoveShardCommitCoordinator() override = default;
 
-    void checkIfOptionsConflict(const BSONObj& stateDoc) const override {}
+    void checkIfOptionsConflict(const BSONObj& stateDoc) const override;
 
     RemoveShardProgress getResult(OperationContext* opCtx);
 
@@ -59,12 +59,50 @@ private:
         return RemoveShardCommitCoordinatorPhase_serializer(phase);
     }
 
+    bool _mustAlwaysMakeProgress() override {
+        return _doc.getPhase() >= Phase::kCommit;
+    }
+
     ExecutorFuture<void> _runImpl(std::shared_ptr<executor::ScopedTaskExecutor> executor,
                                   const CancellationToken& token) noexcept override;
 
-    // Joins migrations on the config server if we are transitioning from dedicated and checks if
-    // there are range deletions to wait for.
+    ExecutorFuture<void> _cleanupOnAbort(std::shared_ptr<executor::ScopedTaskExecutor> executor,
+                                         const CancellationToken& token,
+                                         const Status& status) noexcept override;
+
+    // Checks that the shard still exists in the cluster and that the draining flag is still set.
+    void _checkShardExistsAndIsDraining(OperationContext* opCtx);
+
+    // Joins migrations on the config server if we are transitioning from dedicated and checks
+    // if there are range deletions to wait for.
     void _joinMigrationsAndCheckRangeDeletions();
+
+    // Stops ongoing ddl operations (excluding topology changes) and waits for any ongoing
+    // coordinators to complete.
+    void _stopDDLOperations(OperationContext* opCtx);
+
+    // Checks whether there is any data left on the shard after stopping DDL operations.
+    void _checkShardIsEmpty(OperationContext* opCtx);
+
+    // Ensures none of the local collections have data in them and drops them. This should only be
+    // called during config transitions.
+    void _dropLocalCollections(OperationContext* opCtx);
+
+    // Removes the shard and updates the topology time on a control shard.
+    void _commitRemoveShard(OperationContext* opCtx,
+                            std::shared_ptr<executor::ScopedTaskExecutor> executor);
+
+    // Allows ddl operations to resume in the cluster.
+    void _resumeDDLOperations(OperationContext* opCtx);
+
+    // TODO (SERVER-99433) Remove once replica set endpoint is fully discontinued.
+    // Updates the "hasTwoOrMoreShard" cluster cardinality parameter if this shard removal leaves
+    // only one shard in the cluster and the coordinator was started with the parameter
+    // `shouldUpdateClusterCardinality` set to true.
+    void _updateClusterCardinalityParameterIfNeeded(OperationContext* opCtx);
+
+    // Sets the result of the remove shard and logs the completion.
+    void _finalizeShardRemoval(OperationContext* opCtx);
 
     // Set on successful completion of the coordinator.
     boost::optional<RemoveShardProgress> _result;

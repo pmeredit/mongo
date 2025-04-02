@@ -40,9 +40,7 @@
 #include "mongo/db/update/delta_executor.h"
 #include "mongo/db/update/document_diff_calculator.h"
 #include "mongo/db/update_index_data.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -208,7 +206,7 @@ TEST(DeltaExecutorTest, Insert) {
     }
     {
         // When a path in the diff is same as index path.
-        auto doc = mutablebson::Document(fromjson("{f1: {a: {c: true}}}}"));
+        auto doc = mutablebson::Document(fromjson("{f1: {a: {c: true}}}"));
         UpdateExecutor::ApplyParams params(doc.root(), fieldRefSet);
         auto test = DeltaExecutor(fromjson("{sf1: {sa: {i: {p: false, c: false, b: false}}}}"),
                                   mustCheckExistenceForInsertOperations);

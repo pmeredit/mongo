@@ -8,8 +8,6 @@ import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 // Multiple users cannot be authenticated on one connection within a session.
 TestData.disableImplicitSessions = true;
-// Cannot run the filtering metadata check on tests that run refineCollectionShardKey.
-TestData.skipCheckShardFilteringMetadata = true;
 
 const adminDbName = "admin";
 const shard0name = "shard0000";
@@ -207,6 +205,7 @@ const internalCommandsMap = {
         },
     },
     _configsvrCheckMetadataConsistency: {
+        skip: true,  // This command doesn't accept to be run in the 'admin' database.
         testname: "_configsvrCheckMetadataConsistency",
         command: {
             _configsvrCheckMetadataConsistency: "x.y",
@@ -267,10 +266,6 @@ const internalCommandsMap = {
     _configsvrRemoveShard: {
         testname: "_configsvrRemoveShard",
         command: {_configsvrRemoveShard: 1, removeShard: shard0name},
-    },
-    _configsvrRemoveShardCommit: {
-        testname: "_configsvrRemoveShardCommit",
-        command: {_configsvrRemoveShardCommit: shard0name},
     },
     _configsvrRemoveShardFromZone: {
         testname: "_configsvrRemoveShardFromZone",
@@ -427,8 +422,12 @@ const internalCommandsMap = {
     _shardsvrRunSearchIndexCommand: {
         // test only comand. Bc this command is included in test_only_commands_list.js, this will be
         // skipped.
-        testname: "__shardsvrRunSearchIndexCommand",
-        command: {__shardsvrRunSearchIndexCommand: 1, hostAndPort: []},
+        testname: "_shardsvrRunSearchIndexCommand",
+        command: {_shardsvrRunSearchIndexCommand: 1, hostAndPort: []},
+    },
+    _shardsvrResolveView: {
+        testname: "_shardsvrResolveView",
+        command: {_shardsvrResolveView: 1, nss: ns},
     },
     _shardsvrBeginMigrationBlockingOperation: {
         testname: "_shardsvrBeginMigrationBlockingOperation",
@@ -458,9 +457,17 @@ const internalCommandsMap = {
         testname: "_shardsvrCleanupReshardCollection",
         command: {_shardsvrCleanupReshardCollection: "test.x", reshardingUUID: UUID()},
     },
+    _shardsvrCloneAuthoritativeMetadata: {
+        testname: "_shardsvrCloneAuthoritativeMetadata",
+        command: {_shardsvrCloneAuthoritativeMetadata: 1, writeConcern: {w: "majority"}},
+    },
     _shardsvrCloneCatalogData: {
         testname: "_shardsvrCloneCatalogData",
         command: {_shardsvrCloneCatalogData: 'test', from: [], writeConcern: {w: "majority"}},
+    },
+    _shardsvrFetchCollMetadata: {
+        testname: "_shardsvrFetchCollMetadata",
+        command: {_shardsvrFetchCollMetadata: 'test', from: [], writeConcern: {w: "majority"}},
     },
     _shardsvrCompactStructuredEncryptionData: {
         testname: "_shardsvrCompactStructuredEncryptionData",
@@ -500,6 +507,17 @@ const internalCommandsMap = {
             _shardsvrCommitReshardCollection: "x.y",
             reshardingUUID: UUID(),
         },
+    },
+    _shardsvrCommitCreateDatabaseMetadata: {
+        testname: "_shardsvrCommitCreateDatabaseMetadata",
+        command: {
+            _shardsvrCommitCreateDatabaseMetadata: "x.y",
+            dbVersion: {uuid: new UUID(), timestamp: new Timestamp(1, 0), lastMod: NumberInt(1)}
+        },
+    },
+    _shardsvrCommitDropDatabaseMetadata: {
+        testname: "_shardsvrCommitDropDatabaseMetadata",
+        command: {_shardsvrCommitDropDatabaseMetadata: "x.y"},
     },
     _shardsvrDropCollection: {
         testname: "_shardsvrDropCollection",
@@ -636,7 +654,8 @@ const internalCommandsMap = {
     },
     _shardsvrNotifyShardingEvent: {
         testname: "_shardsvrNotifyShardingEvent",
-        command: {_shardsvrNotifyShardingEvent: "test", eventType: "databasesAdded", details: {}},
+        command:
+            {_shardsvrNotifyShardingEvent: "test", eventType: "collectionResharded", details: {}},
     },
     _shardsvrRenameCollection: {
         testname: "_shardsvrRenameCollection",
@@ -684,6 +703,21 @@ const internalCommandsMap = {
             _shardsvrReshardCollection: "test.x",
             phase: "unset",
             key: {},
+        },
+    },
+    _shardsvrReshardingDonorFetchFinalCollectionStats: {
+        testname: "_shardsvrReshardingDonorFetchFinalCollectionStats",
+        command: {
+            _shardsvrReshardingDonorFetchFinalCollectionStats: "test.x",
+            reshardingUUID: UUID(),
+        },
+    },
+    _shardsvrReshardingDonorStartChangeStreamsMonitor: {
+        testname: "_shardsvrReshardingDonorStartChangeStreamsMonitor",
+        command: {
+            _shardsvrReshardingDonorStartChangeStreamsMonitor: "test.x",
+            reshardingUUID: UUID(),
+            cloneTimestamp: Timestamp(),
         },
     },
     _shardsvrReshardingOperationTime: {
@@ -764,9 +798,10 @@ const internalCommandsMap = {
         },
     },
     _shardsvrCheckMetadataConsistencyParticipant: {
+        skip: true,  // This command doesn't accept to be run in the 'admin' database.
         testname: "_shardsvrCheckMetadataConsistencyParticipant",
         command: {
-            _shardsvrCheckMetadataConsistencyParticipant: "x.y",
+            _shardsvrCheckMetadataConsistencyParticipant: 1,
             primaryShardId: shard0name,
         },
     },
@@ -795,10 +830,11 @@ function createUser(db, userName, roles) {
     return userName;
 }
 /**
- * runOneCommandAuthorizationTest runs authorization failure and success tests for a single command.
- * If the user with __system role can run the command without getting Unauthorized error AND if the
- * user with no roles can run the command and get an 'Unauthorized` error, then we consider the test
- * as passed. Otherwise, the command fails the authorization check.
+ * runOneCommandAuthorizationTest runs authorization failure and success tests for a single
+ * command. If the user with __system role can run the command without getting Unauthorized
+ * error AND if the user with no roles can run the command and get an 'Unauthorized` error,
+ * then we consider the test as passed. Otherwise, the command fails the authorization
+ * check.
  *
  *  Parameters:
  *     testObject -- testObject contains the test information for a single command.
@@ -841,11 +877,13 @@ function runOneCommandAuthorizationTest(testObject, commandName, db, secondDb, c
 }
 
 /**
- * Some commands may be skipped if they are test only commands. isSelf command is also skipped.
+ * Some commands may be skipped if they are test only commands. isSelf command is also
+ * skipped.
  * @param testObjectForCommand test object for the command.
  * @param commandName command Name.
- * @returns true if the command is a test only command or if the command needs to be skipped(
- *     currently only isSelf is skipped. It is used by atlas tools without __system role).
+ * @returns true if the command is a test only command or if the command needs to be
+ *     skipped( currently only isSelf is skipped. It is used by atlas tools without __system
+ *     role).
  */
 function skipCommand(testObjectForCommand, commandName) {
     if (testOnlyCommandsSet.has(commandName) || testObjectForCommand.skip) {
@@ -899,8 +937,8 @@ function runStandaloneTest() {
             trafficRecordingDirectory: dbPath,
             mongotHost: "localhost:27017",  // We have to set the mongotHost parameter for the
                                             // $search-relatead tests to pass configuration checks.
-            syncdelay:
-                0  // Disable checkpoints as this can cause some commands to fail transiently.
+            syncdelay: 0  // Disable checkpoints as this can cause some commands to fail
+                          // transiently.
         }
     };
 
@@ -926,8 +964,8 @@ function setupShardedClusterTest() {
             trafficRecordingDirectory: dbPath,
             mongotHost: "localhost:27017",  // We have to set the mongotHost parameter for the
                                             // $search-related tests to pass configuration checks.
-            syncdelay:
-                0  // Disable checkpoints as this can cause some commands to fail transiently.
+            syncdelay: 0  // Disable checkpoints as this can cause some commands to fail
+                          // transiently.
         }
     };
     return opts;
@@ -1019,12 +1057,13 @@ function runConfigServer(opts) {
 }
 
 /**
- * singleCommandCheckResult gets the update from four setups(runStandaloneTest, sharded cluster,
- * sharded server, config server) and returns the combined result for the command.
+ * singleCommandCheckResult gets the update from four setups(runStandaloneTest, sharded
+ * cluster, sharded server, config server) and returns the combined result for the command.
  *
  *  * Parameters:
  *       commandName -- command name.
- *       resultmap -- an object that has setups as the keys and results for the setup as the values.
+ *       resultmap -- an object that has setups as the keys and results for the setup as the
+ * values.
  *
  * Returns: a combined result for different test setups for a single command.
  */
@@ -1048,12 +1087,13 @@ function singleCommandCheckResult(commandName, resultmap) {
 /**
  * checkResults summarize the results from all the results from all the setups.
  *  * Parameters:
- *       resultmap -- an object that has setups as the keys and results for the setup as the values.
+ *       resultmap -- an object that has setups as the keys and results for the setup as the
+ * values.
  *
  * Returns: None.
  *
- * The results for all the test objects are accumulated and a combined result for the all the tests
- * is announced.
+ * The results for all the test objects are accumulated and a combined result for the all
+ * the tests is announced.
  */
 function checkResults(resultmap) {
     let summaryResultsCount = {passCount: 0, failCount: 0, absentCount: 0};

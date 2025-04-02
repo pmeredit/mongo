@@ -61,10 +61,9 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -244,12 +243,12 @@ RecordId oplogOrderInsertOplog(OperationContext* opCtx,
 TEST(WiredTigerRecordStoreTest, OplogDurableVisibilityInOrder) {
     std::unique_ptr<RecordStoreHarnessHelper> harnessHelper(newRecordStoreHarnessHelper());
     std::unique_ptr<RecordStore> rs(harnessHelper->newOplogRecordStore());
-    auto engine = harnessHelper->getEngine();
+    auto engine = static_cast<WiredTigerKVEngine*>(harnessHelper->getEngine());
+    engine->getOplogManager()->stop();
 
     auto isOpHidden = [&engine](const RecordId& id) {
-        return static_cast<WiredTigerKVEngine*>(engine)
-                   ->getOplogManager()
-                   ->getOplogReadTimestamp() < static_cast<std::uint64_t>(id.getLong());
+        return engine->getOplogManager()->getOplogReadTimestamp() <
+            static_cast<std::uint64_t>(id.getLong());
     };
 
     {
@@ -259,7 +258,7 @@ TEST(WiredTigerRecordStoreTest, OplogDurableVisibilityInOrder) {
         RecordId id = oplogOrderInsertOplog(opCtx.get(), engine, rs, 1);
         ASSERT(isOpHidden(id));
         txn.commit();
-        ASSERT_FALSE(isOpHidden(id));
+        ASSERT(isOpHidden(id));
     }
 
     {
@@ -269,7 +268,7 @@ TEST(WiredTigerRecordStoreTest, OplogDurableVisibilityInOrder) {
         RecordId id = oplogOrderInsertOplog(opCtx.get(), engine, rs, 2);
         ASSERT(isOpHidden(id));
         txn.commit();
-        ASSERT_FALSE(isOpHidden(id));
+        ASSERT(isOpHidden(id));
     }
 }
 
@@ -280,12 +279,12 @@ TEST(WiredTigerRecordStoreTest, OplogDurableVisibilityInOrder) {
 TEST(WiredTigerRecordStoreTest, OplogDurableVisibilityOutOfOrder) {
     std::unique_ptr<RecordStoreHarnessHelper> harnessHelper(newRecordStoreHarnessHelper());
     std::unique_ptr<RecordStore> rs(harnessHelper->newOplogRecordStore());
-    auto engine = harnessHelper->getEngine();
+    auto engine = static_cast<WiredTigerKVEngine*>(harnessHelper->getEngine());
+    engine->getOplogManager()->stop();
 
     auto isOpHidden = [&engine](const RecordId& id) {
-        return static_cast<WiredTigerKVEngine*>(engine)
-                   ->getOplogManager()
-                   ->getOplogReadTimestamp() < static_cast<std::uint64_t>(id.getLong());
+        return engine->getOplogManager()->getOplogReadTimestamp() <
+            static_cast<std::uint64_t>(id.getLong());
     };
 
     ServiceContext::UniqueOperationContext longLivedOp(harnessHelper->newOperationContext());
@@ -312,9 +311,10 @@ TEST(WiredTigerRecordStoreTest, OplogDurableVisibilityOutOfOrder) {
 
     txn.commit();
 
-    ASSERT_FALSE(isOpHidden(id1));
-    ASSERT_FALSE(isOpHidden(id2));
+    ASSERT(isOpHidden(id1));
+    ASSERT(isOpHidden(id2));
 
+    engine->getOplogManager()->start(longLivedOp.get(), *engine, *rs);
     engine->waitForAllEarlierOplogWritesToBeVisible(longLivedOp.get(), rs.get());
 
     ASSERT_FALSE(isOpHidden(id1));
@@ -411,7 +411,7 @@ StatusWith<RecordId> insertBSONWithSize(
 //  of the estimated size.
 TEST(WiredTigerRecordStoreTest, OplogTruncateMarkers_NoMarkersGeneratedFromScanning) {
     std::unique_ptr<RecordStoreHarnessHelper> harnessHelper = newRecordStoreHarnessHelper();
-    auto wtHarnessHelper = dynamic_cast<WiredTigerHarnessHelper*>(harnessHelper.get());
+    auto wtHarnessHelper = static_cast<WiredTigerHarnessHelper*>(harnessHelper.get());
     std::unique_ptr<RecordStore> rs(wtHarnessHelper->newOplogRecordStoreNoInit());
 
     auto wtRS = static_cast<WiredTigerRecordStore::Oplog*>(rs.get());
@@ -462,7 +462,7 @@ TEST(WiredTigerRecordStoreTest, OplogTruncateMarkers_NoMarkersGeneratedFromScann
 // inaccurate.
 TEST(WiredTigerRecordStoreTest, OplogTruncateMarkers_Duplicates) {
     std::unique_ptr<RecordStoreHarnessHelper> harnessHelper = newRecordStoreHarnessHelper();
-    auto wtHarnessHelper = dynamic_cast<WiredTigerHarnessHelper*>(harnessHelper.get());
+    auto wtHarnessHelper = static_cast<WiredTigerHarnessHelper*>(harnessHelper.get());
     std::unique_ptr<RecordStore> rs(wtHarnessHelper->newOplogRecordStoreNoInit());
     auto engine = harnessHelper->getEngine();
 
@@ -762,14 +762,15 @@ TEST(WiredTigerRecordStoreTest, ClusteredRecordStore) {
     const std::string ns = "testRecordStore";
     const NamespaceString nss = NamespaceString::createNamespaceString_forTest(ns);
     const std::string uri = WiredTigerKVEngine::kTableUriPrefix + ns;
+    WiredTigerRecordStore::WiredTigerTableConfig wtTableConfig =
+        getWiredTigerTableConfigFromStartupOptions();
+    wtTableConfig.keyFormat = KeyFormat::String;
+    wtTableConfig.logEnabled = WiredTigerUtil::useTableLogging(nss);
     const StatusWith<std::string> result =
         WiredTigerRecordStore::generateCreateString(std::string{kWiredTigerEngineName},
                                                     NamespaceStringUtil::serializeForCatalog(nss),
-                                                    "",
                                                     CollectionOptions(),
-                                                    "",
-                                                    KeyFormat::String,
-                                                    WiredTigerUtil::useTableLogging(nss));
+                                                    wtTableConfig);
     ASSERT_TRUE(result.isOK());
     const std::string config = result.getValue();
 
@@ -777,8 +778,8 @@ TEST(WiredTigerRecordStoreTest, ClusteredRecordStore) {
         StorageWriteTransaction txn(ru);
         WiredTigerRecoveryUnit* ru =
             checked_cast<WiredTigerRecoveryUnit*>(shard_role_details::getRecoveryUnit(opCtx.get()));
-        WT_SESSION* s = ru->getSession()->getSession();
-        invariantWTOK(s->create(s, uri.c_str(), config.c_str()), s);
+        WiredTigerSession* s = ru->getSession();
+        invariantWTOK(s->create(uri.c_str(), config.c_str()), *s);
         txn.commit();
     }
 
@@ -788,14 +789,14 @@ TEST(WiredTigerRecordStoreTest, ClusteredRecordStore) {
     params.engineName = std::string{kWiredTigerEngineName};
     params.keyFormat = KeyFormat::String;
     params.overwrite = false;
-    params.isEphemeral = false;
+    params.inMemory = false;
     params.isLogged = WiredTigerUtil::useTableLogging(nss);
     params.isChangeCollection = false;
     params.sizeStorer = nullptr;
     params.tracksSizeAdjustments = true;
     params.forceUpdateWithFullDocument = false;
 
-    const auto wtKvEngine = dynamic_cast<WiredTigerKVEngine*>(harnessHelper->getEngine());
+    const auto wtKvEngine = static_cast<WiredTigerKVEngine*>(harnessHelper->getEngine());
     auto rs = std::make_unique<WiredTigerRecordStore>(
         wtKvEngine,
         WiredTigerRecoveryUnit::get(*shard_role_details::getRecoveryUnit(opCtx.get())),

@@ -79,7 +79,8 @@ public:
     class LiteParsed : public LiteParsedDocumentSource {
     public:
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec) {
+                                                 const BSONElement& spec,
+                                                 const LiteParserOptions& options) {
             uassert(6188500,
                     str::stream() << "$changeStream must take a nested object but found: " << spec,
                     spec.type() == BSONType::Object);
@@ -223,6 +224,10 @@ public:
     // path to the cluster time will be kIdField + "." + kClusterTimeField.
     static constexpr StringData kClusterTimeField = "clusterTime"_sd;
 
+    // The name of the field where the commit timestamp of a prepared transaction will be located.
+    // Only shown if 'showExpandedEvents' is used.
+    static constexpr StringData kCommitTimestampField = "commitTimestamp"_sd;
+
     // The name of the field with the nsType of a changestream create event. Will contain
     // "collection", "view" or "timeseries". Will only be exposed if 'showExpandedEvents' is used.
     static constexpr StringData kNsTypeField = "nsType"_sd;
@@ -365,7 +370,7 @@ class LiteParsedDocumentSourceChangeStreamInternal final
     : public DocumentSourceChangeStream::LiteParsed {
 public:
     static std::unique_ptr<LiteParsedDocumentSourceChangeStreamInternal> parse(
-        const NamespaceString& nss, const BSONElement& spec) {
+        const NamespaceString& nss, const BSONElement& spec, const LiteParserOptions& options) {
         return std::make_unique<LiteParsedDocumentSourceChangeStreamInternal>(
             spec.fieldName(), nss, spec);
     }
@@ -397,8 +402,7 @@ public:
         : DocumentSource(stageName, expCtx) {}
 
     Value serialize(const SerializationOptions& opts = SerializationOptions{}) const override {
-        if (opts.literalPolicy != LiteralSerializationPolicy::kUnchanged ||
-            opts.transformIdentifiers) {
+        if (opts.isSerializingForQueryStats()) {
             // Stages made internally by 'DocumentSourceChangeStream' should not be serialized for
             // query stats. For query stats we will serialize only the user specified $changeStream
             // stage.

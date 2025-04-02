@@ -30,13 +30,11 @@
 #pragma once
 
 #include <absl/container/node_hash_map.h>
-#include <memory>
 #include <utility>
 #include <vector>
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/string_data.h"
-#include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/values/slot.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/query/optimizer/comparison_op.h"
@@ -48,11 +46,11 @@
 namespace mongo::stage_builder {
 
 /**
- * Creates a balanced boolean binary expression tree from given collection of leaf expression.
+ * Creates a boolean expression tree from given collection of leaf expression.
  */
-SbExpr makeBalancedBooleanOpTree(sbe::EPrimBinary::Op logicOp,
-                                 std::vector<SbExpr> leaves,
-                                 StageBuilderState& state);
+SbExpr makeBooleanOpTree(optimizer::Operations logicOp,
+                         std::vector<SbExpr> leaves,
+                         StageBuilderState& state);
 
 template <typename Builder>
 optimizer::ABT makeBalancedTreeImpl(Builder builder,
@@ -75,13 +73,7 @@ optimizer::ABT makeBalancedTree(Builder builder, std::vector<optimizer::ABT> lea
     return makeBalancedTreeImpl(builder, leaves, 0, leaves.size());
 }
 
-inline optimizer::ABT makeBalancedBooleanOpTree(optimizer::Operations logicOp,
-                                                std::vector<optimizer::ABT> leaves) {
-    auto builder = [=](optimizer::ABT lhs, optimizer::ABT rhs) {
-        return optimizer::make<optimizer::BinaryOp>(logicOp, std::move(lhs), std::move(rhs));
-    };
-    return makeBalancedTreeImpl(builder, leaves, 0, leaves.size());
-}
+optimizer::ABT makeBooleanOpTree(optimizer::Operations logicOp, std::vector<optimizer::ABT> leaves);
 
 inline auto makeABTFunction(StringData name, optimizer::ABTVector args) {
     return optimizer::make<optimizer::FunctionCall>(name.toString(), std::move(args));
@@ -128,6 +120,8 @@ optimizer::ABT makeVariable(optimizer::ProjectionName var);
 optimizer::ABT makeUnaryOp(optimizer::Operations unaryOp, optimizer::ABT operand);
 
 optimizer::ABT makeBinaryOp(optimizer::Operations binaryOp, optimizer::ABT lhs, optimizer::ABT rhs);
+
+optimizer::ABT makeNaryOp(optimizer::Operations naryOp, optimizer::ABTVector args);
 
 optimizer::ABT generateABTNullOrMissing(optimizer::ProjectionName var);
 optimizer::ABT generateABTNullOrMissing(optimizer::ABT var);
@@ -202,6 +196,10 @@ optimizer::ABT makeIf(optimizer::ABT condExpr, optimizer::ABT thenExpr, optimize
 optimizer::ABT makeLet(const optimizer::ProjectionName& name,
                        optimizer::ABT bindExpr,
                        optimizer::ABT expr);
+
+optimizer::ABT makeLet(std::vector<optimizer::ProjectionName> bindNames,
+                       optimizer::ABTVector bindExprs,
+                       optimizer::ABT inExpr);
 
 optimizer::ABT makeLet(sbe::FrameId frameId, optimizer::ABT bindExpr, optimizer::ABT expr);
 

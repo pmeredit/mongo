@@ -34,16 +34,16 @@ the data files.
 To avoid taking unnecessary checkpoints on an idle server, WiredTiger will only take checkpoints for
 the following scenarios:
 
-- When the [stable timestamp](../repl/README.md#replication-timestamp-glossary) is greater than or
-  equal to the [initial data timestamp](../repl/README.md#replication-timestamp-glossary), we take a
+- When the [stable timestamp](../../repl/README.md#replication-timestamp-glossary) is greater than or
+  equal to the [initial data timestamp](../../repl/README.md#replication-timestamp-glossary), we take a
   stable checkpoint, which is a durable view of the data at a particular timestamp. This is for
   steady-state replication.
-- The [initial data timestamp](../repl/README.md#replication-timestamp-glossary) is not set, so we
+- The [initial data timestamp](../../repl/README.md#replication-timestamp-glossary) is not set, so we
   must take a full checkpoint. This is when there is no consistent view of the data, such as during
   initial sync.
 
 Not only does checkpointing provide us with durability for the database, but it also enables us to
-take [backups of the data](#file-system-backups).
+take [backups of the data](../../catalog/README.md#file-system-backups).
 
 When WiredTiger takes a checkpoint, it uses the
 [`stable_timestamp`](https://github.com/mongodb/mongo/blob/87de9a0cb1/src/mongo/db/storage/wiredtiger/wiredtiger_kv_engine.cpp#L2011 "Github") (effectively a `read_timestamp`) for what data should be persisted in the checkpoint.
@@ -99,7 +99,7 @@ threads are restarted, and two-phase index builds are resumed.
 See [here](https://source.wiredtiger.com/develop/arch-rts.html) for WiredTiger's architecture guide
 on rollback-to-stable.
 
-See [here](../repl/README.md#rollback-recover-to-a-timestamp-rtt) for more information on what
+See [here](../../repl/README.md#rollback-recover-to-a-timestamp-rtt) for more information on what
 happens in the replication layer during rollback-to-stable.
 
 ## Repair
@@ -120,7 +120,7 @@ MongoDB repair attempts to address the following forms of corruption:
 - Missing WiredTiger data files
   - Includes all collections, `_mdb_catalog`, and `sizeStorer`
 - Index inconsistencies
-  - Validate [repair mode](#repair-mode) attempts to fix index inconsistencies to avoid a full index
+  - Validate [repair mode](../../catalog/validate/README.md#repair-mode) attempts to fix index inconsistencies to avoid a full index
     rebuild.
   - Indexes are rebuilt on collections after they have been salvaged or if they fail validation and
     validate repair mode is unable to fix all errors.
@@ -208,7 +208,7 @@ The oplog collection can be truncated both at the front end (most recent entries
 be deleted when new writes increase the collection size past the cap. MongoDB using the WiredTiger
 storage engine with `--replSet` handles oplog collection deletion specially via
 OplogTruncateMarkers, an oplog specific implementation of the
-[CollectionTruncateMarkers](#collectionTruncateMarkers) mechanism, ignoring the generic capped
+[CollectionTruncateMarkers](../README.md#collectionTruncateMarkers) mechanism, ignoring the generic capped
 collection deletion mechanism. The front of the oplog may be truncated back to a particular
 timestamp during replication startup recovery or replication rollback.
 
@@ -232,6 +232,22 @@ WiredTiger `OplogTruncateMarkers` obey an `oplogMinRetentionHours` configurable 
 `oplogMinRetentionHours` is active, the WT `OplogTruncateMarkers` will only truncate the oplog if a
 truncate marker (a sequential range of oplog) is not within the minimum time range required to
 remain.
+
+## Oplog Hole Truncation
+
+MongoDB maintains an `oplogTruncateAfterPoint` timestamp while in `PRIMARY` and `SECONDARY`
+replication modes to track persisted oplog holes. Replication startup recovery uses the
+`oplogTruncateAfterPoint` timestamp, if one is found to be set, to truncate all oplog entries after
+that point. On clean shutdown, there are no oplog writes and the `oplogTruncateAfterPoint` is
+cleared. On unclean shutdown, however, parallel writes can be active and therefore oplog holes can
+exist. MongoDB allows secondaries to read their sync source's oplog as soon as there are no
+_in-memory_ oplog holes, ensuring data consistency on the secondaries. Primaries, therefore, can
+allow oplog entries to be replicated and then lose that data themselves, in an unclean shutdown,
+before the replicated oplog entries become persisted. Primaries use the `oplogTruncateAfterPoint`
+to continually track oplog holes on disk in order to eliminate them after an unclean shutdown.
+Additionally, secondaries apply batches of oplog entries out of order and similarly must use the
+`oplogTruncateAfterPoint` to track batch boundaries in order to avoid unknown oplog holes after an
+unclean shutdown.
 
 # Error Handling
 

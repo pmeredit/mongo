@@ -51,7 +51,6 @@
 #include "mongo/db/s/sharding_migration_critical_section.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/request_types/flush_routing_table_cache_updates_gen.h"
 #include "mongo/s/sharding_feature_flags_gen.h"
@@ -159,14 +158,6 @@ public:
                 uassertStatusOK(
                     FilteringMetadataCache::get(opCtx)->onCollectionPlacementVersionMismatch(
                         opCtx, ns(), boost::none));
-
-                // TODO (SERVER-97511): Remove the refresh of the routing information.
-                // (Ignore FCV check): this feature flag is not FCV-gated.
-                if (feature_flags::gDualCatalogCache.isEnabledAndIgnoreFCVUnsafe()) {
-                    const auto catalogCache = Grid::get(opCtx)->catalogCache();
-                    catalogCache->onStaleCollectionVersion(ns(), boost::none /* wantedVersion */);
-                    (void)catalogCache->getCollectionRoutingInfo(opCtx, ns());
-                }
             }
 
             // A config server could receive this command even if not in config shard mode if the CS

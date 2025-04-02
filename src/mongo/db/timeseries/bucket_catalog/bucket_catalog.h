@@ -47,7 +47,6 @@
 #include "mongo/db/timeseries/bucket_catalog/bucket.h"
 #include "mongo/db/timeseries/bucket_catalog/bucket_identifiers.h"
 #include "mongo/db/timeseries/bucket_catalog/bucket_state_registry.h"
-#include "mongo/db/timeseries/bucket_catalog/closed_bucket.h"
 #include "mongo/db/timeseries/bucket_catalog/execution_stats.h"
 #include "mongo/db/timeseries/bucket_catalog/reopening.h"
 #include "mongo/db/timeseries/bucket_catalog/tracking_contexts.h"
@@ -64,22 +63,45 @@ namespace mongo::timeseries::bucket_catalog {
 
 using StripeNumber = std::uint8_t;
 using ShouldClearFn = std::function<bool(const UUID&)>;
+// Tuple that stores a measurement, the time value for that measurement, and the index of the
+// measurement from the original insert request.
+using BatchedInsertTuple = std::tuple<BSONObj, Date_t, UserBatchIndex>;
 
 /**
  * Bundle of information that gets passed down into 'insert' and functions below it that may create
  * a new bucket. It stores information that is used to decide which bucket to insert a measurement
- * into.
+ * into. Binding these values together is used to sort on measurement timestamps and keep track of
+ * the original index in the user batch for error reporting.
  */
 struct InsertContext {
     BucketKey key;
     StripeNumber stripeNumber;
     TimeseriesOptions options;
     ExecutionStatsController stats;
-    ClosedBuckets closedBuckets = ClosedBuckets();
 
     bool operator==(const InsertContext& other) const {
         return key == other.key;
     };
+};
+
+/**
+ * Represents a set of measurements that should target one bucket. The measurements contained in
+ * this struct are a best-effort guess at a grouping based on, but not intended to be a guarantee as
+ * to, what will fit in a bucket. The measurements stored within the struct should be sorted on
+ * time, and are guaranteed only to share a metaField value.
+ */
+struct BatchedInsertContext {
+    BucketKey key;
+    StripeNumber stripeNumber;
+    const TimeseriesOptions& options;
+    ExecutionStatsController stats;
+    std::vector<BatchedInsertTuple> measurementsTimesAndIndices;
+
+    BatchedInsertContext(BucketKey&,
+                         StripeNumber,
+                         const TimeseriesOptions&,
+                         ExecutionStatsController&,
+                         std::vector<BatchedInsertTuple>&);
 };
 
 /**
@@ -93,27 +115,22 @@ public:
     SuccessfulInsertion& operator=(SuccessfulInsertion&&) = default;
     SuccessfulInsertion(const SuccessfulInsertion&) = delete;
     SuccessfulInsertion& operator=(const SuccessfulInsertion&) = delete;
-    SuccessfulInsertion(std::shared_ptr<WriteBatch>&&, ClosedBuckets&&);
+    SuccessfulInsertion(std::shared_ptr<WriteBatch>&&);
 
     std::shared_ptr<WriteBatch> batch;
-    ClosedBuckets closedBuckets;
 };
 
 /**
- * Return type indicating that a call to 'tryInsert' must retry after waiting for a conflicting
- * operation to resolve. Caller should wait using 'waitToInsert'.
- *
- * In particular, if 'tryInsert' would have generated a 'ReopeningContext', but there is already an
- * outstanding 'ReopeningRequest' or a prepared 'WriteBatch' for a bucket in the series (same
- * metaField value), that represents a conflict.
+ * An insert or reopening operation can conflict with an outstanding 'ReopeningRequest' or a
+ * prepared 'WriteBatch' for a bucket in the series (same metaField value). Caller should wait using
+ * 'waitToInsert'.
  */
 using InsertWaiter = std::variant<std::shared_ptr<WriteBatch>, std::shared_ptr<ReopeningRequest>>;
 
 /**
- * Variant representing the possible outcomes of 'tryInsert' or 'insert'. See 'tryInsert' and
- * 'insert' for more details.
+ * Variant representing the possible outcomes of staging an insert.
  */
-using InsertResult = std::variant<SuccessfulInsertion, ReopeningContext, InsertWaiter>;
+using InsertResult = std::variant<SuccessfulInsertion, InsertWaiter>;
 
 /**
  * Struct to hold a portion of the buckets managed by the catalog.
@@ -213,62 +230,16 @@ uint64_t getMemoryUsage(const BucketCatalog& catalog);
 void getDetailedMemoryUsage(const BucketCatalog& catalog, BSONObjBuilder& builder);
 
 /**
- * Tries to insert 'doc' into a suitable bucket. If an open bucket is full (or has incompatible
- * schema), but is otherwise suitable, we will close it and open a new bucket. If we find no bucket
- * with matching data and a time range that can accommodate 'doc', we will not open a new bucket,
- * but rather let the caller know to either
- *  - search for an archived or closed bucket that can accommodate 'doc' by returning a
- *    'ReopeningContext', or
- *  - retry the insert after waiting on the returned 'InsertWaiter'.
- *
- * If a suitable bucket is found or opened, returns a 'SuccessfulInsertion' containing the
- * 'WriteBatch' into which 'doc' was inserted and a list of any buckets that were closed to make
- * space to insert 'doc'.
- *
- * If a 'ReopeningContext' is returned, it contains either a bucket ID, corresponding to an archived
- * bucket which should be fetched, an aggregation pipeline that can be used to search for a
- * previously-closed bucket that can accommodate 'doc', or (in hopefully rare cases) a
- * std::monostate which requires no intermediate action, The caller should then proceed to call
- * 'insert' to insert 'doc', passing any fetched bucket back as a member of the 'ReopeningContext'.
- */
-StatusWith<InsertResult> tryInsert(BucketCatalog& catalog,
-                                   const StringDataComparator* comparator,
-                                   const BSONObj& doc,
-                                   OperationId,
-                                   InsertContext& insertContext,
-                                   const Date_t& time,
-                                   uint64_t storageCacheSizeBytes);
-
-/**
- * Returns the WriteBatch into which the document was inserted and a list of any buckets that were
- * closed in order to make space to insert the document.
- *
- * We will attempt to reopen the bucket passed via 'reopeningContext' and attempt to add
- * 'doc' to that bucket. Otherwise we will attempt to find a suitable open bucket, or open a new
- * bucket if none exists.
- */
-StatusWith<InsertResult> insertWithReopeningContext(BucketCatalog& catalog,
-                                                    const StringDataComparator* comparator,
-                                                    const BSONObj& doc,
-                                                    OperationId,
-                                                    ReopeningContext& reopeningContext,
-                                                    InsertContext& insertContext,
-                                                    const Date_t& time,
-                                                    uint64_t storageCacheSizeBytes);
-
-/**
- * Returns the WriteBatch into which the document was inserted and a list of any buckets that were
- * closed in order to make space to insert the document.
- *
+ * Returns the WriteBatch into which the document was inserted.
  * We will attempt to find a suitable open bucket, or open a new bucket if none exists.
  */
-StatusWith<InsertResult> insert(BucketCatalog& catalog,
-                                const StringDataComparator* comparator,
-                                const BSONObj& doc,
-                                OperationId,
-                                InsertContext& insertContext,
-                                const Date_t& time,
-                                uint64_t storageCacheSizeBytes);
+InsertResult insert(BucketCatalog& catalog,
+                    const StringDataComparator* comparator,
+                    const BSONObj& doc,
+                    OperationId,
+                    InsertContext& insertContext,
+                    const Date_t& time,
+                    uint64_t storageCacheSizeBytes);
 
 /**
  * If a 'tryInsert' call returns a 'InsertWaiter' object, the caller should use this function to
@@ -290,10 +261,8 @@ Status prepareCommit(BucketCatalog& catalog,
 /**
  * Finishes committing the batch and notifies other threads waiting for preparing their batches.
  * Batch must have been previously prepared.
- *
- * Returns bucket information of a bucket if one was closed.
  */
-boost::optional<ClosedBucket> finish(BucketCatalog& catalog, std::shared_ptr<WriteBatch> batch);
+void finish(BucketCatalog& catalog, std::shared_ptr<WriteBatch> batch);
 
 /**
  * Aborts the given write batch and any other outstanding (unprepared) batches on the same bucket,
@@ -377,17 +346,94 @@ StatusWith<std::tuple<InsertContext, Date_t>> prepareInsert(BucketCatalog& catal
                                                             const BSONObj& measurementDoc);
 
 /**
- * Efficiently inserts a batch of time-series measurements. It handles the logic of finding a bucket
- * to insert measurements into, and the logic of finding a new bucket to insert into when a bucket
- * is rolled over for a time-related reason.
+ * Finds all buckets with 'bucketKey' by criteria in the following order:
+ *  - A bucket with RolloverReason::kTimeForward or RolloverReason::kTimeBackward, and 'time' fits
+ *    in its time range. The bucket's state is eligible for insert. There may be many such buckets.
+ *  - A bucket with RolloverReason::kNone. The bucket's state is eligible for insert. There can be
+ *    at most one such bucket, and it will be the last entry in the returned vector if it exists.
+ * Rolls over buckets that don't satisfy the above requirements and cleans up buckets with states
+ * conflicting with insert.
  */
-std::vector<std::shared_ptr<WriteBatch>> insertBatch(
+std::vector<Bucket*> findAndRolloverOpenBuckets(BucketCatalog& catalog,
+                                                Stripe& stripe,
+                                                WithLock stripeLock,
+                                                const BucketKey& bucketKey,
+                                                const Date_t& time,
+                                                const Seconds& bucketMaxSpanSeconds,
+                                                bool& bucketOpenedDueToMetadata);
+
+using CompressAndWriteBucketFunc = std::function<void(
+    OperationContext*, const bucket_catalog::BucketId&, const NamespaceString&, StringData)>;
+
+/**
+ * Given the 'reopeningCandidate', returns:
+ *      - An owned pointer of the bucket if successfully reopened and initialized in memory.
+ *      - A nullptr if no eligible bucket is reopened.
+ *      - An error if the reopened bucket cannot be used for new inserts.
+ * Compresses the reopened bucket document if it's uncompressed.
+ */
+StatusWith<tracking::unique_ptr<Bucket>> getReopenedBucket(
     OperationContext* opCtx,
     BucketCatalog& catalog,
     const Collection* bucketsColl,
-    const StringDataComparator* comparator,
-    const std::vector<BSONObj>& batchOfMeasurements,
-    InsertContext& insertContext,
-    std::function<uint64_t(OperationContext*)> functionToGetStorageCacheBytes);
+    const BucketKey& bucketKey,
+    const TimeseriesOptions& options,
+    const std::variant<OID, std::vector<BSONObj>>& reopeningCandidate,
+    BucketStateRegistry::Era catalogEra,
+    const CompressAndWriteBucketFunc& compressAndWriteBucketFunc,
+    ExecutionStatsController& stats,
+    bool& bucketOpenedDueToMetadata);
+
+/**
+ * Reopens and loads a bucket eligible for inserts into the bucket catalog. Checks for conflicting
+ * operations with reopening. Returns:
+ *      - A pointer of the bucket if successfully reopened and loaded into the bucket catalog.
+ *      - A nullptr if no eligible bucket is reopened.
+ *      - An error if the reopened bucket cannot be used for new inserts.
+ * Called with a stripe lock. May release the lock for reopening. Returns holding the lock.
+ * Manages the lifetime of the reopening request in 'stripe'.
+ */
+// TODO (SERVER-101256): use internal::AllowQueryBasedReopening type directly.
+StatusWith<Bucket*> potentiallyReopenBucket(
+    OperationContext* opCtx,
+    BucketCatalog& catalog,
+    Stripe& stripe,
+    stdx::unique_lock<stdx::mutex>& stripeLock,
+    const Collection* bucketsColl,
+    const BucketKey& bucketKey,
+    const Date_t& time,
+    const TimeseriesOptions& options,
+    BucketStateRegistry::Era catalogEra,
+    bool allowQueryBasedReopening,
+    uint64_t storageCacheSizeBytes,
+    const CompressAndWriteBucketFunc& compressAndWriteBucketFunc,
+    ExecutionStatsController& stats,
+    bool& bucketOpenedDueToMetadata);
+
+/**
+ * Returns a bucket where 'measurement' can be inserted. Attempts to get the bucket with the steps:
+ *  1. Finds an open bucket from 'stripe'.
+ *  2. Reopens a bucket from 'bucketsColl'.
+ *  3. Allocates a new bucket.
+ * May release the stripeLock in the middle but will reacquire it for such cases.
+ * Side effects:
+ *  - Performs rollover on open buckets of 'stripe'.
+ *  - Compresses uncompressed reopened bucket documents.
+ */
+Bucket& getEligibleBucket(OperationContext* opCtx,
+                          BucketCatalog& catalog,
+                          Stripe& stripe,
+                          stdx::unique_lock<stdx::mutex>& stripeLock,
+                          const Collection* bucketsColl,
+                          const BSONObj& measurement,
+                          const BucketKey& bucketKey,
+                          const Date_t& measurementTimestamp,
+                          const TimeseriesOptions& options,
+                          const StringDataComparator* comparator,
+                          BucketStateRegistry::Era era,
+                          uint64_t storageCacheSizeBytes,
+                          const CompressAndWriteBucketFunc& compressAndWriteBucketFunc,
+                          ExecutionStatsController& stats,
+                          bool& bucketOpenedDueToMetadata);
 
 }  // namespace mongo::timeseries::bucket_catalog

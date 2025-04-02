@@ -77,7 +77,6 @@
 #include "mongo/db/vector_clock.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/catalog/type_collection.h"
@@ -106,8 +105,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 const ReadPreferenceSetting kConfigNearestReadPreference(ReadPreference::Nearest, TagSet{});
 const ReadPreferenceSetting kConfigPrimaryPreferredReadPreference(ReadPreference::PrimaryPreferred,
@@ -174,10 +171,10 @@ void toBatchError(const Status& status, BatchedCommandResponse* response) {
 AggregateCommandRequest makeCollectionAndChunksAggregation(OperationContext* opCtx,
                                                            const NamespaceString& nss,
                                                            const ChunkVersion& sinceVersion) {
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[CollectionType::ConfigNS.coll()] = {CollectionType::ConfigNS,
-                                                           std::vector<BSONObj>()};
-    resolvedNamespaces[NamespaceString::kConfigsvrChunksNamespace.coll()] = {
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[CollectionType::ConfigNS] = {CollectionType::ConfigNS,
+                                                    std::vector<BSONObj>()};
+    resolvedNamespaces[NamespaceString::kConfigsvrChunksNamespace] = {
         NamespaceString::kConfigsvrChunksNamespace, std::vector<BSONObj>()};
 
     auto expCtx = ExpressionContextBuilder{}
@@ -352,10 +349,10 @@ AggregateCommandRequest makeCollectionAndChunksAggregation(OperationContext* opC
 AggregateCommandRequest makeCollectionAndIndexesAggregation(OperationContext* opCtx,
                                                             const NamespaceString& nss) {
     auto expCtx = ExpressionContextBuilder{}.opCtx(opCtx).ns(CollectionType::ConfigNS).build();
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[CollectionType::ConfigNS.coll()] = {CollectionType::ConfigNS,
-                                                           std::vector<BSONObj>()};
-    resolvedNamespaces[NamespaceString::kConfigsvrIndexCatalogNamespace.coll()] = {
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[CollectionType::ConfigNS] = {CollectionType::ConfigNS,
+                                                    std::vector<BSONObj>()};
+    resolvedNamespaces[NamespaceString::kConfigsvrIndexCatalogNamespace] = {
         NamespaceString::kConfigsvrIndexCatalogNamespace, std::vector<BSONObj>()};
     expCtx->setResolvedNamespaces(resolvedNamespaces);
 
@@ -408,10 +405,10 @@ AggregateCommandRequest makeUnsplittableCollectionsDataShardAggregation(
     OperationContext* opCtx,
     const DatabaseName& dbName,
     const std::vector<ShardId>& excludedShards) {
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[CollectionType::ConfigNS.coll()] = {CollectionType::ConfigNS,
-                                                           std::vector<BSONObj>()};
-    resolvedNamespaces[NamespaceString::kConfigsvrChunksNamespace.coll()] = {
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[CollectionType::ConfigNS] = {CollectionType::ConfigNS,
+                                                    std::vector<BSONObj>()};
+    resolvedNamespaces[NamespaceString::kConfigsvrChunksNamespace] = {
         NamespaceString::kConfigsvrChunksNamespace, std::vector<BSONObj>()};
     auto expCtx = ExpressionContextBuilder{}
                       .opCtx(opCtx)
@@ -432,9 +429,9 @@ AggregateCommandRequest makeUnsplittableCollectionsDataShardAggregation(
     const auto db =
         DatabaseNameUtil::serialize(dbName, SerializationContext::stateCommandRequest());
     stages.emplace_back(DocumentSourceMatch::create(
-        BSON(CollectionType::kNssFieldName << BSON("$regex"
-                                                   << "^{}\\."_format(pcre_util::quoteMeta(db)))
-                                           << CollectionType::kUnsplittableFieldName << true),
+        BSON(CollectionType::kNssFieldName
+             << BSON("$regex" << fmt::format("^{}\\.", pcre_util::quoteMeta(db)))
+             << CollectionType::kUnsplittableFieldName << true),
         expCtx));
 
     // 2. Retrieve config.chunks entries with the same uuid as the one from the
@@ -736,7 +733,8 @@ std::vector<CollectionType> ShardingCatalogClientImpl::getShardedCollections(
     if (!dbName.isEmpty()) {
         const auto db =
             DatabaseNameUtil::serialize(dbName, SerializationContext::stateCommandRequest());
-        b.appendRegex(CollectionType::kNssFieldName, "^{}\\."_format(pcre_util::quoteMeta(db)));
+        b.appendRegex(CollectionType::kNssFieldName,
+                      fmt::format("^{}\\.", pcre_util::quoteMeta(db)));
     }
 
     b.append(CollectionType::kUnsplittableFieldName, BSON("$ne" << true));
@@ -766,7 +764,8 @@ std::vector<CollectionType> ShardingCatalogClientImpl::getCollections(
     if (!dbName.isEmpty()) {
         const auto db =
             DatabaseNameUtil::serialize(dbName, SerializationContext::stateCommandRequest());
-        b.appendRegex(CollectionType::kNssFieldName, "^{}\\."_format(pcre_util::quoteMeta(db)));
+        b.appendRegex(CollectionType::kNssFieldName,
+                      fmt::format("^{}\\.", pcre_util::quoteMeta(db)));
     }
 
     auto collDocs = uassertStatusOK(_exhaustiveFindOnConfig(opCtx,
@@ -793,7 +792,7 @@ std::vector<NamespaceString> ShardingCatalogClientImpl::getShardedCollectionName
     BSONObjBuilder b;
     const auto db =
         DatabaseNameUtil::serialize(dbName, SerializationContext::stateCommandRequest());
-    b.appendRegex(CollectionType::kNssFieldName, "^{}\\."_format(pcre_util::quoteMeta(db)));
+    b.appendRegex(CollectionType::kNssFieldName, fmt::format("^{}\\.", pcre_util::quoteMeta(db)));
     b.append(CollectionTypeBase::kUnsplittableFieldName, BSON("$ne" << true));
 
     auto collDocs = uassertStatusOK(_exhaustiveFindOnConfig(opCtx,
@@ -839,7 +838,7 @@ std::vector<NamespaceString> ShardingCatalogClientImpl::getUnsplittableCollectio
     BSONObjBuilder b;
     const auto db =
         DatabaseNameUtil::serialize(dbName, SerializationContext::stateCommandRequest());
-    b.appendRegex(CollectionType::kNssFieldName, "^{}\\."_format(pcre_util::quoteMeta(db)));
+    b.appendRegex(CollectionType::kNssFieldName, fmt::format("^{}\\.", pcre_util::quoteMeta(db)));
     b.append(CollectionTypeBase::kUnsplittableFieldName, true);
 
     auto collDocs = uassertStatusOK(_exhaustiveFindOnConfig(opCtx,
@@ -1143,9 +1142,9 @@ StatusWith<std::vector<TagsType>> ShardingCatalogClientImpl::getTagsForCollectio
 
 std::vector<NamespaceString> ShardingCatalogClientImpl::getAllNssThatHaveZonesForDatabase(
     OperationContext* opCtx, const DatabaseName& dbName) {
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[TagsType::ConfigNS.coll()] = {TagsType::ConfigNS,
-                                                     std::vector<BSONObj>() /* pipeline */};
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[TagsType::ConfigNS] = {TagsType::ConfigNS,
+                                              std::vector<BSONObj>() /* pipeline */};
     auto expCtx = ExpressionContextBuilder{}
                       .opCtx(opCtx)
                       .resolvedNamespace(std::move(resolvedNamespaces))
@@ -1169,8 +1168,7 @@ std::vector<NamespaceString> ShardingCatalogClientImpl::getAllNssThatHaveZonesFo
     auto matchStage = DocumentSourceMatch::createFromBson(
         Document{{"$match", std::move(matchStageBson)}}.toBson().firstElement(), expCtx);
 
-    auto groupStageBson = BSON("_id"
-                               << "$ns");
+    auto groupStageBson = BSON("_id" << "$ns");
     auto groupStage = DocumentSourceGroup::createFromBson(
         Document{{"$group", std::move(groupStageBson)}}.toBson().firstElement(), expCtx);
 
@@ -1712,10 +1710,10 @@ HistoricalPlacement ShardingCatalogClientImpl::getHistoricalPlacement(
       }
     ])
         */
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[NamespaceString::kConfigsvrShardsNamespace.coll()] = {
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[NamespaceString::kConfigsvrShardsNamespace] = {
         NamespaceString::kConfigsvrShardsNamespace, std::vector<BSONObj>() /* pipeline */};
-    resolvedNamespaces[NamespaceString::kConfigsvrPlacementHistoryNamespace.coll()] = {
+    resolvedNamespaces[NamespaceString::kConfigsvrPlacementHistoryNamespace] = {
         NamespaceString::kConfigsvrPlacementHistoryNamespace,
         std::vector<BSONObj>() /* pipeline */};
     auto expCtx = ExpressionContextBuilder{}
@@ -1749,11 +1747,8 @@ HistoricalPlacement ShardingCatalogClientImpl::getHistoricalPlacement(
 
     // 2 & 3. Sort by timestamp and extract the first document for collection and database
     auto sortStage = DocumentSourceSort::create(expCtx, BSON("timestamp" << -1));
-    auto groupStageBson = BSON("_id"
-                               << "$nss"
-                               << "shards"
-                               << BSON("$first"
-                                       << "$shards"));
+    auto groupStageBson = BSON("_id" << "$nss"
+                                     << "shards" << BSON("$first" << "$shards"));
     auto groupStage = DocumentSourceGroup::createFromBson(
         Document{{"$group", std::move(groupStageBson)}}.toBson().firstElement(), expCtx);
 
@@ -1762,21 +1757,17 @@ HistoricalPlacement ShardingCatalogClientImpl::getHistoricalPlacement(
         DocumentSourceMatch::create(BSON("shards" << BSON("$not" << BSON("$size" << 0))), expCtx);
 
     // Stage 5. Group all documents and concat shards (this will generate an array of arrays)
-    auto groupStageBson2 = BSON("_id"
-                                << ""
-                                << "shards"
-                                << BSON("$push"
-                                        << "$shards"));
+    auto groupStageBson2 = BSON("_id" << ""
+                                      << "shards" << BSON("$push" << "$shards"));
     auto groupStageConcat = DocumentSourceGroup::createFromBson(
         Document{{"$group", std::move(groupStageBson2)}}.toBson().firstElement(), expCtx);
 
     // Stage 6. Flatten the array of arrays into a set (this will also remove duplicates)
-    auto projectStageBson =
-        BSON("shards" << BSON("$reduce" << BSON("input"
-                                                << "$shards"
-                                                << "initialValue" << BSONArray() << "in"
-                                                << BSON("$setUnion" << BSON_ARRAY("$$this"
-                                                                                  << "$$value")))));
+    auto projectStageBson = BSON(
+        "shards" << BSON(
+            "$reduce" << BSON("input" << "$shards"
+                                      << "initialValue" << BSONArray() << "in"
+                                      << BSON("$setUnion" << BSON_ARRAY("$$this" << "$$value")))));
     auto projectStageFlatten = DocumentSourceProject::createFromBson(
         Document{{"$project", std::move(projectStageBson)}}.toBson().firstElement(), expCtx);
 

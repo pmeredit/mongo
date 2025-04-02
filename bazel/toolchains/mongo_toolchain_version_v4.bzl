@@ -43,6 +43,11 @@ TOOLCHAIN_MAP_V4 = {
         "sha": "b62574a447e0e5120475c7ef0ec0e821548a32a103999ed350b05adcc9073b55",
         "url": "https://mdb-build-public.s3.us-east-1.amazonaws.com/toolchains/bazel_v4_toolchain_builder_rhel81_ppc64le_acdc1709a01126c67dbd4f0f37491e171f64ec29_24_10_11_23_01_02.tar.gz",
     },
+    "rhel9_ppc64le": {
+        "platform_name": "rhel9-ppc64le",
+        "sha": "d7dd11ebe71918399543860a268c951ea22818bfb4f2c9b8b3a5e6d039bc6b67",
+        "url": "https://mdb-build-public.s3.us-east-1.amazonaws.com/toolchains/bazel_v4_toolchain_builder_rhel90_ppc64le_53ac9105dff523c4dec626034a4702548aabfdc9_25_02_20_04_39_07.tar.gz",
+    },
     "rhel8_s390x": {
         "platform_name": "rhel80-zseries",
         "sha": "5d4f93968672f324e532b62eb9345351b407a866650d824eee79d295d6613606",
@@ -62,6 +67,11 @@ TOOLCHAIN_MAP_V4 = {
         "platform_name": "rhel90",
         "sha": "ba2cf2efd68805eec11580e0276f2f4bde6a94735b0375cae901bcb7099daebe",
         "url": "https://mdb-build-public.s3.us-east-1.amazonaws.com/toolchains/bazel_v4_toolchain_builder_rhel90_acdc1709a01126c67dbd4f0f37491e171f64ec29_24_10_11_23_01_02.tar.gz",
+    },
+    "rhel9_s390x": {
+        "platform_name": "rhel9-s390x",
+        "sha": "f5f49dac1a3b06ac6b642192be69f522baa9b52eb647ac9db0534cfe9e5c140d",
+        "url": "https://mciuploads.s3.amazonaws.com/toolchain-builder/rhel90-zseries/a4fa792a94d75177fd3f00eb3ab7516e5de15485/bazel_v4_toolchain_builder_rhel90_zseries_patch_a4fa792a94d75177fd3f00eb3ab7516e5de15485_67a632fc8e45320007f86f84_25_02_07_16_21_19.tar.gz",
     },
     "suse15_x86_64": {
         "platform_name": "suse15",

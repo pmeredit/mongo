@@ -55,8 +55,7 @@
 #include "mongo/db/pipeline/document_source_mock.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/semantic_analysis.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -103,8 +102,7 @@ TEST_F(ProjectStageTest, ShouldOptimizeInnerExpressions) {
 }
 
 TEST_F(ProjectStageTest, ShouldErrorOnNonObjectSpec) {
-    BSONObj spec = BSON("$project"
-                        << "foo");
+    BSONObj spec = BSON("$project" << "foo");
     BSONElement specElement = spec.firstElement();
     ASSERT_THROWS(DocumentSourceProject::createFromBson(specElement, getExpCtx()),
                   AssertionException);
@@ -185,7 +183,7 @@ TEST_F(ProjectStageTest, InclusionShouldAddDependenciesOfIncludedAndComputedFiel
         fromjson("{a: true, x: '$b', y: {$and: ['$c','$d']}, z: {$meta: 'textScore'}}"),
         getExpCtx(),
         "$project"_sd);
-    DepsTracker dependencies(DepsTracker::kAllMetadata & ~DepsTracker::kOnlyTextScore);
+    DepsTracker dependencies(DepsTracker::kOnlyTextScore);
     ASSERT_EQUALS(DepsTracker::State::EXHAUSTIVE_FIELDS, project->getDependencies(&dependencies));
     ASSERT_EQUALS(5U, dependencies.fields.size());
 
@@ -422,17 +420,15 @@ TEST_F(ProjectStageTest, ShapifyAndRedact) {
 }
 
 TEST_F(UnsetTest, AcceptsValidUnsetSpecWithArray) {
-    auto spec = BSON("$unset" << BSON_ARRAY("a"
-                                            << "b"
-                                            << "c.d"));
+    auto spec = BSON("$unset" << BSON_ARRAY("a" << "b"
+                                                << "c.d"));
     auto specElement = spec.firstElement();
     auto stage = DocumentSourceProject::createFromBson(specElement, getExpCtx());
     ASSERT(stage);
 }
 
 TEST_F(UnsetTest, AcceptsValidUnsetSpecWithSingleString) {
-    auto spec = BSON("$unset"
-                     << "a");
+    auto spec = BSON("$unset" << "a");
     auto specElement = spec.firstElement();
     auto stage = DocumentSourceProject::createFromBson(specElement, getExpCtx());
     ASSERT(stage);
@@ -473,9 +469,8 @@ TEST_F(UnsetTest, UnsetSingleField) {
 }
 
 TEST_F(UnsetTest, UnsetMultipleFields) {
-    auto updateDoc = BSON("$unset" << BSON_ARRAY("a"
-                                                 << "b.c"
-                                                 << "d.e"));
+    auto updateDoc = BSON("$unset" << BSON_ARRAY("a" << "b.c"
+                                                     << "d.e"));
     auto unsetStage = DocumentSourceProject::createFromBson(updateDoc.firstElement(), getExpCtx());
     auto source = DocumentSourceMock::createForTest({"{a: 10, b: {c: 20}, d: [{e: 30, f: 40}]}"},
                                                     getExpCtx());
@@ -522,8 +517,7 @@ TEST_F(UnsetTest, UnsetSerializesToProject) {
 }
 
 TEST_F(UnsetTest, UnsetShouldNotAddDependencies) {
-    auto updateDoc = BSON("$unset" << BSON_ARRAY("a"
-                                                 << "b.c"));
+    auto updateDoc = BSON("$unset" << BSON_ARRAY("a" << "b.c"));
     auto unsetStage = DocumentSourceProject::createFromBson(updateDoc.firstElement(), getExpCtx());
 
     DepsTracker dependencies;
@@ -535,9 +529,8 @@ TEST_F(UnsetTest, UnsetShouldNotAddDependencies) {
 }
 
 TEST_F(UnsetTest, UnsetReportsExcludedPathsAsModifiedPaths) {
-    auto updateDoc = BSON("$unset" << BSON_ARRAY("a"
-                                                 << "b.c.d"
-                                                 << "e.f.g"));
+    auto updateDoc = BSON("$unset" << BSON_ARRAY("a" << "b.c.d"
+                                                     << "e.f.g"));
     auto unsetStage = DocumentSourceProject::createFromBson(updateDoc.firstElement(), getExpCtx());
 
     auto modifiedPaths = unsetStage->getModifiedPaths();

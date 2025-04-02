@@ -5,7 +5,7 @@
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
 import {createSearchIndex, dropSearchIndex} from "jstests/libs/search.js";
-import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e/lib/explain_utils.js";
+import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e_lib/explain_utils.js";
 
 const testDb = db.getSiblingDB(jsTestName());
 const localColl = testDb.localColl;
@@ -59,20 +59,20 @@ let searchQuery = {
 };
 
 let lookupPipeline = [{
-    $lookup: {
-        from: identityView.getName(),
-        localField: "_id",
-        foreignField: "state",
-        pipeline: [
-            searchQuery,
-            {$sort : {city: 1}},
-            {$project: {_id: 0}}],
-            as: "stateFacts"
-        }
-    },
-    {$sort: {_id: 1}},
-    {$project: {"stateFacts.state": 0}}
-];
+        $lookup: {
+            from: identityView.getName(),
+            localField: "_id",
+            foreignField: "state",
+            pipeline: [
+                searchQuery,
+                {$sort : {city: 1}},
+                {$project: {_id: 0}}],
+                as: "stateFacts"
+            }
+        },
+        {$sort: {_id: 1}},
+        {$project: {"stateFacts.state": 0}}
+    ];
 
 let expectedResults = [
     {
@@ -88,6 +88,35 @@ let expectedResults = [
     {_id: "New Jersey", stateFacts: [{city: "Harrison", sportsTeam: "NJ/NY Gotham FC", pop: 5}]},
     {_id: "New York", stateFacts: [{city: "New York", sportsTeam: "NY Liberty", pop: 7}]}
 ];
+
 let results = localColl.aggregate(lookupPipeline).toArray();
 assert.eq(results, expectedResults);
+
+let unionWithPipeline = [
+    {$sort: {_id: 1}},
+    {$limit: 1},
+    {
+        $unionWith: {
+            coll: identityView.getName(),
+            pipeline: [
+                searchQuery,
+                {$sort: {city: 1}},
+                {$project: {_id: 0, "stateFacts.state": 0}},
+                {$limit: 1}
+            ]
+        }
+    }
+];
+
+expectedResults = [
+    {_id: "California"},
+    {
+        city: "Berkeley",
+        state: "California",
+    },
+];
+
+results = localColl.aggregate(unionWithPipeline).toArray();
+assert.eq(results, expectedResults);
+
 dropSearchIndex(identityView, {name: "identityViewIx"});

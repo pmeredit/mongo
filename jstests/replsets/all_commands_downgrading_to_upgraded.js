@@ -62,7 +62,6 @@ const allCommands = {
     _configsvrMoveRange: {skip: isAnInternalCommand},
     _configsvrRemoveChunks: {skip: isAnInternalCommand},
     _configsvrRemoveShard: {skip: isAnInternalCommand},
-    _configsvrRemoveShardCommit: {skip: isAnInternalCommand},
     _configsvrRemoveShardFromZone: {skip: isAnInternalCommand},
     _configsvrRemoveTags: {skip: isAnInternalCommand},
     _configsvrRepairShardedCollectionChunksHistory: {skip: isAnInternalCommand},
@@ -100,11 +99,15 @@ const allCommands = {
     _shardsvrChangePrimary: {skip: isAnInternalCommand},
     _shardsvrCleanupStructuredEncryptionData: {skip: isAnInternalCommand},
     _shardsvrCleanupReshardCollection: {skip: isAnInternalCommand},
+    _shardsvrCloneAuthoritativeMetadata: {skip: isAnInternalCommand},
     _shardsvrCloneCatalogData: {skip: isAnInternalCommand},
     _shardsvrCompactStructuredEncryptionData: {skip: isAnInternalCommand},
     _shardsvrConvertToCapped: {skip: isAnInternalCommand},
     _shardsvrRegisterIndex: {skip: isAnInternalCommand},
     _shardsvrRunSearchIndexCommand: {skip: isAnInternalCommand},
+    _shardsvrResolveView: {skip: isAnInternalCommand},
+    _shardsvrCommitCreateDatabaseMetadata: {skip: isAnInternalCommand},
+    _shardsvrCommitDropDatabaseMetadata: {skip: isAnInternalCommand},
     _shardsvrCommitIndexParticipant: {skip: isAnInternalCommand},
     _shardsvrCommitReshardCollection: {skip: isAnInternalCommand},
     _shardsvrDropCollection: {skip: isAnInternalCommand},
@@ -132,6 +135,8 @@ const allCommands = {
     _shardsvrDropDatabase: {skip: isAnInternalCommand},
     _shardsvrDropDatabaseParticipant: {skip: isAnInternalCommand},
     _shardsvrReshardCollection: {skip: isAnInternalCommand},
+    _shardsvrReshardingDonorFetchFinalCollectionStats: {skip: isAnInternalCommand},
+    _shardsvrReshardingDonorStartChangeStreamsMonitor: {skip: isAnInternalCommand},
     _shardsvrReshardingOperationTime: {skip: isAnInternalCommand},
     _shardsvrReshardRecipientClone: {skip: isAnInternalCommand},
     _shardsvrRefineCollectionShardKey: {skip: isAnInternalCommand},
@@ -147,6 +152,7 @@ const allCommands = {
     _shardsvrUntrackUnsplittableCollection: {skip: isAnInternalCommand},
     _shardsvrCheckMetadataConsistency: {skip: isAnInternalCommand},
     _shardsvrCheckMetadataConsistencyParticipant: {skip: isAnInternalCommand},
+    _shardsvrFetchCollMetadata: {skip: isAnInternalCommand},
     streams_startStreamProcessor: {skip: isAnInternalCommand},
     streams_startStreamSample: {skip: isAnInternalCommand},
     streams_stopStreamProcessor: {skip: isAnInternalCommand},
@@ -159,6 +165,7 @@ const allCommands = {
     streams_testOnlyGetFeatureFlags: {skip: isAnInternalCommand},
     streams_writeCheckpoint: {skip: isAnInternalCommand},
     streams_sendEvent: {skip: isAnInternalCommand},
+    streams_updateConnection: {skip: "internal command"},
     _transferMods: {skip: isAnInternalCommand},
     abortMoveCollection: {
         // Skipping command because it requires testing through a parallel shell.
@@ -1236,6 +1243,25 @@ const allCommands = {
     reIndex: {
         skip: isDeprecated,
     },
+    releaseMemory: {
+        setUp: function(conn) {
+            const db = conn.getDB(dbName);
+            for (let i = 0; i < 10; i++) {
+                assert.commandWorked(conn.getCollection(fullNs).insert({a: i}));
+            }
+
+            const res = db.runCommand({find: collName, batchSize: 1});
+            const cmdObj = {releaseMemory: [NumberLong(res.cursor.id)]};
+            return cmdObj;
+        },
+        // This command requires information that is created during the setUp portion (a cursor ID),
+        // so we need to create the command in setUp. We set the command to an empty object in order
+        // to indicate that the command created in setUp should be used instead.
+        command: {},
+        teardown: function(conn) {
+            assert.commandWorked(conn.getDB(dbName).runCommand({drop: collName}));
+        },
+    },
     removeShard: {
         // We cannot test removeShard because we need to be able to run addShard during set up.
         // This will be tested in FCV upgrade/downgrade passthroughs in the sharding
@@ -1256,6 +1282,7 @@ const allCommands = {
         }
     },
     repairShardedCollectionChunksHistory: {skip: isAnInternalCommand},
+    replicateSearchIndexCommand: {skip: isAnInternalCommand},
     replSetAbortPrimaryCatchUp: {
         // This will be tested in FCV upgrade/downgrade passthroughs through the replsets directory.
         skip: "requires changing primary connection",
@@ -1518,7 +1545,6 @@ const allCommands = {
     },
     splitChunk: {skip: isAnInternalCommand},
     splitVector: {skip: isAnInternalCommand},
-    stageDebug: {skip: isAnInternalCommand},
     startRecordingTraffic: {
         // Skipping command because it requires an actual file path for recording traffic to.
         skip: "requires an actual file path to record traffic to",
@@ -1535,6 +1561,7 @@ const allCommands = {
         skip: "requires an actual file path to record traffic to",
     },
     sysprofile: {skip: isAnInternalCommand},
+    testCommandFeatureFlaggedOnLatestFCV: {skip: isAnInternalCommand},
     testDeprecation: {skip: isAnInternalCommand},
     testDeprecationInVersion2: {skip: isAnInternalCommand},
     testInternalTransactions: {skip: isAnInternalCommand},

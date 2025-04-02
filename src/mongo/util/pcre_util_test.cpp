@@ -35,16 +35,13 @@
 #include <ostream>
 
 #include "mongo/base/string_data.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/ctype.h"
 #include "mongo/util/pcre.h"
 
 namespace mongo::pcre_util {
 namespace {
-
-using namespace fmt::literals;
 
 // Test compares `CompileOptions` as integers.
 TEST(PcreUtilTest, FlagsToOptions) {
@@ -131,7 +128,7 @@ TEST(PcreUtilTest, QuoteMeta) {
             r += "]";
             return r;
         };
-        auto note = "{} => {}"_format(hexdump(in), hexdump(out));
+        auto note = fmt::format("{} => {}", hexdump(in), hexdump(out));
         if (shouldEscape) {
             ASSERT_EQ(out, "\\" + in) << note;
         } else {

@@ -40,10 +40,7 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -51,24 +48,6 @@ namespace mongo {
 namespace expression_evaluation_test {
 
 using boost::intrusive_ptr;
-
-/* ------------------------ CoerceToBool -------------------- */
-
-TEST(ExpressionCoerceToBoolTest, EvaluateTrue) {
-    /** Nested expression coerced to true. */
-    auto expCtx = ExpressionContextForTest{};
-    intrusive_ptr<Expression> nested = ExpressionConstant::create(&expCtx, Value(5));
-    intrusive_ptr<Expression> expression = ExpressionCoerceToBool::create(&expCtx, nested);
-    ASSERT(expression->evaluate({}, &expCtx.variables).getBool());
-}
-
-TEST(ExpressionCoerceToBoolTest, EvaluateFalse) {
-    /** Nested expression coerced to false. */
-    auto expCtx = ExpressionContextForTest{};
-    intrusive_ptr<Expression> nested = ExpressionConstant::create(&expCtx, Value(0));
-    intrusive_ptr<Expression> expression = ExpressionCoerceToBool::create(&expCtx, nested);
-    ASSERT(!expression->evaluate({}, &expCtx.variables).getBool());
-}
 
 namespace all_any_elements {
 void runTest(Document spec) {
@@ -147,8 +126,7 @@ TEST(ExpressionAllAnyElementsTest, FalseViaInt) {
 
 TEST(ExpressionAllAnyElementsTest, Null) {
     runTest(DOC("input" << DOC_ARRAY(BSONNULL) << "error"
-                        << DOC_ARRAY("$allElementsTrue"_sd
-                                     << "$anyElementTrue"_sd)));
+                        << DOC_ARRAY("$allElementsTrue"_sd << "$anyElementTrue"_sd)));
 }
 
 }  // namespace all_any_elements

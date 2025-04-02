@@ -73,8 +73,7 @@
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/stdx/utility.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/uuid.h"
@@ -363,8 +362,7 @@ TEST_F(CreateCollectionTest, CreateCollectionForApplyOpsRespectsTimeseriesBucket
     ASSERT_EQUALS(uuid1, getCollectionUuid(opCtx.get(), bucketsColl));
 }
 
-// TODO SERVER-92265 consider removing TimeseriesBucketingParametersChangedFlagAlwaysTrue
-TEST_F(CreateCollectionTest, TimeseriesBucketingParametersChangedFlagAlwaysTrue) {
+TEST_F(CreateCollectionTest, TimeseriesBucketingParametersChangedFlagNotSetIfFeatureDisabled) {
     RAIIServerParameterControllerForTest featureFlagController(
         "featureFlagTSBucketingParametersUnchanged", false);
     NamespaceString curNss = NamespaceString::createNamespaceString_forTest("test.curColl");
@@ -379,8 +377,7 @@ TEST_F(CreateCollectionTest, TimeseriesBucketingParametersChangedFlagAlwaysTrue)
 
     ASSERT_TRUE(collectionExists(opCtx.get(), bucketsColl));
     AutoGetCollectionForRead collForRead(opCtx.get(), bucketsColl);
-    ASSERT_TRUE(collForRead->timeseriesBucketingParametersHaveChanged());
-    ASSERT_TRUE(*collForRead->timeseriesBucketingParametersHaveChanged());
+    ASSERT_FALSE(collForRead->timeseriesBucketingParametersHaveChanged());
 }
 
 TEST_F(CreateCollectionTest,
@@ -413,8 +410,8 @@ TEST_F(CreateCollectionTest, TimeseriesBucketingParametersChangedFlagTrue) {
 
     ASSERT_TRUE(collectionExists(opCtx.get(), bucketsColl));
     AutoGetCollectionForRead bucketsCollForRead(opCtx.get(), bucketsColl);
-    ASSERT_TRUE(bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
-    ASSERT_FALSE(*bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
+    // TODO(SERVER-101611): Set *timeseriesBucketingParametersHaveChanged to false on create
+    ASSERT_FALSE(bucketsCollForRead->timeseriesBucketingParametersHaveChanged());
 }
 
 TEST_F(CreateCollectionTest, TimeseriesBucketingParametersChangedFlagFalse) {
@@ -522,7 +519,6 @@ TEST_F(CreateVirtualCollectionTest, VirtualCollectionOptionsWithMultiSource) {
 }
 
 TEST_F(CreateVirtualCollectionTest, InvalidVirtualCollectionOptions) {
-    using namespace fmt::literals;
 
     NamespaceString vcollNss = NamespaceString::createNamespaceString_forTest("myDb", "vcoll.name");
     auto opCtx = makeOpCtx();
@@ -541,7 +537,7 @@ TEST_F(CreateVirtualCollectionTest, InvalidVirtualCollectionOptions) {
         }
 
         ASSERT_TRUE(exceptionOccurred)
-            << "Invalid 'url': {} must fail but succeeded"_format(kInvalidUrl);
+            << fmt::format("Invalid 'url': {} must fail but succeeded", kInvalidUrl);
     }
 
     {
@@ -556,8 +552,8 @@ TEST_F(CreateVirtualCollectionTest, InvalidVirtualCollectionOptions) {
         }
 
         ASSERT_TRUE(exceptionOccurred)
-            << "Unknown 'storageType': {} must fail but succeeded"_format(
-                   stdx::to_underlying(kInvalidStorageTypeEnum));
+            << fmt::format("Unknown 'storageType': {} must fail but succeeded",
+                           stdx::to_underlying(kInvalidStorageTypeEnum));
     }
 
     {
@@ -571,8 +567,9 @@ TEST_F(CreateVirtualCollectionTest, InvalidVirtualCollectionOptions) {
             exceptionOccurred = true;
         }
 
-        ASSERT_TRUE(exceptionOccurred) << "Unknown 'fileType': {} must fail but succeeded"_format(
-            stdx::to_underlying(kInvalidFileTypeEnum));
+        ASSERT_TRUE(exceptionOccurred)
+            << fmt::format("Unknown 'fileType': {} must fail but succeeded",
+                           stdx::to_underlying(kInvalidFileTypeEnum));
     }
 }
 }  // namespace

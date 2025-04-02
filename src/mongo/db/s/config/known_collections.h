@@ -76,12 +76,13 @@ const StringDataSet kConfigCollections{
     NamespaceString::kSetChangeStreamStateCoordinatorNamespace.coll(),
     NamespaceString::kShardCollectionCatalogNamespace.coll(),
     NamespaceString::kShardConfigCollectionsNamespace.coll(),
-    NamespaceString::kShardConfigDatabasesNamespace.coll(),
+    NamespaceString::kConfigCacheDatabasesNamespace.coll(),
     NamespaceString::kShardIndexCatalogNamespace.coll(),
     NamespaceString::kShardingDDLCoordinatorsNamespace.coll(),
     NamespaceString::kShardingRenameParticipantsNamespace.coll(),
     NamespaceString::kTransactionCoordinatorsNamespace.coll(),
     NamespaceString::kUserWritesCriticalSectionsNamespace.coll(),
     NamespaceString::kVectorClockNamespace.coll(),
+    NamespaceString::kConfigShardCatalogDatabasesNamespace.coll(),
 };
 }  // namespace mongo

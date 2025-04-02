@@ -54,9 +54,6 @@
 #include "mongo/db/shard_id.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/catalog/type_chunk_range.h"
 #include "mongo/s/catalog_cache.h"
@@ -226,7 +223,7 @@ public:
 
         boost::optional<Chunk> chunk;
 
-        const auto& cm = cri.cm;
+        const auto& cm = cri.getChunkManager();
 
         if (!find.isEmpty()) {
             // find

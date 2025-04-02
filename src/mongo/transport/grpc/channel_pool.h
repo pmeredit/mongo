@@ -34,6 +34,7 @@
 
 #include "mongo/base/counter.h"
 #include "mongo/logv2/log.h"
+#include "mongo/platform/atomic.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/transport/transport_layer.h"
@@ -60,7 +61,7 @@ class ChannelPool : public std::enable_shared_from_this<ChannelPool<Channel, Stu
 public:
     using SSLModeResolver = unique_function<bool(ConnectSSLMode)>;
     using ChannelFactory = unique_function<Channel(const HostAndPort&, bool)>;
-    using StubFactory = unique_function<Stub(Channel&, Milliseconds)>;
+    using StubFactory = unique_function<Stub(Channel&)>;
 
     /**
      * Maintains state for an individual `Channel`: allows deferred creation of `Channel` as well as
@@ -104,12 +105,23 @@ public:
             return **_lastUsed;
         }
 
+        void setKeepOpen(bool val) {
+            _keepOpen = val;
+        }
+
+        bool keepOpen() const {
+            return _keepOpen;
+        }
+
     private:
         std::weak_ptr<ChannelPool> _pool;
         const HostAndPort _remote;
         const bool _useSSL;
         Future<Channel> _channel;
         synchronized_value<Date_t> _lastUsed;
+
+        // ChannelPool lock must be held while reading/writing from _keepOpen.
+        bool _keepOpen = false;
     };
 
     /**
@@ -155,9 +167,7 @@ public:
      * Creates a new stub to `remote` that uses `sslMode`. Internally, an existing channel is used
      * to create the new stub, if available. Otherwise, a new channel is created.
      */
-    std::unique_ptr<StubHandle> createStub(HostAndPort remote,
-                                           ConnectSSLMode sslMode,
-                                           Milliseconds timeout) {
+    std::unique_ptr<StubHandle> createStub(HostAndPort remote, ConnectSSLMode sslMode) {
         std::shared_ptr<ChannelState> cs = [&] {
             const auto useSSL = _sslModeResolver(sslMode);
             ChannelMapKeyType key{remote, useSSL};
@@ -181,8 +191,13 @@ public:
                 return state;
             }
         }();
-        auto stub = _stubFactory(cs->channel(), timeout);
+        auto stub = _stubFactory(cs->channel());
         return std::make_unique<StubHandle>(std::move(cs), std::move(stub));
+    }
+
+    void setKeepOpen(const HostAndPort& hostAndPort, bool keepOpen) {
+        _setKeepOpen({hostAndPort, true /* useSSL */}, keepOpen);
+        _setKeepOpen({hostAndPort, false /* useSSL */}, keepOpen);
     }
 
     /**
@@ -228,33 +243,54 @@ public:
         return droppedChannels.size();
     }
 
+    size_t dropChannelsByTarget(const HostAndPort& hostAndPort) {
+        auto droppedChannels =
+            _dropChannels([hostAndPort](const auto& cs) { return cs->remote() != hostAndPort; });
+
+        for (const auto& channel : droppedChannels) {
+            LOGV2_INFO(9903400,
+                       "Dropping gRPC channel associated with remote",
+                       "remote"_attr = channel->remote(),
+                       "useSSL"_attr = channel->useSSL());
+        }
+        return droppedChannels.size();
+    }
+
     long long size() const {
         return _channelsSize.get();
     }
 
 private:
+    using ChannelMapKeyType = std::pair<HostAndPort, bool>;
+
     /**
-     * Iterates through all channels, calls into `shouldKeep` for each channel with a reference to
-     * its `ChannelState`, and decides if the channel should be dropped based on the return value.
-     * A channel cannot be dropped so long as it's being referenced by a `Stub`. Attempting to do
-     * so is a process fatal event.
-     * Returns a vector containing the only reference to the dropped channels.
+     * Iterates through all channels and decides if the channel should be dropped based off the
+     * `ChannelState` keepOpen value or the return of the `keepCb` function. A channel cannot be
+     * dropped so long as it's being referenced by a `Stub`. Attempting to do so is a process fatal
+     * event. Returns a vector containing the only reference to the dropped channels.
      */
     std::vector<std::shared_ptr<ChannelState>> _dropChannels(
-        std::function<bool(const std::shared_ptr<ChannelState>&)> shouldKeep) {
+        std::function<bool(const std::shared_ptr<ChannelState>&)> keepCb) {
         std::vector<std::shared_ptr<ChannelState>> droppedChannels;
         auto lk = stdx::lock_guard(_mutex);
         for (auto iter = _channels.begin(); iter != _channels.end();) {
             auto prev = iter++;
             const auto& cs = prev->second;
-            if (shouldKeep(cs))
+            if (cs->keepOpen() || keepCb(cs))
                 continue;
-            invariant(cs.use_count() == 1, "Attempted to drop a channel with existing stubs");
             droppedChannels.push_back(std::move(prev->second));
             _channels.erase(prev);
             _channelsSize.decrement();
         }
         return droppedChannels;
+    }
+
+    void _setKeepOpen(ChannelMapKeyType key, bool keepOpen) {
+        auto lk = stdx::lock_guard(_mutex);
+        auto channel = _channels.find(key);
+        if (channel != _channels.end()) {
+            channel->second->setKeepOpen(keepOpen);
+        }
     }
 
     ClockSource* const _clockSource;
@@ -264,7 +300,6 @@ private:
 
     mutable stdx::mutex _mutex;
 
-    using ChannelMapKeyType = std::pair<HostAndPort, bool>;
     stdx::unordered_map<ChannelMapKeyType, std::shared_ptr<ChannelState>> _channels;
     Counter64 _channelsSize;
 };

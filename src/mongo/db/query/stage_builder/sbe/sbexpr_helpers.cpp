@@ -30,15 +30,19 @@
 #include "mongo/db/query/stage_builder/sbe/sbexpr_helpers.h"
 
 #include "mongo/db/exec/sbe/stages/agg_project.h"
+#include "mongo/db/exec/sbe/stages/block_hashagg.h"
 #include "mongo/db/exec/sbe/stages/block_to_row.h"
 #include "mongo/db/exec/sbe/stages/branch.h"
 #include "mongo/db/exec/sbe/stages/co_scan.h"
+#include "mongo/db/exec/sbe/stages/filter.h"
+#include "mongo/db/exec/sbe/stages/hash_agg.h"
 #include "mongo/db/exec/sbe/stages/hash_join.h"
 #include "mongo/db/exec/sbe/stages/hash_lookup.h"
 #include "mongo/db/exec/sbe/stages/hash_lookup_unwind.h"
 #include "mongo/db/exec/sbe/stages/ix_scan.h"
 #include "mongo/db/exec/sbe/stages/limit_skip.h"
 #include "mongo/db/exec/sbe/stages/merge_join.h"
+#include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/sort.h"
 #include "mongo/db/exec/sbe/stages/sorted_merge.h"
 #include "mongo/db/exec/sbe/stages/ts_bucket_to_cell_block.h"
@@ -47,6 +51,7 @@
 #include "mongo/db/exec/sbe/stages/unwind.h"
 #include "mongo/db/exec/sbe/stages/virtual_scan.h"
 #include "mongo/db/query/stage_builder/sbe/abt_holder_impl.h"
+#include "mongo/db/query/stage_builder/sbe/abt_lower.h"
 #include "mongo/db/query/stage_builder/sbe/builder_data.h"
 
 namespace mongo::stage_builder {
@@ -118,6 +123,8 @@ sbe::EExpression::Vector SbExprBuilder::lower(SbExpr::Vector& sbExprs,
                                               const VariableTypes* varTypes) {
     // Convert the SbExpr vector to an EExpression vector.
     sbe::EExpression::Vector exprs;
+    exprs.reserve(sbExprs.size());
+
     for (auto& e : sbExprs) {
         exprs.emplace_back(lower(e, varTypes));
     }
@@ -205,7 +212,11 @@ SbExpr SbExprBuilder::makeBinaryOp(sbe::EPrimBinary::Op binaryOp, SbExpr lhs, Sb
 }
 
 SbExpr SbExprBuilder::makeBinaryOp(optimizer::Operations binaryOp, SbExpr lhs, SbExpr rhs) {
-    return makeBinaryOp(getEPrimBinaryOp(binaryOp), std::move(lhs), std::move(rhs));
+    return makeBinaryOp(abt::getEPrimBinaryOp(binaryOp), std::move(lhs), std::move(rhs));
+}
+
+SbExpr SbExprBuilder::makeNaryOp(optimizer::Operations naryOp, SbExpr::Vector args) {
+    return abt::wrap(stage_builder::makeNaryOp(naryOp, extractABT(args)));
 }
 
 SbExpr SbExprBuilder::makeConstant(sbe::value::TypeTags tag, sbe::value::Value val) {
@@ -588,6 +599,10 @@ SbStage SbBuilder::makeUnique(SbStage stage, const SbSlotVector& keys) {
     return sbe::makeS<sbe::UniqueStage>(std::move(stage), lower(keys), _nodeId);
 }
 
+SbStage SbBuilder::makeUniqueRoaring(SbStage stage, SbSlot key) {
+    return sbe::makeS<sbe::UniqueRoaringStage>(std::move(stage), key.getId(), _nodeId);
+}
+
 SbStage SbBuilder::makeSort(const VariableTypes& varTypes,
                             SbStage stage,
                             const SbSlotVector& orderBy,
@@ -617,8 +632,11 @@ std::tuple<SbStage, SbSlotVector, SbSlotVector> SbBuilder::makeHashAgg(
     // spilling. This makes sure that our tests exercise the spilling algorithm and the associated
     // logic for merging partial aggregates which otherwise would require large data sizes to
     // exercise.
-    const bool forceIncreasedSpilling = _state.allowDiskUse &&
-        (kDebugBuild || internalQuerySlotBasedExecutionHashAggForceIncreasedSpilling.load());
+
+    const bool forceIncreasedSpilling = useIncreasedSpilling(
+        _state.allowDiskUse,
+        _state.expCtx->getQueryKnobConfiguration().getSbeHashAggIncreasedSpillingMode());
+
 
     // For normal (non-block) HashAggStage, the group by "out" slots are the same as the incoming
     // group by slots.
@@ -718,8 +736,9 @@ std::tuple<SbStage, SbSlotVector, SbSlotVector> SbBuilder::makeBlockHashAgg(
     sbe::value::SlotVector accumulatorDataSlots = lower(accumulatorDataSbSlots);
     sbe::SlotExprPairVector mergingExprsVec = lower(mergingExprs);
 
-    const bool forceIncreasedSpilling = _state.allowDiskUse &&
-        (kDebugBuild || internalQuerySlotBasedExecutionHashAggForceIncreasedSpilling.load());
+    const bool forceIncreasedSpilling = useIncreasedSpilling(
+        _state.allowDiskUse,
+        _state.expCtx->getQueryKnobConfiguration().getSbeHashAggIncreasedSpillingMode());
 
     stage = sbe::makeS<sbe::BlockHashAggStage>(std::move(stage),
                                                std::move(groupBySlots),

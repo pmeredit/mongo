@@ -26,10 +26,7 @@ import {arrayEq, assertErrorCode, orderedArrayEq} from "jstests/aggregation/extr
 import {
     FixtureHelpers
 } from "jstests/libs/fixture_helpers.js";  // For arrayEq, assertErrorCode, and
-import {getSingleNodeExplain} from "jstests/libs/query/analyze_plan.js";
-import {checkSbeFullyEnabled} from "jstests/libs/query/sbe_util.js";
-
-const sbeEnabled = checkSbeFullyEnabled(db);
+import {getEngine, getSingleNodeExplain} from "jstests/libs/query/analyze_plan.js";
 
 let viewsDB = db.getSiblingDB("views_aggregation");
 assert.commandWorked(viewsDB.dropDatabase());
@@ -136,7 +133,7 @@ assert.commandWorked(viewsDB.runCommand({
     // Test that an aggregate on a view propagates the 'allowDiskUse' option.
     const extSortLimit = 100 * 1024 * 1024;
     const largeStrSize = 10 * 1024 * 1024;
-    const largeStr = new Array(largeStrSize).join('x');
+    const largeStr = 'x'.repeat(largeStrSize);
     viewsDB.largeColl.drop();
     for (let i = 0; i <= extSortLimit / largeStrSize; ++i) {
         assert.commandWorked(viewsDB.largeColl.insert({x: i, largeStr: largeStr}));
@@ -222,7 +219,10 @@ assert.commandWorked(viewsDB.runCommand({
     }
     assert.eq(explainPlan.queryPlanner.namespace, "views_aggregation.coll", explainPlan);
     assert(explainPlan.hasOwnProperty("executionStats"), explainPlan);
-    if (sbeEnabled) {
+    // In BF-36630/BF-36875, 'checkSbeFullyEnabled' reported SBE to be off, but the explain output
+    // included a slotBasedPlan. Though we're unable to reproduce the bug, we can check the explain
+    // for a slot based plain instead of using 'checkSbeFullyEnabled'.
+    if (getEngine(explainPlan) == "sbe") {
         assert.eq(explainPlan.executionStats.nReturned, 0, explainPlan);
     } else {
         assert.eq(explainPlan.executionStats.nReturned, 1, explainPlan);

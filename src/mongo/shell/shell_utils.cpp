@@ -103,7 +103,6 @@
 
 
 namespace mongo::shell_utils {
-using namespace fmt::literals;
 namespace {
 boost::filesystem::path getUserDir() {
 #ifdef _WIN32
@@ -268,6 +267,7 @@ bool isBalanced(const std::string& code) {
                 break;
             case '"':
             case '\'':
+                fassert(9879200, i < std::numeric_limits<std::size_t>::max());
                 i = skipOverString(code, i + 1, code[i]);
                 if (i >= code.size()) {
                     return true;  // Do not let unterminated strings enter multi-line mode
@@ -508,8 +508,7 @@ BSONObj replMonitorStats(const BSONObj& a, void* data) {
     auto name = a.firstElement().valueStringDataSafe();
     auto rsm = ReplicaSetMonitor::get(name.toString());
     if (!rsm) {
-        return BSON(""
-                    << "no ReplSetMonitor exists by that name");
+        return BSON("" << "no ReplSetMonitor exists by that name");
     }
 
     BSONObjBuilder result;
@@ -637,10 +636,12 @@ protected:
 };
 
 std::string GoldenTestContextShellFailure::toString() const {
-    return "Test output verification failed: {}\n"
-           "Actual output file: {}, "
-           "expected output file: {}"
-           ""_format(message, actualOutputFile, expectedOutputFile);
+    return fmt::format(
+        "Test output verification failed: {}\n"
+        "Actual output file: {}, expected output file: {}",
+        message,
+        actualOutputFile,
+        expectedOutputFile);
 }
 
 void GoldenTestContextShellFailure::diff() const {
@@ -857,8 +858,7 @@ void sortBSONObjectInternallyHelper(const BSONObj& input,
  * Returns a new BSON with the same field/value pairings, but is recursively sorted by the fields.
  * By default, arrays are not sorted unless NormalizationOptsSet has the kSortArrays bit set.
  */
-BSONObj sortBSONObjectInternally(const BSONObj& input,
-                                 NormalizationOptsSet opts = NormalizationOpts::kSortBSON) {
+BSONObj sortBSONObjectInternally(const BSONObj& input, NormalizationOptsSet opts) {
     BSONObjBuilder bob(input.objsize());
     sortBSONObjectInternallyHelper(input, bob, opts);
     return bob.obj();
@@ -916,6 +916,54 @@ void normalizeNumericElementsHelper(const BSONObj& input, BSONObjBuilder& bob) {
 BSONObj normalizeNumerics(const BSONObj& input) {
     BSONObjBuilder bob(input.objsize());
     normalizeNumericElementsHelper(input, bob);
+    return bob.obj();
+}
+
+void roundFloatingPointNumericElementsHelper(const BSONObj& input, BSONObjBuilder& bob);
+
+void roundFloatingPointNumericElements(const BSONElement& el, BSONObjBuilder& bob) {
+    switch (el.type()) {
+        case NumberDouble: {
+            // Take advantage of Decimal128's ability to round to 15 digits at construction time.
+            bob.append(el.fieldName(),
+                       Decimal128(el.numberDouble(), Decimal128::kRoundTo15Digits).toDouble());
+            break;
+        }
+        case Array: {
+            BSONObjBuilder sub(bob.subarrayStart(el.fieldNameStringData()));
+            for (const auto& child : el.Array()) {
+                roundFloatingPointNumericElements(child, sub);
+            }
+            sub.doneFast();
+            break;
+        }
+        case Object: {
+            BSONObjBuilder sub(bob.subobjStart(el.fieldNameStringData()));
+            roundFloatingPointNumericElementsHelper(el.Obj(), sub);
+            sub.doneFast();
+            break;
+        }
+        default:
+            bob.append(el);
+            break;
+    }
+}
+
+void roundFloatingPointNumericElementsHelper(const BSONObj& input, BSONObjBuilder& bob) {
+    BSONObjIterator it(input);
+    while (it.more()) {
+        roundFloatingPointNumericElements(it.next(), bob);
+    }
+}
+
+/**
+ * Returns a new BSONObj with the same field/value pairings, but with floating-point types rounded
+ * to 15 digits of precision. For example, 1.000000000000001 and NumberDecimal('1') would
+ * be normalized into the same number.
+ */
+BSONObj roundFloatingPointNumerics(const BSONObj& input) {
+    BSONObjBuilder bob(input.objsize());
+    roundFloatingPointNumericElementsHelper(input, bob);
     return bob.obj();
 }
 
@@ -986,6 +1034,9 @@ BSONObj normalizeBSONObj(const BSONObj& input, NormalizationOptsSet opts) {
     if (isSet(opts, NormalizationOpts::kConflateNullAndMissing)) {
         result = removeNullAndUndefined(result);
     }
+    if (isSet(opts, NormalizationOpts::kRoundFloatingPointNumerics)) {
+        result = roundFloatingPointNumerics(result);
+    }
     if (isSet(opts, NormalizationOpts::kNormalizeNumerics)) {
         result = normalizeNumerics(result);
     }
@@ -995,20 +1046,14 @@ BSONObj normalizeBSONObj(const BSONObj& input, NormalizationOptsSet opts) {
     return result;
 }
 
-/*
- * Takes two arrays of documents, and returns whether they contain the same set of BSON Objects. The
- * BSON do not need to be in the same order for this to return true. Has no special logic for
- * handling double/NumberDecimal closeness.
- */
-BSONObj _resultSetsEqualUnordered(const BSONObj& input, void*) {
+bool compareNormalizedResultSets(const BSONObj& input, NormalizationOptsSet opts) {
     BSONObjIterator i(input);
-    uassert(9422901, "_resultSetsEqualUnordered expects two arguments", i.more());
+    uassert(9422901, "expected two arguments", i.more());
     auto first = i.next();
-    uassert(9422902, "_resultSetsEqualUnordered expects two arguments", i.more());
+    uassert(9422902, "expected two arguments", i.more());
     auto second = i.next();
     uassert(9193201,
-            str::stream() << "_resultSetsEqualUnordered expects two arrays of containing objects "
-                             "as input received "
+            str::stream() << "expected two arrays containing objects as input received "
                           << first.type() << " and " << second.type(),
             first.type() == BSONType::Array && second.type() == BSONType::Array);
 
@@ -1017,45 +1062,70 @@ BSONObj _resultSetsEqualUnordered(const BSONObj& input, void*) {
 
     for (const auto& el : firstAsBson) {
         uassert(9193202,
-                str::stream() << "_resultSetsEqualUnordered expects all elements of input arrays "
-                                 "to be objects, received "
+                str::stream() << "expected all elements of input arrays to be objects, received "
                               << el.type(),
                 el.type() == BSONType::Object);
     }
     for (const auto& el : secondAsBson) {
         uassert(9193203,
-                str::stream() << "_resultSetsEqualUnordered expects all elements of input arrays "
-                                 "to be objects, received "
+                str::stream() << "expected all elements of input arrays to be objects, received "
                               << el.type(),
                 el.type() == BSONType::Object);
     }
 
     if (firstAsBson.size() != secondAsBson.size()) {
-        return BSON("" << false);
+        return false;
     }
 
     // Optimistically assume they're already in the same order.
     if (first.binaryEqualValues(second)) {
-        return BSON("" << true);
+        return true;
     }
 
     std::vector<BSONObj> firstSorted;
     std::vector<BSONObj> secondSorted;
     for (size_t i = 0; i < firstAsBson.size(); i++) {
-        firstSorted.push_back(sortBSONObjectInternally(firstAsBson[i].Obj()));
-        secondSorted.push_back(sortBSONObjectInternally(secondAsBson[i].Obj()));
+        firstSorted.push_back(normalizeBSONObj(firstAsBson[i].Obj(), opts));
+        secondSorted.push_back(normalizeBSONObj(secondAsBson[i].Obj(), opts));
     }
 
-    sortQueryResults(firstSorted);
-    sortQueryResults(secondSorted);
+    if (isSet(opts, NormalizationOpts::kSortResults)) {
+        sortQueryResults(firstSorted);
+        sortQueryResults(secondSorted);
+    }
 
     for (size_t i = 0; i < firstSorted.size(); i++) {
         if (!firstSorted[i].binaryEqual(secondSorted[i])) {
-            return BSON("" << false);
+            return false;
         }
     }
 
-    return BSON("" << true);
+    return true;
+}
+
+/*
+ * Takes two arrays of documents, and returns whether they contain the same set of BSON Objects.
+ * Applies more normalizations than '_resultSetsEqualUnordered()'. Used by the fuzzer comparator.
+ * The following edge cases are currently accepted by the fuzzer but rejected by this function:
+ * - String comparison with collaction.
+ * - Numeric string vs other numeric types.
+ * - Rounding numeric types down to <15 digits. The fuzzer rounds to 6 or 10, depending on the type.
+ */
+BSONObj _resultSetsEqualNormalized(const BSONObj& input, void*) {
+    auto opts = NormalizationOpts::kSortResults | NormalizationOpts::kSortBSON |
+        NormalizationOpts::kSortArrays | NormalizationOpts::kNormalizeNumerics |
+        NormalizationOpts::kRoundFloatingPointNumerics;
+    return BSON("" << compareNormalizedResultSets(input, opts));
+}
+
+/*
+ * Takes two arrays of documents, and returns whether they contain the same set of BSON Objects. The
+ * BSON do not need to be in the same order for this to return true. Has no special logic for
+ * handling double/NumberDecimal closeness. Used in property based jstests.
+ */
+BSONObj _resultSetsEqualUnordered(const BSONObj& input, void*) {
+    auto opts = NormalizationOpts::kSortResults | NormalizationOpts::kSortBSON;
+    return BSON("" << compareNormalizedResultSets(input, opts));
 }
 
 /*
@@ -1117,6 +1187,7 @@ void installShellUtils(Scope& scope) {
     scope.injectNative("_buildBsonObj", _buildBsonObj);
     scope.injectNative("_fnvHashToHexString", _fnvHashToHexString);
     scope.injectNative("_resultSetsEqualUnordered", _resultSetsEqualUnordered);
+    scope.injectNative("_resultSetsEqualNormalized", _resultSetsEqualNormalized);
     scope.injectNative("_compareStringsWithCollation", _compareStringsWithCollation);
 
     installShellUtilsLauncher(scope);

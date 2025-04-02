@@ -29,12 +29,9 @@
 
 #include "mongo/db/query/optimizer/syntax/expr.h"
 
-#include <absl/container/flat_hash_map.h>
-
 #include "mongo/db/exec/sbe/makeobj_spec.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/query/optimizer/syntax/syntax.h"
-#include "mongo/db/storage/key_string/key_string.h"
 #include "mongo/platform/decimal128.h"
 
 namespace mongo::optimizer {
@@ -142,6 +139,15 @@ bool Constant::operator==(const Constant& other) const {
             const auto& mosView = *sbe::value::getMakeObjSpecView(_val);
             const auto& otherMosView = *sbe::value::getMakeObjSpecView(other._val);
             return mosView == otherMosView;
+        } else if (_tag == sbe::value::TypeTags::pcreRegex) {
+            const auto& regexView = *sbe::value::getPcreRegexView(_val);
+            const auto& otherRegexView = *sbe::value::getPcreRegexView(other._val);
+            return regexView.pattern() == otherRegexView.pattern() &&
+                (uint32_t)regexView.options() == (uint32_t)otherRegexView.options();
+        } else if (_tag == sbe::value::TypeTags::timeZone) {
+            const auto& tzView = *sbe::value::getTimeZoneView(_val);
+            const auto& otherTzView = *sbe::value::getTimeZoneView(other._val);
+            return tzView.getUtcOffset() == otherTzView.getUtcOffset();
         }
 
         MONGO_UNREACHABLE_TASSERT(7936707);

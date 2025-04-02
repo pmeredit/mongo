@@ -39,8 +39,6 @@
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/static_immortal.h"
 #include "mongo/util/time_support.h"
 
@@ -48,7 +46,6 @@
 
 namespace mongo {
 
-using namespace fmt::literals;
 using SPT = ServerParameterType;
 
 MONGO_INITIALIZER_GROUP(BeginServerParameterRegistration, (), ("EndServerParameterRegistration"))
@@ -91,8 +88,9 @@ ServerParameterSet* ServerParameterSet::getNodeParameterSet() {
         ServerParameterSet sps;
         sps.setValidate([](const ServerParameter& sp) {
             uassert(6225102,
-                    "Registering cluster-wide parameter '{}' as node-local server parameter"
-                    ""_format(sp.name()),
+                    fmt::format(
+                        "Registering cluster-wide parameter '{}' as node-local server parameter",
+                        sp.name()),
                     sp.isNodeLocal());
         });
         return sps;
@@ -139,7 +137,8 @@ bool ServerParameter::_isEnabledOnVersion(
 bool ServerParameter::featureFlagIsDisabledOnVersion(
     const multiversion::FeatureCompatibilityVersion& targetFCV) const {
     stdx::lock_guard lk(_mutex);
-    return _featureFlag && !_featureFlag->isEnabledOnVersion(targetFCV);
+    return !_featureFlag.isEnabled(
+        [&](auto& fcvGatedFlag) { return fcvGatedFlag.isEnabledOnVersion(targetFCV); });
 }
 
 ServerParameterSet* ServerParameterSet::getClusterParameterSet() {
@@ -147,8 +146,9 @@ ServerParameterSet* ServerParameterSet::getClusterParameterSet() {
         ServerParameterSet sps;
         sps.setValidate([](const ServerParameter& sp) {
             uassert(6225103,
-                    "Registering node-local parameter '{}' as cluster-wide server parameter"
-                    ""_format(sp.name()),
+                    fmt::format(
+                        "Registering node-local parameter '{}' as cluster-wide server parameter",
+                        sp.name()),
                     sp.isClusterWide());
         });
         return sps;
@@ -161,8 +161,8 @@ void ServerParameterSet::add(std::unique_ptr<ServerParameter> sp) {
         _validate(*sp);
     auto [it, ok] = _map.try_emplace(sp->name(), std::move(sp));
     uassert(23784,
-            "Duplicate server parameter registration for '{}'"_format(
-                sp->name()),  // NOLINT(bugprone-use-after-move)
+            fmt::format("Duplicate server parameter registration for '{}'",
+                        sp->name()),  // NOLINT(bugprone-use-after-move)
             ok);
 }
 
@@ -192,7 +192,7 @@ StatusWith<std::string> ServerParameter::_coerceToString(const BSONElement& elem
 }
 
 void ServerParameterSet::remove(const std::string& name) {
-    invariant(1 == _map.erase(name), "Failed to erase key \"{}\""_format(name));
+    invariant(1 == _map.erase(name), fmt::format("Failed to erase key \"{}\"", name));
 }
 
 IDLServerParameterDeprecatedAlias::IDLServerParameterDeprecatedAlias(StringData name,
@@ -257,6 +257,7 @@ void ServerParameterSet::disableTestParameters() {
 }
 
 void registerServerParameter(std::unique_ptr<ServerParameter> p) {
+    p->onRegistrationWithProcessGlobalParameterList();
     auto spt = p->getServerParameterType();
     ServerParameterSet::getParameterSet(spt)->add(std::move(p));
 }

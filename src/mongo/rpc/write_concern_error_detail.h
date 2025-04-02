@@ -38,9 +38,10 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/db/jsobj.h"
 
 namespace mongo {
+
+constexpr auto kWriteConcernErrorFieldName = "writeConcernError"_sd;
 
 /**
  * This class represents the layout and content of the error that occurs while trying

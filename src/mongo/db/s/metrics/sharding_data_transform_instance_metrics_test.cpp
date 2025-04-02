@@ -41,8 +41,7 @@
 #include "mongo/db/s/metrics/sharding_data_transform_cumulative_metrics.h"
 #include "mongo/db/s/metrics/sharding_data_transform_instance_metrics.h"
 #include "mongo/db/s/metrics/sharding_data_transform_metrics_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/duration.h"
 
@@ -130,8 +129,7 @@ public:
                                     ClockSource* clockSource,
                                     ShardingDataTransformCumulativeMetrics* cumulativeMetrics)
         : _impl{UUID::gen(),
-                BSON("command"
-                     << "test"),
+                BSON("command" << "test"),
                 NamespaceString::createNamespaceString_forTest("test.source"),
                 ShardingDataTransformInstanceMetrics::Role::kDonor,
                 startTime,

@@ -36,9 +36,7 @@
 #include "mongo/client/authenticate.h"
 #include "mongo/config.h"  // IWYU pragma: keep
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/md5.h"
@@ -123,11 +121,10 @@ public:
         pushResponse(BSON("ok" << 1));
 
         // Call clientAuthenticate()
-        return BSON("mechanism"
-                    << "MONGODB-X509"
-                    << "db"
-                    << "$external"
-                    << "user" << _username);
+        return BSON("mechanism" << "MONGODB-X509"
+                                << "db"
+                                << "$external"
+                                << "user" << _username);
     }
 
 

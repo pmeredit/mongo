@@ -32,9 +32,7 @@
 
 #include "mongo/db/client_strand.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/thread_name.h"
 #include "mongo/util/decorable.h"
 
@@ -60,7 +58,7 @@ boost::intrusive_ptr<ClientStrand> ClientStrand::get(Client* client) {
     return getClientStrandData(client).strand;
 }
 
-void ClientStrand::_setCurrent() noexcept {
+void ClientStrand::_setCurrent() {
     invariant(_isBound.load());
     invariant(_client);
 
@@ -77,7 +75,7 @@ void ClientStrand::_setCurrent() noexcept {
     }
 }
 
-void ClientStrand::_releaseCurrent() noexcept {
+void ClientStrand::_releaseCurrent() {
     invariant(_isBound.load());
     invariant(!_client);
 

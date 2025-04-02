@@ -41,6 +41,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/catalog/collection_catalog.h"
+#include "mongo/db/catalog/collection_uuid_mismatch_info.h"
 #include "mongo/db/client.h"
 #include "mongo/db/curop_failpoint_helpers.h"
 #include "mongo/db/feature_flag.h"
@@ -49,13 +50,11 @@
 #include "mongo/db/pipeline/writer_util.h"
 #include "mongo/db/query/allowed_contexts.h"
 #include "mongo/db/query/query_feature_flags_gen.h"
-#include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/timeseries/catalog_helper.h"
 #include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/namespace_string_util.h"
@@ -67,12 +66,12 @@
 
 namespace mongo {
 
-using namespace fmt::literals;
-
 MONGO_FAIL_POINT_DEFINE(hangWhileBuildingDocumentSourceOutBatch);
 MONGO_FAIL_POINT_DEFINE(outWaitAfterTempCollectionCreation);
 MONGO_FAIL_POINT_DEFINE(outWaitBeforeTempCollectionRename);
 MONGO_FAIL_POINT_DEFINE(outWaitAfterTempCollectionRenameBeforeView);
+MONGO_FAIL_POINT_DEFINE(outImplictlyCreateDBOnSpecificShard);
+MONGO_FAIL_POINT_DEFINE(hangDollarOutAfterInsert);
 
 REGISTER_DOCUMENT_SOURCE(out,
                          DocumentSourceOut::LiteParsed::parse,
@@ -175,8 +174,9 @@ DocumentSourceOutSpec DocumentSourceOut::parseOutSpecAndResolveTargetNamespace(
                                                       spec.embeddedObject());
     } else {
         uassert(16990,
-                "{} only supports a string or object argument, but found {}"_format(
-                    kStageName, typeName(spec.type())),
+                fmt::format("{} only supports a string or object argument, but found {}",
+                            kStageName,
+                            typeName(spec.type())),
                 spec.type() == BSONType::String);
     }
 
@@ -188,16 +188,17 @@ NamespaceString DocumentSourceOut::makeBucketNsIfTimeseries(const NamespaceStrin
 }
 
 std::unique_ptr<DocumentSourceOut::LiteParsed> DocumentSourceOut::LiteParsed::parse(
-    const NamespaceString& nss, const BSONElement& spec) {
+    const NamespaceString& nss, const BSONElement& spec, const LiteParserOptions& options) {
     auto outSpec = parseOutSpecAndResolveTargetNamespace(spec, nss.dbName());
     NamespaceString targetNss = NamespaceStringUtil::deserialize(nss.dbName().tenantId(),
                                                                  outSpec.getDb(),
                                                                  outSpec.getColl(),
                                                                  outSpec.getSerializationContext());
 
-    uassert(ErrorCodes::InvalidNamespace,
-            "Invalid {} target namespace, {}"_format(kStageName, targetNss.toStringForErrorMsg()),
-            targetNss.isValid());
+    uassert(
+        ErrorCodes::InvalidNamespace,
+        fmt::format("Invalid {} target namespace, {}", kStageName, targetNss.toStringForErrorMsg()),
+        targetNss.isValid());
     return std::make_unique<DocumentSourceOut::LiteParsed>(spec.fieldName(), std::move(targetNss));
 }
 
@@ -266,9 +267,17 @@ void DocumentSourceOut::createTemporaryCollection() {
         createCommandOptions.appendElementsUnique(_originalOutOptions);
     }
 
-    // If the output collection exists, we should create the temp collection on the shard that
-    // owns the output collection.
-    auto targetShard = getMergeShardId();
+    auto targetShard = [&]() -> boost::optional<ShardId> {
+        if (auto fpTarget = outImplictlyCreateDBOnSpecificShard.scoped();
+            // Used for consistently picking a shard in testing.
+            MONGO_unlikely(fpTarget.isActive())) {
+            return ShardId(fpTarget.getData()["shardId"].String());
+        } else {
+            // If the output collection exists, we should create the temp collection on the shard
+            // that owns the output collection.
+            return getMergeShardId();
+        }
+    }();
 
     // Set the enum state to 'kTmpCollExists' first, because 'createTempCollection' can throw
     // after constructing the collection.
@@ -314,8 +323,9 @@ void DocumentSourceOut::initialize() {
         // work. If the collection becomes capped during processing, the collection options will
         // have changed, and the $out will fail.
         uassert(17152,
-                "namespace '{}' is capped so it can't be used for {}"_format(
-                    getOutputNs().toStringForErrorMsg(), kStageName),
+                fmt::format("namespace '{}' is capped so it can't be used for {}",
+                            getOutputNs().toStringForErrorMsg(),
+                            kStageName),
                 _originalOutOptions["capped"].eoo());
     } catch (ExceptionFor<ErrorCodes::NamespaceNotFound>&) {
         LOGV2_DEBUG(7585601,
@@ -332,11 +342,17 @@ void DocumentSourceOut::initialize() {
 
     uassert(7406100,
             "$out to time-series collections is only supported on FCV greater than or equal to 7.1",
-            feature_flags::gFeatureFlagAggOutTimeseries.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) ||
-                !_timeseries);
+            feature_flags::gFeatureFlagAggOutTimeseries.isEnabled() || !_timeseries);
 
     createTemporaryCollection();
+
+    // Save the collection UUID to detect if it was dropped during execution. Timeseries will detect
+    // this when inserting as it doesn't implicity create collections on insert.
+    if (!_timeseries) {
+        _tempNsUUID = pExpCtx->getMongoProcessInterface()->fetchCollectionUUIDFromPrimary(
+            pExpCtx->getOperationContext(), _tempNs);
+    }
+
     if (_originalIndexes.empty()) {
         return;
     }
@@ -357,6 +373,21 @@ void DocumentSourceOut::initialize() {
 void DocumentSourceOut::renameTemporaryCollection() {
     // If the collection is time-series, we must rename to the "real" buckets collection.
     const NamespaceString& outputNs = makeBucketNsIfTimeseries(getOutputNs());
+
+    // Use the UUID to catch a mismatch if the temp collection was dropped and recreated in case of
+    // stepdown. Timeseries has it's own handling for this case as the dropped temp collection isn't
+    // implicitly recreated.
+    if (!_timeseries) {
+        tassert(8085301, "No uuid found for $out temporary namespace", _tempNsUUID);
+        const UUID currentTempNsUUID =
+            pExpCtx->getMongoProcessInterface()->fetchCollectionUUIDFromPrimary(
+                pExpCtx->getOperationContext(), _tempNs);
+        uassert((CollectionUUIDMismatchInfo{
+                    _tempNs.dbName(), currentTempNsUUID, _tempNs.coll().toString(), boost::none}),
+                "$out cannot complete as the temp collection was dropped while executing",
+                currentTempNsUUID == _tempNsUUID);
+    }
+
     CurOpFailpointHelpers::waitWhileFailPointEnabled(
         &outWaitBeforeTempCollectionRename,
         pExpCtx->getOperationContext(),
@@ -398,9 +429,7 @@ void DocumentSourceOut::finalize() {
     DocumentSourceWriteBlock writeBlock(pExpCtx->getOperationContext());
     uassert(7406101,
             "$out to time-series collections is only supported on FCV greater than or equal to 7.1",
-            feature_flags::gFeatureFlagAggOutTimeseries.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) ||
-                !_timeseries);
+            feature_flags::gFeatureFlagAggOutTimeseries.isEnabled() || !_timeseries);
 
     // Rename the temporary collection to the namespace the user requested, and drop the target
     // collection if $out is writing to a collection that exists.
@@ -426,6 +455,46 @@ void DocumentSourceOut::finalize() {
     _tmpCleanUpState = OutCleanUpProgress::kComplete;
 }
 
+void DocumentSourceOut::flush(BatchedCommandRequest bcr, BatchedObjects batch) {
+    DocumentSourceWriteBlock writeBlock(pExpCtx->getOperationContext());
+
+    auto insertCommand = bcr.extractInsertRequest();
+    insertCommand->setDocuments(std::move(batch));
+    auto targetEpoch = boost::none;
+
+    if (_timeseries) {
+        uassertStatusOK(pExpCtx->getMongoProcessInterface()->insertTimeseries(
+            pExpCtx, _tempNs, std::move(insertCommand), _writeConcern, targetEpoch));
+    } else {
+        // Use the UUID to catch a mismatch if the temp collection was dropped and recreated.
+        // Timeseries will detect this as inserts into the buckets collection don't implicitly
+        // create the collection. Inserts with uuid are not supported with apiStrict, so there is a
+        // secondary check at the rename when apiStrict is true.
+        if (!APIParameters::get(pExpCtx->getOperationContext()).getAPIStrict().value_or(false)) {
+            tassert(8085300, "No uuid found for $out temporary namespace", _tempNsUUID);
+            insertCommand->getWriteCommandRequestBase().setCollectionUUID(_tempNsUUID);
+        }
+        try {
+            uassertStatusOK(pExpCtx->getMongoProcessInterface()->insert(
+                pExpCtx, _tempNs, std::move(insertCommand), _writeConcern, targetEpoch));
+
+        } catch (ExceptionFor<ErrorCodes::CollectionUUIDMismatch>& ex) {
+            ex.addContext(
+                str::stream()
+                << "$out cannot complete as the temp collection was dropped while executing");
+            throw;
+        }
+    }
+
+    CurOpFailpointHelpers::waitWhileFailPointEnabled(
+        &hangDollarOutAfterInsert,
+        pExpCtx->getOperationContext(),
+        "hangDollarOutAfterInsert",
+        []() {
+            LOGV2(8085302, "Hanging aggregation due to 'hangDollarOutAfterInsert' failpoint");
+        });
+}
+
 BatchedCommandRequest DocumentSourceOut::makeBatchedWriteRequest() const {
     const auto& nss =
         _tempNs.isTimeseriesBucketsCollection() ? _tempNs.getTimeseriesViewNamespace() : _tempNs;
@@ -437,20 +506,22 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceOut::create(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     boost::optional<TimeseriesOptions> timeseries) {
     uassert(ErrorCodes::OperationNotSupportedInTransaction,
-            "{} cannot be used in a transaction"_format(kStageName),
+            fmt::format("{} cannot be used in a transaction", kStageName),
             !expCtx->getOperationContext()->inMultiDocumentTransaction());
 
-    uassert(ErrorCodes::InvalidNamespace,
-            "Invalid {} target namespace, {}"_format(kStageName, outputNs.toStringForErrorMsg()),
-            outputNs.isValid());
+    uassert(
+        ErrorCodes::InvalidNamespace,
+        fmt::format("Invalid {} target namespace, {}", kStageName, outputNs.toStringForErrorMsg()),
+        outputNs.isValid());
 
     uassert(17385,
-            "Can't {} to special collection: {}"_format(kStageName, outputNs.coll()),
+            fmt::format("Can't {} to special collection: {}", kStageName, outputNs.coll()),
             !outputNs.isSystem());
 
     uassert(31321,
-            "Can't {} to internal database: {}"_format(kStageName,
-                                                       outputNs.dbName().toStringForErrorMsg()),
+            fmt::format("Can't {} to internal database: {}",
+                        kStageName,
+                        outputNs.dbName().toStringForErrorMsg()),
             !outputNs.isOnInternalDb());
     return new DocumentSourceOut(std::move(outputNs), std::move(timeseries), expCtx);
 }

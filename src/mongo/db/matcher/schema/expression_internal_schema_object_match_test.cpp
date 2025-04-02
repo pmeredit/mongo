@@ -43,99 +43,20 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/query/collation/collator_interface_mock.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
 
 namespace {
 
-TEST(InternalSchemaObjectMatchExpression, RejectsNonObjectElements) {
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto subExpr = MatchExpressionParser::parse(BSON("b" << 1), expCtx);
-    ASSERT_OK(subExpr.getStatus());
-
-    InternalSchemaObjectMatchExpression objMatch("a"_sd, std::move(subExpr.getValue()));
-
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << 1)));
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a"
-                                           << "string")));
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << BSON_ARRAY(BSONNULL))));
-}
-
-TEST(InternalSchemaObjectMatchExpression, RejectsObjectsThatDontMatch) {
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto subExpr = MatchExpressionParser::parse(BSON("b" << BSON("$type"
-                                                                 << "string")),
-                                                expCtx);
-    ASSERT_OK(subExpr.getStatus());
-
-    InternalSchemaObjectMatchExpression objMatch("a"_sd, std::move(subExpr.getValue()));
-
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << BSON("b" << 1))));
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << BSON("b" << BSONObj()))));
-}
-
-TEST(InternalSchemaObjectMatchExpression, AcceptsObjectsThatMatch) {
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto subExpr = MatchExpressionParser::parse(BSON("b" << BSON("$type"
-                                                                 << "string")),
-                                                expCtx);
-    ASSERT_OK(subExpr.getStatus());
-
-    InternalSchemaObjectMatchExpression objMatch("a"_sd, std::move(subExpr.getValue()));
-
-    ASSERT_TRUE(objMatch.matchesBSON(BSON("a" << BSON("b"
-                                                      << "string"))));
-    ASSERT_TRUE(objMatch.matchesBSON(BSON("a" << BSON("b"
-                                                      << "string"
-                                                      << "c" << 1))));
-    ASSERT_FALSE(
-        objMatch.matchesBSON(BSON("a" << BSON_ARRAY(BSON("b" << 1) << BSON("b"
-                                                                           << "string")))));
-    ASSERT_TRUE(objMatch.matchesBSON(BSON("a" << BSON("b" << BSON_ARRAY("string")))));
-}
-
-TEST(InternalSchemaObjectMatchExpression, DottedPathAcceptsObjectsThatMatch) {
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto subExpr = MatchExpressionParser::parse(BSON("b.c.d" << BSON("$type"
-                                                                     << "string")),
-                                                expCtx);
-    ASSERT_OK(subExpr.getStatus());
-
-    InternalSchemaObjectMatchExpression objMatch("a"_sd, std::move(subExpr.getValue()));
-
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << BSON("d"
-                                                       << "string"))));
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << BSON("b" << BSON("c" << BSON("d" << 1))))));
-    ASSERT_TRUE(objMatch.matchesBSON(BSON("a" << BSON("b" << BSON("c" << BSON("d"
-                                                                              << "foo"))))));
-}
-
-TEST(InternalSchemaObjectMatchExpression, EmptyMatchAcceptsAllObjects) {
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto subExpr = MatchExpressionParser::parse(BSONObj(), expCtx);
-    ASSERT_OK(subExpr.getStatus());
-
-    InternalSchemaObjectMatchExpression objMatch("a"_sd, std::move(subExpr.getValue()));
-
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << 1)));
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a"
-                                           << "string")));
-    ASSERT_TRUE(objMatch.matchesBSON(BSON("a" << BSONObj())));
-    ASSERT_TRUE(objMatch.matchesBSON(BSON("a" << BSON("b"
-                                                      << "string"))));
-    ASSERT_FALSE(objMatch.matchesBSON(BSON("a" << BSON_ARRAY(BSONObj()))));
-}
-
 TEST(InternalSchemaObjectMatchExpression, NestedObjectMatchReturnsCorrectPath) {
     auto query = fromjson(
         "    {a: {$_internalSchemaObjectMatch: {"
         "       b: {$_internalSchemaObjectMatch: {"
         "           $or: [{c: {$type: 'string'}}, {c: {$gt: 0}}]"
-        "       }}}"
+        "       }}"
         "    }}}");
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
     auto objMatch = MatchExpressionParser::parse(query, expCtx);
@@ -143,23 +64,6 @@ TEST(InternalSchemaObjectMatchExpression, NestedObjectMatchReturnsCorrectPath) {
 
     ASSERT_EQ(objMatch.getValue()->path(), "a");
     ASSERT_EQ(objMatch.getValue()->getChild(0)->path(), "b");
-}
-
-TEST(InternalSchemaObjectMatchExpression, MatchesNestedObjectMatch) {
-    auto query = fromjson(
-        "    {a: {$_internalSchemaObjectMatch: {"
-        "       b: {$_internalSchemaObjectMatch: {"
-        "           c: 3"
-        "       }}}"
-        "    }}}");
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto objMatch = MatchExpressionParser::parse(query, expCtx);
-    ASSERT_OK(objMatch.getStatus());
-
-    ASSERT_FALSE(objMatch.getValue()->matchesBSON(fromjson("{a: 1}")));
-    ASSERT_FALSE(objMatch.getValue()->matchesBSON(fromjson("{a: {b: 1}}")));
-    ASSERT_FALSE(objMatch.getValue()->matchesBSON(fromjson("{a: {b: {c: 1}}}")));
-    ASSERT_TRUE(objMatch.getValue()->matchesBSON(fromjson("{a: {b: {c: 3}}}")));
 }
 
 TEST(InternalSchemaObjectMatchExpression, EquivalentReturnsCorrectResults) {
@@ -184,35 +88,6 @@ TEST(InternalSchemaObjectMatchExpression, EquivalentReturnsCorrectResults) {
     Matcher objectMatchNotEq(query, expCtx);
     ASSERT_FALSE(
         objectMatch.getMatchExpression()->equivalent(objectMatchNotEq.getMatchExpression()));
-}
-
-TEST(InternalSchemaObjectMatchExpression, SubExpressionRespectsCollator) {
-    auto collator =
-        std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    expCtx->setCollator(std::move(collator));
-    auto query = fromjson(
-        "{a: {$_internalSchemaObjectMatch: {"
-        "	b: {$eq: 'FOO'}"
-        "}}}");
-    auto objectMatch = MatchExpressionParser::parse(query, expCtx);
-    ASSERT_OK(objectMatch.getStatus());
-
-    ASSERT_TRUE(objectMatch.getValue()->matchesBSON(fromjson("{a: {b: 'FOO'}}")));
-    ASSERT_TRUE(objectMatch.getValue()->matchesBSON(fromjson("{a: {b: 'foO'}}")));
-    ASSERT_TRUE(objectMatch.getValue()->matchesBSON(fromjson("{a: {b: 'foo'}}")));
-}
-
-TEST(InternalSchemaObjectMatchExpression, RejectsArraysContainingMatchingSubObject) {
-    auto query = fromjson("{a: {$_internalSchemaObjectMatch: {b: 1}}}");
-    boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto objMatch = MatchExpressionParser::parse(query, expCtx);
-    ASSERT_OK(objMatch.getStatus());
-
-    ASSERT_FALSE(objMatch.getValue()->matchesBSON(fromjson("{a: 1}")));
-    ASSERT_TRUE(objMatch.getValue()->matchesBSON(fromjson("{a: {b: 1}}")));
-    ASSERT_FALSE(objMatch.getValue()->matchesBSON(fromjson("{a: [{b: 1}]}")));
-    ASSERT_FALSE(objMatch.getValue()->matchesBSON(fromjson("{a: [{b: 1}, {b: 2}]}")));
 }
 
 TEST(InternalSchemaObjectMatchExpression, HasSingleChild) {

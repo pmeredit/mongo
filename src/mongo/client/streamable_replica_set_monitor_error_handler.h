@@ -63,7 +63,7 @@ public:
                                              const Status& status,
                                              HandshakeStage handshakeStage,
                                              bool isApplicationOperation,
-                                             BSONObj bson) noexcept = 0;
+                                             BSONObj bson) = 0;
 
 protected:
     sdam::HelloOutcome _createErrorHelloOutcome(const HostAndPort& host,
@@ -75,13 +75,13 @@ protected:
 
 class SdamErrorHandler final : public StreamableReplicaSetMonitorErrorHandler {
 public:
-    explicit SdamErrorHandler(std::string setName) : _setName(std::move(setName)){};
+    explicit SdamErrorHandler(std::string setName) : _setName(std::move(setName)) {};
 
     ErrorActions computeErrorActions(const HostAndPort& host,
                                      const Status& status,
                                      HandshakeStage handshakeStage,
                                      bool isApplicationOperation,
-                                     BSONObj bson) noexcept override;
+                                     BSONObj bson) override;
 
 private:
     int _getConsecutiveErrorsWithoutHelloOutcome(const HostAndPort& host) const;

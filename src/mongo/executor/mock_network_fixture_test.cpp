@@ -39,11 +39,8 @@
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/metadata.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -56,7 +53,7 @@ using namespace test::mock;
 
 class MockNetworkTest : public NetworkInterfaceMockTest {
 public:
-    MockNetworkTest() : NetworkInterfaceMockTest(), _mock(&NetworkInterfaceMockTest::net()){};
+    MockNetworkTest() : NetworkInterfaceMockTest(), _mock(&NetworkInterfaceMockTest::net()) {};
 
     MockNetwork& mock() {
         return _mock;
@@ -116,8 +113,7 @@ public:
     RemoteCommandRequest kExampleRequestFour{
         {testHost()}, dbName, BSON(kExampleCmdNameFour << 1), rpc::makeEmptyMetadata(), nullptr};
 
-    BSONObj kExampleResponse = BSON("some"
-                                    << "response");
+    BSONObj kExampleResponse = BSON("some" << "response");
 
     RemoteCommandRequest makeRequest(std::string cmdName) {
         return {{testHost()}, dbName, BSON(cmdName << 1), rpc::makeEmptyMetadata(), nullptr};

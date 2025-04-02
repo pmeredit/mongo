@@ -30,15 +30,11 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/db/collection_type.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/db/query/find_command.h"
-#include "mongo/db/query/parsed_find_command.h"
 #include "mongo/db/query/query_shape/query_shape.h"
-#include "mongo/db/query/query_stats/find_key.h"
+#include "mongo/db/query/query_shape/shape_helpers.h"
 #include "mongo/db/query/query_stats/key.h"
-#include "mongo/db/repl/read_concern_gen.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::query_stats {
 
@@ -48,7 +44,7 @@ static const NamespaceString kDefaultTestNss =
 
 
 struct DummyShapeSpecificComponents : public query_shape::CmdSpecificShapeComponents {
-    DummyShapeSpecificComponents(){};
+    DummyShapeSpecificComponents() {};
     void HashValue(absl::HashState state) const override {}
     size_t size() const final {
         return sizeof(DummyShapeSpecificComponents);
@@ -75,7 +71,7 @@ public:
 };
 
 struct DummyKeyComponents : public SpecificKeyComponents {
-    DummyKeyComponents(){};
+    DummyKeyComponents() {};
 
     void HashValue(absl::HashState state) const override {}
     size_t size() const override {
@@ -99,7 +95,7 @@ public:
         return components;
     };
     void appendCommandSpecificComponents(BSONObjBuilder& bob,
-                                         const SerializationOptions& opts) const override{};
+                                         const SerializationOptions& opts) const override {};
     DummyKeyComponents components;
 };
 class UniversalKeyTest : public ServiceContextTest {};

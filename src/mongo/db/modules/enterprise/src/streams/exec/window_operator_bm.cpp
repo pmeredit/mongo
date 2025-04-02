@@ -9,6 +9,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/context.h"
 #include "streams/exec/message.h"
 #include "streams/exec/noop_sink_operator.h"
@@ -33,7 +34,8 @@ public:
             setGlobalServiceContext(std::move(service));
             _metricManager = std::make_unique<MetricManager>();
             _context = std::get<0>(getTestContext(/*svcCtx*/ nullptr));
-            _context->connections = testInMemoryConnectionRegistry();
+            _context->connections =
+                std::make_unique<ConnectionCollection>(testInMemoryConnections());
         }
 
         _noopSink = std::make_unique<NoOpSinkOperator>(_context.get());
@@ -93,13 +95,11 @@ protected:
         _planner = std::make_unique<Planner>(_context.get(), Planner::Options{});
         _dag = _planner->plan(std::vector<BSONObj>{
             BSON("$source" << BSON("connectionName" << kTestMemoryConnectionName)),
-            BSON("$hoppingWindow" << BSON("interval" << BSON("unit"
-                                                             << "ms"
-                                                             << "size" << size)
+            BSON("$hoppingWindow" << BSON("interval" << BSON("unit" << "ms"
+                                                                    << "size" << size)
                                                      << "hopSize"
-                                                     << BSON("unit"
-                                                             << "ms"
-                                                             << "size" << slide)
+                                                     << BSON("unit" << "ms"
+                                                                    << "size" << slide)
                                                      << "pipeline" << _pipeline))});
         return dynamic_cast<WindowAwareOperator*>(_dag->operators()[1].get());
     }

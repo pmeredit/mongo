@@ -39,10 +39,7 @@
 #include "mongo/db/query/plan_ranker.h"
 #include "mongo/db/query/stage_types.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
@@ -57,7 +54,8 @@ void logScoreFormula(std::function<std::string()> formula,
                      double noFetchBonus,
                      double noSortBonus,
                      double noIxisectBonus,
-                     double tieBreakers) {
+                     double tieBreakers,
+                     boost::optional<double> groupByDistinctBonus) {
     LOGV2_DEBUG(
         20961, 2, "Score formula", "formula"_attr = [&]() {
             StringBuilder sb;
@@ -69,12 +67,23 @@ void logScoreFormula(std::function<std::string()> formula,
                << " noFetchBonus + " << str::convertDoubleToString(noSortBonus) << " noSortBonus + "
                << str::convertDoubleToString(noIxisectBonus)
                << " noIxisectBonus = " << str::convertDoubleToString(tieBreakers) << ")";
+            if (groupByDistinctBonus) {
+                sb << " + groupByDistinctBonus(" << *groupByDistinctBonus << ")";
+            }
             return sb.str();
         }());
 }
 
 void logScoreBoost(double score) {
     LOGV2_DEBUG(20962, 5, "Score boosted due to intersection forcing", "newScore"_attr = score);
+}
+
+void logScoreGroupByDistinctBoost(double bonus) {
+    LOGV2_DEBUG(
+        9961700,
+        5,
+        "Adding groupByDistinctBonus, boost formula is: std::min(1 - productivity, productivity)",
+        "groupByDistinctBonus"_attr = bonus);
 }
 
 void logScoringPlan(std::function<std::string()> solution,

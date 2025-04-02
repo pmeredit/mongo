@@ -47,7 +47,7 @@ namespace {
 void appendGeoNearLegacyArray(BSONObjBuilder& bob,
                               const BSONElement& e,
                               const SerializationOptions& opts) {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kToRepresentativeParseableValue) {
+    if (!opts.isReplacingLiteralsWithRepresentativeValues()) {
         opts.appendLiteral(&bob, e);
     } else {
         // Legacy $geoNear, $nearSphere, and $near require at minimum 2 coordinates to be
@@ -60,7 +60,7 @@ void appendGeoNearLegacyArray(BSONObjBuilder& bob,
 void appendShapeOperator(BSONObjBuilder& bob,
                          const BSONElement& e,
                          const SerializationOptions& opts) {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kToRepresentativeParseableValue) {
+    if (!opts.isReplacingLiteralsWithRepresentativeValues()) {
         opts.appendLiteral(&bob, e);
         return;
     }
@@ -88,7 +88,7 @@ void appendGeoJSONCoordinatesLiteral(BSONObjBuilder& bob,
                                      const BSONElement& coordinatesElem,
                                      const BSONElement& typeElem,
                                      const SerializationOptions& opts) {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kToRepresentativeParseableValue) {
+    if (!opts.isReplacingLiteralsWithRepresentativeValues()) {
         opts.appendLiteral(&bob, coordinatesElem);
         return;
     }
@@ -187,13 +187,13 @@ void appendCRSObject(BSONObjBuilder& bob,
     // shape can be re-parsed (and will be preserved for kUnchanged policy
     // as well).
     BSONObjBuilder crsObjBuilder(bob.subobjStart(kCrsField));
-    if (opts.literalPolicy == LiteralSerializationPolicy::kToDebugTypeString) {
+    if (opts.isSerializingLiteralsAsDebugTypes()) {
         opts.appendLiteral(&crsObjBuilder, crsObj[kCrsTypeField]);
     } else {
         crsObjBuilder.append(crsObj[kCrsTypeField]);
     }
     BSONObjBuilder crsPropBuilder(crsObjBuilder.subobjStart(kCrsPropertiesField));
-    if (opts.literalPolicy == LiteralSerializationPolicy::kToDebugTypeString) {
+    if (opts.isSerializingLiteralsAsDebugTypes()) {
         opts.appendLiteral(&crsPropBuilder, crsObj[kCrsPropertiesField].Obj()[kCrsNameField]);
     } else {
         crsPropBuilder.append(crsObj[kCrsPropertiesField].Obj()[kCrsNameField]);
@@ -302,6 +302,14 @@ void appendGeoNearOperator(BSONObjBuilder& bob,
                 // We convert from embedded object {x: 0, y: 0} to legacy array [0, 0] so that those
                 // Point formats have the same query shape.
                 BSONObj legacyCoordinates = BSON(fieldName << BSON_ARRAY(x.number() << y.number()));
+                appendGeoNearLegacyArray(bob, legacyCoordinates.firstElement(), opts);
+                return;
+            }
+            BSONElement maxDist;
+            status = GeoParser::parseLegacyPointWithMaxDistance(geoNearElem, x, y, maxDist);
+            if (status.isOK()) {
+                BSONObj legacyCoordinates =
+                    BSON(fieldName << BSON_ARRAY(x.number() << y.number() << maxDist.number()));
                 appendGeoNearLegacyArray(bob, legacyCoordinates.firstElement(), opts);
                 return;
             }

@@ -69,17 +69,13 @@
 #include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/integration_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/duration.h"
@@ -921,12 +917,12 @@ void exhaustMetricSwitchingCommandNames(bool useLegacyCommandNameAtStart) {
         ASSERT_EQUALS(1, serverStatusReply["connections"]["exhaustHello"].numberInt());
     }
 
-    const auto failPointObj = BSON("configureFailPoint"
-                                   << "failCommand"
-                                   << "mode" << BSON("times" << 1) << "data"
-                                   << BSON("threadName" << threadName << "errorCode"
-                                                        << ErrorCodes::NotWritablePrimary
-                                                        << "failCommands" << BSON_ARRAY(cmdName)));
+    const auto failPointObj =
+        BSON("configureFailPoint" << "failCommand"
+                                  << "mode" << BSON("times" << 1) << "data"
+                                  << BSON("threadName" << threadName << "errorCode"
+                                                       << ErrorCodes::NotWritablePrimary
+                                                       << "failCommands" << BSON_ARRAY(cmdName)));
     auto response = conn2->runCommand(OpMsgRequestBuilder::create(
         auth::ValidatedTenancyScope::kNotRequired, DatabaseName::kAdmin, failPointObj));
     ASSERT_OK(getStatusFromCommandResult(response->getCommandReply()));
@@ -1060,12 +1056,12 @@ void exhaustMetricDecrementsOnNewOpAfterTerminatingExhaustStream(bool useLegacyC
         ASSERT_EQUALS(1, serverStatusReply["connections"]["exhaustHello"].numberInt());
     }
 
-    const auto failPointObj = BSON("configureFailPoint"
-                                   << "failCommand"
-                                   << "mode" << BSON("times" << 1) << "data"
-                                   << BSON("threadName" << threadName << "errorCode"
-                                                        << ErrorCodes::NotWritablePrimary
-                                                        << "failCommands" << BSON_ARRAY(cmdName)));
+    const auto failPointObj =
+        BSON("configureFailPoint" << "failCommand"
+                                  << "mode" << BSON("times" << 1) << "data"
+                                  << BSON("threadName" << threadName << "errorCode"
+                                                       << ErrorCodes::NotWritablePrimary
+                                                       << "failCommands" << BSON_ARRAY(cmdName)));
     auto response = conn2->runCommand(OpMsgRequestBuilder::create(
         auth::ValidatedTenancyScope::kNotRequired, DatabaseName::kAdmin, failPointObj));
     ASSERT_OK(getStatusFromCommandResult(response->getCommandReply()));
@@ -1175,12 +1171,12 @@ void exhaustMetricOnNewExhaustAfterTerminatingExhaustStream(bool useLegacyComman
         ASSERT_EQUALS(1, serverStatusReply["connections"]["exhaustHello"].numberInt());
     }
 
-    const auto failPointObj = BSON("configureFailPoint"
-                                   << "failCommand"
-                                   << "mode" << BSON("times" << 1) << "data"
-                                   << BSON("threadName" << threadName << "errorCode"
-                                                        << ErrorCodes::NotWritablePrimary
-                                                        << "failCommands" << BSON_ARRAY(cmdName)));
+    const auto failPointObj =
+        BSON("configureFailPoint" << "failCommand"
+                                  << "mode" << BSON("times" << 1) << "data"
+                                  << BSON("threadName" << threadName << "errorCode"
+                                                       << ErrorCodes::NotWritablePrimary
+                                                       << "failCommands" << BSON_ARRAY(cmdName)));
     auto response = conn2->runCommand(OpMsgRequestBuilder::create(
         auth::ValidatedTenancyScope::kNotRequired, DatabaseName::kAdmin, failPointObj));
     ASSERT_OK(getStatusFromCommandResult(response->getCommandReply()));

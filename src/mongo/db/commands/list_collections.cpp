@@ -67,6 +67,7 @@
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/curop_failpoint_helpers.h"
 #include "mongo/db/db_raii.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/exec/plan_stage.h"
 #include "mongo/db/exec/queued_data_stage.h"
 #include "mongo/db/exec/working_set.h"
@@ -94,8 +95,6 @@
 #include "mongo/db/views/view.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
@@ -170,7 +169,7 @@ void _addWorkingSetMember(OperationContext* opCtx,
                           const MatchExpression* matcher,
                           WorkingSet* ws,
                           std::vector<WorkingSetID>& results) {
-    if (matcher && !matcher->matchesBSON(maybe)) {
+    if (matcher && !exec::matcher::matchesBSON(matcher, maybe)) {
         return;
     }
 
@@ -248,12 +247,20 @@ BSONObj buildCollectionBson(OperationContext* opCtx, const Collection* collectio
     if (!collection) {
         return {};
     }
-    auto nss = collection->ns();
-    auto collectionName = nss.coll();
+    const auto& nss = collection->ns();
 
     BSONObjBuilder b;
-    b.append("name", collectionName);
-    b.append("type", "collection");
+    b.append("name", nss.coll());
+
+    const auto collectionType = [&] {
+        if (collection->isTimeseriesCollection() && collection->isNewTimeseriesWithoutView()) {
+            return "timeseries";
+        } else {
+            return "collection";
+        }
+    }();
+
+    b.append("type", collectionType);
 
     if (nameOnly) {
         return b.obj();
@@ -271,7 +278,8 @@ BSONObj buildCollectionBson(OperationContext* opCtx, const Collection* collectio
     if (options.uuid) {
         infoBuilder.appendElements(options.uuid->toBSON());
     }
-    if (const auto configDebugDump = catalog::getConfigDebugDump(nss);
+    if (const auto configDebugDump =
+            catalog::getConfigDebugDump(VersionContext::getDecoration(opCtx), nss);
         configDebugDump.has_value()) {
         infoBuilder.append("configDebugDump", *configDebugDump);
     }
@@ -402,20 +410,22 @@ public:
                             }
 
                             auto collBson = [&] {
-                                const Collection* collection =
+                                auto collection =
                                     catalog->establishConsistentCollection(opCtx, nss, boost::none);
-                                if (collection != nullptr) {
-                                    return buildCollectionBson(opCtx, collection, nameOnly);
+                                if (collection) {
+                                    return buildCollectionBson(opCtx, collection.get(), nameOnly);
                                 }
 
                                 std::shared_ptr<const ViewDefinition> view =
                                     catalog->lookupView(opCtx, nss);
+                                // TODO SERVER-101594: remove this once 9.0 becomes last LTS
+                                // legacy timeseries view won't exist anymore.
                                 if (view && view->timeseries()) {
                                     if (auto bucketsCollection =
                                             catalog->establishConsistentCollection(
                                                 opCtx, view->viewOn(), boost::none)) {
                                         return buildTimeseriesBson(
-                                            opCtx, bucketsCollection, nameOnly);
+                                            opCtx, bucketsCollection.get(), nameOnly);
                                     } else {
                                         // The buckets collection does not exist, so the time-series
                                         // view will be appended when we iterate through the view
@@ -433,7 +443,10 @@ public:
                         }
                     } else {
                         auto perCollectionWork = [&](const Collection* collection) {
-                            if (collection->getTimeseriesOptions()) {
+                            // TODO SERVER-101594: remove this once 9.0 becomes last LTS
+                            // buckets collection ('system.buckets') won't exists anymore.
+                            if (collection->isTimeseriesCollection() &&
+                                !collection->isNewTimeseriesWithoutView()) {
                                 auto viewNss = collection->ns().getTimeseriesViewNamespace();
                                 auto view =
                                     catalog->lookupViewWithoutValidatingDurable(opCtx, viewNss);
@@ -467,10 +480,9 @@ public:
                             return true;
                         };
 
-                        std::vector<const Collection*> collections =
-                            catalog->establishConsistentCollections(opCtx, dbName);
+                        auto collections = catalog->establishConsistentCollections(opCtx, dbName);
                         for (const auto& collection : collections) {
-                            perCollectionWork(collection);
+                            perCollectionWork(collection.get());
                         }
                     }
 
@@ -488,6 +500,8 @@ public:
                                 return true;
                             }
 
+                            // TODO SERVER-101594: remove once 9.0 becomes last LTS
+                            // legacy timeseries view won't exist anymore.
                             if (view.timeseries()) {
                                 if (!catalog->lookupCollectionByNamespace(opCtx, view.viewOn())) {
                                     // There is no buckets collection backing this time-series view,

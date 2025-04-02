@@ -28,8 +28,6 @@
  */
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
-#include <fmt/format.h>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -49,9 +47,7 @@
 #include "mongo/db/query/stats/scalar_histogram.h"
 #include "mongo/db/query/stats/value_utils.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 
@@ -173,7 +169,7 @@ TEST(CEHistograms, SingleEntryHistogram) {
     for (auto&& v : values) {
         std::vector<SBEValue> singleValVec{sbe::value::copyValue(v.getTag(), v.getValue())};
         auto ceHist = createCEHistogram(singleValVec, ScalarHistogram::kMaxBuckets);
-        ceHist = createCEHistogram(singleValVec, 1);
+        ceHist = createCEHistogram(singleValVec, 2);
     }
 }
 

@@ -65,9 +65,6 @@
 #include "mongo/db/write_concern.h"
 #include "mongo/idl/generic_argument_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/rpc/check_allowed_op_query_cmd.h"
 #include "mongo/rpc/factory.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -133,7 +130,8 @@ Future<DbResponse> ServiceEntryPointRSEndpoint::_replicaSetEndpointHandleRequest
 }
 Future<DbResponse> ServiceEntryPointRSEndpoint::handleRequest(OperationContext* opCtx,
                                                               const Message& m) noexcept {
-    if (replica_set_endpoint::isReplicaSetEndpointClient(opCtx->getClient())) {
+    if (replica_set_endpoint::isReplicaSetEndpointClient(VersionContext::getDecoration(opCtx),
+                                                         opCtx->getClient())) {
         return _replicaSetEndpointHandleRequest(opCtx, m);
     }
     return _shardSep->handleRequest(opCtx, m);

@@ -100,9 +100,7 @@
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -116,8 +114,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 class OplogIteratorMock : public ReshardingDonorOplogIteratorInterface {
 public:
@@ -260,13 +256,6 @@ public:
             return _colls;
         }
 
-        std::pair<CollectionType, std::vector<IndexCatalogType>> getCollectionAndGlobalIndexes(
-            OperationContext* opCtx,
-            const NamespaceString& nss,
-            const repl::ReadConcernArgs& readConcern) {
-            return std::make_pair(CollectionType(), std::vector<IndexCatalogType>());
-        }
-
         void setCollections(std::vector<CollectionType> colls) {
             _colls = std::move(colls);
         }
@@ -317,15 +306,14 @@ public:
                                                false,
                                                chunks);
 
-        return ChunkManager(_sourceId.getShardId(),
-                            DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                            makeStandaloneRoutingTableHistory(std::move(rt)),
-                            boost::none);
+        return ChunkManager(makeStandaloneRoutingTableHistory(std::move(rt)), boost::none);
     }
 
     void loadCatalogCacheValues() {
         _mockCatalogCacheLoader->setDatabaseRefreshReturnValue(
-            DatabaseType(kAppliedToNs.dbName(), _cm->dbPrimary(), _cm->dbVersion()));
+            DatabaseType(kAppliedToNs.dbName(),
+                         _sourceId.getShardId(),
+                         DatabaseVersion(UUID::gen(), Timestamp(1, 1))));
         std::vector<ChunkType> chunks;
         _cm->forEachChunk([&](const auto& chunk) {
             chunks.emplace_back(
@@ -470,11 +458,11 @@ protected:
     const NamespaceString kCrudNs = NamespaceString::createNamespaceString_forTest("foo.bar");
     const UUID kCrudUUID = UUID::gen();
     const NamespaceString kAppliedToNs = NamespaceString::createNamespaceString_forTest(
-        "foo", "system.resharding.{}"_format(kCrudUUID.toString()));
+        "foo", fmt::format("system.resharding.{}", kCrudUUID.toString()));
     const NamespaceString kStashNs = NamespaceString::createNamespaceString_forTest(
-        "foo", "{}.{}"_format(kCrudNs.coll(), kOplogNs.coll()));
+        "foo", fmt::format("{}.{}", kCrudNs.coll(), kOplogNs.coll()));
     const NamespaceString kOtherDonorStashNs = NamespaceString::createNamespaceString_forTest(
-        "foo", "{}.{}"_format("otherstash", "otheroplog"));
+        "foo", fmt::format("{}.{}", "otherstash", "otheroplog"));
     const std::vector<NamespaceString> kStashCollections{kStashNs, kOtherDonorStashNs};
     const ShardId kMyShardId{"shard1"};
     const ShardId kOtherShardId{"shard2"};

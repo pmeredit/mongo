@@ -2,6 +2,7 @@
 
 import os.path
 import random
+import time
 
 import bson
 import bson.errors
@@ -43,7 +44,7 @@ class BackgroundInitialSync(interface.Hook):
         description = "Background Initial Sync"
         interface.Hook.__init__(self, hook_logger, fixture, description)
 
-        self.n = n  # pylint: disable=invalid-name
+        self.n = n
         self.tests_run = 0
         self.random_restarts = 0
         self._shell_options = shell_options
@@ -106,6 +107,9 @@ class BackgroundInitialSyncTestCase(jsfile.DynamicJSTestCase):
                 try:
                     sync_node_conn.admin.command(cmd)
                     break
+                except pymongo.errors.AutoReconnect:
+                    self.logger.info("AutoReconnect exception thrown, retrying...")
+                    time.sleep(0.1)
                 except pymongo.errors.OperationFailure as err:
                     if err.code not in (
                         self.INTERRUPTED_DUE_TO_REPL_STATE_CHANGE,
@@ -203,7 +207,7 @@ class IntermediateInitialSync(interface.Hook):
         description = "Intermediate Initial Sync"
         interface.Hook.__init__(self, hook_logger, fixture, description)
 
-        self.n = n  # pylint: disable=invalid-name
+        self.n = n
         self.tests_run = 0
 
     def _should_run_after_test(self):
@@ -264,6 +268,9 @@ class IntermediateInitialSyncTestCase(jsfile.DynamicJSTestCase):
             try:
                 sync_node_conn.admin.command(cmd)
                 break
+            except pymongo.errors.AutoReconnect:
+                self.logger.info("AutoReconnect exception thrown, retrying...")
+                time.sleep(0.1)
             except pymongo.errors.OperationFailure as err:
                 if err.code not in (
                     self.INTERRUPTED_DUE_TO_REPL_STATE_CHANGE,

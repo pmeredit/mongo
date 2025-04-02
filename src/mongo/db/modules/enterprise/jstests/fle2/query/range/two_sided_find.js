@@ -4,6 +4,8 @@
  *
  * @tags: [
  * requires_fcv_80,
+ * # TODO SERVER-100101 Investigate why we need this tag.
+ * assumes_stable_collection_uuid,
  * ]
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
@@ -121,7 +123,6 @@ assert.eq(res.length, 6);
 /* ---------------------- Basic Ranges: ----------------------------------------------- */
 // NumberInt
 assertQueryResults({age: {$gte: NumberInt(23), $lte: NumberInt(38)}}, [0, 1, 2]);
-assertQueryResults({age: {$gte: NumberLong(23), $lte: NumberLong(38)}}, [0, 1, 2]);
 assertQueryResults({age: {$eq: NumberInt(38)}}, [2]);  // Answering equality query with range index.
 assertQueryResults({age: {$ne: NumberInt(38)}},
                    [0, 1, 3, 4, 5]);  // Answering equality query with range index.
@@ -130,8 +131,6 @@ assertQueryResults({age: {$in: [NumberInt(38), NumberInt(22)]}},
 
 // NumberLong
 assertQueryResults({savings: {$gt: NumberLong(10000), $lt: NumberLong(2000000)}}, [0]);
-assertQueryResults({savings: {$gt: NumberInt(0), $lt: NumberInt(10000)}},
-                   [1, 3]);  // Answering a long index with int literals.
 assertQueryResults({savings: {$not: {$gt: NumberLong(10000), $lt: NumberLong(2000000)}}},
                    [1, 2, 3, 4, 5]);
 assertQueryResults({savings: {$eq: NumberLong(4126000)}},

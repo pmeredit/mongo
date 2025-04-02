@@ -16,6 +16,7 @@ mongo_cc_library(
         "aggregate_expression_intender.cpp",
         "aggregate_expression_intender_entry.cpp",
         "aggregate_expression_intender_range.cpp",
+        "aggregate_expression_intender_text.cpp",
         "collator_factory_cryptd.cpp",
         "encryption_schema_tree.cpp",
         "expression_schema_walker.cpp",
@@ -29,6 +30,7 @@ mongo_cc_library(
         "aggregate_expression_intender.h",
         "aggregate_expression_intender_entry.h",
         "aggregate_expression_intender_range.h",
+        "aggregate_expression_intender_text.h",
         "encryption_schema_tree.h",
         "encryption_update_visitor.h",
         "fle_match_expression.h",
@@ -36,7 +38,6 @@ mongo_cc_library(
         "query_analysis.h",
         "resolved_encryption_info.h",
         "//src/mongo/db/pipeline:pipeline_metadata_tree.h",
-        "//src/mongo/s/commands:sharding_expressions.h",
     ],
     tags = [
         "mongo_crypt",
@@ -52,6 +53,7 @@ mongo_cc_library(
         "//src/mongo/db:query_exec",
         "//src/mongo/db:query_expressions",
         "//src/mongo/db:shard_role_api",
+        "//src/mongo/db:sharding_expressions",
         "//src/mongo/db/commands:create_command",
         "//src/mongo/db/commands/query_cmd:bulk_write_common",
         "//src/mongo/db/pipeline",
@@ -71,6 +73,7 @@ mongo_cc_unit_test(
     srcs = [
         "aggregate_expression_intender_range_test.cpp",
         "aggregate_expression_intender_test.cpp",
+        "aggregate_expression_intender_text_test.cpp",
         "encryption_schema_tree_test.cpp",
         "expression_analysis_test.cpp",
         "fle2_test_fixture.cpp",
@@ -81,7 +84,7 @@ mongo_cc_unit_test(
         "fle_test_fixture.h",
         "query_analysis_test.cpp",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         ":query_analysis",
         "//src/mongo/db:service_context_non_d",

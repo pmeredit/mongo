@@ -47,7 +47,6 @@ mongo_cc_library(
         "//src/mongo/executor:task_executor_interface",
         "//src/mongo/rpc:metadata",
         "//src/mongo/util:clock_sources",  # TODO(SERVER-93876): Remove.
-        "//src/mongo/util:fail_point",  # TODO(SERVER-93876): Remove.
     ],
 )
 
@@ -104,13 +103,12 @@ mongo_cc_unit_test(
         "topology_manager_test.cpp",
         "topology_state_machine_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         ":sdam",
         ":sdam_test_util",
         "//src/mongo/client:clientdriver_network",
         "//src/mongo/client:replica_set_monitor_protocol_test_util",
-        "//src/mongo/db/concurrency:lock_manager",
         "//src/mongo/executor:thread_pool_task_executor_test_fixture",
     ],
 )

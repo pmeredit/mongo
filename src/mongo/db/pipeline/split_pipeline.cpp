@@ -33,7 +33,6 @@
 
 #include "mongo/db/pipeline/dependencies.h"
 #include "mongo/db/pipeline/document_source_group.h"
-#include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_source_sequential_document_cache.h"
 #include "mongo/db/pipeline/document_source_skip.h"
@@ -115,7 +114,11 @@ public:
      * shards pipeline, until a stage needs to be split.
      */
     PipelineSplitter& split() {
-        _prepopulateTextScoreMetadata();
+        // Before splitting the pipeline, we need to do dependency analysis to validate if we have
+        // text score metadata. This is because the planner will not have any way of knowing
+        // whether the split half provides this metadata after shards are targeted, because the
+        // shard executing the merging half only sees a $mergeCursors stage.
+        _splitPipeline.mergePipeline->validateMetaDependencies();
 
         // We will move stages one by one from the merging half to the shards, as possible.
         _findSplitPoint();
@@ -436,7 +439,7 @@ private:
      */
     void _limitFieldsSentFromShardsToMerger() {
         DepsTracker mergeDeps(
-            _splitPipeline.mergePipeline->getDependencies(DepsTracker::kNoMetadata));
+            _splitPipeline.mergePipeline->getDependencies(DepsTracker::NoMetadataValidation()));
         if (mergeDeps.needWholeDocument)
             return;  // the merge needs all fields, so nothing we can do.
 
@@ -454,7 +457,7 @@ private:
         // 2) Optimization IS NOT applied immediately following a $project or $group since it would
         //    add an unnecessary project (and therefore a deep-copy).
         for (auto&& source : _splitPipeline.shardsPipeline->getSources()) {
-            DepsTracker dt(DepsTracker::kNoMetadata);
+            DepsTracker dt;
             if (source->getDependencies(&dt) & DepsTracker::State::EXHAUSTIVE_FIELDS)
                 return;
         }
@@ -462,21 +465,7 @@ private:
         boost::intrusive_ptr<DocumentSource> project = DocumentSourceProject::createFromBson(
             BSON("$project" << mergeDeps.toProjectionWithoutMetadata()).firstElement(),
             _splitPipeline.shardsPipeline->getContext());
-        _splitPipeline.shardsPipeline->pushBack(project);
-    }
-
-    /**
-     * Before splitting the pipeline, we need to do dependency analysis to validate if we have
-     * text score metadata. This is because the planner will not have any way of knowing
-     * whether the split half provides this metadata after shards are targeted, because the
-     * shard executing the merging half only sees a $mergeCursors stage.
-     */
-    void _prepopulateTextScoreMetadata() const {
-        auto queryObj = _splitPipeline.mergePipeline->getInitialQuery();
-        auto unavailableMetadata = DocumentSourceMatch::isTextQuery(queryObj)
-            ? DepsTracker::kNoMetadata
-            : DepsTracker::kOnlyTextScore;
-        (void)_splitPipeline.mergePipeline->getDependencies(unavailableMetadata);
+        _splitPipeline.shardsPipeline->pushBack(std::move(project));
     }
 
     /**

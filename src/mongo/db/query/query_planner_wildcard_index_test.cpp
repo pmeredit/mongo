@@ -55,9 +55,8 @@
 #include "mongo/db/query/query_planner_params.h"
 #include "mongo/db/query/query_planner_test_fixture.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
@@ -100,7 +99,7 @@ protected:
 
         params.mainCollectionInfo.indexes.push_back({std::move(keyPattern),
                                                      IndexType::INDEX_WILDCARD,
-                                                     IndexDescriptor::kLatestIndexVersion,
+                                                     IndexConfig::kLatestIndexVersion,
                                                      isMultikey,
                                                      {},  // multikeyPaths
                                                      std::move(multikeyFieldRefs),
@@ -986,9 +985,7 @@ TEST_F(QueryPlannerWildcardTest, ChooseWildcardIndexHintByName) {
     addWildcardIndex(BSON("$**" << 1), {}, {}, {}, nullCollator, wildcard);
     addIndex(BSON("x" << 1));
 
-    runQueryHint(fromjson("{x: {$eq: 1}}"),
-                 BSON("$hint"
-                      << "wildcard"));
+    runQueryHint(fromjson("{x: {$eq: 1}}"), BSON("$hint" << "wildcard"));
 
     assertNumSolutions(1U);
     assertSolutionExists("{fetch: {node: {ixscan: {pattern: {$_path: 1, x: 1}}}}}");
@@ -1988,7 +1985,7 @@ TEST_F(QueryPlannerWildcardTest, CanPushProjectionBeneathSortWithExistsPredicate
         "{proj: {spec: {_id: 0, b: 1}, node: {fetch: {filter: {a: {$eq: 1}}, node:"
         "{ixscan: {filter: null, pattern: {$_path: 1, b: 1}, bounds:"
         "{$_path: [['b','b',true,true], ['b.', 'b/', true, false]],"
-        "b: [['MinKey','MaxKey',true,true]]}}}}}}}}}}}");
+        "b: [['MinKey','MaxKey',true,true]]}}}}}}}}}");
     assertSolutionExists(
         "{sort: {pattern: {b: 1}, limit: 0, type: 'simple', node:"
         "{proj: {spec: {_id: 0, b: 1}, node: {fetch: {filter: {b: {$exists: true}}, node:"

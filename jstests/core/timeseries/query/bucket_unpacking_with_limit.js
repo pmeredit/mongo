@@ -59,7 +59,7 @@ const setupColl = (coll, collName, usesMeta) => {
 
 // Helper function to check the PlanStage.
 const assertPlanStagesInPipeline =
-    ({pipeline, expectedStages, expectedResults = [], onlyMeta = false}) => {
+    ({pipeline, expectedStages, expectedResults = [], expectedResultLength, onlyMeta = false}) => {
         // If onlyMeta is set to true, we only want to include the collection with onlyMeta field
         // specified to ensure sort can be done on the onlyMeta field
         var colls = onlyMeta ? [metaColl] : [coll, metaColl];
@@ -81,6 +81,9 @@ const assertPlanStagesInPipeline =
                 for (var i = 0; i < expectedResults.length; i++) {
                     assert.docEq(result[i], expectedResults[i], tojson(result));
                 }
+            } else if (expectedResultLength) {
+                const result = c.aggregate(pipeline).toArray();
+                assert(expectedResultLength == result.length);
             }
         }
     };
@@ -153,9 +156,70 @@ assertPlanStagesInPipeline({
     ],
     onlyMeta: true
 });
+// Test that sort with limit and skip returns the correct number of documents.
+// TODO: SERVER-101506 The unpack bucket stage only tries to optimize the end of its pipeline after
+// it checks if it can do some rewrites. Therefore, we need a (complicated, alwaysTrue) match
+// expression or some other stage following _internalUnpackBucket before $sort to trigger the end of
+// the pipeline optimization and test for the correctness of the number of documents return in such
+// cases. We need to fix the tests below after optimization is added for other cases as well.
+assertPlanStagesInPipeline({
+    pipeline: [
+        {
+            "$match": {
+                "$nor": [
+                    {"temp": {"$in": []}},
+                ]
+            }
+        },
+        {$sort: {"m.sensorId": 1}},
+        {$skip: 1},
+        {$limit: 1}
+    ],
+    expectedStages: ["$_internalUnpackBucket", "$limit", "$skip"],
+    expectedResults: [metaDocs[1]],
+    onlyMeta: true
+});
+assertPlanStagesInPipeline({
+    pipeline: [
+        {
+            "$match": {
+                "$nor": [
+                    {"temp": {"$in": []}},
+                ]
+            }
+        },
+        {$sort: {"m.sensorId": 1}},
+        {$skip: 1},
+        {$limit: 2},
+        {$skip: 1}
+    ],
+    expectedStages: ["$_internalUnpackBucket", "$limit", "$skip"],
+    expectedResults: [metaDocs[2]],
+    onlyMeta: true
+});
+
 // Test limit comes before sort.
+assertPlanStagesInPipeline({
+    pipeline: [
+        {
+            $match: {
+                $nor: [
+                    {"temp": {$in: []}},
+                ]
+            }
+        },
+        {$limit: 5},
+        {$sort: {"m.sensorId": 1}},
+        {$skip: 2},
+        {$limit: 2}
+    ],
+    expectedStages: ["$_internalUnpackBucket", "$limit", "$sort", "$skip"],
+    expectedResultLength: 2,
+    onlyMeta: true
+});
 assertPlanStagesInPipeline({
     pipeline: [{$limit: 2}, {$sort: {"m.sensorId": 1}}],
     expectedStages: ["$_internalUnpackBucket", "$limit", "$sort"],
+    expectedResultLength: 2,
     onlyMeta: true
 });

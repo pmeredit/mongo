@@ -102,8 +102,7 @@ void generatePlannerInfo(PlanExecutor* exec,
     const auto& mainCollection = collections.getMainCollection();
     if (auto* cq = exec->getCanonicalQuery(); mainCollection && cq) {
         if (cq->isSbeCompatible() && cq->isUsingSbePlanCache() &&
-            feature_flags::gFeatureFlagSbeFull.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+            feature_flags::gFeatureFlagSbeFull.isEnabled()) {
             const auto planCacheKeyInfo =
                 plan_cache_key_factory::make(*exec->getCanonicalQuery(), collections);
             planCacheKeyHash = planCacheKeyInfo.planCacheKeyHash();
@@ -150,7 +149,10 @@ void generatePlannerInfo(PlanExecutor* exec,
     }
 
     if (planCacheShapeHash) {
-        plannerBob.append("planCacheShapeHash", zeroPaddedHex(*planCacheShapeHash));
+        // TODO SERVER-93305: Remove deprecated 'queryHash' usages.
+        std::string planCacheShapeHashStr = zeroPaddedHex(*planCacheShapeHash);
+        plannerBob.append("queryHash", planCacheShapeHashStr);
+        plannerBob.append("planCacheShapeHash", planCacheShapeHashStr);
     }
 
     if (planCacheKeyHash) {
@@ -352,7 +354,10 @@ BSONObj explainVersionToBson(const PlanExplainer::ExplainVersion& version) {
 
 template <typename EntryType>
 void appendBasicPlanCacheEntryInfoToBSON(const EntryType& entry, BSONObjBuilder* out) {
-    out->append("planCacheShapeHash", zeroPaddedHex(entry.planCacheShapeHash));
+    // TODO SERVER-93305: Remove deprecated 'queryHash' usages.
+    std::string planCacheShapeHashStr = zeroPaddedHex(entry.planCacheShapeHash);
+    out->append("queryHash", planCacheShapeHashStr);
+    out->append("planCacheShapeHash", planCacheShapeHashStr);
     out->append("planCacheKey", zeroPaddedHex(entry.planCacheKey));
     out->append("isActive", entry.isActive);
     out->append("works",

@@ -2,8 +2,10 @@
  * Test that random encryption is banned for the correct set of BSON types.
  */
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
-import {generateSchema} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
-import {kRandomAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
+import {
+    generateSchema,
+    kRandomAlgo
+} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();

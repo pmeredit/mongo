@@ -66,14 +66,11 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/transport/named_pipe/named_pipe.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
 namespace {
-using namespace fmt::literals;
 
 class PipeWaiter {
 public:
@@ -145,7 +142,7 @@ protected:
         BSONObj res = runCommand(originalAggCommand.addFields(BSON("explain" << true)));
         // Sanity checks of result.
         ASSERT_EQ(res["ok"].Number(), 1.0)
-            << "Expected to succeed but failed. result = {}"_format(res.toString());
+            << fmt::format("Expected to succeed but failed. result = {}", res.toString());
     }
 
     PseudoRandom _random{SecureRandom{}.nextInt64()};
@@ -507,9 +504,8 @@ TEST_F(ExternalDataSourceCommandsTest, KillCursorAfterAggRequest) {
     ASSERT_TRUE(res["cursor"].Obj().hasField("id") && cursorId != 0);
 
     // Kills the cursor.
-    auto killCursorCmdObj = BSON("killCursors"
-                                 << "coll"
-                                 << "cursors" << BSON_ARRAY(cursorId));
+    auto killCursorCmdObj = BSON("killCursors" << "coll"
+                                               << "cursors" << BSON_ARRAY(cursorId));
     res = runCommand(killCursorCmdObj.getOwned());
     ASSERT_EQ(res["ok"].Number(), 1.0);
     auto cursorsKilled = res["cursorsKilled"].Array();

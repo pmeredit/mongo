@@ -1628,6 +1628,85 @@ def _bind_server_parameter(ctxt, param):
         return None
 
 
+def _bind_feature_flag_phase(ctxt, param):
+    # type: (errors.ParserContext, syntax.FeatureFlag) -> ast.FeatureFlagRolloutPhase
+    if param.incremental_rollout_phase is None:
+        return ast.FeatureFlagRolloutPhase.NOT_FOR_INCREMENTAL_ROLLOUT
+
+    feature_flag_phase = ast.FeatureFlagRolloutPhase.bind(param.incremental_rollout_phase)
+    if feature_flag_phase is None:
+        ctxt.add_invalid_incremental_rollout_phase_value(param, param.incremental_rollout_phase)
+        return None
+
+    return feature_flag_phase
+
+
+def _is_ifr_feature_flag_enabled_by_default(feature_flag_phase):
+    # type: (ast.FeatureFlagRolloutPhase) -> bool
+    return feature_flag_phase != ast.FeatureFlagRolloutPhase.IN_DEVELOPMENT
+
+
+def _bind_ifr_feature_flag_default(ctxt, param, feature_flag_phase):
+    # type: (errors.ParserContext, syntax.FeatureFlag, ast.FeatureFlagRolloutPhase) -> ast.Expression
+
+    # The 'default' value for an IFR flag is determined by its IFR phase. The flag can optionally
+    # specify a default value, but it must match the phase's default value.
+    default_value = (
+        "true" if _is_ifr_feature_flag_enabled_by_default(feature_flag_phase) else "false"
+    )
+    if param.default and param.default.literal != default_value:
+        ctxt.add_invalid_feature_flag_default_value(
+            param.default, str(feature_flag_phase), default_value
+        )
+        return None
+
+    expr_for_default = syntax.Expression(param.file_name, param.line, param.column)
+    expr_for_default.expr = (
+        f'"{param.name}"_sd, RolloutPhase::'
+        f"{feature_flag_phase.to_camel_case_string()}, {default_value}"
+    )
+
+    bound_expr = _bind_expression(expr_for_default)
+    bound_expr.export = False
+    return bound_expr
+
+
+def _bind_non_ifr_feature_flag_default(ctxt, param):
+    # type: (errors.ParserContext, syntax.FeatureFlag) -> ast.Expression
+    expr_for_default = syntax.Expression(
+        param.default.file_name, param.default.line, param.default.column
+    )
+    if param.shouldBeFCVGated.literal == "true":
+        expr_for_default.expr = f'{param.default.literal}, "{param.version or ""}"_sd'
+        if param.enable_on_transitional_fcv:
+            expr_for_default.expr += ", true"
+    else:
+        expr_for_default.expr = param.default.literal
+
+    bound_expr = _bind_expression(expr_for_default)
+    bound_expr.export = False
+    return bound_expr
+
+
+def _bind_feature_flag_cpp_vartype(ctxt, param, feature_flag_phase):
+    # type: (errors.ParserContext, syntax.FeatureFlag, ast.FeatureFlagRolloutPhase) -> str
+    if param.shouldBeFCVGated.literal == "true":
+        # FCV flags must not also be IFR flags.
+        if feature_flag_phase != ast.FeatureFlagRolloutPhase.NOT_FOR_INCREMENTAL_ROLLOUT:
+            ctxt.add_illegally_fcv_gated_feature_flag(param)
+            return None
+
+        if param.fcv_context_unaware:
+            return "::mongo::LegacyContextUnawareFCVGatedFeatureFlag"
+        return "::mongo::FCVGatedFeatureFlag"
+    elif feature_flag_phase == ast.FeatureFlagRolloutPhase.NOT_FOR_INCREMENTAL_ROLLOUT:
+        # Non-FCV gated, non IFR flag.
+        return "::mongo::BinaryCompatibleFeatureFlag"
+    else:
+        # IFR flag.
+        return "::mongo::IncrementalRolloutFeatureFlag"
+
+
 def _bind_feature_flags(ctxt, param):
     # type: (errors.ParserContext, syntax.FeatureFlag) -> ast.ServerParameter
     """Bind a FeatureFlag as a serverParameter setting."""
@@ -1635,36 +1714,64 @@ def _bind_feature_flags(ctxt, param):
     ast_param.name = param.name
     ast_param.description = param.description
 
-    ast_param.set_at = "ServerParameterType::kStartupOnly"
-
-    expr = syntax.Expression(param.default.file_name, param.default.line, param.default.column)
-
-    # Feature flags that default to false must not have a version
-    if param.default.literal == "false" and param.version:
-        ctxt.add_feature_flag_default_false_has_version(param)
+    # Choose the feature flag phase.
+    ast_param.feature_flag_phase = _bind_feature_flag_phase(ctxt, param)
+    if ast_param.feature_flag_phase is None:
         return None
 
-    if param.shouldBeFCVGated.literal == "true":
-        # Feature flags that default to true and should be FCV gated are required to have a version
-        if param.default.literal == "true" and not param.version:
-            ctxt.add_feature_flag_default_true_missing_version(param)
+    # Choose when the feature flag can be set. All features flags can be configured at startup. Only
+    # Incremental Feature Rollout (IFR) flags can be toggled at runtime.
+    ast_param.set_at = (
+        "ServerParameterType::kStartupOnly"
+        if ast_param.feature_flag_phase == ast.FeatureFlagRolloutPhase.NOT_FOR_INCREMENTAL_ROLLOUT
+        else "ServerParameterType::kStartupAndRuntime"
+    )
+
+    # Choose the default value for the flag, and also validate the 'version' field.
+    if ast_param.feature_flag_phase != ast.FeatureFlagRolloutPhase.NOT_FOR_INCREMENTAL_ROLLOUT:
+        ast_param.default = _bind_ifr_feature_flag_default(
+            ctxt, param, ast_param.feature_flag_phase
+        )
+        if ast_param.default is None:
             return None
 
-        ast_param.cpp_vartype = "::mongo::FeatureFlagFCVGated"
-        expr.expr = f'{param.default.literal}, "{param.version or ""}"_sd'
-    else:
-        # Feature flags that should not be FCV gated must not have a version
+        # An IFR flag must not specify the 'version' field.
         if param.version:
-            ctxt.add_feature_flag_fcv_gated_false_has_version(param)
+            ctxt.add_ifr_flag_with_version(param)
+            return None
+    elif param.default:
+        ast_param.default = _bind_non_ifr_feature_flag_default(ctxt, param)
+
+        if param.default.literal == "false" and param.version:
+            # Feature flags that default to false must not have a version.
+            ctxt.add_feature_flag_default_false_has_version(param)
             return None
 
-        ast_param.cpp_vartype = "::mongo::FeatureFlagBinaryCompatible"
-        expr.expr = param.default.literal
+        if param.shouldBeFCVGated.literal == "true":
+            # Feature flags that default to true and should be FCV gated are required to have a
+            # version.
+            if param.default.literal == "true" and not param.version:
+                ctxt.add_feature_flag_default_true_missing_version(param)
+                return None
+        else:
+            # Feature flags that should not be FCV gated must not have unsupported options.
+            for option_name in ("version", "enable_on_transitional_fcv", "fcv_context_unaware"):
+                if getattr(param, option_name):
+                    ctxt.add_feature_flag_fcv_gated_false_has_unsupported_option(param, option_name)
+                    return None
+    else:
+        # Non-IFR flags must specify a 'default' value.
+        ctxt.add_feature_flag_without_default_value(param)
+        return None
 
-    ast_param.default = _bind_expression(expr)
-    ast_param.default.export = False
+    # Choose the cpp_vartype.
+    ast_param.cpp_vartype = _bind_feature_flag_cpp_vartype(
+        ctxt, param, ast_param.feature_flag_phase
+    )
+    if ast_param.cpp_vartype is None:
+        return None
+
     ast_param.cpp_varname = param.cpp_varname
-    ast_param.feature_flag = True
 
     return ast_param
 
@@ -1804,6 +1911,18 @@ def _bind_config_option(ctxt, globals_spec, option):
             return None
 
     return node
+
+
+def is_feature_flag_enabled_by_default(feature_flag):
+    # type: (syntax.FeatureFlag) -> bool
+    """Determine if an idl.FeatureFlag should be enabled by default without validating its syntax"""
+
+    if feature_flag.incremental_rollout_phase:
+        return _is_ifr_feature_flag_enabled_by_default(
+            ast.FeatureFlagRolloutPhase.bind(feature_flag.incremental_rollout_phase)
+        )
+    else:
+        return feature_flag.default.literal == "true"
 
 
 def bind(parsed_spec):

@@ -127,6 +127,8 @@ void CreateDatabaseCoordinator::_enterCriticalSection(
         NamespaceString::makeCollectionlessShardsvrParticipantBlockNSS(nss().dbName()));
     blockCRUDOperationsRequest.setBlockType(mongo::CriticalSectionBlockTypeEnum::kReadsAndWrites);
     blockCRUDOperationsRequest.setReason(_critSecReason);
+    blockCRUDOperationsRequest.setClearDbInfo(_doc.getAuthoritativeMetadataAccessLevel() ==
+                                              AuthoritativeMetadataAccessLevelEnum::kNone);
 
     generic_argument_util::setMajorityWriteConcern(blockCRUDOperationsRequest);
     generic_argument_util::setOperationSessionInfo(blockCRUDOperationsRequest,
@@ -157,6 +159,8 @@ void CreateDatabaseCoordinator::_exitCriticalSection(
     unblockCRUDOperationsRequest.setBlockType(CriticalSectionBlockTypeEnum::kUnblock);
     unblockCRUDOperationsRequest.setReason(_critSecReason);
     unblockCRUDOperationsRequest.setThrowIfReasonDiffers(throwIfReasonDiffers);
+    unblockCRUDOperationsRequest.setClearDbInfo(_doc.getAuthoritativeMetadataAccessLevel() ==
+                                                AuthoritativeMetadataAccessLevelEnum::kNone);
 
     generic_argument_util::setMajorityWriteConcern(unblockCRUDOperationsRequest);
     generic_argument_util::setOperationSessionInfo(unblockCRUDOperationsRequest,
@@ -165,6 +169,21 @@ void CreateDatabaseCoordinator::_exitCriticalSection(
         **executor, token, unblockCRUDOperationsRequest);
     sharding_ddl_util::sendAuthenticatedCommandToShards(
         opCtx, opts, {_doc.getPrimaryShard().get()});
+}
+
+DatabaseType CreateDatabaseCoordinator::_commitClusterCatalog(OperationContext* opCtx) {
+    const auto& dbName = nss().dbName();
+    const auto dbNameStr =
+        DatabaseNameUtil::serialize(dbName, SerializationContext::stateDefault());
+
+    if (const auto& existingDatabase = create_database_util::findDatabaseExactMatch(
+            opCtx, dbNameStr, _doc.getPrimaryShard())) {
+        // This means the database was created in a previous run of the same create
+        // database coordinator instance.
+        return existingDatabase.get();
+    }
+    return ShardingCatalogManager::get(opCtx)->commitCreateDatabase(
+        opCtx, dbName, _doc.getPrimaryShard().get(), _doc.getUserSelectedPrimary());
 }
 
 ExecutorFuture<void> CreateDatabaseCoordinator::_runImpl(
@@ -188,26 +207,22 @@ ExecutorFuture<void> CreateDatabaseCoordinator::_runImpl(
                                  }))
         .then(_buildPhaseHandler(
             Phase::kCommitOnShardingCatalog,
-            [this, anchor = shared_from_this()] {
+            [this, token, executor = executor, anchor = shared_from_this()] {
                 auto opCtxHolder = cc().makeOperationContext();
                 auto* opCtx = opCtxHolder.get();
 
-                const auto& dbName = nss().dbName();
-                const auto dbNameStr =
-                    DatabaseNameUtil::serialize(dbName, SerializationContext::stateDefault());
-                auto returnDatabase = [&] {
-                    if (const auto& existingDatabase = create_database_util::findDatabaseExactMatch(
-                            opCtx, dbNameStr, _doc.getPrimaryShard())) {
-                        // This means the database was created in a previous run of the same create
-                        // database coordinator instance.
-                        return existingDatabase.get();
-                    }
-                    return ShardingCatalogManager::get(opCtx)->commitCreateDatabase(
-                        opCtx, dbName, _doc.getPrimaryShard().get(), _doc.getUserSelectedPrimary());
-                }();
+                auto db = _commitClusterCatalog(opCtx);
+
+                if (_doc.getAuthoritativeMetadataAccessLevel() >=
+                    AuthoritativeMetadataAccessLevelEnum::kWritesAllowed) {
+                    const auto& session = getNewSession(opCtx);
+                    sharding_ddl_util::commitCreateDatabaseMetadataToShardCatalog(
+                        opCtx, db, session, executor, token);
+                }
+
                 // Persists the metadata of the created database on the coordinator doc.
-                _storeDBVersion(opCtx, returnDatabase);
-                _result = ConfigsvrCreateDatabaseResponse(returnDatabase.getVersion());
+                _storeDBVersion(opCtx, db);
+                _result = ConfigsvrCreateDatabaseResponse(db.getVersion());
             }))
         .then(_buildPhaseHandler(
             Phase::kExitCriticalSectionOnPrimary,
@@ -224,7 +239,10 @@ ExecutorFuture<void> CreateDatabaseCoordinator::_runImpl(
                     _result = ConfigsvrCreateDatabaseResponse(dbVersion.get());
                 }
                 _exitCriticalSection(opCtx, executor, token, false /* throwIfReasonDiffers */);
-                refreshDatabaseCache(opCtx, dbName, _doc.getPrimaryShard().get());
+                if (_doc.getAuthoritativeMetadataAccessLevel() ==
+                    AuthoritativeMetadataAccessLevelEnum::kNone) {
+                    refreshDatabaseCache(opCtx, dbName, _doc.getPrimaryShard().get());
+                }
             }))
         .onError([this, anchor = shared_from_this()](const Status& status) {
             if (status == ErrorCodes::RequestAlreadyFulfilled) {

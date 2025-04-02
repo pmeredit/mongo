@@ -35,8 +35,7 @@
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_settings/query_settings_gen.h"
 #include "mongo/db/query/query_settings/query_settings_hash.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::query_settings {
 
@@ -63,8 +62,7 @@ TEST(QuerySettingsHashTest, QuerySettingsHashExcludesComment) {
 
     auto hashA = mongo::query_settings::hash(settings);
 
-    auto commentObj = BSON("reason for reject"
-                           << "don't want this query to be used on classic...");
+    auto commentObj = BSON("reason for reject" << "don't want this query to be used on classic...");
     auto comment = Comment::parseFromBSON(commentObj.firstElement());
     settings.setComment(comment);
     auto hashB = mongo::query_settings::hash(settings);

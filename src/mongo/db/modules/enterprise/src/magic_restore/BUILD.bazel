@@ -64,7 +64,7 @@ mongo_cc_unit_test(
         "magic_restore_test.cpp",
     ],
     data = ["bson_reader_test_data/sample_cloud_oplogs"],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         ":magic_restore",
         "//src/mongo/db:service_context_d",

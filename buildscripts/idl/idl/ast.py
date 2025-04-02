@@ -146,7 +146,6 @@ class Struct(common.SourceLocation):
         self.generic_list_type = None  # type: Optional[GenericListType]
         # Determines whether or not this IDL struct can be a component of a query shape. See WRITING-13831.
         self.query_shape_component = False  # type: bool
-        # pylint: disable=invalid-name
         self.unsafe_dangerous_disable_extra_field_duplicate_checks = None  # type: bool
 
         # Indicates if the struct is a view type or not. If a struct is a view type, then the
@@ -206,7 +205,6 @@ class Validator(common.SourceLocation):
         # type: (str, int, int) -> None
         """Construct a Validator."""
         # Don't lint gt/lt as bad attribute names.
-        # pylint: disable=C0103
         self.gt = None  # type: Expression
         self.lt = None  # type: Expression
         self.gte = None  # type: Expression
@@ -416,6 +414,49 @@ class ServerParameterClass(common.SourceLocation):
         super(ServerParameterClass, self).__init__(file_name, line, column)
 
 
+@enum.unique
+class FeatureFlagRolloutPhase(enum.Enum):
+    # Normal feature flag; only configurable at startup.
+    NOT_FOR_INCREMENTAL_ROLLOUT = enum.auto()
+    # Incremental rollout flag for in-development feature; defaults to disabled.
+    IN_DEVELOPMENT = enum.auto()
+    # Incremental rollout flag for feature that is ready to roll out; defaults to disabled.
+    ROLLOUT = enum.auto()
+    # Incremental rollout flag for feature that is completely rolled out; defaults to enabled.
+    RELEASED = enum.auto()
+
+    @classmethod
+    def bind(cls, string_value):
+        # type: (Optional[str]) -> Optional[FeatureFlagRolloutPhase]
+        if string_value is None:
+            return None
+        bindings = {
+            "not_for_incremental_rollout": cls.NOT_FOR_INCREMENTAL_ROLLOUT,
+            "in_development": cls.IN_DEVELOPMENT,
+            "rollout": cls.ROLLOUT,
+            "released": cls.RELEASED,
+        }
+        return bindings.get(string_value, None)
+
+    def __str__(self):
+        bindings = {
+            FeatureFlagRolloutPhase.NOT_FOR_INCREMENTAL_ROLLOUT: "not_for_incremental_rollout",
+            FeatureFlagRolloutPhase.IN_DEVELOPMENT: "in_development",
+            FeatureFlagRolloutPhase.ROLLOUT: "rollout",
+            FeatureFlagRolloutPhase.RELEASED: "released",
+        }
+        return bindings.get(self)
+
+    def to_camel_case_string(self):
+        bindings = {
+            FeatureFlagRolloutPhase.NOT_FOR_INCREMENTAL_ROLLOUT: "notForIncrementalRollout",
+            FeatureFlagRolloutPhase.IN_DEVELOPMENT: "inDevelopment",
+            FeatureFlagRolloutPhase.ROLLOUT: "rollout",
+            FeatureFlagRolloutPhase.RELEASED: "released",
+        }
+        return bindings.get(self)
+
+
 class ServerParameter(common.SourceLocation):
     """IDL ServerParameter setting."""
 
@@ -434,7 +475,7 @@ class ServerParameter(common.SourceLocation):
         self.test_only = False  # type: bool
         self.deprecated_name = []  # type: List[str]
         self.default = None  # type: Expression
-        self.feature_flag = False  # type: bool
+        self.feature_flag_phase = None  # type: FeatureFlagRolloutPhase
 
         # Only valid if cpp_varname is specified.
         self.validator = None  # type: Validator

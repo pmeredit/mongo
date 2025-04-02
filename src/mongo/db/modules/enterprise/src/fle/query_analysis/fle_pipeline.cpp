@@ -975,8 +975,7 @@ FLEPipeline::FLEPipeline(CloneableEncryptionSchemaMap initialStageContents,
     auto referencedCollections = _parsedPipeline->getInvolvedCollections();
     referencedCollections.insert(_parsedPipeline->getContext()->getNamespaceString());
 
-    // (Ignore FCV check): Query Analysis does not run in the server, so it can't be FCV gated.
-    if (!feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabledAndIgnoreFCVUnsafe()) {
+    if (!feature_flags::gFeatureFlagLookupEncryptionSchemasFLE.isEnabled()) {
         uassert(51204,
                 "Pipeline over an encrypted collection cannot reference additional collections.",
                 referencedCollections.size() == 1);

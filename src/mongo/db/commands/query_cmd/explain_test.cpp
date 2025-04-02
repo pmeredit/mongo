@@ -38,9 +38,7 @@
 #include "mongo/db/query/explain_options.h"
 #include "mongo/db/query/explain_verbosity_gen.h"
 #include "mongo/idl/idl_parser.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -55,14 +53,11 @@ TEST(ExplainTest, VerbosityEnumToStringReturnsCorrectValues) {
 }
 
 TEST(ExplainTest, ExplainSerializeToBSONCorrectly) {
-    ASSERT_BSONOBJ_EQ(BSON("verbosity"
-                           << "queryPlanner"),
+    ASSERT_BSONOBJ_EQ(BSON("verbosity" << "queryPlanner"),
                       ExplainOptions::toBSON(Verbosity::kQueryPlanner));
-    ASSERT_BSONOBJ_EQ(BSON("verbosity"
-                           << "executionStats"),
+    ASSERT_BSONOBJ_EQ(BSON("verbosity" << "executionStats"),
                       ExplainOptions::toBSON(Verbosity::kExecStats));
-    ASSERT_BSONOBJ_EQ(BSON("verbosity"
-                           << "allPlansExecution"),
+    ASSERT_BSONOBJ_EQ(BSON("verbosity" << "allPlansExecution"),
                       ExplainOptions::toBSON(Verbosity::kExecAllPlans));
 }
 

@@ -84,7 +84,7 @@ mongo_cc_unit_test(
         "mock_mongo_interface_for_backup_tests.cpp",
         "mock_mongo_interface_for_backup_tests.h",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         ":hot_backups",
         "//src/mongo/db:service_context_d_test_fixture",

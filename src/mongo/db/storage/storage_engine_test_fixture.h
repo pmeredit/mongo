@@ -38,6 +38,7 @@
 #include "mongo/db/repl/storage_interface_impl.h"
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/storage/durable_catalog.h"
+#include "mongo/db/storage/ident.h"
 #include "mongo/db/storage/kv/kv_engine.h"
 #include "mongo/db/storage/storage_engine_impl.h"
 #include "mongo/db/storage/storage_repair_observer.h"
@@ -70,22 +71,26 @@ public:
         std::unique_ptr<RecordStore> rs;
         {
             WriteUnitOfWork wuow(opCtx);
+            const auto ident =
+                ident::generateNewCollectionIdent(ns.dbName(),
+                                                  _storageEngine->isUsingDirectoryPerDb(),
+                                                  _storageEngine->isUsingDirectoryForIndexes());
             std::tie(catalogId, rs) = unittest::assertGet(
-                _storageEngine->getCatalog()->createCollection(opCtx, ns, options, true));
+                _storageEngine->getDurableCatalog()->createCollection(opCtx, ns, ident, options));
             wuow.commit();
         }
         std::shared_ptr<Collection> coll = std::make_shared<CollectionImpl>(
             opCtx,
             ns,
             catalogId,
-            _storageEngine->getCatalog()->getParsedCatalogEntry(opCtx, catalogId)->metadata,
+            _storageEngine->getDurableCatalog()->getParsedCatalogEntry(opCtx, catalogId)->metadata,
             std::move(rs));
 
         CollectionCatalog::write(opCtx, [&](CollectionCatalog& catalog) {
             catalog.registerCollection(opCtx, std::move(coll), /*ts=*/boost::none);
         });
 
-        return {{_storageEngine->getCatalog()->getEntry(catalogId)}};
+        return {{_storageEngine->getDurableCatalog()->getEntry(catalogId)}};
     }
 
     StatusWith<DurableCatalog::EntryIdentifier> createTempCollection(OperationContext* opCtx,
@@ -116,7 +121,7 @@ public:
         RecordId catalogId =
             CollectionCatalog::get(opCtx)->lookupCollectionByNamespace(opCtx, nss)->getCatalogId();
         std::string indexIdent =
-            _storageEngine->getCatalog()->getIndexIdent(opCtx, catalogId, indexName);
+            _storageEngine->getDurableCatalog()->getIndexIdent(opCtx, catalogId, indexName);
         return dropIdent(shard_role_details::getRecoveryUnit(opCtx), indexIdent, false);
     }
 
@@ -143,7 +148,7 @@ public:
 
     bool collectionExists(OperationContext* opCtx, const NamespaceString& nss) {
         std::vector<DurableCatalog::EntryIdentifier> allCollections =
-            _storageEngine->getCatalog()->getAllCatalogEntries(opCtx);
+            _storageEngine->getDurableCatalog()->getAllCatalogEntries(opCtx);
         return std::count_if(allCollections.begin(), allCollections.end(), [&](auto& entry) {
             return nss == entry.nss;
         });
@@ -209,7 +214,7 @@ public:
 
 class StorageEngineRepairTest : public StorageEngineTest {
 public:
-    StorageEngineRepairTest() : StorageEngineTest(Options{}.enableRepair().ephemeral(false)) {
+    StorageEngineRepairTest() : StorageEngineTest(Options{}.enableRepair().inMemory(false)) {
         repl::StorageInterface::set(getServiceContext(),
                                     std::make_unique<repl::StorageInterfaceImpl>());
     }
@@ -232,7 +237,7 @@ public:
 
 class StorageEngineTestNotEphemeral : public StorageEngineTest {
 public:
-    StorageEngineTestNotEphemeral() : StorageEngineTest(Options{}.ephemeral(false)){};
+    StorageEngineTestNotEphemeral() : StorageEngineTest(Options{}.inMemory(false)) {};
 };
 
 }  // namespace mongo

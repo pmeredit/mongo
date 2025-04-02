@@ -6,10 +6,7 @@
  * @tags: [
  *   uses_atclustertime,
  *   requires_fcv_80,
- *   featureFlagReshardingImprovements,
  *   featureFlagMoveCollection,
- *   # TODO (SERVER-87812) Remove multiversion_incompatible tag
- *   multiversion_incompatible,
  *   assumes_balancer_off
  * ]
  */

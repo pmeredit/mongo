@@ -2,12 +2,16 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/kafka_emit_operator.h"
+
+#include <bsoncxx/document/view.hpp>
+#include <bsoncxx/document/view_or_value.hpp>
+#include <bsoncxx/json.hpp>
 #include <exception>
+#include <mongocxx/logger.hpp>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
 #include <string>
-
-#include "streams/exec/kafka_emit_operator.h"
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
@@ -20,6 +24,7 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_utils.h"
+#include "streams/exec/latency_collector.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 #include "streams/util/exception.h"
@@ -29,7 +34,6 @@
 namespace streams {
 
 using namespace mongo;
-using namespace fmt::literals;
 
 // IMPORTANT! If you update this allowed list make sure you also update the UI that
 // shows warnings for unsupported configurations. Keep in mind that there is also a
@@ -41,17 +45,17 @@ mongo::stdx::unordered_set<std::string> allowedSinkConfigurations = {
     "compression.type",
     "batch.size",
     "linger.ms",
-    "buffer.memory",
     "retries",
     "delivery.timeout.ms",
     "client.id",
-    "max.request.size",
+    "message.max.bytes",
     "request.timeout.ms",
     "max.in.flight.requests.per.connection",
     "enable.idempotence",
     "transactional.id",
     "client.dns.lookup",
     "connections.max.idle.ms",
+    "queue.buffering.max.messages",
 };
 
 KafkaEmitOperator::Connector::Connector(Options options) : _options(std::move(options)) {
@@ -85,8 +89,11 @@ void KafkaEmitOperator::Connector::start() {
                  _options.kafkaEventCallback->appendRecentErrorsToStatus(e.toStatus())});
         } catch (const std::exception& e) {
             SPStatus status(
-                mongo::Status{ErrorCodes::InternalError,
-                              std::string("Unexpected error while connecting to kafka $emit")},
+                mongo::Status{
+                    ErrorCodes::InternalError,
+                    fmt::format(
+                        "Unexpected error while connecting to kafka $emit. [VPC Peering: {}]",
+                        _options.gwproxyEndpoint ? true : false)},
                 e.what());
             setConnectionStatus({ConnectionStatus::kError, std::move(status)});
         }
@@ -117,8 +124,9 @@ void KafkaEmitOperator::Connector::testConnection() {
                                                                      /*conf*/ nullptr,
                                                                      errstr)};
         if (!topic) {
-            uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
-                      "$emit to Kafka failed to connect to topic with error: {}"_format(errstr));
+            uasserted(
+                ErrorCodes::StreamProcessorKafkaConnectionError,
+                fmt::format("$emit to Kafka failed to connect to topic with error: {}", errstr));
         }
 
         kafkaErrorCode = _options.producer->metadata(
@@ -159,11 +167,12 @@ boost::optional<std::string> KafkaEmitOperator::Connector::getVerboseCallbackErr
     return boost::none;
 }
 
-
 std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
     std::unique_ptr<RdKafka::Conf> conf(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
-    _eventCbImpl = std::make_unique<KafkaEventCallback>(_context, getName());
-    _deliveryCb = std::make_unique<DeliveryReportCallback>(_context);
+
+    _eventCbImpl =
+        std::make_unique<KafkaEventCallback>(_context, getName(), (bool)_options.gwproxyEndpoint);
+    _deliveryCb = std::make_unique<DeliveryReportCallback>(_context, &_metrics);
 
     auto setConf = [confPtr = conf.get(), this](const std::string& confName,
                                                 auto confValue,
@@ -194,9 +203,13 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         // Do not log broker disconnection messages.
         setConf("log.connection.close", "false");
     }
-    // Set the event callback.
+
     setConf("event_cb", _eventCbImpl.get());
     setConf("debug", "security");
+
+    if (_options.messageMaxBytes) {
+        setConf("message.max.bytes", std::to_string(*_options.messageMaxBytes));
+    }
 
     if (_useDeliveryCallback) {
         // Set the delivery callback, used during flush to detect connectivity errors.
@@ -225,6 +238,17 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         setConf(config.first, config.second);
     }
 
+    // This is the maximum time librdkafka may use to deliver a message (including retries).
+    setConf("delivery.timeout.ms", std::to_string(_options.messageTimeoutMs.count()));
+
+    // Configure the underlying kafka producer queue with sensible defaults. In particular:
+    // - We want to have a relatively low memory footprint, so allow our queue to buffer up to 16MB
+    // of data (or, 16384KB).
+    // - Finally, we configure the maximum number of documents to the default, which is 100k. We
+    // don't expect to hit this as this is relatively high compared to the maximum memory limit.
+    setConf("queue.buffering.max.kbytes", std::to_string(_options.queueBufferingMaxKBytes));
+    setConf("queue.buffering.max.messages", std::to_string(_options.queueBufferingMaxMessages));
+
     // These are the configurations that the user manually specified in the kafka connection.
     if (_options.configurations) {
         setKafkaConnectionConfigurations(
@@ -240,16 +264,6 @@ std::unique_ptr<RdKafka::Conf> KafkaEmitOperator::createKafkaConf() {
         setConf("acks", KafkaAcks_serializer(_options.acks).toString());
     }
 
-    // Configure the underlying kafka producer queue with sensible defaults. In particular:
-    // - We want to have a relatively low memory footprint, so allow our queue to buffer up to 16MB
-    // of data (or, 16384KB).
-    // - Finally, we configure the maximum number of documents to the default, which is 100k. We
-    // don't expect to hit this as this is relatively high compared to the maximum memory limit.
-    setConf("queue.buffering.max.kbytes", std::to_string(_options.queueBufferingMaxKBytes));
-    setConf("queue.buffering.max.messages", std::to_string(_options.queueBufferingMaxMessages));
-    // This is the maximum time librdkafka may use to deliver a message (including retries).
-    // Set to 10 seconds.
-    setConf("message.timeout.ms", "30000");
     return conf;
 }
 
@@ -316,7 +330,7 @@ void KafkaEmitOperator::doSinkOnDataMsg(int32_t inputIdx,
                       .numOutputBytes = numOutputBytes,
                       .numDlqDocs = numDlqDocs,
                       .numDlqBytes = numDlqBytes,
-                      .timeSpent = dataMsg.creationTimer->elapsed()});
+                      .timeSpent = dataMsg.creationTimer.elapsed()});
 }
 
 namespace {
@@ -356,7 +370,8 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
         err = headers->add(key, valuePointer, valueLength);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 kafkaErrToString(
-                    "Failed to emit to topic {} due to error during adding to Kafka headers"_format(
+                    fmt::format(
+                        "Failed to emit to topic {} due to error during adding to Kafka headers",
                         topicName),
                     err),
                 err == RdKafka::ERR_NO_ERROR);
@@ -368,7 +383,8 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
         err = headers->add(key, value);
         uassert(ErrorCodes::StreamProcessorInvalidOptions,
                 kafkaErrToString(
-                    "Failed to emit to topic {} due to error during adding to Kafka headers"_format(
+                    fmt::format(
+                        "Failed to emit to topic {} due to error during adding to Kafka headers",
                         topicName),
                     err),
                 err == RdKafka::ERR_NO_ERROR);
@@ -392,7 +408,7 @@ void KafkaEmitOperator::serializeToHeaders(RdKafka::Headers* headers,
         } break;
         case Object: {
             auto obj = headerValue.getDocument().toBson();
-            auto asJson = tojson(obj, _options.jsonStringFormat, false /* pretty */);
+            auto asJson = serializeJson(obj, _options.jsonStringFormat, false /* pretty */);
             pushStringHeader(headers, headerKey, asJson);
         } break;
         case NumberInt: {
@@ -502,7 +518,8 @@ Value KafkaEmitOperator::createKafkaKey(const StreamDocument& streamDoc) {
                             unexpectedKeyTypeError(Object),
                             keyField.getType() == Object);
                     auto keyObject = keyField.getDocument().toBson();
-                    auto keyJson = tojson(keyObject, _options.jsonStringFormat, false /* pretty */);
+                    auto keyJson =
+                        serializeJson(keyObject, _options.jsonStringFormat, false /* pretty */);
                     return Value(std::move(keyJson));
                 }
                 case mongo::KafkaKeyFormatEnum::Int: {
@@ -560,7 +577,7 @@ void KafkaEmitOperator::tryLog(int id, std::function<void(int logID)> logFn) {
 }
 
 void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
-    auto docAsStr = tojson(streamDoc.doc.toBson(), _options.jsonStringFormat);
+    auto docAsStr = serializeJson(streamDoc.doc.toBson(), _options.jsonStringFormat);
     auto docSize = docAsStr.size();
 
     constexpr int flags = RdKafka::Producer::RK_MSG_COPY /* Copy payload */;
@@ -571,7 +588,7 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     auto topicIt = _topicCache.find(topicName);
     if (topicIt == _topicCache.cend()) {
         uassert(ErrorCodes::StreamProcessorTooManyOutputTargets,
-                "Too many unique topic names: {}"_format(_topicCache.size()),
+                fmt::format("Too many unique topic names: {}", _topicCache.size()),
                 _topicCache.size() < kMaxTopicNamesCacheSize);
 
         std::string errstr;
@@ -579,10 +596,10 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
                                                                      topicName,
                                                                      /*conf*/ nullptr,
                                                                      errstr)};
-        uassert(8117200, "Failed to create topic with error: {}"_format(errstr), topic);
+        uassert(8117200, fmt::format("Failed to create topic with error: {}", errstr), topic);
         bool inserted = false;
         std::tie(topicIt, inserted) = _topicCache.emplace(topicName, std::move(topic));
-        uassert(8117201, "Failed to insert a new topic {}"_format(topicName), inserted);
+        uassert(8117201, fmt::format("Failed to insert a new topic {}", topicName), inserted);
     }
 
     const void* keyPointer = nullptr;
@@ -603,22 +620,31 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
 
     RdKafka::Headers* headers = createKafkaHeaders(streamDoc, topicName);
 
+    auto callbackMsg = std::make_unique<DeliveryReportCallback::CallbackMessage>();
     auto pollAndProduce = [&]() {
         // Call poll to serve any queued delivery callbacks.
         // We use a 0 timeout_ms for a non-blocking call.
         _producer->poll(0 /* timeout_ms */);
-        return _producer->produce(topicName,
-                                  _outputPartition,
-                                  flags,
-                                  const_cast<char*>(docAsStr.c_str()),
-                                  docSize,
-                                  keyPointer,
-                                  keyLength,
-                                  0 /* timestamp */,
-                                  headers,
-                                  nullptr /* Per-message opaque value passed to delivery report */);
+        callbackMsg->latencyInfo = LatencyCollector::LatencyInfo::makeBeforeWrite(streamDoc);
+        return _producer->produce(
+            topicName,
+            _outputPartition,
+            flags,
+            const_cast<char*>(docAsStr.c_str()),
+            docSize,
+            keyPointer,
+            keyLength,
+            0 /* timestamp */,
+            headers,
+            callbackMsg.get() /* Per-message opaque value passed to delivery report */);
     };
     auto deadline = Date_t::now() + Milliseconds{getKafkaProduceTimeoutMs(_context->featureFlags)};
+
+    if (_metrics.use()) {
+        _metrics.queueCount->incBy(1);
+        _metrics.queueByteSize->incBy(docSize);
+    }
+
     auto err = pollAndProduce();
     while (err == RdKafka::ERR__QUEUE_FULL && Date_t::now() < deadline) {
         tryLog(9604800, [&](int logID) {
@@ -632,12 +658,21 @@ void KafkaEmitOperator::processStreamDoc(const StreamDocument& streamDoc) {
     // If there is no error, we will need to clean up the header ourselves. Otherwise, the API above
     // has already freed up the headers for us.
     if (err != RdKafka::ERR_NO_ERROR) {
+        if (_metrics.use()) {
+            _metrics.queueCount->incBy(-1);
+            _metrics.queueByteSize->incBy(-1 * docSize);
+        }
         if (headers != nullptr) {
             delete headers;
         }
-        uasserted(
-            ErrorCodes::StreamProcessorKafkaConnectionError,
-            kafkaErrToString("Failed to emit to topic {} due to error"_format(topicName), err));
+        uasserted(ErrorCodes::StreamProcessorKafkaConnectionError,
+                  kafkaErrToString(
+                      fmt::format("Failed to emit to topic {} due to error", topicName), err));
+    }
+
+    if (_useDeliveryCallback) {
+        // If produce succeeds, the delivery callback cleans this up.
+        std::ignore = callbackMsg.release();
     }
 }
 
@@ -652,8 +687,27 @@ void KafkaEmitOperator::doStart() {
     options.kafkaEventCallback = _eventCbImpl.get();
     options.kafkaConnectAuthCallback = _connectCbImpl;
     options.kafkaResolveCallback = _resolveCbImpl;
+    options.gwproxyEndpoint = _options.gwproxyEndpoint;
     _connector = std::make_unique<Connector>(std::move(options));
     _connector->start();
+}
+
+void KafkaEmitOperator::registerMetrics(MetricManager* metricManager) {
+    if (_useDeliveryCallback) {
+        // We rely on delivery callback for accurate metrics.
+        _metrics.maxLatency =
+            metricManager->registerIntGauge("kafka_emit_max_latency_micros",
+                                            "Max latency according to rdkafka in micros",
+                                            getDefaultMetricLabels(_context));
+        _metrics.queueByteSize =
+            metricManager->registerIntGauge("kafka_emit_queue_byte_size",
+                                            "Byte size in rdkafka producer queue",
+                                            getDefaultMetricLabels(_context));
+        _metrics.queueCount =
+            metricManager->registerIntGauge("kafka_emit_queue_count",
+                                            "Count of events in rdkafka producer queue",
+                                            getDefaultMetricLabels(_context));
+    }
 }
 
 void KafkaEmitOperator::doStop() {
@@ -674,6 +728,10 @@ ConnectionStatus KafkaEmitOperator::doGetConnectionStatus() {
             _connector->stop();
             _connector.reset();
         }
+    }
+
+    if (_connectionStatus.isError()) {
+        return _connectionStatus;
     }
 
     if (_eventCbImpl->hasError()) {
@@ -698,7 +756,7 @@ void KafkaEmitOperator::doFlush() {
             Status{ErrorCodes::Error{74686},
                    fmt::format("$emit to Kafka encountered error while flushing, kafka error code: "
                                "{}, message: {}",
-                               err,
+                               fmt::underlying(err),
                                RdKafka::err2str(err))}));
     }
     auto deliveryStatus = _deliveryCb->getStatus();
@@ -710,15 +768,44 @@ void KafkaEmitOperator::doFlush() {
 }
 
 void KafkaEmitOperator::DeliveryReportCallback::dr_cb(RdKafka::Message& message) {
+    // Note: is invoked by the thread that calls poll, which is the Executor thread.
+    // If this changes, make sure that the below code won't cause any thread safety
+    // issues (they currently won't).
+
     if (message.err()) {
         LOGV2_INFO(8853604,
                    "KafkaEmitOperator encountered delivery error",
                    "error"_attr = message.errstr(),
                    "context"_attr = _context);
         stdx::unique_lock lock(_mutex);
-        _status = Status{
-            ErrorCodes::StreamProcessorKafkaConnectionError,
-            fmt::format("Kafka $emit encountered error {}: {}", message.err(), message.errstr())};
+        _status = Status{ErrorCodes::StreamProcessorKafkaConnectionError,
+                         fmt::format("Kafka $emit encountered error {}: {}",
+                                     fmt::underlying(message.err()),
+                                     message.errstr())};
+    }
+
+    if (message.msg_opaque()) {
+        // Use a unique_ptr to cleanup the callback msg memory.
+        std::unique_ptr<CallbackMessage> msg{static_cast<CallbackMessage*>(message.msg_opaque())};
+        if (!message.err() && _context->latencyCollector) {
+            // Report latency in success cases.
+            msg->latencyInfo.commitTime = Milliseconds{Date_t::now().toMillisSinceEpoch()};
+            _context->latencyCollector->add(std::move(msg->latencyInfo));
+        }
+    }
+
+    if (_metrics->use()) {
+        int64_t latency = message.latency();
+        if (latency != -1) {
+            // dr_cb runs on the single thead that calls poll, so it's fine to do this check and set
+            // non-atomically.
+            int64_t maxLatency = _metrics->maxLatency->value();
+            if (latency > maxLatency) {
+                _metrics->maxLatency->set(latency);
+            }
+        }
+        _metrics->queueCount->incBy(-1);
+        _metrics->queueByteSize->incBy(-1 * message.len());
     }
 }
 

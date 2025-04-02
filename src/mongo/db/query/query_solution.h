@@ -36,7 +36,6 @@
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 // IWYU pragma: no_include "ext/alloc_traits.h"
 #include <iosfwd>
 #include <iterator>
@@ -49,15 +48,11 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/bson/bsonobj_comparator_interface.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/catalog/clustered_collection_options_gen.h"
 #include "mongo/db/exec/collection_scan_common.h"
-#include "mongo/db/exec/eof.h"
 #include "mongo/db/fts/fts_query.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
-#include "mongo/db/matcher/expression_hasher.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/accumulation_statement.h"
 #include "mongo/db/pipeline/dependencies.h"
@@ -78,14 +73,11 @@
 #include "mongo/db/query/record_id_bound.h"
 #include "mongo/db/query/stage_types.h"
 #include "mongo/db/query/timeseries/bucket_spec.h"
-#include "mongo/db/record_id.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/hash_utils.h"
 #include "mongo/util/id_generator.h"
-#include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
-#include "mongo/util/string_map.h"
 
 namespace mongo {
 
@@ -327,22 +319,8 @@ struct QuerySolutionNode {
         return state;
     }
 
-    /**
-     * Hashes a QuerySolutionNode using parameter IDs rather than concrete values wherever
-     * parameters are present. This allows us to determine whether different query solutions, when
-     * parameterized, correspond to the same solution. Used for populating "isCached" in explain.
-     */
     virtual void hash(absl::HashState state) const {
         state = absl::HashState::combine(std::move(state), getType());
-        if (filter) {
-            // When hashing the filter, we need to use parameter IDs rather than the concrete values
-            // from the query.
-            state = absl::HashState::combine(
-                std::move(state),
-                MatchExpressionHasher{MatchExpressionHashParams{
-                    20 /*maxNumberOfInElementsToHash*/,
-                    HashValuesOrParams::kHashParamIds /* hashValuesOrParams*/}}(filter.get()));
-        }
         for (const auto& child : children) {
             state = absl::HashState::combine(std::move(state), *child.get());
         }
@@ -489,8 +467,13 @@ public:
      */
     std::vector<NamespaceStringOrUUID> getAllSecondaryNamespaces(const NamespaceString& mainNss);
 
+    template <typename H>
+    friend H AbslHashValue(H h, const QuerySolution& qs) {
+        return H::combine(std::move(h), qs.taggedMatchExpressionHash, *qs._root);
+    }
+
     size_t hash() const {
-        return absl::Hash<QuerySolutionNode>()(*_root);
+        return absl::Hash<QuerySolution>()(*this);
     }
 
     /**
@@ -532,6 +515,9 @@ public:
 
     // Score calculated by PlanRanker. Only present if there are multiple candidate plans.
     boost::optional<double> score;
+
+    // Used for populating the 'isCached' field in explain when the query is not parameterized.
+    size_t taggedMatchExpressionHash{0};
 
 private:
     using QsnIdGenerator = IdGenerator<PlanNodeId>;
@@ -864,10 +850,9 @@ struct IndexScanNode : public QuerySolutionNodeWithSortSet {
     void hash(absl::HashState h) const override {
         h = absl::HashState::combine(
             std::move(h), index.identifier.catalogName, index.identifier.disambiguator);
-        if (iets.empty()) {
-            h = absl::HashState::combine(std::move(h), bounds);
-        }
-        h = absl::HashState::combine_contiguous(std::move(h), iets.data(), iets.size());
+        // NOTE: We ignore the actual index bounds here. This is fine because this function is only
+        // used to implement the 'isCached' field in explain, so it needs to only distinguish plans
+        // that share the same plan cache key.
         QuerySolutionNode::hash(std::move(h));
     }
 

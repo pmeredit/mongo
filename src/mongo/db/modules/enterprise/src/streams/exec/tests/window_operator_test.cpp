@@ -17,7 +17,6 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -25,7 +24,6 @@
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
@@ -79,7 +77,7 @@ public:
         _metricManager = std::make_unique<MetricManager>();
         std::tie(_context, _executor) = getTestContext(/*svcCtx*/ nullptr);
         _context->dlq->registerMetrics(_executor->getMetricManager());
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     }
 
     static StreamDocument generateDocMinutes(int minutes, int id, int value) {
@@ -235,7 +233,7 @@ public:
     auto createDag(BSONObj window,
                    StreamTimeDuration allowedLateness = StreamTimeDuration{
                        0, StreamTimeUnitEnum::Second}) {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         BSONObjBuilder sourceBuilder;
         sourceBuilder.append("connectionName", "__testMemory");
         auto source = BSON("$source" << sourceBuilder.obj());
@@ -265,9 +263,8 @@ public:
                                   << BSON("size" << options.size << "unit"
                                                  << StreamTimeUnit_serializer(options.sizeUnit))
                                   << "pipeline" << options.pipeline << "allowedLateness"
-                                  << BSON("unit"
-                                          << "second"
-                                          << "size" << 0)));
+                                  << BSON("unit" << "second"
+                                                 << "size" << 0)));
         } else {
             window = BSON("$hoppingWindow"
                           << BSON("interval"
@@ -277,9 +274,8 @@ public:
                                   << BSON("size" << options.slide << "unit"
                                                  << StreamTimeUnit_serializer(options.slideUnit))
                                   << "pipeline" << options.pipeline << "allowedLateness"
-                                  << BSON("unit"
-                                          << "second"
-                                          << "size" << 0)));
+                                  << BSON("unit" << "second"
+                                                 << "size" << 0)));
         }
         auto sink = fromjson(R"({ $emit: {connectionName: "__testMemory"}})");
         auto dag = makeDagFromBson(
@@ -350,7 +346,7 @@ public:
         mongo::Connection connection(
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
-            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+            std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
         auto dag = makeDagFromBson(bsonVector, _context, _executor, _dagTest);
         dag->start();
         return dag;
@@ -585,7 +581,7 @@ TEST_F(WindowOperatorTest, TestHoppingWindowOverlappingWindows) {
 
 TEST_F(WindowOperatorTest, SmokeTestParser) {
     testBoth([this]() {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         auto [dag, source, sink] = createDag(fromjson(R"(
         { $tumblingWindow: {
             interval: { size: 1, unit: "second" },
@@ -857,7 +853,6 @@ TEST_F(WindowOperatorTest, CountStage) {
         {$count: "value"}
       ]
     }}
-]
     )"));
 
         StreamDataMsg inputs{.docs =
@@ -893,7 +888,7 @@ TEST_F(WindowOperatorTest, CountStage) {
 
 TEST_F(WindowOperatorTest, LargeWindowState) {
     testBoth([this]() {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         // Generate 10M unique docs using $range and $unwind.
         std::string _basePipeline = R"(
 [
@@ -923,7 +918,7 @@ TEST_F(WindowOperatorTest, LargeWindowState) {
         if (kDebugBuild) {
             // Use fewer documents in dev builds so the tests don't take too long to run.
             pipeline[3] = fromjson(R"(
-            { $project: { value: { $range: [ { $multiply: [ "$i", 10000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 10000 ] } ] } } },
+            { $project: { value: { $range: [ { $multiply: [ "$i", 10000 ] }, { $multiply: [ { $add: [ "$i", 1 ] }, 10000 ] } ] } } }
         )");
             expectedNumDocs = 100'000;
         }
@@ -1559,7 +1554,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
         mongo::Connection connection(
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
-            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+            std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
         auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
         dag->start();
 
@@ -1573,7 +1568,7 @@ TEST_F(WindowOperatorTest, MatchBeforeWindow) {
             docs.emplace_back(std::move(sourceDoc));
         }
         KafkaSourceDocument sourceDoc;
-        sourceDoc.doc = fromjson(R"({"timestamp": "2023-04-10T18:00:00.000000"}))");
+        sourceDoc.doc = fromjson(R"({"timestamp": "2023-04-10T18:00:00.000000"})");
         docs.emplace_back(std::move(sourceDoc));
         consumers[0]->addDocuments(std::move(docs));
 
@@ -2302,7 +2297,7 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         })")};
         builder.append("interval",
                        BSON("size" << size << "unit" << StreamTimeUnit_serializer(unit)));
-        auto pipeline = fmt::format("[{{$tumblingWindow: {} }}]", tojson(builder.obj()));
+        auto pipeline = fmt::format("[{{$tumblingWindow: {} }}]", serializeJson(builder.obj()));
         auto dag = commonKafkaInnerTestSetup(pipeline, /* useTimeField */ false);
         auto kafkaConsumerOperator =
             dynamic_cast<KafkaConsumerOperator*>(dag->operators().front().get());
@@ -2337,11 +2332,11 @@ TEST_F(WindowOperatorTest, WallclockTime) {
         }
         ASSERT_GT(actualInput.size(), 0);
         // Determine the last watermark from the input events.
-        int64_t lastWatermarkTime = *actualInput.back().logAppendTimeMs - 1;
+        int64_t lastWatermarkTime = actualInput.back().logAppendTimeMs - 1;
         // Based on the watermark, determine the windows expected to close.
         std::vector<int64_t> expectedWindowStartTimes;
         for (const auto& input : actualInput) {
-            auto startTime = windowAssigner->toOldestWindowStartTime(*input.logAppendTimeMs);
+            auto startTime = windowAssigner->toOldestWindowStartTime(input.logAppendTimeMs);
             auto endTime = startTime + toMillis(size, unit);
             if (lastWatermarkTime >= endTime &&
                 (expectedWindowStartTimes.empty() ||
@@ -2509,7 +2504,7 @@ TEST_F(WindowOperatorTest, EmptyInnerPipeline) {
 
 TEST_F(WindowOperatorTest, DeadLetterQueue) {
     testBoth([this]() {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         std::string _basePipeline = R"(
 [
     { $source: {
@@ -2566,9 +2561,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
             "Failed to process input document in ProjectOperator with error: "
             "can't $divide by zero",
             dlqDoc["errInfo"]["reason"].String());
-        ASSERT_BSONOBJ_EQ(BSON("source" << BSON("type"
-                                                << "generated")
-                                        << "window"
+        ASSERT_BSONOBJ_EQ(BSON("source" << BSON("type" << "generated") << "window"
                                         << BSON("start" << Date_t::fromMillisSinceEpoch(0) << "end"
                                                         << Date_t::fromMillisSinceEpoch(1000))),
                           dlqDoc["_stream_meta"].Obj());
@@ -2577,7 +2570,7 @@ TEST_F(WindowOperatorTest, DeadLetterQueue) {
 }
 
 TEST_F(WindowOperatorTest, OperatorId) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
 
     std::string _basePipeline = R"(
 [
@@ -2653,7 +2646,7 @@ TEST_F(WindowOperatorTest, BasicIdleness) {
         mongo::Connection connection(
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
-            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+            std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
         auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
         dag->start();
 
@@ -2782,7 +2775,7 @@ TEST_F(WindowOperatorTest, AllPartitionsIdleInhibitsWindowsClosing) {
         mongo::Connection connection(
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
-            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+            std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
         auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
         dag->start();
 
@@ -2880,7 +2873,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
         mongo::Connection connection(
             "kafka1", mongo::ConnectionTypeEnum::Kafka, kafkaOptions.toBSON());
         _context->connections =
-            stdx::unordered_map<std::string, Connection>{{"kafka1", connection}};
+            std::make_unique<ConnectionCollection>(std::vector<Connection>{connection});
         auto dag = makeDagFromBson(parseBsonVector(pipeline), _context, _executor, _dagTest);
         dag->start();
 
@@ -2971,7 +2964,7 @@ TEST_F(WindowOperatorTest, WindowSizeLargerThanpartitionIdleTimeout) {
 
 TEST_F(WindowOperatorTest, StatsStateSize) {
     testBoth([this]() {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         std::vector<BSONObj> pipeline = {
             fromjson("{ $source: { connectionName: '__testMemory' }}"),
             fromjson(R"({
@@ -3009,7 +3002,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
         Operator* windowOperator = dynamic_cast<Operator*>(dag->operators()[1].get());
         auto stats = windowOperator->getStats();
         ASSERT_EQUALS(3, stats.numInputDocs);
-        ASSERT_EQUALS(432, stats.memoryUsageBytes);
+        ASSERT_EQUALS(576, stats.memoryUsageBytes);
 
         source->addControlMsg(StreamControlMsg{
             .watermarkMsg =
@@ -3023,7 +3016,7 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
 
         // The memory usage should go down now that two of the windows closed.
         stats = windowOperator->getStats();
-        ASSERT_EQUALS(144, stats.memoryUsageBytes);
+        ASSERT_EQUALS(192, stats.memoryUsageBytes);
 
         // Add three new windows, with one window receiving two unique group keys.
         source->addDataMsg(StreamDataMsg{.docs =
@@ -3038,14 +3031,15 @@ TEST_F(WindowOperatorTest, StatsStateSize) {
 
         // The memory usage should go back up now that we have three new windows.
         stats = windowOperator->getStats();
-        ASSERT_EQUALS(576, stats.memoryUsageBytes);
+        ASSERT_EQUALS(768, stats.memoryUsageBytes);
     });
 }
 
 TEST_F(WindowOperatorTest, InvalidSize) {
     testBoth([this]() {
         {
-            _context->connections = testInMemoryConnectionRegistry();
+            _context->connections =
+                std::make_unique<ConnectionCollection>(testInMemoryConnections());
             Planner planner(_context.get(), /*options*/ {});
             std::string pipeline = R"(
 [
@@ -3071,7 +3065,8 @@ TEST_F(WindowOperatorTest, InvalidSize) {
         }
 
         {
-            _context->connections = testInMemoryConnectionRegistry();
+            _context->connections =
+                std::make_unique<ConnectionCollection>(testInMemoryConnections());
             Planner planner(_context.get(), /*options*/ {});
             std::string pipeline = R"(
 [
@@ -3098,7 +3093,8 @@ TEST_F(WindowOperatorTest, InvalidSize) {
         }
 
         {
-            _context->connections = testInMemoryConnectionRegistry();
+            _context->connections =
+                std::make_unique<ConnectionCollection>(testInMemoryConnections());
             Planner planner(_context.get(), /*options*/ {});
             std::string pipeline = R"(
 [
@@ -3217,7 +3213,7 @@ TEST_F(WindowOperatorTest, PartitionByWindowStart) {
 }
 
 TEST_F(WindowOperatorTest, IdleTimeout) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Seconds windowSize{10};
     Seconds idleTimeout{5};
     std::vector<BSONObj> pipeline = {

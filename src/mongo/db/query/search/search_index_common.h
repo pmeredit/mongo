@@ -43,7 +43,7 @@ BSONObj getSearchIndexManagerResponse(
     const NamespaceString& nss,
     const UUID& uuid,
     const BSONObj& userCmd,
-    boost::optional<StringData> viewName = boost::none,
+    boost::optional<NamespaceString> viewName = boost::none,
     boost::optional<std::vector<BSONObj>> viewPipeline = boost::none);
 
 /**
@@ -59,5 +59,13 @@ BSONObj runSearchIndexCommand(OperationContext* opCtx,
  * Helper function to throw if search index management is not properly configured.
  */
 void throwIfNotRunningWithRemoteSearchIndexManagement();
+
+std::tuple<const UUID,
+           const NamespaceString,
+           boost::optional<NamespaceString>,
+           boost::optional<std::vector<BSONObj>>>
+retrieveCollectionUUIDAndResolveViewOrThrow(OperationContext* opCtx,
+                                            const NamespaceString& currentOperationNss);
+
 
 }  // namespace mongo

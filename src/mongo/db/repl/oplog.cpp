@@ -31,6 +31,7 @@
 
 #include <absl/container/node_hash_map.h>
 #include <algorithm>
+#include <array>
 #include <boost/cstdint.hpp>
 #include <boost/move/utility_core.hpp>
 #include <boost/none.hpp>
@@ -61,8 +62,6 @@
 #include "mongo/db/catalog/drop_collection.h"
 #include "mongo/db/catalog/drop_database.h"
 #include "mongo/db/catalog/drop_indexes.h"
-#include "mongo/db/catalog/health_log_gen.h"
-#include "mongo/db/catalog/health_log_interface.h"
 #include "mongo/db/catalog/import_collection_oplog_entry_gen.h"
 #include "mongo/db/catalog/index_catalog.h"
 #include "mongo/db/catalog/local_oplog_info.h"
@@ -116,7 +115,9 @@
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/repl/timestamp_block.h"
 #include "mongo/db/repl/transaction_oplog_application.h"
+#include "mongo/db/s/database_metadata_oplog_application.h"
 #include "mongo/db/s/sharding_index_catalog_ddl_util.h"
+#include "mongo/db/s/type_oplog_catalog_metadata_gen.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/session/logical_session_id_gen.h"
 #include "mongo/db/shard_id.h"
@@ -131,11 +132,9 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction_resources.h"
+#include "mongo/db/version_context.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/catalog/type_index_catalog.h"
@@ -425,31 +424,32 @@ void logOplogRecords(OperationContext* opCtx,
     }
 
     // Insert the oplog records to the respective tenants change collections.
-    if (change_stream_serverless_helpers::isChangeCollectionsModeActive()) {
+    if (change_stream_serverless_helpers::isChangeCollectionsModeActive(
+            VersionContext::getDecoration(opCtx))) {
         ChangeStreamChangeCollectionManager::get(opCtx).insertDocumentsToChangeCollection(
             opCtx, *records, timestamps);
     }
 
     // Set replCoord last optime only after we're sure the WUOW didn't abort and roll back.
-    shard_role_details::getRecoveryUnit(opCtx)->onCommit([replCoord, finalOpTime, wallTime](
-                                                             OperationContext* opCtx,
-                                                             boost::optional<Timestamp>
-                                                                 commitTime) {
-        if (commitTime) {
-            // The `finalOpTime` may be less than the `commitTime` if multiple oplog entries
-            // are logging within one WriteUnitOfWork.
-            invariant(finalOpTime.getTimestamp() <= *commitTime,
-                      str::stream() << "Final OpTime: " << finalOpTime.toString()
-                                    << ". Commit Time: " << commitTime->toString());
-        }
+    shard_role_details::getRecoveryUnit(opCtx)->onCommit(
+        [replCoord, finalOpTime, wallTime](OperationContext* opCtx,
+                                           boost::optional<Timestamp> commitTime) {
+            if (commitTime) {
+                // The `finalOpTime` may be less than the `commitTime` if multiple oplog entries
+                // are logging within one WriteUnitOfWork.
+                invariant(finalOpTime.getTimestamp() <= *commitTime,
+                          str::stream() << "Final OpTime: " << finalOpTime.toString()
+                                        << ". Commit Time: " << commitTime->toString());
+            }
 
-        // Optimes on the primary should always represent consistent database states.
-        replCoord->setMyLastAppliedAndLastWrittenOpTimeAndWallTimeForward({finalOpTime, wallTime});
+            // Optimes on the primary should always represent consistent database states.
+            replCoord->setMyLastAppliedAndLastWrittenOpTimeAndWallTimeForward(
+                {finalOpTime, wallTime});
 
-        // We set the last op on the client to 'finalOpTime', because that contains the
-        // timestamp of the operation that the client actually performed.
-        ReplClientInfo::forClient(opCtx->getClient()).setLastOp(opCtx, finalOpTime);
-    });
+            // We set the last op on the client to 'finalOpTime', because that contains the
+            // timestamp of the operation that the client actually performed.
+            ReplClientInfo::forClient(opCtx->getClient()).setLastOp(opCtx, finalOpTime);
+        });
 }
 
 OpTime logOp(OperationContext* opCtx, MutableOplogEntry* oplogEntry) {
@@ -841,6 +841,7 @@ const StringMap<ApplyOpMetadata> kOpsMap = {
           Lock::DBLock dbLock(opCtx, nss.dbName(), MODE_IX);
           boost::optional<Lock::CollectionLock> collLock;
           if (mongo::feature_flags::gCreateCollectionInPreparedTransactions.isEnabled(
+                  VersionContext::getDecoration(opCtx),
                   serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
               opCtx->inMultiDocumentTransaction()) {
               // During initial sync we could have the following three scenarios:
@@ -1159,9 +1160,16 @@ const StringMap<ApplyOpMetadata> kOpsMap = {
          }
          return Status::OK();
      }}},
-    {"databaseMetadataUpdate",
+    {"createDatabaseMetadata",
      {[](OperationContext* opCtx, const ApplierOperation& op, OplogApplication::Mode mode)
           -> Status {
+         applyCreateDatabaseMetadata(opCtx, *op);
+         return Status::OK();
+     }}},
+    {"dropDatabaseMetadata",
+     {[](OperationContext* opCtx, const ApplierOperation& op, OplogApplication::Mode mode)
+          -> Status {
+         applyDropDatabaseMetadata(opCtx, *op);
          return Status::OK();
      }}},
 };
@@ -1287,21 +1295,8 @@ void logOplogConstraintViolation(OperationContext* opCtx,
                                  const std::string& operation,
                                  const BSONObj& opObj,
                                  boost::optional<Status> status) {
-    // Log the violation.
+    // Log the violation to initialized OplogConstraintViolationLogger
     oplogConstraintViolationLogger->logViolationIfReady(type, opObj, status);
-
-    // Write a new entry to the health log.
-    HealthLogEntry entry;
-    entry.setNss(nss);
-    entry.setTimestamp(Date_t::now());
-    // Oplog constraint violations should always be marked as warning.
-    entry.setSeverity(SeverityEnum::Warning);
-    entry.setScope(ScopeEnum::Document);
-    entry.setMsg(toString(type));
-    entry.setOperation(operation);
-    entry.setData(opObj);
-
-    HealthLogInterface::get(opCtx->getServiceContext())->log(entry);
 }
 
 // @return failure status if an update should have happened and the document DNE.
@@ -1472,8 +1467,9 @@ Status applyOperation_inlock(OperationContext* opCtx,
                         "Cannot apply an array insert with applyOps",
                         !opCtx->writesAreReplicated());
 
-                std::vector<InsertStatement> insertObjs;
                 const auto insertOps = opOrGroupedInserts.getGroupedInserts();
+                std::vector<InsertStatement> insertObjs;
+                insertObjs.reserve(insertOps.size());
                 WriteUnitOfWork wuow(opCtx);
                 for (const auto& iOp : insertOps) {
                     invariant(iOp->getTerm());
@@ -2111,14 +2107,14 @@ Status applyCommand_inlock(OperationContext* opCtx,
     // for each collection dropped. 'applyOps' and 'commitTransaction' will try to apply each
     // individual operation, and those will be caught then if they are a problem. 'abortTransaction'
     // won't ever change the server configuration collection.
-    std::vector<std::string> allowlistedOps{"dropDatabase",
-                                            "applyOps",
-                                            "dbCheck",
-                                            "commitTransaction",
-                                            "abortTransaction",
-                                            "startIndexBuild",
-                                            "commitIndexBuild",
-                                            "abortIndexBuild"};
+    constexpr std::array<StringData, 8> allowlistedOps{"dropDatabase",
+                                                       "applyOps",
+                                                       "dbCheck",
+                                                       "commitTransaction",
+                                                       "abortTransaction",
+                                                       "startIndexBuild",
+                                                       "commitIndexBuild",
+                                                       "abortIndexBuild"};
     if ((mode == OplogApplication::Mode::kInitialSync) &&
         (std::find(allowlistedOps.begin(), allowlistedOps.end(), o.firstElementFieldName()) ==
          allowlistedOps.end()) &&
@@ -2151,6 +2147,7 @@ Status applyCommand_inlock(OperationContext* opCtx,
         }
 
         if (mongo::feature_flags::gCreateCollectionInPreparedTransactions.isEnabled(
+                VersionContext::getDecoration(opCtx),
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
             shard_role_details::getLocker(opCtx)->inAWriteUnitOfWork()) {
             // Do not assign timestamps to non-replicated commands that have a wrapping

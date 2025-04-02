@@ -79,9 +79,7 @@
 #include "mongo/s/resharding/resharding_feature_flag_gen.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/intrusive_counter.h"
@@ -131,12 +129,10 @@ private:
 };
 
 struct TestOptions {
-    bool useNaturalOrderCloner;
     bool storeProgress;
 
     BSONObj toBSON() const {
         BSONObjBuilder bob;
-        bob.append("useNaturalOrderCloner", useNaturalOrderCloner);
         bob.append("storeProgress", storeProgress);
         return bob.obj();
     }
@@ -144,14 +140,8 @@ struct TestOptions {
 
 std::vector<TestOptions> makeAllTestOptions() {
     std::vector<TestOptions> testOptions;
-    for (bool useNaturalOrderCloner : {false, true}) {
-        for (bool storeProgress : {false, true}) {
-            if (!useNaturalOrderCloner && storeProgress) {
-                // This is an invalid combination.
-                continue;
-            }
-            testOptions.push_back({useNaturalOrderCloner, storeProgress});
-        }
+    for (bool storeProgress : {false, true}) {
+        testOptions.push_back({storeProgress});
     }
     return testOptions;
 }
@@ -199,7 +189,10 @@ protected:
         getCatalogCacheMock()->setCollectionReturnValue(
             _tempNss,
             CollectionRoutingInfo(createChunkManager(newShardKeyPattern, configCacheChunksData),
-                                  boost::none));
+                                  DatabaseTypeValueHandle(DatabaseType{_tempNss.dbName(),
+                                                                       getSourceId().getShardId(),
+                                                                       _sourceDbVersion})));
+
         auto [rawPipeline, expCtx] = _cloner->makeRawPipeline(
             operationContext(), std::make_shared<MockMongoInterface>(configCacheChunksData));
         _pipeline = Pipeline::parse(rawPipeline, expCtx);
@@ -219,20 +212,17 @@ protected:
 
         OperationShardingState::ScopedAllowImplicitCollectionCreate_UNSAFE unsafeCreateCollection(
             operationContext());
-        if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-            uassertStatusOK(createCollection(
-                operationContext(),
-                NamespaceString::kRecipientReshardingResumeDataNamespace.dbName(),
-                BSON("create" << NamespaceString::kRecipientReshardingResumeDataNamespace.coll())));
-            uassertStatusOK(createCollection(
-                operationContext(),
-                NamespaceString::kSessionTransactionsTableNamespace.dbName(),
-                BSON("create" << NamespaceString::kSessionTransactionsTableNamespace.coll())));
-            DBDirectClient client(operationContext());
-            client.createIndexes(NamespaceString::kSessionTransactionsTableNamespace,
-                                 {MongoDSessionCatalog::getConfigTxnPartialIndexSpec()});
-        }
+        uassertStatusOK(createCollection(
+            operationContext(),
+            NamespaceString::kRecipientReshardingResumeDataNamespace.dbName(),
+            BSON("create" << NamespaceString::kRecipientReshardingResumeDataNamespace.coll())));
+        uassertStatusOK(createCollection(
+            operationContext(),
+            NamespaceString::kSessionTransactionsTableNamespace.dbName(),
+            BSON("create" << NamespaceString::kSessionTransactionsTableNamespace.coll())));
+        DBDirectClient client(operationContext());
+        client.createIndexes(NamespaceString::kSessionTransactionsTableNamespace,
+                             {MongoDSessionCatalog::getConfigTxnPartialIndexSpec()});
     }
 
     void tearDown() override {
@@ -268,10 +258,7 @@ protected:
                                                false,
                                                chunks);
 
-        return ChunkManager(getSourceId().getShardId(),
-                            _sourceDbVersion,
-                            makeStandaloneRoutingTableHistory(std::move(rt)),
-                            boost::none);
+        return ChunkManager(makeStandaloneRoutingTableHistory(std::move(rt)), boost::none);
     }
 
     void runPipelineTest(
@@ -290,40 +277,29 @@ protected:
         auto opCtxHolder = cc().makeOperationContext();
         auto opCtx = opCtxHolder.get();
 
-        if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()))
-            opCtx->setLogicalSessionId(makeLogicalSessionId(opCtx));
+        opCtx->setLogicalSessionId(makeLogicalSessionId(opCtx));
 
         TxnNumber txnNum(0);
 
-        while (_cloner->doOneBatch(opCtx,
-                                   *_pipeline,
-                                   txnNum,
-                                   kMyShardName,
-                                   _myHostAndPort,
-                                   _resumeToken,
-                                   testOptions.useNaturalOrderCloner)) {
+        while (_cloner->doOneBatch(
+            opCtx, *_pipeline, txnNum, kMyShardName, _myHostAndPort, _resumeToken)) {
             AutoGetCollection tempColl{opCtx, _tempNss, MODE_IX};
             ASSERT_EQ(tempColl->numRecords(opCtx), _metrics->getDocumentsProcessedCount());
             ASSERT_EQ(tempColl->dataSize(opCtx), _metrics->getBytesWrittenCount());
 
             auto doc = getResumeDataDocument(opCtx);
-            if (testOptions.useNaturalOrderCloner) {
-                auto parsedDoc = ReshardingRecipientResumeData::parse(
-                    IDLParserContext("ReshardingCollectionClonerTest"), doc);
-                ASSERT_BSONOBJ_EQ(parsedDoc.getId().toBSON(), getSourceId().toBSON());
-                ASSERT_EQ(parsedDoc.getDonorHost(), _myHostAndPort);
-                ASSERT_BSONOBJ_EQ(*parsedDoc.getResumeToken(), _resumeToken);
+            auto parsedDoc = ReshardingRecipientResumeData::parse(
+                IDLParserContext("ReshardingCollectionClonerTest"), doc);
+            ASSERT_BSONOBJ_EQ(parsedDoc.getId().toBSON(), getSourceId().toBSON());
+            ASSERT_EQ(parsedDoc.getDonorHost(), _myHostAndPort);
+            ASSERT_BSONOBJ_EQ(*parsedDoc.getResumeToken(), _resumeToken);
 
-                if (testOptions.storeProgress) {
-                    ASSERT_EQ(tempColl->numRecords(opCtx), *parsedDoc.getDocumentsCopied());
-                    ASSERT_GT(tempColl->dataSize(opCtx), 0);
-                    ASSERT_EQ(tempColl->dataSize(opCtx), *parsedDoc.getBytesCopied());
-                } else {
-                    ASSERT(!parsedDoc.getDocumentsCopied());
-                }
+            if (testOptions.storeProgress) {
+                ASSERT_EQ(tempColl->numRecords(opCtx), *parsedDoc.getDocumentsCopied());
+                ASSERT_GT(tempColl->dataSize(opCtx), 0);
+                ASSERT_EQ(tempColl->dataSize(opCtx), *parsedDoc.getBytesCopied());
             } else {
-                ASSERT(doc.isEmpty());
+                ASSERT(!parsedDoc.getDocumentsCopied());
             }
         }
 

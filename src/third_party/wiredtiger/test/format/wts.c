@@ -269,6 +269,38 @@ configure_debug_mode(char **p, size_t max)
 }
 
 /*
+ * configure_eviction --
+ *     Configure eviction settings.
+ */
+static void
+configure_eviction(char **p, size_t max)
+{
+    CONFIG_APPEND(*p, ",eviction=(");
+
+    if (GV(CACHE_EVICT_MAX) != 0)
+        CONFIG_APPEND(*p, ",threads_max=%" PRIu32 "", GV(CACHE_EVICT_MAX));
+
+    if (GV(EVICTION_EVICT_USE_SOFTPTR))
+        CONFIG_APPEND(*p, ",evict_use_softptr=true");
+
+    CONFIG_APPEND(*p, ")");
+}
+
+/*
+ * configure_live_restore --
+ *     Configure live_restore settings.
+ */
+static void
+configure_live_restore(char **p, size_t max)
+{
+    if (GV(BACKUP) && GV(BACKUP_LIVE_RESTORE) && g.backup_verify)
+        CONFIG_APPEND(*p,
+          ",live_restore=(enabled=true,path=\"%s/BACKUP\",read_size=%" PRIu32
+          "K,threads_max=%" PRIu32 ")",
+          g.home, GV(BACKUP_LIVE_RESTORE_READ_SIZE), GV(BACKUP_LIVE_RESTORE_THREADS));
+}
+
+/*
  * configure_tiered_storage --
  *     Configure tiered storage settings for opening a connection.
  */
@@ -351,6 +383,25 @@ configure_prefetch(char **p, size_t max)
 }
 
 /*
+ * configure_obsolete_cleanup --
+ *     Configure obsolete cleanup settings.
+ */
+static void
+configure_obsolete_cleanup(char **p, size_t max)
+{
+    CONFIG_APPEND(*p, ",checkpoint_cleanup=[");
+
+    /* Strategy. */
+    if (strcmp(GVS(OBSOLETE_CLEANUP_METHOD), "off") != 0)
+        CONFIG_APPEND(*p, "method=%s", (char *)GVS(OBSOLETE_CLEANUP_METHOD));
+
+    /* Interval. */
+    CONFIG_APPEND(*p, ",wait=%" PRIu32, GV(OBSOLETE_CLEANUP_WAIT));
+
+    CONFIG_APPEND(*p, "]");
+}
+
+/*
  * create_database --
  *     Create a WiredTiger database.
  */
@@ -402,8 +453,7 @@ create_database(const char *home, WT_CONNECTION **connp)
           GV(BLOCK_CACHE_CACHE_ON_WRITES) == 0 ? "false" : "true", GV(BLOCK_CACHE_SIZE));
 
     /* Eviction configuration. */
-    if (GV(CACHE_EVICT_MAX) != 0)
-        CONFIG_APPEND(p, ",eviction=(threads_max=%" PRIu32 ")", GV(CACHE_EVICT_MAX));
+    configure_eviction(&p, max);
 
     /* Logging configuration. */
     if (GV(LOGGING)) {
@@ -443,6 +493,9 @@ create_database(const char *home, WT_CONNECTION **connp)
 
     /* Optional prefetch. */
     configure_prefetch(&p, max);
+
+    /* Obsolete cleanup. */
+    configure_obsolete_cleanup(&p, max);
 
 #define EXTENSION_PATH(path) (access((path), R_OK) == 0 ? (path) : "")
 
@@ -633,8 +686,14 @@ wts_open(const char *home, WT_CONNECTION **connp, bool verify_metadata)
     /* Optional debug mode. */
     configure_debug_mode(&p, max);
 
+    /* Optional live restore. */
+    configure_live_restore(&p, max);
+
     /* Optional prefetch. */
     configure_prefetch(&p, max);
+
+    /* Obsolete cleanup. */
+    configure_obsolete_cleanup(&p, max);
 
     /* If in-memory, there's only a single, shared WT_CONNECTION handle. */
     if (GV(RUNS_IN_MEMORY) != 0)

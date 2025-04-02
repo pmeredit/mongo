@@ -42,8 +42,7 @@
 #include "mongo/db/exec/sbe/values/slot.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/query/collation/collator_interface_mock.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::sbe {
 
@@ -84,17 +83,11 @@ TEST_F(SBEBuiltinInTest, inArraySet) {
 
     auto [smallStrTag, smallStrVal] = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpression(inputSlot,
-                           makeArraySet(BSON_ARRAY("foo"
-                                                   << "bar")),
-                           true);
+    runAndAssertExpression(inputSlot, makeArraySet(BSON_ARRAY("foo" << "bar")), true);
 
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("baz");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpression(inputSlot,
-                           makeArray(BSON_ARRAY("foo"
-                                                << "bar")),
-                           false);
+    runAndAssertExpression(inputSlot, makeArray(BSON_ARRAY("foo" << "bar")), false);
 }
 
 TEST_F(SBEBuiltinInTest, inArraySetWithCollator) {
@@ -111,20 +104,18 @@ TEST_F(SBEBuiltinInTest, inArraySetWithCollator) {
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     auto [smallStrTag, smallStrVal] = value::makeNewString("FOO");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator1.get()),
-                                       collatorSlot,
-                                       true);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator1.get()),
+        collatorSlot,
+        true);
 
     auto collator2 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
     runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
+                                       makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"),
 
                                                                 collator2.get()),
                                        collatorSlot,
@@ -134,23 +125,21 @@ TEST_F(SBEBuiltinInTest, inArraySetWithCollator) {
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("baz");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator3.get()),
-                                       collatorSlot,
-                                       false);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator3.get()),
+        collatorSlot,
+        false);
 
     auto collator4 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("oof"
-                                                                           << "bar"),
-                                                                collator4.get()),
-                                       collatorSlot,
-                                       false);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("oof" << "bar"), collator4.get()),
+        collatorSlot,
+        false);
 }
 
 TEST_F(SBEBuiltinInTest, inArray) {
@@ -159,17 +148,11 @@ TEST_F(SBEBuiltinInTest, inArray) {
 
     auto [smallStrTag, smallStrVal] = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpression(inputSlot,
-                           makeArray(BSON_ARRAY("foo"
-                                                << "bar")),
-                           true);
+    runAndAssertExpression(inputSlot, makeArray(BSON_ARRAY("foo" << "bar")), true);
 
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("baz");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpression(inputSlot,
-                           makeArray(BSON_ARRAY("foo"
-                                                << "bar")),
-                           false);
+    runAndAssertExpression(inputSlot, makeArray(BSON_ARRAY("foo" << "bar")), false);
 }
 
 TEST_F(SBEBuiltinInTest, inArrayWithCollator) {
@@ -186,45 +169,41 @@ TEST_F(SBEBuiltinInTest, inArrayWithCollator) {
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     auto [smallStrTag, smallStrVal] = value::makeNewString("FOO");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator1.get()),
-                                       collatorSlot,
-                                       true);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator1.get()),
+        collatorSlot,
+        true);
 
     auto collator2 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator2.get()),
-                                       collatorSlot,
-                                       true);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator2.get()),
+        collatorSlot,
+        true);
 
     auto collator3 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("baz");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator3.get()),
-                                       collatorSlot,
-                                       false);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator3.get()),
+        collatorSlot,
+        false);
 
     auto collator4 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("oof"
-                                                                           << "bar"),
-                                                                collator4.get()),
-                                       collatorSlot,
-                                       false);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("oof" << "bar"), collator4.get()),
+        collatorSlot,
+        false);
 }
 
 TEST_F(SBEBuiltinInTest, inBSONArray) {
@@ -233,17 +212,11 @@ TEST_F(SBEBuiltinInTest, inBSONArray) {
 
     auto [smallStrTag, smallStrVal] = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpression(inputSlot,
-                           makeBsonArray(BSON_ARRAY("foo"
-                                                    << "bar")),
-                           true);
+    runAndAssertExpression(inputSlot, makeBsonArray(BSON_ARRAY("foo" << "bar")), true);
 
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("baz");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpression(inputSlot,
-                           makeBsonArray(BSON_ARRAY("foo"
-                                                    << "bar")),
-                           false);
+    runAndAssertExpression(inputSlot, makeBsonArray(BSON_ARRAY("foo" << "bar")), false);
 }
 
 TEST_F(SBEBuiltinInTest, inBSONArrayWithCollator) {
@@ -260,44 +233,40 @@ TEST_F(SBEBuiltinInTest, inBSONArrayWithCollator) {
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     auto [smallStrTag, smallStrVal] = value::makeNewString("FOO");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator1.get()),
-                                       collatorSlot,
-                                       true);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator1.get()),
+        collatorSlot,
+        true);
 
     auto collator2 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator2.get()),
-                                       collatorSlot,
-                                       true);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator2.get()),
+        collatorSlot,
+        true);
 
     auto collator3 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("baz");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("foo"
-                                                                           << "bar"),
-                                                                collator3.get()),
-                                       collatorSlot,
-                                       false);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("foo" << "bar"), collator3.get()),
+        collatorSlot,
+        false);
 
     auto collator4 =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kToLowerString);
     std::tie(smallStrTag, smallStrVal) = value::makeNewString("foo");
     inputSlotAccessor.reset(smallStrTag, smallStrVal);
-    runAndAssertExpressionWithCollator(inputSlot,
-                                       makeArraySetWithCollator(BSON_ARRAY("oof"
-                                                                           << "bar"),
-                                                                collator4.get()),
-                                       collatorSlot,
-                                       false);
+    runAndAssertExpressionWithCollator(
+        inputSlot,
+        makeArraySetWithCollator(BSON_ARRAY("oof" << "bar"), collator4.get()),
+        collatorSlot,
+        false);
 }
 }  // namespace mongo::sbe

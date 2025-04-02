@@ -64,9 +64,7 @@
 #include "mongo/db/session/session_catalog.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/db/transaction/transaction_participant.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/uuid.h"
@@ -507,18 +505,16 @@ TEST_F(FindAndModifyRetryability, BasicUpsertReturnNew) {
     auto insertOplog = makeOplogEntry(repl::OpTime(),             // optime
                                       repl::OpTypeEnum::kInsert,  // op type
                                       kNs,                        // namespace
-                                      BSON("_id"
-                                           << "ID value"
-                                           << "x" << 1));  // o
+                                      BSON("_id" << "ID value"
+                                                 << "x" << 1));  // o
 
     auto result = parseOplogEntryForFindAndModify(opCtx(), request, insertOplog).toBSON();
     ASSERT_BSONOBJ_EQ(BSON("lastErrorObject"
                            << BSON("n" << 1 << "updatedExisting" << false << "upserted"
                                        << "ID value")
                            << "value"
-                           << BSON("_id"
-                                   << "ID value"
-                                   << "x" << 1)),
+                           << BSON("_id" << "ID value"
+                                         << "x" << 1)),
                       result);
 }
 
@@ -531,9 +527,8 @@ TEST_F(FindAndModifyRetryability, BasicUpsertReturnOld) {
     auto insertOplog = makeOplogEntry(repl::OpTime(),             // optime
                                       repl::OpTypeEnum::kInsert,  // op type
                                       kNs,                        // namespace
-                                      BSON("_id"
-                                           << "ID value"
-                                           << "x" << 1));  // o
+                                      BSON("_id" << "ID value"
+                                                 << "x" << 1));  // o
 
     auto result = parseOplogEntryForFindAndModify(opCtx(), request, insertOplog).toBSON();
     ASSERT_BSONOBJ_EQ(BSON("lastErrorObject"

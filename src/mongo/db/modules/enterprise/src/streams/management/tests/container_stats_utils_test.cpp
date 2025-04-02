@@ -3,7 +3,7 @@
  */
 
 
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/management/container_group_stats_provider.h"
 
 namespace streams {

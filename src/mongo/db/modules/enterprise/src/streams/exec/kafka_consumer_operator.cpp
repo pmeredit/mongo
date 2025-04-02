@@ -3,6 +3,7 @@
  */
 #include "streams/exec/kafka_consumer_operator.h"
 
+#include <bsoncxx/json.hpp>
 #include <chrono>
 #include <fmt/format.h>
 #include <rdkafka.h>
@@ -15,6 +16,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/text.h"
+#include "mongo/util/time_support.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -26,6 +28,7 @@
 #include "streams/exec/kafka_utils.h"
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
+#include "streams/exec/mongocxx_utils.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
@@ -210,8 +213,8 @@ KafkaConsumerOperator::Connector::Connector(Context* context, Options options)
     }
 
     // Setup event callback since we need to determine the details of connect errors
-    _eventCallback =
-        std::make_unique<KafkaEventCallback>(_context, "KafkaConsumerOperator::Connector");
+    _eventCallback = std::make_unique<KafkaEventCallback>(
+        _context, "KafkaConsumerOperator::Connector", (bool)_options.gwproxyEndpoint);
 
     _consumer = streams::createKafkaConsumer(_options.bootstrapServers,
                                              _options.consumerGroupId,
@@ -542,9 +545,10 @@ void KafkaConsumerOperator::initFromCheckpoint() {
     CHECKPOINT_RECOVERY_ASSERT(
         *_context->restoreCheckpointId,
         _operatorId,
-        str::stream() << "partition count in the checkpoint (" << partitions.size() << ") "
-                      << "does not match the partition count of Kafka topics ("
-                      << expectedNumTopicPartitions << ")",
+        fmt::format("partition count in the checkpoint ({}) "
+                    "does not match the partition count of Kafka topics ({})",
+                    partitions.size(),
+                    expectedNumTopicPartitions),
         partitions.size() == expectedNumTopicPartitions);
 
     // Use the consumer group ID from the checkpoint. The consumer group ID should never change
@@ -590,8 +594,8 @@ void KafkaConsumerOperator::initFromCheckpoint() {
 
         CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
                                    _operatorId,
-                                   str::stream() << "state has unexpected watermark: "
-                                                 << bool(partitionState.getWatermark()),
+                                   fmt::format("state has unexpected watermark: {}",
+                                               static_cast<bool>(partitionState.getWatermark())),
                                    bool(partitionState.getWatermark()) == _options.useWatermarks ||
                                        _context->isModifiedProcessor)
 
@@ -600,16 +604,29 @@ void KafkaConsumerOperator::initFromCheckpoint() {
             invariant(_watermarkCombiner);
 
             boost::optional<int32_t> inputIdx = getPartitionIdx(chkptTopic, chkptPartitionId);
-            CHECKPOINT_RECOVERY_ASSERT(*_context->restoreCheckpointId,
-                                       _operatorId,
-                                       str::stream() << "Could not get inputIdx for topic/partition"
-                                                     << chkptTopic << "/" << chkptPartitionId,
-                                       inputIdx);
+            CHECKPOINT_RECOVERY_ASSERT(
+                *_context->restoreCheckpointId,
+                _operatorId,
+                fmt::format("Could not get inputIdx for topic/partition {}/{}",
+                            chkptTopic,
+                            chkptPartitionId),
+                inputIdx);
 
             if (partitionState.getWatermark()) {
+                if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+                    while (Date_t::now().asInt64() <
+                           partitionState.getWatermark()->getTimestampMs()) {
+                        sleepmillis(partitionState.getWatermark()->getTimestampMs() -
+                                    Date_t::now().asInt64());
+                    }
+                    tassert(ErrorCodes::InternalError,
+                            "Wallclock time should be after latest watermark timestamp",
+                            Date_t::now().asInt64() >=
+                                partitionState.getWatermark()->getTimestampMs());
+                }
                 // All partition watermarks start as active when restoring from a checkpoint.
                 WatermarkControlMsg watermark{WatermarkStatus::kActive,
-                                              partitionState.getWatermark()->getEventTimeMs()};
+                                              partitionState.getWatermark()->getTimestampMs()};
                 consumerInfo.watermarkGenerator = std::make_unique<DelayedWatermarkGenerator>(
                     *inputIdx, _watermarkCombiner.get(), watermark);
             } else {
@@ -781,7 +798,7 @@ void KafkaConsumerOperator::init() {
         auto errorCode = _groupConsumer->subscribe(_options.topicNames);
         uassert(8674606,
                 fmt::format("Subscribing to Kafka failed with {}: {}",
-                            errorCode,
+                            fmt::underlying(errorCode),
                             RdKafka::err2str(errorCode)),
                 errorCode == RdKafka::ERR_NO_ERROR);
 
@@ -897,9 +914,10 @@ int64_t KafkaConsumerOperator::doRunOnce() {
                 if (totalNumInputDocs == 0 && _options.sendIdleMessages) {
                     // If _options.sendIdleMessages is set, always send a kIdle watermark when
                     // there are 0 docs read from the source.
-                    newControlMsg =
-                        StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
-                                             .watermarkStatus = WatermarkStatus::kIdle}};
+                    int64_t curTime = curTimeMillis64Monotonic();
+                    newControlMsg = StreamControlMsg{.watermarkMsg = WatermarkControlMsg{
+                                                         .watermarkStatus = WatermarkStatus::kIdle,
+                                                         .watermarkTimestampMs = curTime}};
                 }
             }
 
@@ -1029,7 +1047,7 @@ int64_t KafkaConsumerOperator::doRunOnce() {
         incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
                                        .numInputBytes = numInputBytes,
                                        .numDlqDocs = numDlqDocs,
-                                       .timeSpent = dataMsg.creationTimer->elapsed()});
+                                       .timeSpent = dataMsg.creationTimer.elapsed()});
         if (_watermarkCombiner) {
             _stats.watermark = _watermarkCombiner->getCombinedWatermarkMsg().watermarkTimestampMs;
         }
@@ -1066,10 +1084,9 @@ KafkaConsumerOperator::deserializeKafkaKey(std::vector<std::uint8_t> key,
             return deserializedKey;
         }
         case KafkaKeyFormatEnum::Json: {
-            auto keyStr = StringData{reinterpret_cast<const char*>(key.data()),
-                                     static_cast<size_t>(key.size())};
+            bsoncxx::stdx::string_view view{reinterpret_cast<const char*>(key.data()), key.size()};
             try {
-                BSONObj deserializedKey = fromjson(keyStr);
+                BSONObj deserializedKey = fromBsoncxxDocument(bsoncxx::from_json(view));
                 return deserializedKey;
             } catch (std::exception&) {
                 return key;
@@ -1115,13 +1132,14 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
 
     boost::optional<StreamDocument> streamDoc;
     try {
-        mongo::Date_t eventTimestamp;
-        if (_options.timestampExtractor) {
-            eventTimestamp =
-                _options.timestampExtractor->extractTimestamp(Document(*sourceDoc.doc));
+        mongo::Date_t ts;
+        int64_t logAppendTimeMs{sourceDoc.logAppendTimeMs};
+        if (_windowBoundary == mongo::WindowBoundaryEnum::processingTime) {
+            ts = mongo::Date_t::fromMillisSinceEpoch(curTimeMillis64Monotonic());
+        } else if (_options.timestampExtractor) {
+            ts = _options.timestampExtractor->extractTimestamp(Document(*sourceDoc.doc));
         } else {
-            dassert(sourceDoc.logAppendTimeMs);
-            eventTimestamp = Date_t::fromMillisSinceEpoch(*sourceDoc.logAppendTimeMs);
+            ts = Date_t::fromMillisSinceEpoch(logAppendTimeMs);
         }
         // Now we are destroying sourceDoc.doc, make sure that no exceptions related to
         // processing this document get thrown after this point.
@@ -1132,7 +1150,7 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         sourceDoc.doc = boost::none;
         BSONObjBuilder objBuilder(std::move(bsonDoc));
         if (_options.timestampOutputFieldName) {
-            objBuilder.appendDate(*_options.timestampOutputFieldName, eventTimestamp);
+            objBuilder.appendDate(*_options.timestampOutputFieldName, ts);
         }
         StreamMetaSource streamMetaSource;
         streamMetaSource.setType(StreamMetaSourceTypeEnum::Kafka);
@@ -1165,8 +1183,8 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
         }
         streamMetaSource.setKey(std::move(key));
         streamMetaSource.setHeaders(std::move(sourceDoc.headers));
-        if (_context->shouldUseDocumentMetadataFields) {
-            streamMetaSource.setTs(eventTimestamp);
+        if (!_context->oldStreamMetaEnabled()) {
+            streamMetaSource.setTs(ts);
         }
         StreamMeta streamMeta;
         streamMeta.setSource(std::move(streamMetaSource));
@@ -1185,9 +1203,13 @@ boost::optional<StreamDocument> KafkaConsumerOperator::processSourceDocument(
             mutableDoc.metadata().setStream(Value(streamDoc->streamMeta.toBSON()));
             streamDoc->doc = mutableDoc.freeze();
         }
-        streamDoc->minProcessingTimeMs = curTimeMillis64();
-        streamDoc->minDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
-        streamDoc->maxDocTimestampMs = eventTimestamp.toMillisSinceEpoch();
+        streamDoc->minProcessingTimeMs =
+            (_windowBoundary == mongo::WindowBoundaryEnum::processingTime)
+            ? ts.toMillisSinceEpoch()
+            : curTimeMillis64Monotonic();
+        streamDoc->minDocTimestampMs = ts.toMillisSinceEpoch();
+        streamDoc->maxDocTimestampMs = ts.toMillisSinceEpoch();
+        streamDoc->sourceTimestampMs = logAppendTimeMs;
     } catch (const std::exception& e) {
         LOGV2_ERROR(74675,
                     "{topicName}: encountered exception while processing a source "
@@ -1364,10 +1386,6 @@ KafkaConsumerOperator::TopicPartitionOffsetMap KafkaConsumerOperator::getCommitt
 }
 
 BSONObj KafkaConsumerOperator::doOnCheckpointFlush(CheckpointId checkpointId) {
-    if (_options.isTest) {
-        return BSONObj{};
-    }
-
     auto stateBson = _unflushedStateContainer.pop(checkpointId);
     auto checkpointState = KafkaSourceCheckpointState::parseOwned(
         IDLParserContext{"KafkaConsumerOperator::doOnCheckpointFlush"}, std::move(stateBson));

@@ -48,27 +48,34 @@ public:
           zstdCompressorLevel(0),
           directoryForIndexes(false),
           maxCacheOverflowFileSizeGBDeprecated(0),
-          useCollectionPrefixCompression(false),
-          useIndexPrefixCompression(false){};
+          liveRestoreThreads(0),
+          liveRestoreReadSizeMB(0),
+          useIndexPrefixCompression(false) {};
 
     Status store(const optionenvironment::Environment& params);
 
     double cacheSizeGB;
     size_t statisticsLogDelaySecs;
+    int32_t sessionMax{0};
+    double evictionDirtyTargetGB{0};
+    double evictionDirtyTriggerGB{0};
     std::string journalCompressor;
     int zstdCompressorLevel;
     bool directoryForIndexes;
     double maxCacheOverflowFileSizeGBDeprecated;
     std::string engineConfig;
     std::string liveRestoreSource;
+    int liveRestoreThreads;
+    double liveRestoreReadSizeMB;
 
     std::string collectionBlockCompressor;
-    bool useCollectionPrefixCompression;
     bool useIndexPrefixCompression;
     std::string collectionConfig;
     std::string indexConfig;
 
     static Status validateWiredTigerCompressor(const std::string&);
+    static Status validateWiredTigerLiveRestoreReadSizeMB(int);
+
 
     /**
      * Returns current history file size limit in MB.

@@ -5,8 +5,9 @@
  * @tags: [ featureFlagMongotIndexedViews, requires_fcv_81 ]
  */
 import {assertArrayEq} from "jstests/aggregation/extras/utils.js";
-import {createSearchIndex, dropSearchIndex} from "jstests/libs/search.js";
-import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e/lib/explain_utils.js";
+import {FixtureHelpers} from "jstests/libs/fixture_helpers.js";
+import {createSearchIndex, dropSearchIndex, updateSearchIndex} from "jstests/libs/search.js";
+import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e_lib/explain_utils.js";
 
 const testDb = db.getSiblingDB(jsTestName());
 const coll = testDb.underlyingSourceCollection;
@@ -38,11 +39,16 @@ let pipeline = [{
         }
     }
 }];
-let explainResults = assert.commandWorked(nestedView.explain().aggregate(pipeline)).stages;
+
+let results = nestedView.aggregate({$listSearchIndexes: {}}).toArray();
+assert.eq(results.length, 1);
+assert.eq(results[0].name, "foo");
+
+let explainResults = assert.commandWorked(nestedView.explain().aggregate(pipeline));
 // Ensure the explain results contain the outer view stages and nested view stages.
 assertViewAppliedCorrectly(explainResults, pipeline, viewPipeline.concat(nestedViewPipeline));
 
-let results = nestedView.aggregate(pipeline).toArray();
+results = nestedView.aggregate(pipeline).toArray();
 
 let expectedResults = [
     {"_id": "Oakland", "state": "CA", "pop": 3, "aa_type": "foo", "bb_type": "foo"},
@@ -53,4 +59,32 @@ let expectedResults = [
 ];
 
 assertArrayEq({actual: results, expected: expectedResults});
+
+// update the search index definition
+let indexDef = {mappings: {dynamic: true, fields: {}}, storedSource: {exclude: ["state"]}};
+updateSearchIndex(nestedView, {name: "foo", definition: indexDef});
+pipeline = [
+    {
+        $search: {
+            index: "foo",
+            wildcard: {
+                query: "*",  // This matches all documents
+                path: "_id",
+                allowAnalyzedField: true,
+            },
+            returnStoredSource: true
+        },
+    },
+];
+results = nestedView.aggregate(pipeline).toArray();
+
+expectedResults = [
+    {_id: "Palo Alto", pop: 10, aa_type: "foo", bb_type: "foo"},
+    {_id: "Oakland", pop: 3, aa_type: "foo", bb_type: "foo"},
+    {_id: "Trenton", pop: 5, aa_type: "foo", bb_type: "foo"},
+    {_id: "New York", pop: 7, aa_type: "foo", bb_type: "foo"},
+    {_id: "San Francisco", pop: 4, aa_type: "foo", bb_type: "foo"}
+];
+assertArrayEq({actual: results, expected: expectedResults});
+
 dropSearchIndex(nestedView, {name: "foo"});

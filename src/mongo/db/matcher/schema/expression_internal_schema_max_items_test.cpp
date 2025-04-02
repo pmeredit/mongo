@@ -35,63 +35,13 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_max_items.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
 
 namespace {
-
-TEST(InternalSchemaMaxItemsMatchExpression, RejectsNonArrayElements) {
-    InternalSchemaMaxItemsMatchExpression maxItems("a"_sd, 1);
-
-    ASSERT(!maxItems.matchesBSON(BSON("a" << BSONObj())));
-    ASSERT(!maxItems.matchesBSON(BSON("a" << 1)));
-    ASSERT(!maxItems.matchesBSON(BSON("a"
-                                      << "string")));
-}
-
-TEST(InternalSchemaMaxItemsMatchExpression, RejectsArraysWithTooManyElements) {
-    InternalSchemaMaxItemsMatchExpression maxItems("a"_sd, 0);
-
-    ASSERT(!maxItems.matchesBSON(BSON("a" << BSON_ARRAY(1))));
-    ASSERT(!maxItems.matchesBSON(BSON("a" << BSON_ARRAY(1 << 2))));
-}
-
-TEST(InternalSchemaMaxItemsMatchExpression, AcceptsArrayWithLessThanOrEqualToMaxElements) {
-    InternalSchemaMaxItemsMatchExpression maxItems("a"_sd, 2);
-
-    ASSERT(maxItems.matchesBSON(BSON("a" << BSON_ARRAY(5 << 6))));
-    ASSERT(maxItems.matchesBSON(BSON("a" << BSON_ARRAY(5))));
-}
-
-TEST(InternalSchemaMaxItemsMatchExpression, MaxItemsZeroAllowsEmptyArrays) {
-    InternalSchemaMaxItemsMatchExpression maxItems("a"_sd, 0);
-
-    ASSERT(maxItems.matchesBSON(BSON("a" << BSONArray())));
-}
-
-TEST(InternalSchemaMaxItemsMatchExpression, NullArrayEntriesCountAsItems) {
-    InternalSchemaMaxItemsMatchExpression maxItems("a"_sd, 2);
-
-    ASSERT(maxItems.matchesBSON(BSON("a" << BSON_ARRAY(BSONNULL << 1))));
-    ASSERT(!maxItems.matchesBSON(BSON("a" << BSON_ARRAY(BSONNULL << 1 << 2))));
-}
-
-TEST(InternalSchemaMaxItemsMatchExpression, NestedArraysAreNotUnwound) {
-    InternalSchemaMaxItemsMatchExpression maxItems("a"_sd, 2);
-
-    ASSERT(maxItems.matchesBSON(BSON("a" << BSON_ARRAY(BSON_ARRAY(1 << 2 << 3)))));
-}
-
-TEST(InternalSchemaMaxItemsMatchExpression, NestedArraysWorkWithDottedPaths) {
-    InternalSchemaMaxItemsMatchExpression maxItems("a.b"_sd, 2);
-
-    ASSERT(maxItems.matchesBSON(BSON("a" << BSON("b" << BSON_ARRAY(1)))));
-    ASSERT(!maxItems.matchesBSON(BSON("a" << BSON("b" << BSON_ARRAY(1 << 2 << 3)))));
-}
 
 DEATH_TEST_REGEX(InternalSchemaMaxItemsMatchExpression,
                  GetChildFailsIndexGreaterThanZero,

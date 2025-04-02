@@ -36,8 +36,7 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/exec/orphan_chunk_skipper.h"
 #include "mongo/s/shard_key_pattern.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -363,10 +362,7 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexForwardSc
     {
         // Mock a chunk such that the input value is not an orphan.
         auto shardKey = BSON("b" << 1);
-        auto nearestInfo = makeChunkInfo(BSON("b"
-                                              << "zap"),
-                                         BSON("b"
-                                              << "zoo"));
+        auto nearestInfo = makeChunkInfo(BSON("b" << "zap"), BSON("b" << "zoo"));
         Chunk nearest(nearestInfo, boost::none);
         MockNearestOwnedChunkFilter shardFilter(
             shardKey, {.containsShardKey = true, .nearestOwnedChunk = nearest});
@@ -374,10 +370,8 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexForwardSc
         auto cs = getOrphanChunkSkipper(
             shardFilter, shardKey, BSON("b" << 1) /* indexKeyPattern */, 1 /* scanDir */);
         ASSERT_CHUNK_SKIPPER(cs, 1 /* expectedScanDirection */, "1"_sd /* expectedBitSet */);
-        ASSERT_NO_NEXT_SEEK_POINT(cs,
-                                  BSON("b"
-                                       << "zed") /* currentShardKeyValue */,
-                                  OrphanChunkSkipper::NotOrphan);
+        ASSERT_NO_NEXT_SEEK_POINT(
+            cs, BSON("b" << "zed") /* currentShardKeyValue */, OrphanChunkSkipper::NotOrphan);
     }
 
     // Forward seek to next chunk boundary.
@@ -406,10 +400,7 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexForwardSc
     {
         // Mock a nearest chunk.
         auto shardKey = BSON("b" << 1);
-        auto nearestInfo = makeChunkInfo(BSON("b"
-                                              << "zap"),
-                                         BSON("b"
-                                              << "zoo"));
+        auto nearestInfo = makeChunkInfo(BSON("b" << "zap"), BSON("b" << "zoo"));
         Chunk nearest(nearestInfo, boost::none);
         MockNearestOwnedChunkFilter shardFilter(
             shardKey, {.containsShardKey = false, .nearestOwnedChunk = nearest});
@@ -426,16 +417,12 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexForwardSc
                                                       << "c"
                                                       << "bar") /* currentShardKeyValue */,
                                              1 /* expectedPrefixLen */,
-                                             BSON("b"
-                                                  << "zap") /* expectedKeySuffix */);
+                                             BSON("b" << "zap") /* expectedKeySuffix */);
     }
     {
         // Mock a nearest chunk.
         auto shardKey = BSON("c" << 1);
-        auto nearestInfo = makeChunkInfo(BSON("c"
-                                              << "baz"),
-                                         BSON("c"
-                                              << "boo"));
+        auto nearestInfo = makeChunkInfo(BSON("c" << "baz"), BSON("c" << "boo"));
         Chunk nearest(nearestInfo, boost::none);
         MockNearestOwnedChunkFilter shardFilter(
             shardKey, {.containsShardKey = false, .nearestOwnedChunk = nearest});
@@ -452,8 +439,7 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexForwardSc
                                                       << "c"
                                                       << "bar") /* currentShardKeyValue */,
                                              2 /* expectedPrefixLen */,
-                                             BSON("c"
-                                                  << "baz") /* expectedKeySuffix */);
+                                             BSON("c" << "baz") /* expectedKeySuffix */);
     }
     // Ensure that no seek point is generated if nearestOwnedChunk() says we're out of chunks.
     // Since this is not a prefix of the index key, we should return 'NoMoreOwnedForThisPrefix',
@@ -479,10 +465,7 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexReverseSc
     {
         // Mock a chunk such that the input value is not an orphan.
         auto shardKey = BSON("b" << 1);
-        auto nearestInfo = makeChunkInfo(BSON("b"
-                                              << "zap"),
-                                         BSON("b"
-                                              << "zoo"));
+        auto nearestInfo = makeChunkInfo(BSON("b" << "zap"), BSON("b" << "zoo"));
         Chunk nearest(nearestInfo, boost::none);
         MockNearestOwnedChunkFilter shardFilter(
             shardKey, {.containsShardKey = true, .nearestOwnedChunk = nearest});
@@ -490,10 +473,8 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexReverseSc
         auto cs = getOrphanChunkSkipper(
             shardFilter, shardKey, BSON("b" << -1) /* indexKeyPattern */, 1 /* scanDir */);
         ASSERT_CHUNK_SKIPPER(cs, -1 /* expectedScanDirection */, "1"_sd /* expectedBitSet */);
-        ASSERT_NO_NEXT_SEEK_POINT(cs,
-                                  BSON("b"
-                                       << "zed") /* currentShardKeyValue */,
-                                  OrphanChunkSkipper::NotOrphan);
+        ASSERT_NO_NEXT_SEEK_POINT(
+            cs, BSON("b" << "zed") /* currentShardKeyValue */, OrphanChunkSkipper::NotOrphan);
     }
 
     // Reverse seek to next chunk boundary.
@@ -522,10 +503,7 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexReverseSc
     {
         // Mock a nearest chunk.
         auto shardKey = BSON("b" << 1);
-        auto nearestInfo = makeChunkInfo(BSON("b"
-                                              << "zap"),
-                                         BSON("b"
-                                              << "zoo"));
+        auto nearestInfo = makeChunkInfo(BSON("b" << "zap"), BSON("b" << "zoo"));
         Chunk nearest(nearestInfo, boost::none);
         MockNearestOwnedChunkFilter shardFilter(
             shardKey, {.containsShardKey = false, .nearestOwnedChunk = nearest});
@@ -542,16 +520,12 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexReverseSc
                                                       << "c"
                                                       << "bar") /* currentShardKeyValue */,
                                              1 /* expectedPrefixLen */,
-                                             BSON("b"
-                                                  << "zoo") /* expectedKeySuffix */);
+                                             BSON("b" << "zoo") /* expectedKeySuffix */);
     }
     {
         // Mock a nearest chunk.
         auto shardKey = BSON("c" << 1);
-        auto nearestInfo = makeChunkInfo(BSON("c"
-                                              << "baz"),
-                                         BSON("c"
-                                              << "boo"));
+        auto nearestInfo = makeChunkInfo(BSON("c" << "baz"), BSON("c" << "boo"));
         Chunk nearest(nearestInfo, boost::none);
         MockNearestOwnedChunkFilter shardFilter(
             shardKey, {.containsShardKey = false, .nearestOwnedChunk = nearest});
@@ -568,8 +542,7 @@ TEST_F(OrphanChunkSkipperTest, MakeSeekPointSingleShardKeyCompoundIndexReverseSc
                                                       << "c"
                                                       << "boom") /* currentShardKeyValue */,
                                              2 /* expectedPrefixLen */,
-                                             BSON("c"
-                                                  << "boo") /* expectedKeySuffix */);
+                                             BSON("c" << "boo") /* expectedKeySuffix */);
     }
 }
 

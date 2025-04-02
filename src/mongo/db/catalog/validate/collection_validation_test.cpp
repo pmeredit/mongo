@@ -69,8 +69,7 @@
 #include "mongo/db/storage/sorted_data_interface.h"
 #include "mongo/db/storage/sorted_data_interface_test_assert.h"
 #include "mongo/db/storage/write_unit_of_work.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/bufreader.h"
 #include "mongo/util/fail_point.h"
@@ -98,10 +97,10 @@ private:
     };
 };
 
-// Calling verify() is not possible on an ephemeral instance.
+// Calling verify() is not possible on an in-memory instance.
 class CollectionValidationDiskTest : public CollectionValidationTest {
 protected:
-    CollectionValidationDiskTest() : CollectionValidationTest(Options{}.ephemeral(false)) {}
+    CollectionValidationDiskTest() : CollectionValidationTest(Options{}.inMemory(false)) {}
 };
 
 /**

@@ -128,9 +128,6 @@ if (!_isWindows()) {
         linesResolved, linesActual, "Config file was not resolved perfectly by mongokerberos.");
 }
 
-// TODO SERVER-45937 test to see what happens if we open a client against a service which doesn't
-// exist, or with a user principal which isn't available
-
 // verify correct error output if keytab doesn't exist
 if (!_isWindows()) {
     jsTestLog("Testing mongokerberos in server mode with non-existent keytab");
@@ -154,8 +151,6 @@ if (!_isWindows()) {
         "--gssapiHostName",
         saslHostName);
 }
-
-// TODO SERVER-45678 Test RDNS, would require additional keytab entry and account in KDC.
 
 // verify correct error output if misconfigured RDNS
 jsTestLog("Testing output for misconfigured RDNS");

@@ -13,6 +13,7 @@ import {
     listStreamProcessors,
     stopStreamProcessor,
     sanitizeDoc,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID
 } from 'src/mongo/db/modules/enterprise/jstests/streams/utils.js';
 
@@ -32,6 +33,7 @@ function startStreamProcessor(pipeline) {
     let startCmd = {
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: processorName,
         processorId: 'mergeTest1',
         pipeline: pipeline,
@@ -86,6 +88,7 @@ const pipeline = [
             'timeField': {$toDate: {$multiply: ['$fullDocument.ts', 1000]}}
         }
     },
+    {$addFields: {_stream_meta: {$meta: "stream"}}},
     {$replaceRoot: {newRoot: {$mergeObjects: ['$fullDocument', {_stream_meta: '$_stream_meta'}]}}},
     // Perform $a / $b. This runs into "can't $divide by zero" error when $b is 0.
     // This should add 10 documents to the dead letter queue.
@@ -112,6 +115,7 @@ const pipeline = [
             ]
         }
     },
+    {$addFields: {_stream_meta: {$meta: "stream"}}},
     // Perform $merge on 'c'.
     // This should add 5 documents to the dead letter queue since we are trying to
     // update _id field.

@@ -62,7 +62,7 @@ struct TryLogEventParamsOCSF : public TryLogEventParams {
           ocsfEventCategory(eventCategory),
           ocsfEventClass(eventClass),
           activityId(activityId),
-          severity(severity){};
+          severity(severity) {};
 
     TryLogEventParamsOCSF(Client* client,
                           ocsf::OCSFEventCategory eventCategory,
@@ -76,7 +76,7 @@ struct TryLogEventParamsOCSF : public TryLogEventParams {
           ocsfEventCategory(eventCategory),
           ocsfEventClass(eventClass),
           activityId(activityId),
-          severity(severity){};
+          severity(severity) {};
 
     ocsf::OCSFEventCategory ocsfEventCategory;
     ocsf::OCSFEventClass ocsfEventClass;
@@ -274,7 +274,12 @@ public:
 
         StringData getTimestampFieldName() const override;
 
-        static void _buildNetwork(Client* client, BSONObjBuilder* builder);
+        // Builds the remote client IP addr into "src_endpoint" and the local IP addr
+        // into "dst_endpoint". Some classes only allow "src_endpoint" - those callsites
+        // override shouldLogDst to "false".
+        static void _buildNetwork(Client* client,
+                                  BSONObjBuilder* builder,
+                                  bool shouldLogDst = true);
 
         // Build a User object into a "user" field based on an on-disk document.
         static void _buildUser(BSONObjBuilder* builder,
@@ -308,10 +313,6 @@ public:
         AuditEventOCSF& operator=(const AuditEventOCSF&) = delete;
 
         void _init(const TryLogEventParamsOCSF& tryLogParams);
-
-        /* TODO SERVER-78816:
-            static void serializeClient(Client* client, BSONObjBuilder* builder);
-        */
     };
 };
 

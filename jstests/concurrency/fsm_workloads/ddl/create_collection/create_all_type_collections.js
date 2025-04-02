@@ -63,6 +63,12 @@ export const $config = (function() {
         },
 
         createFLEUnsharded: function createFLEUnsharded(db, collName) {
+            if (TestData.runningWithBalancer) {
+                // Implicit FLE state collection creation is not supported when data is placed
+                // outside the db primary shard. See SERVER-89286 for more information.
+                return;
+            }
+
             const coll = getRandomCollection(db);
             jsTestLog("Executing state createFLEUnsharded: " + coll.getFullName());
             const sampleEncryptedFields = {
@@ -82,6 +88,10 @@ export const $config = (function() {
                 ]
             };
 
+            // The concurrent operations ran by this test can interfere with the
+            // assumptions made by the 'EncryptedClient.createEncryptionCollection()' helper.
+            // Therefore, create the Encrypted Data Collection (EDC) directly using the
+            // 'createCollection()' command, without the ESC/ECOC state collections.
             const res = coll.getDB().createCollection(coll.getName(),
                                                       {encryptedFields: sampleEncryptedFields});
 

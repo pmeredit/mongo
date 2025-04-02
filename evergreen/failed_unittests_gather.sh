@@ -6,9 +6,9 @@ cd src
 set -eou pipefail
 
 # Only run on unit test tasks so we don't target mongod binaries from cores.
-if [ "${task_name}" != "run_unittests" ] && [ "${task_name}" != "run_dbtest" ] \
+if [ "${task_name}" != "run_dbtest" ] \
   && [[ ${task_name} != integration_tests* ]] \
-  && [[ "${task_name}" != compile_and_run_unittests_* ]]; then
+  && [[ "${task_name}" != *run_unittests* ]]; then
   echo "Not gathering failed unittests binaries as this is not a unittest task: ${task_name}"
   exit 0
 fi
@@ -22,7 +22,7 @@ while read -r core_file; do
   # A core file name does not always have the executable name that generated it.
   # See http://stackoverflow.com/questions/34801353/core-dump-filename-gets-thread-name-instead-of-executable-name-with-core-pattern
   # On platforms with GDB, we get the binary name from core file
-  gdb=/opt/mongodbtoolchain/v4/bin/gdb
+  gdb=/opt/mongodbtoolchain/v5/bin/gdb
   if [ -f $gdb ]; then
     binary_file=$($gdb -batch --quiet -ex "core $core_file" 2> /dev/null | grep "Core was generated" | cut -f2 -d "\`" | cut -f1 -d "'" | cut -f1 -d " ")
     binary_file_locations=$binary_file
@@ -52,11 +52,13 @@ while read -r core_file; do
     fi
 
     # On Windows if a .pdb symbol file exists, include it in the archive.
-    pdb_file=$(echo "$binary_file_location" | sed "s/\.exe/.pdb/")
-    if [ -f "$pdb_file" ]; then
-      new_pdb_file=$unittest_bin_dir/$(echo "$pdb_file" | sed "s/.*\///")
-      echo "PDB Copy $pdb_file to $new_pdb_file"
-      cp "$pdb_file" "$new_pdb_file"
+    if [[ "$binary_file_location" == *".exe" ]]; then
+      pdb_file=$(echo "$binary_file_location" | sed "s/\.exe/.pdb/")
+      if [ -f "$pdb_file" ]; then
+        new_pdb_file=$unittest_bin_dir/$(echo "$pdb_file" | sed "s/.*\///")
+        echo "PDB Copy $pdb_file to $new_pdb_file"
+        cp "$pdb_file" "$new_pdb_file"
+      fi
     fi
 
     # On binutils platforms, if a .debug symbol file exists, include it
@@ -78,7 +80,7 @@ while read -r core_file; do
 done <<< "${core_files}"
 
 # Copy debug symbols for dynamic builds
-lib_dir=build/install/lib
+lib_dir=bazel-bin/install/lib
 if [ -d "$lib_dir" ] && [ -n "$core_files" ]; then
   cp -r "$lib_dir" dist-unittests
 fi

@@ -15,12 +15,12 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/kafka_connect_auth_callback.h"
 #include "streams/exec/kafka_event_callback.h"
 #include "streams/exec/kafka_partition_consumer_base.h"
 #include "streams/exec/kafka_resolve_callback.h"
 #include "streams/exec/message.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace streams {
 
@@ -211,8 +211,8 @@ private:
     // This should only be updated under the `_finalizedDocBatch` mutex.
     OperatorStats _stats;
     // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-    std::unique_ptr<streams::KafkaConnectAuthCallback> _connectCbImpl;
-    std::unique_ptr<streams::KafkaResolveCallback> _resolveCbImpl;
+    std::unique_ptr<KafkaConnectAuthCallback> _connectCbImpl;
+    std::unique_ptr<KafkaResolveCallback> _resolveCbImpl;
 };
 
 }  // namespace streams

@@ -16,6 +16,8 @@ const dbName = "aggregateLookupMultiSchemaDB";
 const collNameUsers = "aggregateLookupMultiSchemaUsers";
 const collNamePasswords = "aggregateLookupMultiSchemaCollPasswords";
 const collNameAccounts = "aggregateLookupMultiSchemaCollAccounts";
+const collNameAddress = "aggregateLookupMultiSchemaAddress";
+const collNameAddressWithValidatorSchema = "aggregateLookupMultiSchemaAddressWithValidator";
 
 const encryptedStringSpec = () =>
     ({encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}});
@@ -36,9 +38,17 @@ const docsCollPasswords = [
     {_id: 3, password: "jkl012", name: "D"},
 ];
 
+const docsCollAddressUnencrypted = [
+    {_id: 0, streetNumber: "12", street: "Broadway", name: "A"},
+    {_id: 1, streetNumber: "13", street: "Cornelia", name: "B"},
+    {_id: 2, streetNumber: "15", street: "Amsterdam", name: "C"},
+    {_id: 3, streetNumber: "16", street: "Gaglardi", name: "D"},
+];
+
 const tests = [
     // 1) $lookup with a filter on an encrypted field in sub-pipeline.
     {
+        collName: collNameUsers,
         pipeline: [
             {
                 $lookup: {
@@ -64,6 +74,7 @@ const tests = [
         ]
     }, // 2) Nested $lookup with a filter on an encrypted field in sub-pipeline.
     {
+        collName: collNameUsers,
         pipeline: [
             {
                 $lookup: {
@@ -111,6 +122,125 @@ const tests = [
                                                                                                     }
                                                                                                 ]},
             {_id: 3, ssn: "123", name: "D", manager: "A", age: NumberLong(55), location: [0, 3], passwords: []}
+        ]
+    },
+    // 3) $lookup involving unencrypted foreign collection.
+    {
+        collName: collNameUsers,
+        pipeline: [
+            {
+                $lookup: {
+                    from: collNameAddress,
+                    as: "addresses",
+                    localField: "name",
+                    foreignField: "name",
+                    pipeline: [
+                        {$match: {street: {$in: ["Broadway", "Gaglardi"]}}}
+                    ]
+                }
+            }
+        ],
+        expected: [
+            {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: [0, 0], addresses: [
+                {_id: 0, streetNumber: "12", street: "Broadway", name: "A"},
+            ]},
+            {_id: 1, ssn: "456", name: "B", manager: "C", age: NumberLong(35), location: [0, 1], addresses: []},
+            {_id: 2, ssn: "789", name: "C", manager: "D", age: NumberLong(45), location: [0, 2], addresses: [
+            ]},
+            {_id: 3, ssn: "123", name: "D", manager: "A", age: NumberLong(55), location: [0, 3], addresses: [
+                {_id: 3, streetNumber: "16", street: "Gaglardi", name: "D"},
+            ]}
+        ]
+    },
+    // 4) $lookup involving encrypted foreign collection and unencrypted local collection.
+    {
+        collName: collNameAddress,
+        pipeline: [
+            {
+                $lookup: {
+                    from: collNameUsers,
+                    as: "users",
+                    localField: "name",
+                    foreignField: "name",
+                    pipeline: [
+                        {$match: {ssn: {$in: ["123"]}}}
+                    ]
+                }
+            }
+        ],
+        expected: [
+            {_id: 0, streetNumber: "12", street: "Broadway", name: "A", users: [
+                {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: [0, 0]}
+            ]},
+            {_id: 1, streetNumber: "13", street: "Cornelia", name: "B", users: [
+                
+            ]},
+            {_id: 2, streetNumber: "15", street: "Amsterdam", name: "C", users: [
+                
+            ]},
+            {_id: 3, streetNumber: "16", street: "Gaglardi", name: "D", users: [
+                {_id: 3, ssn: "123", name: "D", manager: "A", age: NumberLong(55), location: [0, 3]}
+            ]}
+        ]
+    },
+    // 5) $lookup involving unencrypted foreign collection with validation schema.
+    {
+        collName: collNameUsers,
+        pipeline: [
+            {
+                $lookup: {
+                    from: collNameAddressWithValidatorSchema,
+                    as: "addresses",
+                    localField: "name",
+                    foreignField: "name",
+                    pipeline: [
+                        {$match: {street: {$in: ["Broadway", "Gaglardi"]}}}
+                    ]
+                }
+            }
+        ],
+        expected: [
+            {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: [0, 0], addresses: [
+                {_id: 0, streetNumber: "12", street: "Broadway", name: "A"},
+            ]},
+            {_id: 1, ssn: "456", name: "B", manager: "C", age: NumberLong(35), location: [0, 1], addresses: []},
+            {_id: 2, ssn: "789", name: "C", manager: "D", age: NumberLong(45), location: [0, 2], addresses: [
+            ]},
+            {_id: 3, ssn: "123", name: "D", manager: "A", age: NumberLong(55), location: [0, 3], addresses: [
+                {_id: 3, streetNumber: "16", street: "Gaglardi", name: "D"},
+            ]}
+        ]
+    },
+    // 6) $lookup involving encrypted foreign collection and unencrypted local collection 
+    //   with validation schema.
+    {
+        collName: collNameAddressWithValidatorSchema,
+        pipeline: [
+            {
+                $lookup: {
+                    from: collNameUsers,
+                    as: "users",
+                    localField: "name",
+                    foreignField: "name",
+                    pipeline: [
+                        {$match: {ssn: {$in: ["123"]}}}
+                    ]
+                }
+            }
+        ],
+        expected: [
+            {_id: 0, streetNumber: "12", street: "Broadway", name: "A", users: [
+                {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: [0, 0]}
+            ]},
+            {_id: 1, streetNumber: "13", street: "Cornelia", name: "B", users: [
+                
+            ]},
+            {_id: 2, streetNumber: "15", street: "Amsterdam", name: "C", users: [
+                
+            ]},
+            {_id: 3, streetNumber: "16", street: "Gaglardi", name: "D", users: [
+                {_id: 3, ssn: "123", name: "D", manager: "A", age: NumberLong(55), location: [0, 3]}
+            ]}
         ]
     }
 ];
@@ -193,6 +323,45 @@ export function execTest(conn, testFle2) {
         assert.commandWorked(collAccounts.einsert(doc));
     }
 
+    // Create and populate an unencrypted address collection.
+    const collAddressUnencrypted = edb[collNameAddress];
+    for (const doc of docsCollAddressUnencrypted) {
+        assert.commandWorked(collAddressUnencrypted.insert(doc));
+    }
+
+    // Set up an unencrypted client and database.
+    const unencryptedClient = new Mongo(conn.host);
+    const unencryptedDb = unencryptedClient.getDB(dbName);
+
+    // Create and populate an unencrypted address collection.
+    assert.commandWorked(unencryptedDb.createCollection(collNameAddressWithValidatorSchema, {
+        validator: {
+            $jsonSchema: {
+                bsonType: "object",
+                title: "Address Object Validation",
+                required: ["streetNumber", "street", "name"],
+                properties: {
+                    streetNumber: {
+                        bsonType: "string",
+                        description: "'streetNumber' must be a string and is required"
+                    },
+                    street: {
+                        bsonType: "string",
+                        description: "'street' must be a string and is required"
+                    },
+                    name:
+                        {bsonType: "string", description: "'name' must be a string and is required"}
+                }
+            }
+        }
+    }));
+
+    const collAddressUnencryptedWithValidator = unencryptedDb[collNameAddressWithValidatorSchema];
+
+    for (const doc of docsCollAddressUnencrypted) {
+        assert.commandWorked(collAddressUnencryptedWithValidator.insert(doc));
+    }
+
     // Run the pipeline on the provided collection, and assert that the results are equivalent to
     // 'expected'. The pipeline is appended with a $project stage to project out safeContent data
     // and other fields that are inconvenient to have in the output.
@@ -202,7 +371,8 @@ export function execTest(conn, testFle2) {
             $project: {
                 [kSafeContentField]: 0,
                 [`passwords.${kSafeContentField}`]: 0,
-                [`passwords.accounts.${kSafeContentField}`]: 0
+                [`passwords.accounts.${kSafeContentField}`]: 0,
+                [`users.${kSafeContentField}`]: 0
             }
         });
         const result = collection.aggregate(aggPipeline).toArray();
@@ -213,7 +383,8 @@ export function execTest(conn, testFle2) {
     client.runEncryptionOperation(() => {
         for (const testData of tests) {
             const extraInfo = Object.assign({transaction: false}, testData);
-            runTestFunc(testData.pipeline, collUsers, testData.expected, extraInfo);
+            const coll = edb[testData.collName];
+            runTestFunc(testData.pipeline, coll, testData.expected, extraInfo);
         }
     });
 }

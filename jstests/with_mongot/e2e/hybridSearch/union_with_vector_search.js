@@ -10,8 +10,8 @@ import {
     getMoviePlotEmbeddingById,
     getMovieSearchIndexSpec,
     getMovieVectorSearchIndexSpec
-} from "jstests/with_mongot/e2e/lib/data/movies.js";
-import {assertDocArrExpectedFuzzy} from "jstests/with_mongot/e2e/lib/search_e2e_utils.js";
+} from "jstests/with_mongot/e2e_lib/data/movies.js";
+import {assertDocArrExpectedFuzzy} from "jstests/with_mongot/e2e_lib/search_e2e_utils.js";
 
 const moviesCollName = jsTestName() + "_movies";
 const moviesColl = db.getCollection(moviesCollName);
@@ -32,6 +32,9 @@ basicColl.drop();
 
 assert.commandWorked(basicColl.insert({"_id": 100, "localField": "cakes", "weird": false}));
 assert.commandWorked(basicColl.insert({"_id": 101, "localField": "cakes and kale", "weird": true}));
+
+// Make sure the shard that is going to execute the $unionWith/$lookup has up-to-date routing info.
+basicColl.aggregate([{$lookup: {from: moviesCollName, pipeline: [], as: "out"}}]);
 
 const limit = 20;  // Default limit (number of documents returned)
 const vectorSearchOverrequestFactor =

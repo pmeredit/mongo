@@ -39,7 +39,6 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/stats/ce_histogram.h"
-#include "mongo/stdx/thread.h"
 #include "mongo/util/future.h"
 
 namespace mongo::stats {
@@ -57,7 +56,7 @@ public:
     virtual SemiFuture<StatsCacheVal> getStats(OperationContext* opCtx,
                                                const StatsPathString& statsPath) = 0;
 
-    virtual void setStatsReturnValueForTest(StatusWith<StatsCacheVal> swStats){};
+    virtual void setStatsReturnValueForTest(StatusWith<StatsCacheVal> swStats) {};
 
     virtual ~StatsCacheLoader() {}
 

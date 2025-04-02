@@ -216,9 +216,8 @@ boost::optional<Document> DocumentSourceChangeStreamAddPostImage::lookupLatestPo
     auto resumeTokenData =
         ResumeToken::parse(updateOp[DocumentSourceChangeStream::kIdField].getDocument()).getData();
 
-    auto readConcern = BSON("level"
-                            << "majority"
-                            << "afterClusterTime" << resumeTokenData.clusterTime);
+    auto readConcern = BSON("level" << "majority"
+                                    << "afterClusterTime" << resumeTokenData.clusterTime);
 
     // Update lookup queries sent from mongoS to shards are allowed to use speculative majority
     // reads. Even if the lookup itself succeeded, it may not have returned any results if the
@@ -241,7 +240,7 @@ boost::optional<Document> DocumentSourceChangeStreamAddPostImage::lookupLatestPo
 }
 
 Value DocumentSourceChangeStreamAddPostImage::doSerialize(const SerializationOptions& opts) const {
-    return opts.verbosity
+    return opts.isSerializingForExplain()
         ? Value(Document{
               {DocumentSourceChangeStream::kStageName,
                Document{{"stage"_sd, kStageName},

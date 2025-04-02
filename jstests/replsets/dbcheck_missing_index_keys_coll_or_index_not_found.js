@@ -2,7 +2,7 @@
  * Tests the dbCheck command's missing index keys check behavior when the index is not found.
  *
  * @tags: [
- *   requires_fcv_81
+ *   requires_fcv_80
  * ]
  */
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
@@ -153,12 +153,9 @@ function indexDropAfterFirstBatch() {
 
 // Test with integer index entries (1, 2, 3, etc.), single character string entries ("1",
 // "2", "3", etc.), and long string entries ("1aaaaaaaaaa")
-[null,
- "",
- "aaaaaaaaaa"]
-    .forEach((docSuffix) => {
-        dbCheckDuringIndexBuild(docSuffix);
-    });
+[null, "", "aaaaaaaaaa"].forEach((docSuffix) => {
+    dbCheckDuringIndexBuild(docSuffix);
+});
 
 indexDropAfterFirstBatch();
 

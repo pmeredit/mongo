@@ -37,16 +37,15 @@
 #include "mongo/db/metadata_consistency_types_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/query/client_cursor/clientcursor.h"
 #include "mongo/db/query/client_cursor/cursor_response_gen.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/plan_executor_factory.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/catalog/type_collection.h"
+#include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/catalog/type_tags.h"
 #include "mongo/s/request_types/sharded_ddl_commands_gen.h"
-
 
 namespace mongo {
 namespace metadata_consistency_util {
@@ -121,14 +120,16 @@ std::vector<MetadataInconsistencyItem> checkCollectionMetadataConsistencyAcrossS
     OperationContext* opCtx, const std::vector<CollectionType>& collections);
 
 /**
- * Check different types of inconsistencies from a given set of chunks owned by a collection.
+ * Check different types of inconsistencies from the chunks persisted in 'config.chunks' of the
+ * given collection.
  *
  * The list of inconsistencies is returned as a vector of MetadataInconsistencies objects. If
  * there is no inconsistency, it is returned an empty vector.
+ *
+ * This method can only be called from the config server.
  */
 std::vector<MetadataInconsistencyItem> checkChunksConsistency(OperationContext* opCtx,
-                                                              const CollectionType& collection,
-                                                              const std::vector<ChunkType>& chunks);
+                                                              const CollectionType& collection);
 
 /**
  * Check different types of inconsistencies from a given set of zones owned by a collection.
@@ -148,6 +149,16 @@ std::vector<MetadataInconsistencyItem> checkZonesConsistency(OperationContext* o
  */
 std::vector<MetadataInconsistencyItem> checkCollectionShardingMetadataConsistency(
     OperationContext* opCtx, const CollectionType& collection);
+
+/**
+ * Checks for inconsistencies in the database's metadata between the global catalog and the
+ * shard catalog.
+ *
+ * The list of inconsistencies is returned as a vector of MetadataInconsistencies objects. If
+ * there is no inconsistency, it returns an empty vector.
+ */
+std::vector<MetadataInconsistencyItem> checkDatabaseMetadataConsistency(
+    OperationContext* opCtx, const DatabaseType& dbInGlobalCatalog);
 
 }  // namespace metadata_consistency_util
 }  // namespace mongo

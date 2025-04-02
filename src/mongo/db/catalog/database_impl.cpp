@@ -86,7 +86,6 @@
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_options.h"
-#include "mongo/db/storage/storage_util.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/system_index.h"
 #include "mongo/db/transaction_resources.h"
@@ -94,9 +93,6 @@
 #include "mongo/db/views/view.h"
 #include "mongo/db/views/view_catalog_helpers.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/ctype.h"
@@ -693,6 +689,7 @@ Collection* DatabaseImpl::_createCollection(
     if (generatedUUID && !nss.isOnInternalDb() && !optionsWithUUID.timeseries &&
         !optionsWithUUID.clusteredIndex && !optionsWithUUID.capped &&
         gFeatureFlagRecordIdsReplicated.isEnabledUseLastLTSFCVWhenUninitialized(
+            VersionContext::getDecoration(opCtx),
             serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
         overrideRecordIdsReplicatedDefault.shouldFail()) {
         LOGV2_DEBUG(8700501,
@@ -742,9 +739,13 @@ Collection* DatabaseImpl::_createCollection(
             }
 
             auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
+            const bool directoryPerDB = storageEngine->isUsingDirectoryPerDb();
+            const bool directoryPerIndexes = storageEngine->isUsingDirectoryForIndexes();
+            const auto ident = ident::generateNewCollectionIdent(
+                nss.dbName(), directoryPerDB, directoryPerIndexes);
             std::pair<RecordId, std::unique_ptr<RecordStore>> catalogIdRecordStorePair =
-                uassertStatusOK(storageEngine->getCatalog()->createCollection(
-                    opCtx, nss, optionsWithUUID, true /*allocateDefaultSpace*/));
+                uassertStatusOK(storageEngine->getDurableCatalog()->createCollection(
+                    opCtx, nss, ident, optionsWithUUID));
             auto& catalogId = catalogIdRecordStorePair.first;
 
             auto catalogEntry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(opCtx, catalogId);
@@ -860,10 +861,7 @@ Status DatabaseImpl::userCreateNS(OperationContext* opCtx,
         return swCollator.getStatus();
     }
 
-    if (gFeatureFlagDisallowBucketCollectionWithoutTimeseriesOptions
-            .isEnabledUseLastLTSFCVWhenUninitialized(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
-        nss.isTimeseriesBucketsCollection() && !collectionOptions.timeseries &&
+    if (nss.isTimeseriesBucketsCollection() && !collectionOptions.timeseries &&
         !MONGO_unlikely(skipCreateTimeseriesBucketsWithoutOptionsCheck.shouldFail())) {
         return Status(ErrorCodes::IllegalOperation,
                       "Creation of a timeseries bucket collection without timeseries "

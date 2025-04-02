@@ -29,12 +29,8 @@
 
 #include "mongo/db/query/stats/maxdiff_test_utils.h"
 
-#include <map>
 #include <memory>
-#include <ostream>
 #include <utility>
-
-#include <absl/container/node_hash_map.h>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
@@ -43,14 +39,10 @@
 #include "mongo/db/pipeline/document_source_queue.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/pipeline.h"
-#include "mongo/db/query/ce/histogram_common.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/plan_executor_factory.h"
-#include "mongo/db/query/stats/ce_histogram.h"
-#include "mongo/db/query/stats/max_diff.h"
-#include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::stats {
 
@@ -144,53 +136,12 @@ size_t getActualCard(OperationContext* opCtx,
     return runPipeline(opCtx, query, convertToBSON(input)).size();
 }
 
-ScalarHistogram makeHistogram(std::vector<SBEValue>& randData, size_t nBuckets) {
-    sortValueVector(randData);
-    const DataDistribution& dataDistrib = getDataDistribution(randData);
-    return genMaxDiffHistogram(dataDistrib, nBuckets);
-}
-
 std::string printValueArray(const std::vector<SBEValue>& values) {
     std::stringstream strStream;
     for (size_t i = 0; i < values.size(); ++i) {
         strStream << " " << values[i].get();
     }
     return strStream.str();
-}
-
-std::string plotArrayEstimator(const CEHistogram& estimator, const std::string& header) {
-    std::ostringstream os;
-    os << header << "\n";
-    if (!estimator.getScalar().empty()) {
-        os << "Scalar histogram:\n" << estimator.getScalar().plot();
-    }
-    if (!estimator.getArrayUnique().empty()) {
-        os << "Array unique histogram:\n" << estimator.getArrayUnique().plot();
-    }
-    if (!estimator.getArrayMin().empty()) {
-        os << "Array min histogram:\n" << estimator.getArrayMin().plot();
-    }
-    if (!estimator.getArrayMax().empty()) {
-        os << "Array max histogram:\n" << estimator.getArrayMax().plot();
-    }
-    if (!estimator.getTypeCounts().empty()) {
-        os << "Per scalar data type value counts: ";
-        for (auto tagCount : estimator.getTypeCounts()) {
-            os << tagCount.first << "=" << tagCount.second << " ";
-        }
-    }
-    if (!estimator.getArrayTypeCounts().empty()) {
-        os << "\nPer array data type value counts: ";
-        for (auto tagCount : estimator.getArrayTypeCounts()) {
-            os << tagCount.first << "=" << tagCount.second << " ";
-        }
-    }
-    if (estimator.isArray()) {
-        os << "\nEmpty array count: " << estimator.getEmptyArrayCount();
-    }
-    os << "\n";
-
-    return os.str();
 }
 
 }  // namespace mongo::stats

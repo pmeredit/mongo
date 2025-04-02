@@ -1,6 +1,9 @@
 import {anyEq} from "jstests/aggregation/extras/utils.js";
-import {getExplainCommand} from "jstests/libs/cmd_object_utils.js";
-import {getCollectionName, isTimeSeriesCollection} from "jstests/libs/cmd_object_utils.js";
+import {
+    getCollectionName,
+    getExplainCommand,
+    isTimeSeriesCollection
+} from "jstests/libs/cmd_object_utils.js";
 import {
     everyWinningPlan,
     formatQueryPlanner,
@@ -32,26 +35,20 @@ export class QuerySettingsIndexHintsTests {
         this.indexA = {a: 1};
         this.indexB = {b: 1};
         this.indexAB = {a: 1, b: 1};
+        this.allIndexes = [this.indexA, this.indexB, this.indexAB];
     }
 
-    /**
-     * Asserts that after executing 'command' the most recent query plan from cache would have
-     * 'querySettings' set.
-     */
-    assertQuerySettingsInCacheForCommand(command,
-                                         querySettings,
-                                         collOrViewName = this._qsutils._collName) {
+    static shouldCheckPlanCache(db, command) {
         const explainCmd = getExplainCommand(command);
         const explain = assert.commandWorked(
-            this._db.runCommand(explainCmd),
+            db.runCommand(explainCmd),
             `Failed running explain command ${
-                tojson(explainCmd)} for checking the query settings plan cache check.`);
+                toJsonForLog(explainCmd)} for checking the query settings plan cache check.`);
         const isIdhackQuery =
-            everyWinningPlan(explain, (winningPlan) => isIdhackOrExpress(this._db, winningPlan));
+            everyWinningPlan(explain, (winningPlan) => isIdhackOrExpress(db, winningPlan));
         const isMinMaxQuery = "min" in command || "max" in command;
         const isTriviallyFalse = everyWinningPlan(
-            explain,
-            (winningPlan) => isEofPlan(this._db, winningPlan) || isAlwaysFalsePlan(winningPlan));
+            explain, (winningPlan) => isEofPlan(db, winningPlan) || isAlwaysFalsePlan(winningPlan));
         const {defaultReadPreference, defaultReadConcernLevel, networkErrorAndTxnOverrideConfig} =
             TestData;
         const performsSecondaryReads =
@@ -62,12 +59,12 @@ export class QuerySettingsIndexHintsTests {
             networkErrorAndTxnOverrideConfig.retryOnNetworkErrors;
 
         // If the collection used is a view, determine the underlying collection being used.
-        const collName = getCollectionName(this._db, command);
-        const collHasPartialIndexes = this._db[collName].getIndexes().some(
-            (idx) => idx.hasOwnProperty('partialFilterExpression'));
-        const isTimeSeriesColl = isTimeSeriesCollection(this._db, collName);
+        const collName = getCollectionName(db, command);
+        const collHasPartialIndexes =
+            db[collName].getIndexes().some((idx) => idx.hasOwnProperty('partialFilterExpression'));
+        const isTimeSeriesColl = isTimeSeriesCollection(db, collName);
 
-        const shouldCheckPlanCache =
+        const res =
             // Single solution plans are not cached in classic, therefore do not perform plan cache
             // checks for when the classic cache is used. Note that the classic cache is used
             // by default for SBE, except when featureFlagSbeFull is on.
@@ -75,7 +72,7 @@ export class QuerySettingsIndexHintsTests {
             // classic cache with SBE.
             // TODO SERVER-13341: Relax this check to include the case where classic is being used.
             // TODO SERVER-94392: Relax this check when SBE plan cache supports partial indexes.
-            (getEngine(explain) === "sbe" && checkSbeFullFeatureFlagEnabled(this._db) &&
+            (getEngine(explain) === "sbe" && checkSbeFullFeatureFlagEnabled(db) &&
              !collHasPartialIndexes) &&
             // Express or IDHACK optimized queries are not cached.
             !isIdhackQuery &&
@@ -84,11 +81,11 @@ export class QuerySettingsIndexHintsTests {
             // Similarly, trivially false plans are not cached.
             !isTriviallyFalse &&
             // Subplans are cached differently from normal plans.
-            !planHasStage(this._db, explain, "OR") &&
+            !planHasStage(db, explain, "OR") &&
             // If query is executed on secondaries, do not assert the cache.
             !performsSecondaryReads &&
             // Do not check plan cache if causal consistency is enabled.
-            !this._db.getMongo().isCausalConsistency() &&
+            !db.getMongo().isCausalConsistency() &&
             // $planCacheStats can not be run in transactions.
             !isInTxnPassthrough &&
             // Retrying on network errors most likely is related to stepdown, which does not go
@@ -105,10 +102,21 @@ export class QuerySettingsIndexHintsTests {
             // For timeseries collections with featureFlagSbeFull turned on, it is not possible to
             // run the planCacheClear command because it is a view, so we cannot acquire lock.
             !isTimeSeriesColl;
+        return res;
+    }
 
-        if (!shouldCheckPlanCache) {
+    /**
+     * Asserts that after executing 'command' the most recent query plan from cache would have
+     * 'querySettings' set.
+     */
+    assertQuerySettingsInCacheForCommand(command,
+                                         querySettings,
+                                         collOrViewName = this._qsutils._collName) {
+        if (!QuerySettingsIndexHintsTests.shouldCheckPlanCache(this._db, command)) {
             return;
         }
+
+        const collName = getCollectionName(this._db, command);
 
         // Clear the plan cache before running any queries.
         this._db[collName].getPlanCache().clear();
@@ -128,7 +136,10 @@ export class QuerySettingsIndexHintsTests {
     }
 
     assertIndexUse(cmd, expectedIndex, stagesExtractor, expectedStrategy) {
-        const explain = assert.commandWorked(this._db.runCommand({explain: cmd}));
+        // For queries involving aggregation pipelines, we may not be able to deduct index usage
+        // unless we run explain with "allPlansExecution" verbosity.
+        const explain = assert.commandWorked(
+            this._db.runCommand(getExplainCommand(cmd, "allPlansExecution" /* verbosity */)));
         const stagesUsingIndex = stagesExtractor(explain);
         if (expectedIndex !== undefined) {
             assert.gte(stagesUsingIndex.length, 1, explain);
@@ -193,7 +204,7 @@ export class QuerySettingsIndexHintsTests {
     }
 
     assertCollScanStage(cmd, allowedDirections) {
-        const explain = assert.commandWorked(this._db.runCommand({explain: cmd}));
+        const explain = assert.commandWorked(this._db.runCommand(getExplainCommand(cmd)));
         const collscanStages = getQueryPlanners(explain)
                                    .map(queryPlan => getWinningPlanFromExplain(queryPlan, false))
                                    .flatMap(winningPlan => getPlanStages(winningPlan, "COLLSCAN"));
@@ -208,7 +219,7 @@ export class QuerySettingsIndexHintsTests {
      */
     assertQuerySettingsIndexApplication(querySettingsQuery, ns) {
         const query = this._qsutils.withoutDollarDB(querySettingsQuery);
-        for (const index of [this.indexA, this.indexB, this.indexAB]) {
+        for (const index of this.allIndexes) {
             const settings = {indexHints: {ns, allowedIndexes: [index]}};
             this._qsutils.withQuerySettings(querySettingsQuery, settings, () => {
                 this.assertIndexScanStage(query, index, ns);
@@ -276,7 +287,7 @@ export class QuerySettingsIndexHintsTests {
      */
     assertQuerySettingsLookupPipelineIndexApplication(querySettingsQuery, ns) {
         const query = this._qsutils.withoutDollarDB(querySettingsQuery);
-        for (const index of [this.indexA, this.indexB, this.indexAB]) {
+        for (const index of this.allIndexes) {
             const settings = {indexHints: {ns, allowedIndexes: [index]}};
             this._qsutils.withQuerySettings(querySettingsQuery, settings, () => {
                 this.assertLookupPipelineStage(query, index);
@@ -291,8 +302,7 @@ export class QuerySettingsIndexHintsTests {
      */
     assertQuerySettingsIndexAndLookupPipelineApplications(querySettingsQuery, mainNs, secondaryNs) {
         const query = this._qsutils.withoutDollarDB(querySettingsQuery);
-        for (const [mainCollIndex, secondaryCollIndex] of selfCrossProduct(
-                 [this.indexA, this.indexB, this.indexAB])) {
+        for (const [mainCollIndex, secondaryCollIndex] of selfCrossProduct(this.allIndexes)) {
             const settings = {
                 indexHints: [
                     {ns: mainNs, allowedIndexes: [mainCollIndex]},
@@ -315,8 +325,7 @@ export class QuerySettingsIndexHintsTests {
      */
     assertQuerySettingsIndexApplications(querySettingsQuery, mainNs, secondaryNs) {
         const query = this._qsutils.withoutDollarDB(querySettingsQuery);
-        for (const [mainCollIndex, secondaryCollIndex] of selfCrossProduct(
-                 [this.indexA, this.indexB, this.indexAB])) {
+        for (const [mainCollIndex, secondaryCollIndex] of selfCrossProduct(this.allIndexes)) {
             const settings = {
                 indexHints: [
                     {ns: mainNs, allowedIndexes: [mainCollIndex]},
@@ -386,7 +395,7 @@ export class QuerySettingsIndexHintsTests {
         const queryWithHint = {...query, hint: this.indexA};
         const settings = {indexHints: {ns, allowedIndexes: [this.indexAB]}};
         const getWinningPlansForQuery = (query) => {
-            const explain = assert.commandWorked(this._db.runCommand({explain: query}));
+            const explain = assert.commandWorked(this._db.runCommand(getExplainCommand(query)));
             return getQueryPlanners(explain).map(queryPlan =>
                                                      getWinningPlanFromExplain(queryPlan, false));
         };
@@ -418,7 +427,8 @@ export class QuerySettingsIndexHintsTests {
             let winningPlans = null;
             this._qsutils.withQuerySettings(
                 {...query, $db: querySettingsQuery.$db}, settings, () => {
-                    const explain = assert.commandWorked(this._db.runCommand({explain: query}));
+                    const explainCmd = getExplainCommand(query);
+                    const explain = assert.commandWorked(this._db.runCommand(explainCmd));
                     winningPlans = getQueryPlanners(explain).map(
                         queryPlan => getWinningPlanFromExplain(queryPlan, false));
                 });
@@ -433,47 +443,79 @@ export class QuerySettingsIndexHintsTests {
 
     /**
      * Ensure that queries that fallback to multiplanning when the provided settings don't generate
-     * any viable plans have the same winning plan as the queries that have no query settings
+     * any viable plans have the same generated plans as the queries that have no query settings
      * attached to them.
      */
     assertQuerySettingsFallback(querySettingsQuery, ns) {
         const query = this._qsutils.withoutDollarDB(querySettingsQuery);
         const settings = {indexHints: {ns, allowedIndexes: ["doesnotexist"]}};
-        const getAllQueryPlans = (explain) => getQueryPlanners(explain).flatMap(queryPlanner => {
-            const {winningPlan, rejectedPlans} = formatQueryPlanner(queryPlanner);
-            return rejectedPlans.concat([winningPlan]);
-        });
+        const explainCmd = getExplainCommand(query);
+
+        const explainWithQuerySettings =
+            this._qsutils.withQuerySettings(querySettingsQuery, settings, () => {
+                this.assertQuerySettingsInCacheForCommand(query, settings);
+                return assert.commandWorked(
+                    this._db.runCommand(explainCmd),
+                    `Failed running ${tojson(explainCmd)} after setting query settings`);
+            });
+        const explainWithoutQuerySettings = assert.commandWorked(
+            this._db.runCommand(explainCmd),
+            `Failed running ${tojson(explainCmd)} before setting query settings`);
 
         // It's not guaranteed for all the queries to preserve the order of the stages when
         // replanning (namely in the case of subplanning with $or statements). Flatten the plan tree
         // & check that the plans' elements are equal using `assert.sameMembers` to accommodate this
         // behavior and avoid potential failures.
-        const explainCmd = getExplainCommand(query);
-        const explainWithoutQuerySettings = assert.commandWorked(
-            this._db.runCommand(explainCmd),
-            `Failed running ${tojson(explainCmd)} before setting query settings`);
-        const queryPlansWithoutQuerySettings = getAllQueryPlans(explainWithoutQuerySettings);
-        const changeStreamIgnoreFields = ["t", "ts", "minRecord"];
-        this._qsutils.withQuerySettings(querySettingsQuery, settings, () => {
-            const explainWithQuerySettings = assert.commandWorked(
-                this._db.runCommand(explainCmd),
-                `Failed running ${tojson(explainCmd)} after setting query settings`);
-            const queryPlansWithQuerySettings = getAllQueryPlans(explainWithQuerySettings);
-            assert(anyEq(queryPlansWithoutQuerySettings,
-                         queryPlansWithQuerySettings,
-                         false /* verbose */,
-                         undefined /* valueComparator - will use bsonWoCompare */,
-                         changeStreamIgnoreFields),
-                   "Expected the query without query settings and the one with query settings to " +
-                       "have identical plans: " + tojson(queryPlansWithoutQuerySettings) +
-                       " != " + tojson(queryPlansWithQuerySettings));
-            assert.eq(
-                explainWithQuerySettings.pipeline,
-                explainWithoutQuerySettings.pipeline,
-                "Expected the query without query settings and the one with settings to have " +
-                    "identical pipelines.");
-            this.assertQuerySettingsInCacheForCommand(query, settings);
+        const getAllQueryPlans = (explain) => getQueryPlanners(explain).flatMap(queryPlanner => {
+            const {winningPlan, rejectedPlans} = formatQueryPlanner(queryPlanner);
+            return rejectedPlans.concat([winningPlan]);
         });
+        const queryPlansWithoutQuerySettings = getAllQueryPlans(explainWithoutQuerySettings);
+        const queryPlansWithQuerySettings = getAllQueryPlans(explainWithQuerySettings);
+        const changeStreamIgnoreFields = ["t", "ts", "minRecord"];
+        assert(anyEq(queryPlansWithoutQuerySettings,
+                     queryPlansWithQuerySettings,
+                     false /* verbose */,
+                     undefined /* valueComparator - will use bsonWoCompare */,
+                     changeStreamIgnoreFields),
+               "Expected the query without query settings and the one with query settings to " +
+                   "have identical plans: " + tojson(queryPlansWithoutQuerySettings) +
+                   " != " + tojson(queryPlansWithQuerySettings));
+        assert.eq(explainWithQuerySettings.pipeline,
+                  explainWithoutQuerySettings.pipeline,
+                  "Expected the query without query settings and the one with settings to have " +
+                      "identical pipelines.");
+    }
+
+    /**
+     * Ensure that queries with no valid plans throw the 'NoQueryExecutionPlans' exception.
+     */
+    assertQuerySettingsFallbackNoQueryExecutionPlans(querySettingsQuery, ns) {
+        const collName = getCollectionName(this._db, querySettingsQuery);
+        const coll = this._db[collName];
+        const indexWildcardC = {"c.$**": 1};
+
+        const indexCreationRes = coll.createIndex(indexWildcardC);
+        // If we can't create a wildcard index and force a 'NoQueryExecutionPlan', skip this case.
+        if (!indexCreationRes.ok)
+            return;
+
+        const invalidQuery = {...querySettingsQuery, hint: indexWildcardC};
+
+        const query = this._qsutils.withoutDollarDB(invalidQuery);
+        const settings = {indexHints: {ns, allowedIndexes: ["doesnotexist"]}};
+
+        const resultWithoutPqs = this._db.runCommand(query);
+        // If the initial query throws another error, the query with PQS won't throw
+        // 'NoQueryExecutionPlans'.
+        if (resultWithoutPqs.code === ErrorCodes.NoQueryExecutionPlans) {
+            this._qsutils.withQuerySettings(invalidQuery, settings, () => {
+                assert.commandFailedWithCode(this._db.runCommand(query),
+                                             ErrorCodes.NoQueryExecutionPlans);
+            });
+        }
+
+        assert.commandWorked(coll.dropIndex(indexWildcardC));
     }
 
     /**

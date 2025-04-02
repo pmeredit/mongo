@@ -75,7 +75,8 @@ public:
     class LiteParsed final : public LiteParsedDocumentSource {
     public:
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec) {
+                                                 const BSONElement& spec,
+                                                 const LiteParserOptions& options) {
             return std::make_unique<LiteParsed>(spec.fieldName(), nss.tenantId());
         }
 
@@ -103,8 +104,8 @@ public:
 
         ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
                                                      bool isImplicitDefault) const override {
-            // TODO (SERVER-97061): Update this once we support snapshot read concern on
-            // $listClusterCatalog.
+            // The listCollections command that runs under the hood only accepts 'local' read
+            // concern.
             return onlyReadConcernLocalSupported(kStageNameInternal, level, isImplicitDefault);
         }
 
@@ -120,7 +121,7 @@ public:
         return id;
     }
 
-    void addVariableRefs(std::set<Variables::Id>* refs) const final{};
+    void addVariableRefs(std::set<Variables::Id>* refs) const final {};
 
     Value serialize(const SerializationOptions& opts = SerializationOptions{}) const final {
         // Since this DocumentSource is serialized to more than one stage, the single-stage has no

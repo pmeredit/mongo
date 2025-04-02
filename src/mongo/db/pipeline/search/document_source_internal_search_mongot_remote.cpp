@@ -49,6 +49,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/transport/transport_layer.h"
+#include <boost/none.hpp>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
@@ -86,11 +87,13 @@ using executor::TaskExecutorCursor;
 DocumentSourceInternalSearchMongotRemote::DocumentSourceInternalSearchMongotRemote(
     InternalSearchMongotRemoteSpec spec,
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    std::shared_ptr<executor::TaskExecutor> taskExecutor)
+    std::shared_ptr<executor::TaskExecutor> taskExecutor,
+    boost::optional<MongotQueryViewInfo> view)
     : DocumentSource(kStageName, expCtx),
       _mergingPipeline(spec.getMergingPipeline().has_value()
                            ? mongo::Pipeline::parse(*spec.getMergingPipeline(), expCtx)
                            : nullptr),
+      _view(view),
       _spec(std::move(spec)),
       _taskExecutor(taskExecutor) {
     LOGV2_DEBUG(9497006,
@@ -112,7 +115,7 @@ Value DocumentSourceInternalSearchMongotRemote::addMergePipelineIfNeeded(
         // We've redacted the interesting parts of the stage, return early.
         return innerSpecVal;
     }
-    if ((!opts.verbosity || pExpCtx->getInRouter()) &&
+    if ((!opts.isSerializingForExplain() || pExpCtx->getInRouter()) &&
         _spec.getMetadataMergeProtocolVersion().has_value() && _mergingPipeline) {
         MutableDocument innerSpec{innerSpecVal.getDocument()};
         innerSpec[InternalSearchMongotRemoteSpec::kMergingPipelineFieldName] =
@@ -125,7 +128,7 @@ Value DocumentSourceInternalSearchMongotRemote::addMergePipelineIfNeeded(
 Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
     const SerializationOptions& opts) const {
     // Though router can generate explain output, it should never make a remote call to the mongot.
-    if (!opts.verbosity || pExpCtx->getInRouter()) {
+    if (!opts.isSerializingForExplain() || pExpCtx->getInRouter()) {
         if (_spec.getMetadataMergeProtocolVersion().has_value()) {
             // TODO SERVER-90941 The IDL should be able to handle this serialization once we
             // populate the query_shape field.
@@ -171,7 +174,10 @@ Value DocumentSourceInternalSearchMongotRemote::serializeWithoutMergePipeline(
 
     BSONObj explainInfo = explainResponse.value_or_eval([&] {
         return mongot_cursor::getSearchExplainResponse(
-            pExpCtx.get(), _spec.getMongotQuery(), _taskExecutor.get());
+            pExpCtx.get(),
+            _spec.getMongotQuery(),
+            _taskExecutor.get(),
+            _view ? boost::make_optional(_view->getViewNss()) : boost::none);
     });
 
     MutableDocument mDoc;
@@ -217,6 +223,21 @@ Value DocumentSourceInternalSearchMongotRemote::serialize(const SerializationOpt
         Document{{getSourceName(), addMergePipelineIfNeeded(std::move(innerSpecVal), opts)}});
 }
 
+DepsTracker::State DocumentSourceInternalSearchMongotRemote::getDependencies(
+    DepsTracker* deps) const {
+    // This stage doesn't currently support tracking field dependencies since mongot is
+    // responsible for determining what fields to return. We do need to track metadata
+    // dependencies though, so downstream stages know they are allowed to access "searchScore"
+    // metadata.
+    // TODO SERVER-101100 Implement logic for dependency analysis.
+
+    deps->setMetadataAvailable(DocumentMetadataFields::kSearchScore);
+    if (hasScoreDetails()) {
+        deps->setMetadataAvailable(DocumentMetadataFields::kSearchScoreDetails);
+    }
+    return DepsTracker::State::NOT_SUPPORTED;
+}
+
 boost::optional<BSONObj> DocumentSourceInternalSearchMongotRemote::_getNext() {
     try {
         return _cursor->getNext(pExpCtx->getOperationContext());
@@ -248,8 +269,7 @@ bool DocumentSourceInternalSearchMongotRemote::shouldReturnEOF() {
     }
 
     if (pExpCtx->getExplain() &&
-        !feature_flags::gFeatureFlagSearchExplainExecutionStats.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        !feature_flags::gFeatureFlagSearchExplainExecutionStats.isEnabled()) {
         return true;
     }
 
@@ -326,7 +346,13 @@ DocumentSourceInternalSearchMongotRemote::establishCursor() {
     // DocumentSourceInternalSearchMongotRemote if we establish the cursors during search_helper
     // pipeline preparation instead.
     auto cursors = mongot_cursor::establishCursorsForSearchStage(
-        pExpCtx, _spec, _taskExecutor, boost::none, nullptr, getSearchIdLookupMetrics());
+        pExpCtx,
+        _spec,
+        _taskExecutor,
+        boost::none,
+        nullptr,
+        getSearchIdLookupMetrics(),
+        _view ? boost::make_optional(_view->getViewNss()) : boost::none);
     // Should be called only in unsharded scenario, therefore only expect a results cursor and no
     // metadata cursor.
     tassert(5253301, "Expected exactly one cursor from mongot", cursors.size() == 1);

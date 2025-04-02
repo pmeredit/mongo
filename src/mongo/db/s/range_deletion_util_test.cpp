@@ -68,8 +68,7 @@
 #include "mongo/s/database_version.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/fail_point.h"
 
@@ -143,10 +142,7 @@ public:
                        ChunkRange{BSON(kShardKey << MINKEY), BSON(kShardKey << MAXKEY)},
                        ChunkVersion({epoch, Timestamp(1, 1)}, {1, 0}),
                        ShardId("dummyShardId")}});
-        ChunkManager cm(ShardId("dummyShardId"),
-                        DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                        makeStandaloneRoutingTableHistory(std::move(rt)),
-                        boost::none);
+        ChunkManager cm(makeStandaloneRoutingTableHistory(std::move(rt)), boost::none);
         AutoGetDb autoDb(_opCtx, kNss.dbName(), MODE_IX);
         Lock::CollectionLock collLock(_opCtx, kNss, MODE_IX);
         CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(_opCtx, kNss)

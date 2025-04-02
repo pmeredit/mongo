@@ -65,7 +65,8 @@ public:
 
             ConfigsvrAbortReshardCollection configsvrAbortReshardCollection(nss);
             configsvrAbortReshardCollection.setDbName(request().getDbName());
-            configsvrAbortReshardCollection.setProvenance(ProvenanceEnum::kMoveCollection);
+            configsvrAbortReshardCollection.setProvenance(
+                ReshardingProvenanceEnum::kMoveCollection);
             generic_argument_util::setMajorityWriteConcern(configsvrAbortReshardCollection,
                                                            &opCtx->getWriteConcern());
 
@@ -112,7 +113,7 @@ public:
 };
 
 MONGO_REGISTER_COMMAND(ClusterAbortMoveCollectionCmd)
-    .requiresFeatureFlag(&resharding::gFeatureFlagMoveCollection)
+    .requiresFeatureFlag(resharding::gFeatureFlagMoveCollection)
     .forRouter();
 
 }  // namespace

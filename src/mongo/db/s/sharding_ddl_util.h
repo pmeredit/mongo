@@ -33,13 +33,10 @@
 #include <boost/move/utility_core.hpp>
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
-#include <cstddef>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "mongo/base/status.h"
-#include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
@@ -48,34 +45,27 @@
 #include "mongo/db/catalog/drop_collection.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/s/sharding_ddl_util_detail.h"
 #include "mongo/db/session/logical_session_id_gen.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/db/transaction/transaction_api.h"
-#include "mongo/db/write_block_bypass.h"
 #include "mongo/db/write_concern_options.h"
-#include "mongo/executor/async_rpc.h"
-#include "mongo/executor/async_rpc_error_info.h"
-#include "mongo/executor/async_rpc_targeter.h"
-#include "mongo/executor/async_rpc_util.h"
-#include "mongo/executor/remote_command_response.h"
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/executor/task_executor.h"
-#include "mongo/rpc/metadata/impersonated_user_metadata.h"
 #include "mongo/s/async_requests_sender.h"
-#include "mongo/s/async_rpc_shard_retry_policy.h"
-#include "mongo/s/async_rpc_shard_targeter.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/request_types/sharded_ddl_commands_gen.h"
-#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/cancellation.h"
-#include "mongo/util/future.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/uuid.h"
 
 
 namespace mongo {
+
+// Forward declaration
+enum class AuthoritativeMetadataAccessLevelEnum : std::int32_t;
 
 // TODO (SERVER-74481): Define these functions in the nested `sharding_ddl_util` namespace when the
 // IDL compiler will support the use case.
@@ -86,100 +76,43 @@ Status sharding_ddl_util_deserializeErrorStatusFromBSON(const BSONElement& bsonE
 
 namespace sharding_ddl_util {
 
-/**
- * Creates a barrier after which we are guaranteed that all writes to the config server performed by
- * the previous primary have been majority commited and will be seen by the new primary.
- */
-void linearizeCSRSReads(OperationContext* opCtx);
+template <typename CommandType>
+std::vector<AsyncRequestsSender::Response> sendAuthenticatedCommandToShards(
+    OperationContext* opCtx,
+    std::shared_ptr<async_rpc::AsyncRPCOptions<CommandType>> originalOpts,
+    const std::map<ShardId, ShardVersion>& shardIdsToShardVersions,
+    const ReadPreferenceSetting readPref,
+    bool throwOnError) {
+    std::vector<ShardId> shardIds;
+    std::vector<ShardVersion> shardVersions;
+    for (auto const& [shardId, shardVersion] : shardIdsToShardVersions) {
+        shardIds.push_back(shardId);
+        shardVersions.push_back(shardVersion);
+    }
+    return sharding_ddl_util_detail::sendAuthenticatedCommandToShards(
+        opCtx, originalOpts, shardIds, shardVersions, readPref, throwOnError);
+}
 
-/**
- * Generic utility to send a command to a list of shards. Throws if one of the commands fails.
- */
 template <typename CommandType>
 std::vector<AsyncRequestsSender::Response> sendAuthenticatedCommandToShards(
     OperationContext* opCtx,
     std::shared_ptr<async_rpc::AsyncRPCOptions<CommandType>> originalOpts,
     const std::vector<ShardId>& shardIds,
     bool throwOnError = true) {
-    if (shardIds.size() == 0) {
-        return {};
-    }
-
-    // AsyncRPC ignores impersonation metadata so we need to manually attach them to
-    // the command
-    if (auto meta = rpc::getAuthDataToImpersonatedUserMetadata(opCtx)) {
-        originalOpts->cmd.setDollarAudit(*meta);
-    }
-    originalOpts->cmd.setMayBypassWriteBlocking(
-        WriteBlockBypass::get(opCtx).isWriteBlockBypassEnabled());
-
-    std::vector<ExecutorFuture<async_rpc::AsyncRPCResponse<typename CommandType::Reply>>> futures;
-    auto indexToShardId = std::make_shared<stdx::unordered_map<int, ShardId>>();
-
-    CancellationSource cancelSource(originalOpts->token);
-
-    for (size_t i = 0; i < shardIds.size(); ++i) {
-        ReadPreferenceSetting readPref(ReadPreference::PrimaryOnly);
-        std::unique_ptr<async_rpc::Targeter> targeter =
-            std::make_unique<async_rpc::ShardIdTargeter>(
-                originalOpts->exec, opCtx, shardIds[i], readPref);
-        bool startTransaction = originalOpts->cmd.getStartTransaction()
-            ? *originalOpts->cmd.getStartTransaction()
-            : false;
-        auto retryPolicy = std::make_shared<async_rpc::ShardRetryPolicyWithIsStartingTransaction>(
-            Shard::RetryPolicy::kIdempotentOrCursorInvalidated, startTransaction);
-        auto opts = std::make_shared<async_rpc::AsyncRPCOptions<CommandType>>(
-            originalOpts->exec, cancelSource.token(), originalOpts->cmd, retryPolicy);
-        futures.push_back(async_rpc::sendCommand<CommandType>(opts, opCtx, std::move(targeter)));
-        (*indexToShardId)[i] = shardIds[i];
-    }
-
-    auto formatResponse = [](async_rpc::AsyncRPCResponse<typename CommandType::Reply> reply) {
-        BSONObjBuilder replyBob;
-        reply.response.serialize(&replyBob);
-        reply.genericReplyFields.serialize(&replyBob);
-        return executor::RemoteCommandResponse(reply.targetUsed, replyBob.obj(), reply.elapsed);
-    };
-
-    if (throwOnError) {
-        auto responses = async_rpc::getAllResponsesOrFirstErrorWithCancellation<
-                             AsyncRequestsSender::Response,
-                             async_rpc::AsyncRPCResponse<typename CommandType::Reply>>(
-                             std::move(futures),
-                             cancelSource,
-                             [indexToShardId, formatResponse](
-                                 async_rpc::AsyncRPCResponse<typename CommandType::Reply> reply,
-                                 size_t index) -> AsyncRequestsSender::Response {
-                                 return AsyncRequestsSender::Response{(*indexToShardId)[index],
-                                                                      formatResponse(reply)};
-                             })
-                             .getNoThrow();
-
-        if (auto status = responses.getStatus(); status != Status::OK()) {
-            uassertStatusOK(async_rpc::unpackRPCStatus(status));
-        }
-
-        return responses.getValue();
-    } else {
-        return async_rpc::getAllResponses<AsyncRequestsSender::Response,
-                                          async_rpc::AsyncRPCResponse<typename CommandType::Reply>>(
-                   std::move(futures),
-                   [indexToShardId, formatResponse](
-                       StatusWith<async_rpc::AsyncRPCResponse<typename CommandType::Reply>> swReply,
-                       size_t index) -> AsyncRequestsSender::Response {
-                       auto response = [&]() -> StatusWith<executor::RemoteCommandResponse> {
-                           if (!swReply.isOK()) {
-                               return async_rpc::unpackRPCStatus(swReply.getStatus());
-                           } else {
-                               return formatResponse(swReply.getValue());
-                           }
-                       }();
-
-                       return AsyncRequestsSender::Response{(*indexToShardId)[index], response};
-                   })
-            .get();
-    }
+    return sharding_ddl_util_detail::sendAuthenticatedCommandToShards(
+        opCtx,
+        originalOpts,
+        shardIds,
+        boost::none /* shardVersions */,
+        ReadPreferenceSetting{ReadPreference::PrimaryOnly},
+        throwOnError);
 }
+
+/**
+ * Creates a barrier after which we are guaranteed that all writes to the config server performed by
+ * the previous primary have been majority commited and will be seen by the new primary.
+ */
+void linearizeCSRSReads(OperationContext* opCtx);
 
 /**
  * Erase tags metadata from config server for the given namespace, using the _configsvrRemoveTags
@@ -379,6 +312,38 @@ void assertDataMovementAllowed();
  * character limit.
  */
 void assertNamespaceLengthLimit(const NamespaceString& nss, bool isUnsharded);
+
+/**
+ *  Commits a create of the database metadata to the shard catalog by sending the command
+ * `_shardsvrCommitCreateDatabaseMetadata` to the appropiate shard. This command can be
+ * used to update the database metadata of the shard catalog of any shard.
+ */
+void commitCreateDatabaseMetadataToShardCatalog(
+    OperationContext* opCtx,
+    const DatabaseType& db,
+    const OperationSessionInfo& osi,
+    const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+    const CancellationToken& token);
+
+/**
+ *  Commits a drop of the database metadata to the shard catalog by sending the command
+ * `_shardsvrCommitDropDatabaseMetadata` to the appropiate shard. This command can be
+ * used to update the database metadata of the shard catalog of any shard.
+ */
+void commitDropDatabaseMetadataToShardCatalog(
+    OperationContext* opCtx,
+    const DatabaseName& dbName,
+    const ShardId& shardId,
+    const OperationSessionInfo& osi,
+    const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+    const CancellationToken& token);
+
+/**
+ * Based on the FCV, get the where the DDL needs to act accordingly to the database
+ * authoritativeness.
+ */
+AuthoritativeMetadataAccessLevelEnum getGrantedAuthoritativeMetadataAccessLevel(
+    const VersionContext& vCtx, const ServerGlobalParams::FCVSnapshot& snapshot);
 
 }  // namespace sharding_ddl_util
 }  // namespace mongo

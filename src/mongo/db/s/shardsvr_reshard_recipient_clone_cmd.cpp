@@ -63,9 +63,10 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kCommand
 
-
 namespace mongo {
 namespace {
+
+MONGO_FAIL_POINT_DEFINE(pauseAfterRecipientReceiveCloneCmd);
 
 class ShardsvrReshardRecipientCloneCommand final
     : public TypedCommand<ShardsvrReshardRecipientCloneCommand> {
@@ -92,23 +93,15 @@ public:
                       "Resharding recipient received clone command.",
                       "reshardingUUID"_attr = uuid());
 
-                auto tempNss = (*machine)->getMetadata().getTempReshardingNss();
-                auto currentShardHasAnyChunks = [&]() -> bool {
-                    AutoGetCollection autoColl(opCtx, tempNss, MODE_IS);
-                    const auto scsr =
-                        CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx,
-                                                                                          tempNss);
-                    const auto optMetadata = scsr->getCurrentMetadataIfKnown();
-                    return optMetadata && optMetadata->currentShardHasAnyChunks();
-                }();
+                pauseAfterRecipientReceiveCloneCmd.pauseWhileSet();
 
                 (*machine)
-                    ->fullfillAllDonorsPreparedToDonate(
+                    ->fulfillAllDonorsPreparedToDonate(
                         {request().getCloneTimestamp(),
                          request().getApproxCopySize().getApproxDocumentsToCopy().get_value_or(0),
                          request().getApproxCopySize().getApproxBytesToCopy().get_value_or(0),
                          request().getDonorShards()},
-                        !currentShardHasAnyChunks)
+                        opCtx->getCancellationToken())
                     .get();
             } else {
                 // If state machine does not exist, either this message was delayed and the
@@ -159,9 +152,7 @@ public:
         return AllowedOnSecondary::kNever;
     }
 };
-MONGO_REGISTER_COMMAND(ShardsvrReshardRecipientCloneCommand)
-    .requiresFeatureFlag(&resharding::gFeatureFlagUnshardCollection)
-    .forShard();
+MONGO_REGISTER_COMMAND(ShardsvrReshardRecipientCloneCommand).forShard();
 
 }  // namespace
 }  // namespace mongo

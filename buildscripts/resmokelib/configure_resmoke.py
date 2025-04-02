@@ -100,6 +100,7 @@ def _validate_options(parser, args):
     mongocryptd_set_param_errors = get_set_param_errors(
         config.get("mongocryptd_set_parameters") or []
     )
+    mongo_set_param_errors = get_set_param_errors(config.get("mongo_set_parameters") or [])
     error_msgs = {}
     if mongod_set_param_errors:
         error_msgs["mongodSetParameters"] = mongod_set_param_errors
@@ -107,6 +108,8 @@ def _validate_options(parser, args):
         error_msgs["mongosSetParameters"] = mongos_set_param_errors
     if mongocryptd_set_param_errors:
         error_msgs["mongocryptdSetParameters"] = mongocryptd_set_param_errors
+    if mongo_set_param_errors:
+        error_msgs["mongoSetParameters"] = mongo_set_param_errors
     if error_msgs:
         parser.error(str(error_msgs))
 
@@ -342,7 +345,11 @@ be invoked as either:
     )
 
     with open("buildscripts/resmokeconfig/fully_disabled_feature_flags.yml") as fully_disabled_ffs:
-        force_disabled_flags = yaml.safe_load(fully_disabled_ffs)
+        # the ENABLED_FEATURE_FLAGS list already excludes the fully disabled features flags
+        # This keeps any feature flags enabled that were manually turned on from being excluded
+        force_disabled_flags = set(yaml.safe_load(fully_disabled_ffs)) - set(
+            _config.ENABLED_FEATURE_FLAGS
+        )
 
     _config.EXCLUDE_WITH_ANY_TAGS.extend(force_disabled_flags)
 
@@ -352,9 +359,11 @@ be invoked as either:
     else:
         # Don't run tests with feature flags that are not enabled.
         _config.EXCLUDE_WITH_ANY_TAGS.extend(not_enabled_feature_flags)
-        _config.EXCLUDE_WITH_ANY_TAGS.extend(
-            [f"{feature_flag}_incompatible" for feature_flag in _config.ENABLED_FEATURE_FLAGS]
-        )
+
+    # Don't run tests that are incompatible with enabled feature flags.
+    _config.EXCLUDE_WITH_ANY_TAGS.extend(
+        [f"{feature_flag}_incompatible" for feature_flag in _config.ENABLED_FEATURE_FLAGS]
+    )
 
     _config.DOCKER_COMPOSE_BUILD_IMAGES = config.pop("docker_compose_build_images")
     if _config.DOCKER_COMPOSE_BUILD_IMAGES is not None:
@@ -454,7 +463,7 @@ be invoked as either:
             _config.WT_INDEX_CONFIG,
             _config.CONFIG_FUZZER_ENCRYPTION_OPTS,
         ) = mongo_fuzzer_configs.fuzz_mongod_set_parameters(
-            _config.FUZZ_MONGOD_CONFIGS, _config.CONFIG_FUZZ_SEED, _config.MONGOD_SET_PARAMETERS
+            _config.CONFIG_FUZZ_SEED, _config.MONGOD_SET_PARAMETERS
         )
         _config.EXCLUDE_WITH_ANY_TAGS.extend(["uses_compact"])
 
@@ -473,6 +482,7 @@ be invoked as either:
         )
 
     _config.MONGOCRYPTD_SET_PARAMETERS = _merge_set_params(config.pop("mongocryptd_set_parameters"))
+    _config.MONGO_SET_PARAMETERS = _merge_set_params(config.pop("mongo_set_parameters"))
 
     _config.MONGOT_EXECUTABLE = _expand_user(config.pop("mongot-localdev/mongot_executable"))
     mongot_set_parameters = config.pop("mongot_set_parameters")
@@ -569,6 +579,8 @@ be invoked as either:
         _config.SUITE_FILES = _config.SUITE_FILES.split(",")
     _config.TAG_FILES = config.pop("tag_files")
     _config.USER_FRIENDLY_OUTPUT = config.pop("user_friendly_output")
+    _config.LOG_FORMAT = config.pop("log_format")
+    _config.LOG_LEVEL = config.pop("log_level")
     _config.SANITY_CHECK = config.pop("sanity_check")
 
     # Internal testing options.
@@ -617,6 +629,7 @@ be invoked as either:
                     "evergreen.task.id": _config.EVERGREEN_TASK_ID,
                     "evergreen.task.name": _config.EVERGREEN_TASK_NAME,
                     "evergreen.variant.name": _config.EVERGREEN_VARIANT_NAME,
+                    "evergreen.version.id": _config.EVERGREEN_VERSION_ID,
                     "evergreen.revision": _config.EVERGREEN_REVISION,
                     "evergreen.patch_build": _config.EVERGREEN_PATCH_BUILD,
                 },

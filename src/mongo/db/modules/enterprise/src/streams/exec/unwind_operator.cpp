@@ -11,6 +11,8 @@
 #include "streams/exec/dead_letter_queue.h"
 #include "streams/exec/util.h"
 
+MONGO_FAIL_POINT_DEFINE(unwindOperatorSlowEventProcessing);
+
 namespace streams {
 
 using namespace mongo;
@@ -35,6 +37,10 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
     size_t nextInputDocIdx{0};
     bool done{false};
     while (!done) {
+        if (MONGO_unlikely(unwindOperatorSlowEventProcessing.shouldFail())) {
+            sleepFor(Milliseconds{5});
+        }
+
         boost::optional<Document> resultDoc;
         try {
             resultDoc = _processor->getNext();
@@ -68,7 +74,7 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
             if (outputMsg.docs.size() == kDataMsgMaxDocSize ||
                 curDataMsgByteSize >= kDataMsgMaxByteSize) {
                 // Make sure to not wrap sendDataMsg() calls with a try/catch block.
-                incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
+                incOperatorStats({.timeSpent = dataMsg.creationTimer.elapsed()});
                 sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
                 outputMsg = newStreamDataMsg();
             }
@@ -77,7 +83,7 @@ void UnwindOperator::doOnDataMsg(int32_t inputIdx,
     invariant(nextInputDocIdx == dataMsg.docs.size());
 
     if (!outputMsg.docs.empty()) {
-        incOperatorStats({.timeSpent = dataMsg.creationTimer->elapsed()});
+        incOperatorStats({.timeSpent = dataMsg.creationTimer.elapsed()});
         sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg));
     }
     if (controlMsg) {

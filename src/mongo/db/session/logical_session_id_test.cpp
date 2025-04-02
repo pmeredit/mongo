@@ -82,8 +82,7 @@
 #include "mongo/transport/mock_session.h"
 #include "mongo/transport/session.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/thread_name.h"
 #include "mongo/util/net/sockaddr.h"
@@ -146,14 +145,13 @@ public:
     User* addSimpleUser(UserName un) {
         const auto creds = BSON("SCRAM-SHA-1" << scram::Secrets<SHA1Block>::generateCredentials(
                                     "a", saslGlobalParams.scramSHA1IterationCount.load()));
-        ASSERT_OK(mockBackend->insertUserDocument(_opCtx.get(),
-                                                  BSON("user" << un.getUser() << "db" << un.getDB()
-                                                              << "credentials" << creds << "roles"
-                                                              << BSON_ARRAY(BSON("role"
-                                                                                 << "readWrite"
-                                                                                 << "db"
-                                                                                 << "test"))),
-                                                  BSONObj()));
+        ASSERT_OK(mockBackend->insertUserDocument(
+            _opCtx.get(),
+            BSON("user" << un.getUser() << "db" << un.getDB() << "credentials" << creds << "roles"
+                        << BSON_ARRAY(BSON("role" << "readWrite"
+                                                  << "db"
+                                                  << "test"))),
+            BSONObj()));
         ASSERT_OK(authzSession->addAndAuthorizeUser(
             _opCtx.get(), std::make_unique<UserRequestGeneral>(un, boost::none), boost::none));
         return authzSession->lookupUser(un);
@@ -162,14 +160,13 @@ public:
     User* addClusterUser(UserName un) {
         const auto creds = BSON("SCRAM-SHA-256" << scram::Secrets<SHA256Block>::generateCredentials(
                                     "a", saslGlobalParams.scramSHA256IterationCount.load()));
-        ASSERT_OK(mockBackend->insertUserDocument(_opCtx.get(),
-                                                  BSON("user" << un.getUser() << "db" << un.getDB()
-                                                              << "credentials" << creds << "roles"
-                                                              << BSON_ARRAY(BSON("role"
-                                                                                 << "__system"
-                                                                                 << "db"
-                                                                                 << "admin"))),
-                                                  BSONObj()));
+        ASSERT_OK(mockBackend->insertUserDocument(
+            _opCtx.get(),
+            BSON("user" << un.getUser() << "db" << un.getDB() << "credentials" << creds << "roles"
+                        << BSON_ARRAY(BSON("role" << "__system"
+                                                  << "db"
+                                                  << "admin"))),
+            BSONObj()));
         ASSERT_OK(authzSession->addAndAuthorizeUser(
             _opCtx.get(), std::make_unique<UserRequestGeneral>(un, boost::none), boost::none));
         return authzSession->lookupUser(un);
@@ -509,8 +506,7 @@ TEST_F(LogicalSessionIdTest, InitializeOperationSessionInfo_SendingInfoFailsInDi
     _opCtx->getClient()->setInDirectClient(true);
 
     for (const auto& param : operationSessionParameters) {
-        BSONObjBuilder commandBuilder = BSON("count"
-                                             << "foo");
+        BSONObjBuilder commandBuilder = BSON("count" << "foo");
         commandBuilder.appendElements(param);
 
         ASSERT_THROWS_CODE(

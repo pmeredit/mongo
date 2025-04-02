@@ -56,9 +56,8 @@
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 
@@ -71,8 +70,7 @@ using std::deque;
 using std::string;
 using std::vector;
 
-static const BSONObj metaTextScore = BSON("$meta"
-                                          << "textScore");
+static const BSONObj metaTextScore = BSON("$meta" << "textScore");
 
 class DocumentSourceSortTest : public AggregationContextFixture {
 protected:
@@ -126,8 +124,7 @@ TEST_F(DocumentSourceSortTest, RejectsEmptyObjectSpec) {
 }
 
 TEST_F(DocumentSourceSortTest, RejectsSpecWithNonNumericValues) {
-    BSONObj spec = BSON("$sort" << BSON("a"
-                                        << "b"));
+    BSONObj spec = BSON("$sort" << BSON("a" << "b"));
     BSONElement specElement = spec.firstElement();
     ASSERT_THROWS(DocumentSourceSort::createFromBson(specElement, getExpCtx()), AssertionException);
 }
@@ -253,21 +250,18 @@ TEST_F(DocumentSourceSortTest, ReportsNoPathsModified) {
 }
 
 TEST_F(DocumentSourceSortTest, AllowsSortOnMetaGeoNearDistance) {
-    BSONObj spec = BSON("$sort" << BSON("dist" << BSON("$meta"
-                                                       << "geoNearDistance")));
+    BSONObj spec = BSON("$sort" << BSON("dist" << BSON("$meta" << "geoNearDistance")));
     BSONElement specElement = spec.firstElement();
     auto sort = DocumentSourceSort::createFromBson(specElement, getExpCtx());
 
     vector<Value> arr;
     sort->serializeToArray(arr);
     ASSERT_BSONOBJ_EQ(arr[0].getDocument().toBson(),
-                      BSON("$sort" << BSON("$computed0" << BSON("$meta"
-                                                                << "geoNearDistance"))));
+                      BSON("$sort" << BSON("$computed0" << BSON("$meta" << "geoNearDistance"))));
 }
 
 TEST_F(DocumentSourceSortTest, DetectsDependencyOnMeta) {
-    BSONObj spec = BSON("$sort" << BSON("dist" << BSON("$meta"
-                                                       << "geoNearDistance")));
+    BSONObj spec = BSON("$sort" << BSON("dist" << BSON("$meta" << "geoNearDistance")));
     BSONElement specElement = spec.firstElement();
     auto sort = DocumentSourceSort::createFromBson(specElement, getExpCtx());
 
@@ -430,8 +424,7 @@ TEST_F(DocumentSourceSortExecutionTest, RandMeta) {
     MutableDocument second(Document{{"_id", 1}});
     second.metadata().setRandVal(0.02);
 
-    createSort(BSON("$computed0" << BSON("$meta"
-                                         << "randVal")));
+    createSort(BSON("$computed0" << BSON("$meta" << "randVal")));
     checkResults({first.freeze(), second.freeze()}, sort(), "[{_id:1},{_id:0}]");
 }
 
@@ -540,19 +533,18 @@ TEST_F(DocumentSourceSortExecutionTest, ShouldResumePopulationBetweenPauses) {
     ASSERT_TRUE(sort->getNext().isEOF());
 }
 
-TEST_F(DocumentSourceSortExecutionTest, ShouldBeAbleToPauseLoadingWhileSpilled) {
-    auto expCtx = getExpCtx();
-
+std::pair<boost::intrusive_ptr<DocumentSourceMock>, boost::intrusive_ptr<DocumentSourceSort>>
+initSpillingTest(boost::intrusive_ptr<ExpressionContext> expCtx,
+                 const unittest::TempDir& tempDir,
+                 size_t maxMemoryUsageBytes,
+                 size_t largeStrSize) {
     // Allow the $sort stage to spill to disk.
-    unittest::TempDir tempDir("DocumentSourceSortTest");
     expCtx->setTempDir(tempDir.path());
     expCtx->setAllowDiskUse(true);
-    const size_t maxMemoryUsageBytes = 1000;
-
     auto sort = DocumentSourceSort::create(
         expCtx, {BSON("_id" << -1), expCtx}, {.maxMemoryUsageBytes = maxMemoryUsageBytes});
 
-    string largeStr(maxMemoryUsageBytes, 'x');
+    string largeStr(largeStrSize, 'x');
     auto mock =
         DocumentSourceMock::createForTest({Document{{"_id", 0}, {"largeStr", largeStr}},
                                            DocumentSource::GetNextResult::makePauseExecution(),
@@ -561,12 +553,10 @@ TEST_F(DocumentSourceSortExecutionTest, ShouldBeAbleToPauseLoadingWhileSpilled) 
                                            Document{{"_id", 2}, {"largeStr", largeStr}}},
                                           expCtx);
     sort->setSource(mock.get());
+    return {std::move(mock), std::move(sort)};
+}
 
-    // There were 2 pauses, so we should expect 2 paused results before any results can be returned.
-    ASSERT_TRUE(sort->getNext().isPaused());
-    ASSERT_TRUE(sort->getNext().isPaused());
-
-    // Now we expect to get the results back, sorted by _id descending.
+void assertSpillingTestReturn(boost::intrusive_ptr<DocumentSourceSort> sort) {
     auto next = sort->getNext();
     ASSERT_TRUE(next.isAdvanced());
     ASSERT_VALUE_EQ(next.releaseDocument()["_id"], Value(2));
@@ -578,6 +568,76 @@ TEST_F(DocumentSourceSortExecutionTest, ShouldBeAbleToPauseLoadingWhileSpilled) 
     next = sort->getNext();
     ASSERT_TRUE(next.isAdvanced());
     ASSERT_VALUE_EQ(next.releaseDocument()["_id"], Value(0));
+
+    ASSERT_TRUE(sort->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceSortExecutionTest, ShouldBeAbleToPauseLoadingWhileSpilled) {
+    unittest::TempDir tempDir("DocumentSourceSortTest");
+    auto [mock, sort] = initSpillingTest(getExpCtx(), tempDir, 1000000, 1000000);
+
+    // There were 2 pauses, so we should expect 2 paused results before any results can be returned.
+    ASSERT_TRUE(sort->getNext().isPaused());
+    ASSERT_TRUE(sort->getNext().isPaused());
+
+    assertSpillingTestReturn(sort);
+
+    const auto* sortStats = static_cast<const SortStats*>(sort->getSpecificStats());
+    ASSERT_EQ(sortStats->spillingStats.getSpills(), 3);
+    ASSERT_EQ(sortStats->spillingStats.getSpilledRecords(), 3);
+    ASSERT_EQ(sortStats->spillingStats.getSpilledBytes(), 3000099);
+    ASSERT_LT(sortStats->spillingStats.getSpilledDataStorageSize(), 3000000);
+    ASSERT_GT(sortStats->spillingStats.getSpilledDataStorageSize(), 0);
+}
+
+TEST_F(DocumentSourceSortExecutionTest, ShouldBeAbleToManuallySpillBeforeReturingFirstDocument) {
+    unittest::TempDir tempDir("DocumentSourceSortTest");
+    auto [mock, sort] = initSpillingTest(getExpCtx(), tempDir, 1000000, 10);
+
+    ASSERT_TRUE(sort->getNext().isPaused());
+    ASSERT_TRUE(sort->getNext().isPaused());
+
+    sort->forceSpill();
+    assertSpillingTestReturn(sort);
+
+    const auto* sortStats = static_cast<const SortStats*>(sort->getSpecificStats());
+    ASSERT_EQ(sortStats->spillingStats.getSpills(), 2);
+    ASSERT_EQ(sortStats->spillingStats.getSpilledRecords(), 3);
+    ASSERT_EQ(sortStats->spillingStats.getSpilledBytes(), 129);
+    ASSERT_LT(sortStats->spillingStats.getSpilledDataStorageSize(), 200);
+    ASSERT_GT(sortStats->spillingStats.getSpilledDataStorageSize(), 0);
+}
+
+
+TEST_F(DocumentSourceSortExecutionTest, ShouldBeAbleToManuallySpillAfterReturingFirstDocument) {
+    unittest::TempDir tempDir("DocumentSourceSortTest");
+    auto [mock, sort] = initSpillingTest(getExpCtx(), tempDir, 1000000, 10);
+
+    ASSERT_TRUE(sort->getNext().isPaused());
+    ASSERT_TRUE(sort->getNext().isPaused());
+
+    auto next = sort->getNext();
+    ASSERT_TRUE(next.isAdvanced());
+    ASSERT_VALUE_EQ(next.releaseDocument()["_id"], Value(2));
+
+    sort->forceSpill();
+
+    next = sort->getNext();
+    ASSERT_TRUE(next.isAdvanced());
+    ASSERT_VALUE_EQ(next.releaseDocument()["_id"], Value(1));
+
+    next = sort->getNext();
+    ASSERT_TRUE(next.isAdvanced());
+    ASSERT_VALUE_EQ(next.releaseDocument()["_id"], Value(0));
+
+    ASSERT_TRUE(sort->getNext().isEOF());
+
+    const auto* sortStats = static_cast<const SortStats*>(sort->getSpecificStats());
+    ASSERT_EQ(sortStats->spillingStats.getSpills(), 1);
+    ASSERT_EQ(sortStats->spillingStats.getSpilledRecords(), 2);
+    ASSERT_EQ(sortStats->spillingStats.getSpilledBytes(), 86);
+    ASSERT_LT(sortStats->spillingStats.getSpilledDataStorageSize(), 200);
+    ASSERT_GT(sortStats->spillingStats.getSpilledDataStorageSize(), 0);
 }
 
 TEST_F(DocumentSourceSortExecutionTest,

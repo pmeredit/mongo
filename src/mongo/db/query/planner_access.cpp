@@ -28,7 +28,6 @@
  */
 
 
-#include "mongo/db/matcher/expression_array.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/util/assert_util.h"
 #include <boost/move/utility_core.hpp>
@@ -49,7 +48,6 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/timestamp.h"
-#include "mongo/db/basic_types.h"
 #include "mongo/db/catalog/clustered_collection_options_gen.h"
 #include "mongo/db/catalog/clustered_collection_util.h"
 #include "mongo/db/exec/document_value/document_metadata_fields.h"
@@ -62,12 +60,10 @@
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/expression_algo.h"
 #include "mongo/db/matcher/expression_geo.h"
-#include "mongo/db/matcher/expression_internal_expr_comparison.h"
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/matcher/expression_text_base.h"
 #include "mongo/db/matcher/expression_tree.h"
 #include "mongo/db/namespace_string.h"
-#include "mongo/db/query/bson/dotted_path_support.h"
 #include "mongo/db/query/eof_node_type.h"
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/query/index_bounds.h"
@@ -87,10 +83,7 @@
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/storage/key_format.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/stdx/type_traits.h"
 #include "mongo/util/str.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
@@ -1908,10 +1901,6 @@ std::unique_ptr<QuerySolutionNode> QueryPlannerAccess::buildIndexedOr(
         // We won't enumerate an OR without indices for each child, so this isn't an issue, even
         // if we have an AND with an OR child -- we won't get here unless the OR is fully
         // indexed.
-        return nullptr;
-    }
-
-    if (!wcp::expandWildcardFieldBounds(scanNodes)) {
         return nullptr;
     }
 

@@ -70,8 +70,6 @@
 #include "mongo/db/session/logical_session_id_helpers.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/chunk_manager.h"
@@ -113,8 +111,8 @@ bool collectionHasSimpleCollation(OperationContext* opCtx, const NamespaceString
     uassert(ErrorCodes::NamespaceNotFound,
             str::stream() << "Expected collection '" << nss.toStringForErrorMsg()
                           << "' to be tracked",
-            cri.cm.hasRoutingTable());
-    return !cri.cm.getDefaultCollator();
+            cri.hasRoutingTable());
+    return !cri.getChunkManager().getDefaultCollator();
 }
 
 }  // namespace
@@ -147,15 +145,15 @@ ReshardingCollectionCloner::makeRawPipeline(
     Value resumeId) {
     // Assume that the input collection isn't a view. The collectionUUID parameter to
     // the aggregate would enforce this anyway.
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[_sourceNss.coll()] = {_sourceNss, std::vector<BSONObj>{}};
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[_sourceNss] = {_sourceNss, std::vector<BSONObj>{}};
 
     // Assume that the config.cache.chunks collection isn't a view either.
     auto tempNss = resharding::constructTemporaryReshardingNss(_sourceNss, _sourceUUID);
     auto tempCacheChunksNss = NamespaceString::makeGlobalConfigCollection(
         "cache.chunks." +
         NamespaceStringUtil::serialize(tempNss, SerializationContext::stateDefault()));
-    resolvedNamespaces[tempCacheChunksNss.coll()] = {tempCacheChunksNss, std::vector<BSONObj>{}};
+    resolvedNamespaces[tempCacheChunksNss] = {tempCacheChunksNss, std::vector<BSONObj>{}};
 
     // Pipeline::makePipeline() ignores the collation set on the AggregationRequest (or lack
     // thereof) and instead only considers the collator set on the ExpressionContext. Setting
@@ -212,15 +210,15 @@ ReshardingCollectionCloner::makeRawNaturalOrderPipeline(
     OperationContext* opCtx, std::shared_ptr<MongoProcessInterface> mongoProcessInterface) {
     // Assume that the input collection isn't a view. The collectionUUID parameter to
     // the aggregate would enforce this anyway.
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[_sourceNss.coll()] = {_sourceNss, std::vector<BSONObj>{}};
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[_sourceNss] = {_sourceNss, std::vector<BSONObj>{}};
 
     // Assume that the config.cache.chunks collection isn't a view either.
     auto tempNss = resharding::constructTemporaryReshardingNss(_sourceNss, _sourceUUID);
     auto tempCacheChunksNss = NamespaceString::makeGlobalConfigCollection(
         "cache.chunks." +
         NamespaceStringUtil::serialize(tempNss, SerializationContext::stateDefault()));
-    resolvedNamespaces[tempCacheChunksNss.coll()] = {tempCacheChunksNss, std::vector<BSONObj>{}};
+    resolvedNamespaces[tempCacheChunksNss] = {tempCacheChunksNss, std::vector<BSONObj>{}};
     auto expCtx = ExpressionContextBuilder{}
                       .opCtx(opCtx)
                       .mongoProcessInterface(std::move(mongoProcessInterface))
@@ -259,6 +257,11 @@ std::unique_ptr<Pipeline, PipelineDeleter> ReshardingCollectionCloner::_targetAg
     if (!_relaxed) {
         request.setCollectionUUID(_sourceUUID);
     }
+    // If running in "relaxed" mode, also instruct the receiving shards to ignore collection uuid
+    // mismatches between the local and sharding catalogs.
+    boost::optional<RouterRelaxCollectionUUIDConsistencyCheckBlock>
+        routerRelaxCollectionUUIDConsistencyCheckBlock(boost::in_place_init_if, _relaxed, opCtx);
+
     auto hint = collectionHasSimpleCollation(opCtx, _sourceNss)
         ? boost::optional<BSONObj>{BSON("_id" << 1)}
         : boost::none;
@@ -606,6 +609,10 @@ ReshardingCollectionCloner::_queryOnceWithNaturalOrder(
     if (!_relaxed) {
         request.setCollectionUUID(_sourceUUID);
     }
+    // If running in "relaxed" mode, also instruct the receiving shards to ignore collection uuid
+    // mismatches between the local and sharding catalogs.
+    boost::optional<RouterRelaxCollectionUUIDConsistencyCheckBlock>
+        routerRelaxCollectionUUIDConsistencyCheckBlock(boost::in_place_init_if, _relaxed, opCtx);
 
     // In the case of a single-shard command, dispatchShardPipeline uses the passed-in batch
     // size instead of 0.  The ReshardingCloneFetcher does not handle cursors with a populated
@@ -721,13 +728,7 @@ void ReshardingCollectionCloner::_writeOnceWithNaturalOrder(
                      resumeToken = BSONObj();
                  }
 
-                 writeOneBatch(opCtx,
-                               txnNumber,
-                               batch,
-                               shardId,
-                               donorHost,
-                               *resumeToken,
-                               true /*useNaturalOrderCloner*/);
+                 writeOneBatch(opCtx, txnNumber, batch, shardId, donorHost, *resumeToken);
              })
         .get();
 }
@@ -819,8 +820,7 @@ bool ReshardingCollectionCloner::doOneBatch(OperationContext* opCtx,
                                             TxnNumber& txnNum,
                                             ShardId donorShard,
                                             HostAndPort donorHost,
-                                            BSONObj resumeToken,
-                                            bool useNaturalOrderCloner) {
+                                            BSONObj resumeToken) {
     pipeline.reattachToOperationContext(opCtx);
     ON_BLOCK_EXIT([&pipeline] { pipeline.detachFromOperationContext(); });
 
@@ -834,7 +834,7 @@ bool ReshardingCollectionCloner::doOneBatch(OperationContext* opCtx,
         return false;
     }
 
-    writeOneBatch(opCtx, txnNum, batch, donorShard, donorHost, resumeToken, useNaturalOrderCloner);
+    writeOneBatch(opCtx, txnNum, batch, donorShard, donorHost, resumeToken);
     return true;
 }
 
@@ -843,37 +843,24 @@ void ReshardingCollectionCloner::writeOneBatch(OperationContext* opCtx,
                                                std::vector<InsertStatement>& batch,
                                                ShardId donorShard,
                                                HostAndPort donorHost,
-                                               BSONObj resumeToken,
-                                               bool useNaturalOrderCloner) {
+                                               BSONObj resumeToken) {
     Timer batchInsertTimer;
     int bytesInserted = resharding::data_copy::withOneStaleConfigRetry(opCtx, [&] {
         // ReshardingOpObserver depends on the collection metadata being known when processing
         // writes to the temporary resharding collection. We attach shard version IGNORED to the
         // insert operations and retry once on a StaleConfig error to allow the collection metadata
         // information to be recovered.
-        auto [_, sii] = uassertStatusOK(
+        const auto cri = uassertStatusOK(
             Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, _outputNss));
-        if (useNaturalOrderCloner) {
-            return resharding::data_copy::insertBatchTransactionally(opCtx,
-                                                                     _outputNss,
-                                                                     sii,
-                                                                     txnNum,
-                                                                     batch,
-                                                                     _reshardingUUID,
-                                                                     donorShard,
-                                                                     donorHost,
-                                                                     resumeToken,
-                                                                     _storeProgress);
-        } else {
-            ScopedSetShardRole scopedSetShardRole(
-                opCtx,
-                _outputNss,
-                ShardVersionFactory::make(ChunkVersion::IGNORED(),
-                                          sii ? boost::make_optional(sii->getCollectionIndexes())
-                                              : boost::none) /* shardVersion */,
-                boost::none /* databaseVersion */);
-            return resharding::data_copy::insertBatch(opCtx, _outputNss, batch);
-        }
+        return resharding::data_copy::insertBatchTransactionally(opCtx,
+                                                                 _outputNss,
+                                                                 txnNum,
+                                                                 batch,
+                                                                 _reshardingUUID,
+                                                                 donorShard,
+                                                                 donorHost,
+                                                                 resumeToken,
+                                                                 _storeProgress);
     });
 
     _metrics->onDocumentsProcessed(
@@ -892,18 +879,10 @@ SemiFuture<void> ReshardingCollectionCloner::run(
     };
 
     auto chainCtx = std::make_shared<ChainContext>();
-    auto reshardingImprovementsEnabled = resharding::gFeatureFlagReshardingImprovements.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
 
-    return resharding::WithAutomaticRetry([this,
-                                           chainCtx,
-                                           factory,
-                                           executor,
-                                           cleanupExecutor,
-                                           cancelToken,
-                                           reshardingImprovementsEnabled] {
-               reshardingCollectionClonerPauseBeforeAttempt.pauseWhileSet();
-               if (reshardingImprovementsEnabled) {
+    return resharding::WithAutomaticRetry(
+               [this, chainCtx, factory, executor, cleanupExecutor, cancelToken] {
+                   reshardingCollectionClonerPauseBeforeAttempt.pauseWhileSet();
                    auto opCtx = factory.makeOperationContext(&cc());
                    _runOnceWithNaturalOrder(opCtx.get(),
                                             MongoProcessInterface::create(opCtx.get()),
@@ -913,27 +892,7 @@ SemiFuture<void> ReshardingCollectionCloner::run(
                    // If we got here, we succeeded and there is no more to come.  Otherwise
                    // _runOnceWithNaturalOrder would uassert.
                    chainCtx->moreToCome = false;
-                   return;
-               }
-               if (!chainCtx->pipeline) {
-                   auto opCtx = factory.makeOperationContext(&cc());
-                   chainCtx->pipeline = _restartPipeline(opCtx.get(), executor);
-               }
-
-               auto opCtx = factory.makeOperationContext(&cc());
-               ScopeGuard guard([&] {
-                   chainCtx->pipeline->dispose(opCtx.get());
-                   chainCtx->pipeline.reset();
-               });
-               chainCtx->moreToCome = doOneBatch(opCtx.get(),
-                                                 *chainCtx->pipeline,
-                                                 chainCtx->batchTxnNumber,
-                                                 {} /* donorShard */,
-                                                 {} /* donorHost*/,
-                                                 {} /* resumeToken */,
-                                                 false /* useNaturalOrderCloner */);
-               guard.dismiss();
-           })
+               })
         .onTransientError([this](const Status& status) {
             LOGV2(5269300,
                   "Transient error while cloning sharded collection",

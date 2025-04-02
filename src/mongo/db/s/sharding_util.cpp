@@ -61,8 +61,6 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/catalog/type_index_catalog_gen.h"
 #include "mongo/s/client/shard.h"
@@ -78,8 +76,6 @@
 namespace mongo {
 
 namespace sharding_util {
-
-using namespace fmt::literals;
 
 const auto kLogRetryAttemptThreshold = 20;
 
@@ -141,8 +137,10 @@ std::vector<AsyncRequestsSender::Response> processShardResponses(
             auto response = ars.next();
 
             if (throwOnError) {
-                auto errorContext = "Failed command {} for database '{}' on shard '{}'"_format(
-                    command.toString(), dbName.toStringForErrorMsg(), StringData{response.shardId});
+                auto errorContext = fmt::format("Failed command {} for database '{}' on shard '{}'",
+                                                command.toString(),
+                                                dbName.toStringForErrorMsg(),
+                                                StringData{response.shardId});
 
                 uassertStatusOKWithContext(response.swResponse.getStatus(), errorContext);
                 const auto& respBody = response.swResponse.getValue().data;
@@ -218,7 +216,7 @@ Status createIndexOnCollection(OperationContext* opCtx,
         IndexSpec index;
         index.addKeys(keys);
         index.unique(unique);
-        index.version(int(IndexDescriptor::kLatestIndexVersion));
+        index.version(int(IndexConfig::kLatestIndexVersion));
         auto removeIndexBuildsToo = false;
         auto indexSpecs = indexCatalog->removeExistingIndexes(
             opCtx,
@@ -328,7 +326,7 @@ void retryIdempotentWorkAsPrimaryUntilSuccessOrStepdown(
     StringData taskDescription,
     std::function<void(OperationContext*)> doWork,
     boost::optional<Backoff> backoff) {
-    const std::string newClientName = "{}-{}"_format(getThreadName(), taskDescription);
+    const std::string newClientName = fmt::format("{}-{}", getThreadName(), taskDescription);
     const auto initialTerm = repl::ReplicationCoordinator::get(opCtx)->getTerm();
 
     for (int attempt = 1;; attempt++) {
@@ -341,14 +339,14 @@ void retryIdempotentWorkAsPrimaryUntilSuccessOrStepdown(
 
         // If the node is no longer primary, stop retrying.
         uassert(ErrorCodes::InterruptedDueToReplStateChange,
-                "Stepped down while {}"_format(taskDescription),
+                fmt::format("Stepped down while {}", taskDescription),
                 repl::ReplicationCoordinator::get(opCtx)->getMemberState() ==
                     repl::MemberState::RS_PRIMARY);
 
         // If the term changed, that means that the step up recovery could have run or is
         // running so stop retrying in order to avoid duplicate work.
         uassert(ErrorCodes::InterruptedDueToReplStateChange,
-                "Term changed while {}"_format(taskDescription),
+                fmt::format("Term changed while {}", taskDescription),
                 initialTerm == repl::ReplicationCoordinator::get(opCtx)->getTerm());
 
         try {
@@ -409,12 +407,11 @@ ShardId selectLeastLoadedNonDrainingShard(OperationContext* opCtx) {
     auto candidateShardId = shardIds.front();
     auto candidateSize = std::numeric_limits<long long>::max();
 
-    using namespace fmt::literals;
     for (auto&& response : responsesFromShards) {
         const auto& shardId = response.shardId;
 
         auto errorContext =
-            "Failed to get the list of databases from shard '{}'"_format(shardId.toString());
+            fmt::format("Failed to get the list of databases from shard '{}'", shardId.toString());
         const auto responseValue =
             uassertStatusOKWithContext(std::move(response.swResponse), errorContext);
         const ListDatabasesReply reply =

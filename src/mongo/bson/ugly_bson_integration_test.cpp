@@ -35,7 +35,7 @@
 #include "mongo/executor/network_interface_integration_fixture.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/op_msg.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
@@ -53,9 +53,9 @@ TEST_F(UglyBSONFixture, DuplicateFields) {
     ON_BLOCK_EXIT([] { OpMsgBuilder::disableDupeFieldCheck_forTest.store(false); });
 
     assertCommandFailsOnServer(DatabaseName::kAdmin,
-                               BSON("insert"
-                                    << "test"
-                                    << "documents" << BSONArray() << "documents" << BSONArray()),
+                               BSON("insert" << "test"
+                                             << "documents" << BSONArray() << "documents"
+                                             << BSONArray()),
                                ErrorCodes::IDLDuplicateField);
 }
 

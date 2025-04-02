@@ -5,7 +5,7 @@
  *   # We need persistence as we temporarily restart nodes as standalones.
  *   requires_persistence,
  *   assumes_against_mongod_not_mongos,
- *   requires_fcv_81,
+ *   requires_fcv_80,
  * ]
  */
 
@@ -284,7 +284,11 @@ function testDbCheckParameters() {
         // Validate custom maxDocsPerBatch
         clearHealthLog(replSet);
         const maxDocsPerBatch = 100;
-        runDbCheck(replSet, db, multiBatchSimpleCollName, {maxDocsPerBatch: maxDocsPerBatch});
+        runDbCheck(replSet,
+                   db,
+                   multiBatchSimpleCollName,
+                   {maxDocsPerBatch: maxDocsPerBatch},
+                   true /* awaitCompletion */);
 
         let query = {"operation": "dbCheckBatch"};
         const expectedBatches = multiBatchSimpleCollSize / maxDocsPerBatch +
@@ -309,6 +313,7 @@ function testDbCheckParameters() {
         const chars = ['a', 'b', 'c', 'd', 'e'];
         coll.insertMany([...Array(nDocs).keys()].map(x => ({a: chars[x].repeat(1024 * 1024 * 2)})),
                         {ordered: false});
+        replSet.awaitReplication();
         [{maxBatchTimeMillis: 1000},
          {validateMode: "dataConsistency", maxBatchTimeMillis: 1000},
          {validateMode: "dataConsistencyAndMissingIndexKeysCheck", maxBatchTimeMillis: 1000}]
@@ -365,19 +370,19 @@ function runMultiBatchTests(collOpts) {
     assert.commandWorked(primaryDb.createCollection(multiBatchSimpleCollName, collOpts));
     primaryDb[multiBatchSimpleCollName].insertMany([...Array(10000).keys()].map(x => ({_id: x})),
                                                    {ordered: false});
+    replSet.awaitReplication();
 
     simpleTestConsistent();
     simpleTestNonSnapshot();
     concurrentTestConsistent();
     testDbCheckParameters();
     primaryDb[multiBatchSimpleCollName].drop();
+    replSet.awaitReplication();
 }
 
-[{},
- {clusteredIndex: {key: {_id: 1}, unique: true}}]
-    .forEach(collOpts => {
-        runMultiBatchTests(collOpts);
-    });
+[{}, {clusteredIndex: {key: {_id: 1}, unique: true}}].forEach(collOpts => {
+    runMultiBatchTests(collOpts);
+});
 
 // Now, test some unusual cases where the command should fail.
 function testErrorOnNonexistent() {
@@ -444,8 +449,7 @@ function simpleTestCatchesExtra(collOpts) {
                   JSON.stringify(errors.toArray()));
 }
 
-[{validationLevel: "off"},
- {validationLevel: "off", clusteredIndex: {key: {_id: 1}, unique: true}}]
+[{validationLevel: "off"}, {validationLevel: "off", clusteredIndex: {key: {_id: 1}, unique: true}}]
     .forEach(collOpts => {
         simpleTestCatchesExtra(collOpts);
     });

@@ -4,20 +4,28 @@ import os
 import shutil
 
 parser = argparse.ArgumentParser()
+
 parser.add_argument("--depfile", action="append")
 parser.add_argument("--install-dir")
 parser.add_argument("--install-mode", choices=["copy", "symlink", "hardlink"], default="hardlink")
 
 args = parser.parse_args()
-
 if os.path.exists(args.install_dir):
     os.chmod(args.install_dir, 0o755)
     for root, dirs, files in os.walk(args.install_dir):
         for name in files:
-            os.chmod(os.path.join(root, name), 0o755)
-            os.unlink(os.path.join(root, name))
+            try:
+                os.chmod(os.path.join(root, name), 0o755)
+                os.unlink(os.path.join(root, name))
+            # Sometimes we find files that don't exist
+            # from os.walk - not sure why
+            except FileNotFoundError:
+                continue
         for name in dirs:
-            os.chmod(os.path.join(root, name), 0o755)
+            try:
+                os.chmod(os.path.join(root, name), 0o755)
+            except FileNotFoundError:
+                continue
     shutil.rmtree(args.install_dir)
 os.makedirs(args.install_dir, exist_ok=True)
 
@@ -38,6 +46,7 @@ def install(src, install_type):
                     if os.path.isdir(dst):
                         shutil.rmtree(dst)
                     else:
+                        os.chmod(dst, 0o755)
                         os.unlink(dst)
                 except FileNotFoundError as exc:
                     if link_dst == dst:
@@ -56,10 +65,15 @@ def install(src, install_type):
                                 dest_dir = os.path.dirname(os.path.join(root, name)).replace(
                                     src, dst
                                 )
-                                os.makedirs(dest_dir)
+                                if not os.path.exists(dest_dir):
+                                    os.makedirs(dest_dir)
                                 os.link(os.path.join(root, name), os.path.join(dest_dir, name))
                     else:
-                        os.link(src, dst)
+                        try:
+                            os.link(src, dst)
+                        # If you try hardlinking across drives link will fail
+                        except OSError:
+                            shutil.copy(src, dst)
                 except FileExistsError as exc:
                     if link_dst == dst:
                         # if multiple installs are requested at once and happen
@@ -82,3 +96,5 @@ for depfile in args.depfile:
             install(binary, "bin")
         for lib in content["libs"]:
             install(lib, "lib")
+        for file, folder in content["roots"].items():
+            install(file, folder)

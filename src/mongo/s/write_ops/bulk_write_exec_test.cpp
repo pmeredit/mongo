@@ -72,8 +72,6 @@
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog/type_shard.h"
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/chunk_version.h"
@@ -91,10 +89,8 @@
 #include "mongo/s/write_ops/batch_write_op.h"
 #include "mongo/s/write_ops/batched_command_request.h"
 #include "mongo/s/write_ops/bulk_write_exec.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/fail_point.h"
@@ -1489,8 +1485,7 @@ TEST_F(BulkWriteOpTest, BatchItemRefGetLet) {
     BulkWriteCommandRequest request({BulkWriteUpdateOp(0, BSON("x" << 1), BSON("x" << 2))},
                                     {NamespaceInfoEntry(nss)});
 
-    BSONObj expected{BSON("key"
-                          << "value")};
+    BSONObj expected{BSON("key" << "value")};
     request.setLet(expected);
 
     BulkWriteOp bulkWriteOp(_opCtx, request);
@@ -6397,12 +6392,8 @@ TEST(BulkWriteTest, getApproximateSize) {
     item = BulkWriteReplyItem{0, Status{ErrorCodes::ExceededMemoryLimit, reason}};
     ASSERT_EQUALS(item.getApproximateSize(), item.serialize().objsize());
 
-    DuplicateKeyErrorInfo extra{BSON("key" << 1),
-                                BSON("value" << 1),
-                                BSON("collation"
-                                     << "simple"),
-                                {},
-                                boost::none};
+    DuplicateKeyErrorInfo extra{
+        BSON("key" << 1), BSON("value" << 1), BSON("collation" << "simple"), {}, boost::none};
     BSONObjBuilder builder;
     extra.serialize(&builder);
     int extraSize = builder.obj().objsize();

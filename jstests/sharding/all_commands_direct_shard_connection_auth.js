@@ -7,7 +7,6 @@
  *   multiversion_incompatible,
  *   # Cannot compact when using the in-memory storage engine.
  *   requires_persistence,
- *   featureFlagFailOnDirectShardOperations,
  *   requires_fcv_73
  * ]
  */
@@ -60,7 +59,6 @@ const allCommands = {
     _configsvrMoveRange: {skip: isAnInternalCommand},
     _configsvrRemoveChunks: {skip: isAnInternalCommand},
     _configsvrRemoveShard: {skip: isAnInternalCommand},
-    _configsvrRemoveShardCommit: {skip: isAnInternalCommand},
     _configsvrRemoveShardFromZone: {skip: isAnInternalCommand},
     _configsvrRemoveTags: {skip: isAnInternalCommand},
     _configsvrRepairShardedCollectionChunksHistory: {skip: isAnInternalCommand},
@@ -98,10 +96,13 @@ const allCommands = {
     _shardsvrChangePrimary: {skip: isAnInternalCommand},
     _shardsvrCleanupStructuredEncryptionData: {skip: isAnInternalCommand},
     _shardsvrCleanupReshardCollection: {skip: isAnInternalCommand},
+    _shardsvrCloneAuthoritativeMetadata: {skip: isAnInternalCommand},
     _shardsvrCloneCatalogData: {skip: isAnInternalCommand},
     _shardsvrCompactStructuredEncryptionData: {skip: isAnInternalCommand},
     _shardsvrConvertToCapped: {skip: isAnInternalCommand},
     _shardsvrRegisterIndex: {skip: isAnInternalCommand},
+    _shardsvrCommitCreateDatabaseMetadata: {skip: isAnInternalCommand},
+    _shardsvrCommitDropDatabaseMetadata: {skip: isAnInternalCommand},
     _shardsvrCommitIndexParticipant: {skip: isAnInternalCommand},
     _shardsvrCommitReshardCollection: {skip: isAnInternalCommand},
     _shardsvrDropCollection: {skip: isAnInternalCommand},
@@ -126,6 +127,9 @@ const allCommands = {
     _shardsvrRenameCollectionParticipant: {skip: isAnInternalCommand},
     _shardsvrRenameCollectionParticipantUnblock: {skip: isAnInternalCommand},
     _shardsvrRenameIndexMetadata: {skip: isAnInternalCommand},
+    _shardsvrReshardingDonorFetchFinalCollectionStats: {skip: isAnInternalCommand},
+    _shardsvrReshardingDonorStartChangeStreamsMonitor: {skip: isAnInternalCommand},
+    _shardsvrResolveView: {skip: isAnInternalCommand},
     _shardsvrRunSearchIndexCommand: {skip: isAnInternalCommand},
     _shardsvrDropDatabase: {skip: isAnInternalCommand},
     _shardsvrDropDatabaseParticipant: {skip: isAnInternalCommand},
@@ -145,6 +149,7 @@ const allCommands = {
     _shardsvrUntrackUnsplittableCollection: {skip: isAnInternalCommand},
     _shardsvrCheckMetadataConsistency: {skip: isAnInternalCommand},
     _shardsvrCheckMetadataConsistencyParticipant: {skip: isAnInternalCommand},
+    _shardsvrFetchCollMetadata: {skip: isAnInternalCommand},
     streams_startStreamProcessor: {skip: isAnInternalCommand},
     streams_startStreamSample: {skip: isAnInternalCommand},
     streams_stopStreamProcessor: {skip: isAnInternalCommand},
@@ -157,6 +162,7 @@ const allCommands = {
     streams_testOnlyGetFeatureFlags: {skip: isAnInternalCommand},
     streams_writeCheckpoint: {skip: isAnInternalCommand},
     streams_sendEvent: {skip: isAnInternalCommand},
+    streams_updateConnection: {skip: isAnInternalCommand},
     _transferMods: {skip: isAnInternalCommand},
     abortMoveCollection: {
         // Skipping command because it requires testing through a parallel shell.
@@ -972,6 +978,7 @@ const allCommands = {
     reIndex: {
         skip: isDeprecated,
     },
+    releaseMemory: {skip: "requires instantiating a cursor"},
     removeShard: {skip: requiresMongoS},
     removeShardFromZone: {skip: requiresMongoS},
     renameCollection: {
@@ -986,6 +993,7 @@ const allCommands = {
         }
     },
     repairShardedCollectionChunksHistory: {skip: isAnInternalCommand},
+    replicateSearchIndexCommand: {skip: isAnInternalCommand},
     replSetAbortPrimaryCatchUp: {skip: "tested in direct_shard_connection_auth_rs_commands.js"},
     replSetFreeze: {skip: "tested in direct_shard_connection_auth_rs_commands.js"},
     replSetGetConfig: {skip: "tested in direct_shard_connection_auth_rs_commands.js"},
@@ -1120,7 +1128,6 @@ const allCommands = {
     split: {skip: requiresMongoS},
     splitChunk: {skip: isAnInternalCommand},
     splitVector: {skip: isAnInternalCommand},
-    stageDebug: {skip: isAnInternalCommand},
     startRecordingTraffic: {
         // Skipping command because it requires an actual file path for recording traffic to.
         skip: "requires an actual file path to record traffic to",
@@ -1137,6 +1144,7 @@ const allCommands = {
         skip: "requires an actual file path to record traffic to",
     },
     sysprofile: {skip: isAnInternalCommand},
+    testCommandFeatureFlaggedOnLatestFCV: {skip: isAnInternalCommand},
     testDeprecation: {skip: isAnInternalCommand},
     testDeprecationInVersion2: {skip: isAnInternalCommand},
     testInternalTransactions: {skip: isAnInternalCommand},

@@ -32,23 +32,14 @@ case "$_Path" in
     "platform/aarch64/linux")
         _CONFIG_OPTS="--host=aarch64-linux"
     ;;
-    "platform/ppc64le/freebsd")
-        _CONFIG_OPTS="--host=ppc64le-freebsd"
-    ;;
     "platform/ppc64le/linux")
         _CONFIG_OPTS="--host=ppc64le-linux"
     ;;
     "platform/s390x/linux")
         _CONFIG_OPTS="--host=s390x-linux"
     ;;
-    "platform/x86_64/freebsd")
-        _CONFIG_OPTS="--host=x86_64-freebsd"
-    ;;
     "platform/x86_64/linux")
         _CONFIG_OPTS="--host=x86_64-linux"
-    ;;
-    "platform/x86_64/openbsd")
-        _CONFIG_OPTS="--host=x86_64-openbsd"
     ;;
     "platform/x86_64/windows")
         _CONFIG_OPTS="--host=x86_64-windows-msvc"
@@ -61,22 +52,6 @@ case "$_Path" in
         _xcode_setup "macosx" "x86_64" "macos-version-min=10.9"
         _CONFIG_OPTS="--host=x86_64-apple-darwin"
     ;;
-    "platform/aarch64/iOS")
-        _xcode_setup "iphoneos" "arm64" "iphoneos-version-min=10.2"
-        _CONFIG_OPTS="--target=aarch64-apple-darwin"
-        ;;
-    "platform/x86_64/iOS-sim")
-        _xcode_setup "iphonesimulator" "x86_64" "iphoneos-version-min=10.2"
-        _CONFIG_OPTS="--host=x86_64-apple-darwin"
-        ;;
-    "platform/aarch64/tvOS")
-        _xcode_setup "appletvos" "arm64" "tvos-version-min=10.1"
-        _CONFIG_OPTS="--target=aarch64-apple-darwin"
-        ;;
-    "platform/x86_64/tvOS-sim")
-        _xcode_setup "appletvsimulator" "x86_64" "tvos-version-min=10.1"
-        _CONFIG_OPTS="--host=x86_64-apple-darwin"
-        ;;
     *)
         echo "Unknown configuration $_Path"
         exit 1
@@ -107,7 +82,9 @@ CFLAGS="$CFLAGS -D__STDC_FORMAT_MACROS" \
     --without-intl-api \
     --enable-optimize \
     --disable-js-shell \
-    --disable-tests "$_CONFIG_OPTS"
+    --disable-tests \
+    --disable-wasm-moz-intgemm \
+    "$_CONFIG_OPTS"
 
 make recurse_export
 
@@ -156,15 +133,15 @@ cp $_BuiltPathPrefix/frontend/*.h $_Path/include/frontend
 
 cp $_BuiltPathPrefix/js-config.h $_Path/include
 
-SEDOPTION="-i"
+SEDOPTION=(-i)
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  SEDOPTION="-i ''"
+  SEDOPTION=(-i "")
 fi
 
 find "$_Path/build" -name '*.cpp' |
     while read unified_file ; do
         echo "Processing $unified_file"
-        sed $SEDOPTION \
+        sed "${SEDOPTION[@]}" \
             -e 's|#include ".*/js/src/|#include "|' \
             -e 's|#error ".*/js/src/|#error "|' \
             "$unified_file"

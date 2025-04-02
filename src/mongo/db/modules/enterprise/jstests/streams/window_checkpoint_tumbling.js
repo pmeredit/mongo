@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {
     checkpointInTheMiddleTest
 } from "src/mongo//db/modules/enterprise/jstests/streams/checkpoint_helper.js";

@@ -17,7 +17,6 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
@@ -37,6 +36,7 @@
 #include "streams/exec/restored_checkpoint_info.h"
 #include "streams/exec/stats_utils.h"
 #include "streams/exec/stream_stats.h"
+#include "streams/exec/util.h"
 
 using namespace std::chrono_literals;
 using fspath = std::filesystem::path;
@@ -240,7 +240,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
                   fmt::format("Error writing to file={}, errno={}, context={}",
                               shadowPath.native(),
                               errno,
-                              tojson(_context->toBSON())));
+                              serializeJson(_context->toBSON())));
     }
     try {
         // Rename to eventual name
@@ -253,7 +253,7 @@ void LocalDiskCheckpointStorage::writeActiveStateFileToDisk() {
                               shadowPath.native(),
                               stateFilePath.native(),
                               msg.what(),
-                              tojson(_context->toBSON())));
+                              serializeJson(_context->toBSON())));
     }
 
     // Store compressed file checksum in manifest
@@ -341,14 +341,14 @@ void LocalDiskCheckpointStorage::doCommitCheckpoint(CheckpointId chkId) {
     addUnflushedCheckpoint(chkId,
                            CheckpointDescription{chkId,
                                                  directory,
-                                                 _lastCheckpointSizeBytes,
+                                                 _lastCheckpointSizeBytes.load(),
                                                  mongo::Date_t::now(),
                                                  Milliseconds{writeDurationMs}});
 
     _activeCheckpointSave->manifest.writeToDisk(std::move(metadata));
     // bookkeeping for checkpoint sizes
     _checkpointSizeBytes->increment(_activeCheckpointSave->checkpointSizeBytes);
-    _lastCheckpointSizeBytes = _activeCheckpointSave->checkpointSizeBytes;
+    _lastCheckpointSizeBytes.store(_activeCheckpointSave->checkpointSizeBytes);
     // Reset ActiveSaver
     _activeCheckpointSave.reset();
 
@@ -453,7 +453,7 @@ void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile
             tasserted(ErrorCodes::InternalError,
                       fmt::format("Could not get file idx from state file: {}, context: {}",
                                   fName,
-                                  tojson(_context->toBSON())));
+                                  serializeJson(_context->toBSON())));
         }
         tassert(ErrorCodes::InternalError,
                 fmt::format("Duplicate file idx - {}", *fidx),
@@ -476,7 +476,7 @@ void LocalDiskCheckpointStorage::populateManifestInfo(const fspath& manifestFile
                 tasserted(ErrorCodes::InternalError,
                           fmt::format("Could not get file idx from state file: {}, context: {}",
                                       fName,
-                                      tojson(_context->toBSON())));
+                                      serializeJson(_context->toBSON())));
             }
             off_t beg = loc.getBegin();
             off_t end = loc.getEnd();
@@ -559,7 +559,7 @@ RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(Chec
     // Most of the time, we will be restoring from the last committed checkpoint, so using the size
     // of the checkpoint being restored as the lastCheckpointSizeBytes should be fine
     _lastCheckpointCommitTs = lastCheckpointCommitTs;
-    _lastCheckpointSizeBytes = lastCheckpointSizeBytes;
+    _lastCheckpointSizeBytes.store(lastCheckpointSizeBytes);
 
     LOGV2_INFO(7863452,
                "Checkpoint restore started",
@@ -595,7 +595,7 @@ RestoredCheckpointInfo LocalDiskCheckpointStorage::doStartCheckpointRestore(Chec
     CheckpointDescription details;
     details.setFilepath(_opts.restoreRootDir.string());
     details.setId(chkId);
-    details.setCheckpointSizeBytes(_lastCheckpointSizeBytes);
+    details.setCheckpointSizeBytes(_lastCheckpointSizeBytes.load());
     details.setCheckpointTimestamp(_lastCheckpointCommitTs);
     details.setWriteDurationMs(Milliseconds{writeDurationMs});
     info.description = std::move(details);

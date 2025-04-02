@@ -80,7 +80,7 @@
 #include "mongo/db/query/client_cursor/cursor_id.h"
 #include "mongo/db/query/client_cursor/cursor_manager.h"
 #include "mongo/db/query/find_command.h"
-#include "mongo/db/query/query_settings/query_settings_manager.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
 #include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/query/write_ops/write_ops_gen.h"
 #include "mongo/db/repl/oplog.h"
@@ -95,8 +95,7 @@
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
 #include "mongo/util/scopeguard.h"
@@ -170,7 +169,7 @@ protected:
 
     void addIndex(const IndexSpec& spec) {
         BSONObjBuilder builder(spec.toBSON());
-        builder.append("v", int(IndexDescriptor::kLatestIndexVersion));
+        builder.append("v", int(IndexConfig::kLatestIndexVersion));
         auto specObj = builder.obj();
 
         CollectionWriter collection(&_opCtx, _collection->ns());
@@ -281,9 +280,8 @@ public:
         DBDirectClient cl(&_opCtx);
         BSONObj info;
         bool ok = cl.runCommand(nss().dbName(),
-                                BSON("godinsert"
-                                     << "querytests"
-                                     << "obj" << BSONObj()),
+                                BSON("godinsert" << "querytests"
+                                                 << "obj" << BSONObj()),
                                 info);
         ASSERT(ok);
 
@@ -301,7 +299,8 @@ public:
 class ClientBase {
 public:
     ClientBase() : _client(&_opCtx) {
-        query_settings::QuerySettingsManager::create(_opCtx.getServiceContext(), {}, {});
+        // Initialize the query settings.
+        query_settings::initializeForTest(_opCtx.getServiceContext());
     }
 
 protected:
@@ -415,67 +414,6 @@ public:
 private:
     const NamespaceString _nss =
         NamespaceString::createNamespaceString_forTest("unittests.querytests.GetMoreKillOp");
-};
-
-/**
- * A get more exception caused by an invalid or unauthorized get more request does not cause
- * the get more's ClientCursor to be destroyed.  This prevents an unauthorized user from
- * improperly killing a cursor by issuing an invalid get more request.
- */
-class GetMoreInvalidRequest : public ClientBase {
-public:
-    ~GetMoreInvalidRequest() {
-        _opCtx.getServiceContext()->unsetKillAllOperations();
-        _client.dropCollection(_nss);
-    }
-    void run() {
-        auto startNumCursors = CursorManager::get(&_opCtx)->numCursors();
-
-        // Create a collection with some data.
-        for (int i = 0; i < 1000; ++i) {
-            insert(_nss, BSON("a" << i));
-        }
-
-        // Create a cursor on the collection, with a batch size of 200.
-        FindCommandRequest findRequest{_nss};
-        findRequest.setBatchSize(200);
-        auto cursor = _client.find(std::move(findRequest));
-        CursorId cursorId = cursor->getCursorId();
-
-        // Count 500 results, spanning a few batches of documents.
-        int count = 0;
-        for (int i = 0; i < 500; ++i) {
-            ASSERT(cursor->more());
-            cursor->next();
-            ++count;
-        }
-
-        // Send a getMore with a namespace that is incorrect ('spoofed') for this cursor id.
-        ASSERT_THROWS(
-            _client.getMore(
-                NamespaceString::createNamespaceString_forTest(
-                    "unittests.querytests.GetMoreInvalidRequest_WRONG_NAMESPACE_FOR_CURSOR"),
-                cursor->getCursorId()),
-            AssertionException);
-
-        // Check that the cursor still exists.
-        ASSERT_EQ(startNumCursors + 1, CursorManager::get(&_opCtx)->numCursors());
-        ASSERT_OK(CursorManager::get(&_opCtx)->pinCursor(&_opCtx, cursorId).getStatus());
-
-        // Check that the cursor can be iterated until all documents are returned.
-        while (cursor->more()) {
-            cursor->next();
-            ++count;
-        }
-        ASSERT_EQUALS(1000, count);
-
-        // The cursor should no longer exist, since we exhausted it.
-        ASSERT_EQ(startNumCursors, CursorManager::get(&_opCtx)->numCursors());
-    }
-
-private:
-    const NamespaceString _nss = NamespaceString::createNamespaceString_forTest(
-        "unittests.querytests.GetMoreInvalidRequest");
 };
 
 class PositiveLimit : public ClientBase {
@@ -731,9 +669,8 @@ public:
 
         BSONObj info;
         _client.runCommand(_nss.dbName(),
-                           BSON("create"
-                                << "querytests.TailableQueryOnId"
-                                << "capped" << true << "size" << 8192 << "autoIndexId" << true),
+                           BSON("create" << "querytests.TailableQueryOnId"
+                                         << "capped" << true << "size" << 8192),
                            info);
         insertA(_nss, 0);
         insertA(_nss, 1);
@@ -845,10 +782,9 @@ public:
         insertOplogDocument(&_opCtx, Timestamp(1000, 2), ns);
 
         BSONObj explainCmdObj =
-            BSON("explain" << BSON("find"
-                                   << "oplog.querytests.OplogScanGtTsExplain"
-                                   << "filter" << BSON("ts" << GT << Timestamp(1000, 1)) << "hint"
-                                   << BSON("$natural" << 1))
+            BSON("explain" << BSON("find" << "oplog.querytests.OplogScanGtTsExplain"
+                                          << "filter" << BSON("ts" << GT << Timestamp(1000, 1))
+                                          << "hint" << BSON("$natural" << 1))
                            << "verbosity"
                            << "executionStats");
 
@@ -1292,9 +1228,7 @@ public:
         _client.dropCollection(_nss);
     }
     void run() {
-        _client.insert(_nss,
-                       BSON("i"
-                            << "a"));
+        _client.insert(_nss, BSON("i" << "a"));
         ASSERT_OK(dbtests::createIndex(&_opCtx, _nss.ns_forTest(), BSON("i" << 1)));
         ASSERT_EQUALS(1U, _client.count(_nss, fromjson("{i:{$in:['a']}}")));
     }
@@ -1314,14 +1248,8 @@ public:
         _client.insert(_nss, fromjson("{foo:{bar:['spam','eggs']}}"));
         _client.insert(_nss, fromjson("{bar:['spam']}"));
         _client.insert(_nss, fromjson("{bar:['spam','eggs']}"));
-        ASSERT_EQUALS(2U,
-                      _client.count(_nss,
-                                    BSON("bar"
-                                         << "spam")));
-        ASSERT_EQUALS(2U,
-                      _client.count(_nss,
-                                    BSON("foo.bar"
-                                         << "spam")));
+        ASSERT_EQUALS(2U, _client.count(_nss, BSON("bar" << "spam")));
+        ASSERT_EQUALS(2U, _client.count(_nss, BSON("foo.bar" << "spam")));
     }
 
 private:
@@ -1432,19 +1360,9 @@ public:
             b.appendSymbol("x", "eliot");
             ASSERT_EQUALS(17, _client.findOne(nss(), b.obj())["z"].number());
         }
-        ASSERT_EQUALS(17,
-                      _client
-                          .findOne(nss(),
-                                   BSON("x"
-                                        << "eliot"))["z"]
-                          .number());
+        ASSERT_EQUALS(17, _client.findOne(nss(), BSON("x" << "eliot"))["z"].number());
         ASSERT_OK(dbtests::createIndex(&_opCtx, ns(), BSON("x" << 1)));
-        ASSERT_EQUALS(17,
-                      _client
-                          .findOne(nss(),
-                                   BSON("x"
-                                        << "eliot"))["z"]
-                          .number());
+        ASSERT_EQUALS(17, _client.findOne(nss(), BSON("x" << "eliot"))["z"].number());
     }
 };
 
@@ -1535,7 +1453,8 @@ public:
         ASSERT_EQUALS(50, count());
 
         BSONObj res;
-        ASSERT(Helpers::findOne(&_opCtx, ctx.getCollection(), BSON("_id" << 20), res));
+        ASSERT(Helpers::findOne(
+            &_opCtx, ctx.getCollection().getCollectionPtr(), BSON("_id" << 20), res));
         ASSERT_EQUALS(40, res["x"].numberInt());
 
         ASSERT(Helpers::findById(&_opCtx, nss(), BSON("_id" << 20), res));
@@ -1550,7 +1469,8 @@ public:
         {
             Timer t;
             for (int i = 0; i < n; i++) {
-                ASSERT(Helpers::findOne(&_opCtx, ctx.getCollection(), BSON("_id" << 20), res));
+                ASSERT(Helpers::findOne(
+                    &_opCtx, ctx.getCollection().getCollectionPtr(), BSON("_id" << 20), res));
             }
             slow = t.micros();
         }
@@ -1614,11 +1534,9 @@ public:
         }
 
         BSONObj info;
-        // Must use local db so that the collection is not replicated, to allow autoIndexId:false.
         _client.runCommand(DatabaseName::kLocal,
-                           BSON("create"
-                                << "oplog.querytests.findingstart"
-                                << "capped" << true << "size" << 4096 << "autoIndexId" << false),
+                           BSON("create" << "oplog.querytests.findingstart"
+                                         << "capped" << true << "size" << 4096),
                            info);
         // WiredTiger storage engines forbid dropping of the oplog. Evergreen reuses nodes for
         // testing, so the oplog may already exist on the test node; in this case, trying to create
@@ -1681,11 +1599,9 @@ public:
         size_t startNumCursors = numCursorsOpen();
 
         BSONObj info;
-        // Must use local db so that the collection is not replicated, to allow autoIndexId:false.
         _client.runCommand(DatabaseName::kLocal,
-                           BSON("create"
-                                << "oplog.querytests.findingstart"
-                                << "capped" << true << "size" << 4096 << "autoIndexId" << false),
+                           BSON("create" << "oplog.querytests.findingstart"
+                                         << "capped" << true << "size" << 4096),
                            info);
         // WiredTiger storage engines forbid dropping of the oplog. Evergreen reuses nodes for
         // testing, so the oplog may already exist on the test node; in this case, trying to create
@@ -1749,11 +1665,9 @@ public:
         ASSERT(!c0->more());
 
         BSONObj info;
-        // Must use local db so that the collection is not replicated, to allow autoIndexId:false.
         _client.runCommand(DatabaseName::kLocal,
-                           BSON("create"
-                                << "oplog.querytests.findingstart"
-                                << "capped" << true << "size" << 4096 << "autoIndexId" << false),
+                           BSON("create" << "oplog.querytests.findingstart"
+                                         << "capped" << true << "size" << 4096),
                            info);
         // WiredTiger storage engines forbid dropping of the oplog. Evergreen reuses nodes for
         // testing, so the oplog may already exist on the test node; in this case, trying to create
@@ -2036,7 +1950,6 @@ public:
         add<BoundedKey>();
         add<GetMore>();
         add<GetMoreKillOp>();
-        add<GetMoreInvalidRequest>();
         add<PositiveLimit>();
         add<TailNotAtEnd>();
         add<EmptyTail>();

@@ -74,33 +74,23 @@
 #include "mongo/db/matcher/expression_where_noop.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_allowed_properties.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_source_group.h"
-#include "mongo/db/pipeline/document_source_internal_projection.h"
-#include "mongo/db/pipeline/document_source_lookup.h"
-#include "mongo/db/pipeline/document_source_project.h"
-#include "mongo/db/pipeline/document_source_set_window_fields.h"
-#include "mongo/db/pipeline/document_source_single_document_transformation.h"
+#include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/search/search_helper.h"
 #include "mongo/db/query/analyze_regex.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/query/projection.h"
-#include "mongo/db/query/projection_ast.h"
-#include "mongo/db/query/projection_ast_util.h"
 #include "mongo/db/query/query_knob_configuration.h"
 #include "mongo/db/query/query_request_helper.h"
 #include "mongo/db/query/tree_walker.h"
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/read_concern_level.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/overflow_arithmetic.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/decorable.h"
-#include "mongo/util/str.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
@@ -1357,11 +1347,7 @@ std::string encodeSBE(const CanonicalQuery& cq, const bool requiresSbeCompatibil
     const auto& filter = cq.getQueryObj();
     const auto& proj = cq.getFindCommandRequest().getProjection();
     const auto& sort = cq.getFindCommandRequest().getSort();
-
-    // Do not encode query's hint if query settings already has index hints.
-    const auto& hint = cq.getExpCtx()->getQuerySettings().getIndexHints()
-        ? BSONObj()
-        : cq.getFindCommandRequest().getHint();
+    const auto& hint = cq.getFindCommandRequest().getHint();
 
     StringBuilder strBuilder;
     encodeKeyForSort(sort, &strBuilder);

@@ -52,7 +52,6 @@
 #include "mongo/bson/util/builder_fwd.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/matcher/expression_visitor.h"
-#include "mongo/db/matcher/match_details.h"
 #include "mongo/db/matcher/matchable.h"
 #include "mongo/db/pipeline/dependencies.h"
 #include "mongo/db/query/collation/collator_interface.h"
@@ -437,30 +436,6 @@ public:
     virtual bool equivalent(const MatchExpression* other) const = 0;
 
     //
-    // Determine if a document satisfies the tree-predicate.
-    //
-
-    virtual bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const = 0;
-
-    virtual bool matchesBSON(const BSONObj& doc, MatchDetails* details = nullptr) const;
-
-    /**
-     * Determines if 'elem' would satisfy the predicate if wrapped with the top-level field name of
-     * the predicate. Does not check that the predicate has a single top-level field name. For
-     * example, given the object obj={a: [5]}, the predicate {i: {$gt: 0}} would match the element
-     * obj["a"]["0"] because it performs the match as if the element at "a.0" were the BSONObj {i:
-     * 5}.
-     */
-    virtual bool matchesBSONElement(BSONElement elem, MatchDetails* details = nullptr) const;
-
-    /**
-     * Determines if the element satisfies the tree-predicate.
-     * Not valid for all expressions (e.g. $where); in those cases, returns false.
-     */
-    virtual bool matchesSingleElement(const BSONElement& e,
-                                      MatchDetails* details = nullptr) const = 0;
-
-    //
     // Tagging mechanism: Hang data off of the tree for retrieval later.
     //
 
@@ -471,6 +446,13 @@ public:
         virtual void debugString(StringBuilder* builder) const = 0;
         virtual TagData* clone() const = 0;
         virtual Type getType() const = 0;
+
+        template <typename H>
+        friend H AbslHashValue(H state, const TagData& tagData) {
+            tagData.hash(absl::HashState::Create(&state));
+            return state;
+        }
+        virtual void hash(absl::HashState state) const = 0;
     };
 
     /**
@@ -516,7 +498,7 @@ public:
      * It is expected that most callers want to set 'includePath' to true to get a correct
      * serialization. Internally, we may set this to false if we have a situation where an outer
      * expression serializes a path and we don't want to repeat the path in the inner expression.
-
+     *
      * For example in {a: {$elemMatch: {$eq: 2}}} the "a" is serialized by the $elemMatch, and
      * should not be serialized by the EQ child.
      * The $elemMatch will serialize {a: {$elemMatch: <recurse>}} and the EQ will serialize just
@@ -611,7 +593,7 @@ protected:
      * Subclasses that are collation-aware must implement this method in order to capture changes
      * to the collator that occur after initialization time.
      */
-    virtual void _doSetCollator(const CollatorInterface* collator){};
+    virtual void _doSetCollator(const CollatorInterface* collator) {};
 
     void _debugAddSpace(StringBuilder& debug, int indentationLevel) const;
 

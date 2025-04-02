@@ -7,6 +7,7 @@
 #include "aggregate_expression_intender_entry.h"
 #include "aggregate_expression_intender_range.h"
 #include "encryption_schema_tree.h"
+#include "fle/query_analysis/agg_expression_encryption_intender_base.h"
 #include "fle_match_expression.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/crypto/encryption_fields_gen.h"
@@ -63,10 +64,11 @@ protected:
             false);
     }
 
-    BSONObj markMatchExpression(const BSONObj& fields, const BSONObj& matchExpression) {
-        auto cmd = BSON("find"
-                        << "coll"
-                        << "filter" << matchExpression);
+    BSONObj markMatchExpression(const BSONObj& fields,
+                                const BSONObj& matchExpression,
+                                FLE2FieldRefExpr fieldRefSupported = FLE2FieldRefExpr::disallowed) {
+        auto cmd = BSON("find" << "coll"
+                               << "filter" << matchExpression);
 
         auto params = createQueryAnalysisParamsFromFields(fields, cmd);
         auto schemaTree =
@@ -76,7 +78,8 @@ protected:
                                          getExpCtx(),
                                          ExtensionsCallbackNoop(),
                                          MatchExpressionParser::kAllowAllSpecialFeatures));
-        FLEMatchExpression fleMatchExpression{std::move(parsedMatch), *schemaTree};
+        FLEMatchExpression fleMatchExpression{
+            std::move(parsedMatch), *schemaTree, fieldRefSupported};
         return fleMatchExpression.getMatchExpression()->serialize();
     }
 
@@ -109,6 +112,16 @@ protected:
         return config;
     }
 
+    QueryTypeConfig getTextSearchPrefixConfig() {
+        QueryTypeConfig qtc;
+        qtc.setQueryType(QueryTypeEnum::PrefixPreview);
+        qtc.setCaseSensitive(false);
+        qtc.setDiacriticSensitive(true);
+        qtc.setStrMinQueryLength(2);
+        qtc.setStrMaxQueryLength(20);
+        return qtc;
+    }
+
     BSONObj wrapObj(BSONObj innerObj) {
         return BSON("" << innerObj);
     }
@@ -128,6 +141,37 @@ protected:
                                                                   FLE2FieldRefExpr::allowed);
         ASSERT(intention == expectedIntention);
         return expressionPtr;
+    }
+
+    auto markAggExpressionForText(boost::intrusive_ptr<Expression> expressionPtr,
+                                  bool expressionIsCompared,
+                                  aggregate_expression_intender::Intention expectedIntention) {
+
+        auto schemaTree = buildSchema(kTextFields);
+        auto intention = aggregate_expression_intender::markTextSearch(getExpCtxRaw(),
+                                                                       *schemaTree,
+                                                                       expressionPtr,
+                                                                       expressionIsCompared,
+                                                                       FLE2FieldRefExpr::allowed);
+        ASSERT(intention == expectedIntention);
+        return expressionPtr;
+    }
+    auto markAggExpressionForText(const BSONObj& unparsedExpr,
+                                  bool expressionIsCompared,
+                                  aggregate_expression_intender::Intention expectedIntention) {
+        auto expressionPtr = Expression::parseObject(
+            getExpCtxRaw(), std::move(unparsedExpr), getExpCtx()->variablesParseState);
+        return markAggExpressionForText(
+            std::move(expressionPtr), expressionIsCompared, expectedIntention);
+    }
+
+    Value markAggExpressionForTextAndSerialize(
+        const BSONObj& unparsedExpr,
+        bool expressionIsCompared,
+        aggregate_expression_intender::Intention expectedIntention) {
+        return markAggExpressionForText(
+                   std::move(unparsedExpr), expressionIsCompared, expectedIntention)
+            ->serialize();
     }
 
     auto markAggExpressionForRange(const BSONObj& unparsedExpr,
@@ -235,9 +279,8 @@ protected:
 
     template <class T>
     BSONObj buildEqualityPlaceholder(const BSONObj& fields, StringData field, T value) {
-        auto cmd = BSON("find"
-                        << "coll"
-                        << "filter" << BSONObj());
+        auto cmd = BSON("find" << "coll"
+                               << "filter" << BSONObj());
         auto params = createQueryAnalysisParamsFromFields(fields, cmd);
         auto schemaTree =
             EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
@@ -251,10 +294,24 @@ protected:
                                        boost::none);
     }
 
+    template <class T>
+    BSONObj buildTextSearchEncryptElem(StringData field,
+                                       T value,
+                                       EncryptionPlaceholderContext placeholderContext) {
+        auto schemaTree = buildSchema(kTextFields);
+        auto metadata = schemaTree->getEncryptionMetadataForPath(FieldRef(field));
+        auto tempObj = BSON("" << value);
+        return buildEncryptPlaceholder(tempObj.firstElement(),
+                                       metadata.value(),
+                                       placeholderContext,
+                                       nullptr,
+                                       boost::none,
+                                       boost::none);
+    }
+
     std::unique_ptr<EncryptionSchemaTreeNode> buildSchema(const BSONObj& fields) {
-        auto cmd = BSON("find"
-                        << "coll"
-                        << "filter" << BSONObj());
+        auto cmd = BSON("find" << "coll"
+                               << "filter" << BSONObj());
         auto params = createQueryAnalysisParamsFromFields(fields, cmd);
         return EncryptionSchemaTreeNode::parse<std::unique_ptr<EncryptionSchemaTreeNode>>(params);
     }

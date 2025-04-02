@@ -27,6 +27,7 @@
  *    it in the license file.
  */
 
+#include "mongo/db/timeseries/bucket_catalog/rollover.h"
 #include <absl/container/node_hash_map.h>
 #include <absl/meta/type_traits.h>
 #include <initializer_list>
@@ -42,32 +43,25 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
-#include "mongo/db/catalog/catalog_test_fixture.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/catalog/create_collection.h"
 #include "mongo/db/catalog_raii.h"
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
-#include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/db/timeseries/bucket_catalog/bucket_catalog.h"
 #include "mongo/db/timeseries/bucket_catalog/bucket_catalog_internal.h"
 #include "mongo/db/timeseries/bucket_catalog/bucket_metadata.h"
-#include "mongo/db/timeseries/bucket_catalog/global_bucket_catalog.h"
 #include "mongo/db/timeseries/bucket_compression.h"
 #include "mongo/db/timeseries/timeseries_constants.h"
-#include "mongo/db/timeseries/timeseries_options.h"
+#include "mongo/db/timeseries/timeseries_test_fixture.h"
 #include "mongo/db/timeseries/timeseries_write_util.h"
+#include "mongo/db/timeseries/write_ops/internal/timeseries_write_ops_internal.h"
 #include "mongo/db/timeseries/write_ops/timeseries_write_ops_utils_internal.h"
-#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/debug_util.h"
 #include "mongo/util/fail_point.h"
 
 namespace mongo::timeseries::bucket_catalog {
@@ -80,9 +74,7 @@ constexpr StringData kNumClosedDueToReopening = "numBucketsClosedDueToReopening"
 constexpr StringData kNumClosedDueToTimeForward = "numBucketsClosedDueToTimeForward"_sd;
 constexpr StringData kNumClosedDueToMemoryThreshold = "numBucketsClosedDueToMemoryThreshold"_sd;
 
-static constexpr uint64_t kStorageCacheSizeBytes = 1024 * 1024 * 1024;
-
-class BucketCatalogTest : public CatalogTestFixture {
+class BucketCatalogTest : public TimeseriesTestFixture {
 protected:
     class RunBackgroundTaskAndWaitForFailpoint {
         stdx::thread _taskThread;
@@ -93,18 +85,8 @@ protected:
         ~RunBackgroundTaskAndWaitForFailpoint();
     };
 
-    void setUp() override;
-    void tearDown() override;
-    virtual void preSetUp();
-    virtual std::vector<NamespaceString> getNamespaceStrings();
-
     std::pair<ServiceContext::UniqueClient, ServiceContext::UniqueOperationContext>
     _makeOperationContext();
-
-    virtual BSONObj _makeTimeseriesOptionsForCreate() const;
-
-    TimeseriesOptions _getTimeseriesOptions(const NamespaceString& ns) const;
-    const CollatorInterface* _getCollator(const NamespaceString& ns) const;
 
     void _commit(const NamespaceString& ns,
                  const std::shared_ptr<WriteBatch>& batch,
@@ -114,116 +96,64 @@ protected:
                              const UUID& uuid,
                              uint16_t numPreviouslyCommittedMeasurements);
 
-    StatusWith<mongo::timeseries::bucket_catalog::InsertResult> _insertOneHelper(
-        OperationContext* opCtx,
-        mongo::timeseries::bucket_catalog::BucketCatalog& catalog,
-        const mongo::NamespaceString& nss,
-        const UUID& uuid,
-        const mongo::BSONObj& doc);
-
-    StatusWith<mongo::timeseries::bucket_catalog::InsertResult> _tryInsertOneHelper(
-        OperationContext* opCtx,
-        mongo::timeseries::bucket_catalog::BucketCatalog& catalog,
-        const mongo::NamespaceString& nss,
-        const UUID& uuid,
-        const mongo::BSONObj& doc);
-
-    StatusWith<mongo::timeseries::bucket_catalog::InsertResult>
-    _insertOneWithReopeningContextHelper(OperationContext* opCtx,
-                                         mongo::timeseries::bucket_catalog::BucketCatalog& catalog,
-                                         const mongo::NamespaceString& nss,
-                                         const UUID& uuid,
-                                         const mongo::BSONObj& doc,
-                                         ReopeningContext& reopeningContext);
-
-    long long _getExecutionStat(const UUID& uuid, StringData stat);
-
+    InsertResult _insertOneHelper(OperationContext* opCtx,
+                                  BucketCatalog& catalog,
+                                  const mongo::NamespaceString& nss,
+                                  const UUID& uuid,
+                                  const mongo::BSONObj& doc);
 
     // Check that each group of objects has compatible schema with itself, but that inserting the
     // first object in new group closes the existing bucket and opens a new one
     void _testMeasurementSchema(
         const std::initializer_list<std::initializer_list<BSONObj>>& groups);
 
+    StatusWith<tracking::unique_ptr<Bucket>> _testRehydrateBucket(const CollectionPtr& coll,
+                                                                  const BSONObj& bucketDoc);
+
     Status _reopenBucket(const CollectionPtr& coll, const BSONObj& bucketDoc);
 
-    RolloverAction _rolloverAction(const std::shared_ptr<WriteBatch>& batch);
+    BSONObj _getCompressedBucketDoc(const BSONObj& bucketDoc);
+
+    RolloverReason _rolloverReason(const std::shared_ptr<WriteBatch>& batch);
 
     void _testUseBucketSkipsConflictingBucket(std::function<void(BucketCatalog&, Bucket&)>);
-    void _testUseAlternateBucketSkipsConflictingBucket(
-        std::function<void(BucketCatalog&, Bucket&)>);
 
-    OperationContext* _opCtx;
-    BucketCatalog* _bucketCatalog;
+    void _testBucketMetadataFieldOrdering(const BSONObj& inputMetadata,
+                                          const BSONObj& expectedMetadata);
 
-    StringData _timeField = "time";
-    StringData _metaField = "tag";
+    void _testStageInsertBatchIntoEligibleBucket(
+        const NamespaceString& ns,
+        const UUID& collectionUUID,
+        const std::vector<BSONObj>& batchOfMeasurements,
+        const std::vector<size_t>& currBatchedInsertContextsIndex,
+        const std::vector<size_t>& numMeasurementsInWriteBatch,
+        size_t numBatchedInsertContexts) const;
 
-    NamespaceString _ns1 =
-        NamespaceString::createNamespaceString_forTest("bucket_catalog_test_1", "t_1");
-    NamespaceString _ns2 =
-        NamespaceString::createNamespaceString_forTest("bucket_catalog_test_1", "t_2");
-    NamespaceString _ns3 =
-        NamespaceString::createNamespaceString_forTest("bucket_catalog_test_2", "t_1");
+    void _testStageInsertBatchIntoEligibleBucketWithMetaField(
+        const NamespaceString& ns,
+        const UUID& collectionUUID,
+        const std::vector<BSONObj>& batchOfMeasurements,
+        const std::vector<size_t>& currBatchedInsertContextsIndex,
+        const std::vector<size_t>& numMeasurementsInWriteBatch,
+        size_t numBatchedInsertContexts) const;
 
-    UUID _uuid1 = UUID::gen();
-    UUID _uuid2 = UUID::gen();
-    UUID _uuid3 = UUID::gen();
+    void _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+        const NamespaceString& ns,
+        const UUID& collectionUUID,
+        const std::vector<BSONObj>& batchOfMeasurements,
+        const std::vector<size_t>& currBatchedInsertContextsIndex,
+        const std::vector<size_t>& numMeasurementsInWriteBatch,
+        size_t numBatchedInsertContexts) const;
+
+    void _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        const NamespaceString& ns,
+        const UUID& collectionUUID,
+        const std::vector<BSONObj>& batchOfMeasurements,
+        const std::vector<size_t>& currBatchedInsertContextsIndex,
+        const std::vector<size_t>& numMeasurementsInWriteBatch,
+        size_t numBatchedInsertContexts) const;
 };
 
-class BucketCatalogWithoutMetadataTest : public BucketCatalogTest {
-protected:
-    BSONObj _makeTimeseriesOptionsForCreate() const override;
-};
-
-void BucketCatalogTest::preSetUp() {}
-
-std::vector<NamespaceString> BucketCatalogTest::getNamespaceStrings() {
-    return {_ns1, _ns2, _ns3};
-}
-
-void BucketCatalogTest::setUp() {
-    preSetUp();
-    CatalogTestFixture::setUp();
-
-    _opCtx = operationContext();
-    _bucketCatalog = &GlobalBucketCatalog::get(_opCtx->getServiceContext());
-
-    for (auto&& [ns, uuid] : std::initializer_list<std::pair<NamespaceString*, UUID*>>{
-             {&_ns1, &_uuid1}, {&_ns2, &_uuid2}, {&_ns3, &_uuid3}}) {
-        ASSERT_OK(createCollection(
-            _opCtx,
-            ns->dbName(),
-            BSON("create" << ns->coll() << "timeseries" << _makeTimeseriesOptionsForCreate())));
-        AutoGetCollection autoColl(_opCtx, ns->makeTimeseriesBucketsNamespace(), MODE_IS);
-        *uuid = autoColl.getCollection()->uuid();
-    }
-}
-
-void BucketCatalogTest::tearDown() {
-    // Validate that all tracked execution stats adds up to what is being tracked globally.
-    ExecutionStats accumulated;
-    for (auto&& execStats : _bucketCatalog->executionStats) {
-
-        addCollectionExecutionGauges(accumulated, *execStats.second);
-    }
-
-    // Compare as BSON, this allows us to avoid enumerating all the individual stats in this
-    // function and makes it robust to adding further stats in the future.
-    auto execStatsToBSON = [](const ExecutionStats& stats) {
-        BSONObjBuilder builder;
-        appendExecutionStatsToBuilder(stats, builder);
-        return builder.obj();
-    };
-
-    ExecutionStats global;
-
-    // Filter out the guages only
-    addCollectionExecutionGauges(global, _bucketCatalog->globalExecutionStats);
-
-    ASSERT_EQ(0, execStatsToBSON(global).woCompare(execStatsToBSON(accumulated)));
-
-    CatalogTestFixture::tearDown();
-}
 
 BucketCatalogTest::RunBackgroundTaskAndWaitForFailpoint::RunBackgroundTaskAndWaitForFailpoint(
     const std::string& failpointName, std::function<void()>&& fn) {
@@ -247,24 +177,6 @@ BucketCatalogTest::_makeOperationContext() {
     auto client = getServiceContext()->getService()->makeClient("BucketCatalogTest");
     auto opCtx = client->makeOperationContext();
     return {std::move(client), std::move(opCtx)};
-}
-
-BSONObj BucketCatalogTest::_makeTimeseriesOptionsForCreate() const {
-    return BSON("timeField" << _timeField << "metaField" << _metaField);
-}
-
-BSONObj BucketCatalogWithoutMetadataTest::_makeTimeseriesOptionsForCreate() const {
-    return BSON("timeField" << _timeField);
-}
-
-TimeseriesOptions BucketCatalogTest::_getTimeseriesOptions(const NamespaceString& ns) const {
-    AutoGetCollection autoColl(_opCtx, ns.makeTimeseriesBucketsNamespace(), MODE_IS);
-    return *autoColl->getTimeseriesOptions();
-}
-
-const CollatorInterface* BucketCatalogTest::_getCollator(const NamespaceString& ns) const {
-    AutoGetCollection autoColl(_opCtx, ns.makeTimeseriesBucketsNamespace(), MODE_IS);
-    return autoColl->getDefaultCollator();
 }
 
 void BucketCatalogTest::_commit(const NamespaceString& ns,
@@ -298,19 +210,18 @@ void BucketCatalogTest::_insertOneAndCommit(const NamespaceString& ns,
                          _getCollator(ns),
                          BSON(_timeField << time),
                          _opCtx->getOpID(),
-                         std::get<bucket_catalog::InsertContext>(insertContextAndTime),
+                         std::get<InsertContext>(insertContextAndTime),
                          std::get<Date_t>(insertContextAndTime),
-                         kStorageCacheSizeBytes);
-    auto& batch = get<SuccessfulInsertion>(result.getValue()).batch;
+                         _storageCacheSizeBytes);
+    auto& batch = get<SuccessfulInsertion>(result).batch;
     _commit(ns, batch, numPreviouslyCommittedMeasurements);
 }
 
-StatusWith<mongo::timeseries::bucket_catalog::InsertResult> BucketCatalogTest::_insertOneHelper(
-    OperationContext* opCtx,
-    mongo::timeseries::bucket_catalog::BucketCatalog& catalog,
-    const mongo::NamespaceString& nss,
-    const UUID& uuid,
-    const mongo::BSONObj& doc) {
+InsertResult BucketCatalogTest::_insertOneHelper(OperationContext* opCtx,
+                                                 BucketCatalog& catalog,
+                                                 const mongo::NamespaceString& nss,
+                                                 const UUID& uuid,
+                                                 const mongo::BSONObj& doc) {
 
     auto insertContextAndTime =
         uassertStatusOK(prepareInsert(catalog, uuid, _getTimeseriesOptions(nss), doc));
@@ -319,59 +230,9 @@ StatusWith<mongo::timeseries::bucket_catalog::InsertResult> BucketCatalogTest::_
                   _getCollator(nss),
                   doc,
                   opCtx->getOpID(),
-                  std::get<bucket_catalog::InsertContext>(insertContextAndTime),
+                  std::get<InsertContext>(insertContextAndTime),
                   std::get<Date_t>(insertContextAndTime),
-                  kStorageCacheSizeBytes);
-}
-
-StatusWith<mongo::timeseries::bucket_catalog::InsertResult> BucketCatalogTest::_tryInsertOneHelper(
-    OperationContext* opCtx,
-    mongo::timeseries::bucket_catalog::BucketCatalog& catalog,
-    const mongo::NamespaceString& nss,
-    const UUID& uuid,
-    const mongo::BSONObj& doc) {
-
-    auto insertContextAndTime =
-        uassertStatusOK(prepareInsert(catalog, uuid, _getTimeseriesOptions(nss), doc));
-
-    return tryInsert(catalog,
-                     _getCollator(nss),
-                     doc,
-                     _opCtx->getOpID(),
-                     std::get<bucket_catalog::InsertContext>(insertContextAndTime),
-                     std::get<Date_t>(insertContextAndTime),
-                     kStorageCacheSizeBytes);
-}
-
-StatusWith<mongo::timeseries::bucket_catalog::InsertResult>
-BucketCatalogTest::_insertOneWithReopeningContextHelper(
-    OperationContext* opCtx,
-    mongo::timeseries::bucket_catalog::BucketCatalog& catalog,
-    const mongo::NamespaceString& nss,
-    const UUID& uuid,
-    const mongo::BSONObj& doc,
-    ReopeningContext& reopeningContext) {
-
-    auto insertContextAndTime =
-        uassertStatusOK(prepareInsert(catalog, uuid, _getTimeseriesOptions(nss), doc));
-
-    return insertWithReopeningContext(catalog,
-                                      _getCollator(nss),
-                                      doc,
-                                      _opCtx->getOpID(),
-                                      reopeningContext,
-                                      std::get<bucket_catalog::InsertContext>(insertContextAndTime),
-                                      std::get<Date_t>(insertContextAndTime),
-                                      kStorageCacheSizeBytes);
-}
-
-long long BucketCatalogTest::_getExecutionStat(const UUID& uuid, StringData stat) {
-    BSONObjBuilder builder;
-    appendExecutionStats(*_bucketCatalog, uuid, builder);
-
-    BSONObj obj = builder.obj();
-    BSONElement e = obj.getField(stat);
-    return e.isNumber() ? (int)e.number() : 0;
+                  _storageCacheSizeBytes);
 }
 
 void BucketCatalogTest::_testMeasurementSchema(
@@ -389,8 +250,11 @@ void BucketCatalogTest::_testMeasurementSchema(
             timestampedDoc.appendElements(doc);
 
             auto pre = _getExecutionStat(_uuid1, kNumSchemaChanges);
-            ASSERT(_insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, timestampedDoc.obj())
-                       .isOK());
+            auto result =
+                _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, timestampedDoc.obj());
+            auto& batch = get<SuccessfulInsertion>(result).batch;
+            ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
+            finish(*_bucketCatalog, batch);
             auto post = _getExecutionStat(_uuid1, kNumSchemaChanges);
 
             if (firstMember) {
@@ -412,6 +276,48 @@ void BucketCatalogTest::_testMeasurementSchema(
     }
 }
 
+BSONObj BucketCatalogTest::_getCompressedBucketDoc(const BSONObj& bucketDoc) {
+    CompressionResult compressionResult = compressBucket(bucketDoc,
+                                                         _timeField,
+                                                         _ns1,
+                                                         /*validateDecompression*/ true);
+    return compressionResult.compressedBucket.value();
+}
+
+StatusWith<tracking::unique_ptr<Bucket>> BucketCatalogTest::_testRehydrateBucket(
+    const CollectionPtr& coll, const BSONObj& bucketDoc) {
+    const NamespaceString ns = coll->ns().getTimeseriesViewNamespace();
+    const UUID uuid = coll->uuid();
+    const boost::optional<TimeseriesOptions> options = coll->getTimeseriesOptions();
+
+    BSONElement metadata;
+    auto metaFieldName = options->getMetaField();
+    if (metaFieldName) {
+        metadata = bucketDoc.getField(kBucketMetaFieldName);
+    }
+    auto key = BucketKey{uuid,
+                         BucketMetadata{getTrackingContext(_bucketCatalog->trackingContexts,
+                                                           TrackingScope::kOpenBucketsByKey),
+                                        metadata,
+                                        metaFieldName}};
+    auto stats = internal::getOrInitializeExecutionStats(*_bucketCatalog, uuid);
+    auto stripeNumber = internal::getStripeNumber(*_bucketCatalog, key);
+    InsertContext insertContext{key, stripeNumber, *options, stats};
+    auto validator = [opCtx = _opCtx, &coll](const BSONObj& bucketDoc) -> auto {
+        return coll->checkValidation(opCtx, bucketDoc);
+    };
+    auto era = getCurrentEra(_bucketCatalog->bucketStateRegistry);
+
+    return internal::rehydrateBucket(*_bucketCatalog,
+                                     bucketDoc,
+                                     insertContext.key,
+                                     insertContext.options,
+                                     era,
+                                     coll->getDefaultCollator(),
+                                     validator,
+                                     insertContext.stats);
+}
+
 Status BucketCatalogTest::_reopenBucket(const CollectionPtr& coll, const BSONObj& bucketDoc) {
     const NamespaceString ns = coll->ns().getTimeseriesViewNamespace();
     const UUID uuid = coll->uuid();
@@ -430,50 +336,48 @@ Status BucketCatalogTest::_reopenBucket(const CollectionPtr& coll, const BSONObj
                                                            TrackingScope::kOpenBucketsByKey),
                                         metadata,
                                         metaFieldName}};
+    auto stats = internal::getOrInitializeExecutionStats(*_bucketCatalog, uuid);
+    auto stripeNumber = internal::getStripeNumber(*_bucketCatalog, key);
+    InsertContext insertContext{key, stripeNumber, *options, stats};
 
     // Validate the bucket document against the schema.
-    auto validator = [ opCtx = _opCtx, &coll ](const BSONObj& bucketDoc) -> auto {
+    auto validator = [opCtx = _opCtx, &coll](const BSONObj& bucketDoc) -> auto {
         return coll->checkValidation(opCtx, bucketDoc);
     };
-
-    auto stats = internal::getOrInitializeExecutionStats(*_bucketCatalog, uuid);
+    auto era = getCurrentEra(_bucketCatalog->bucketStateRegistry);
 
     auto res = internal::rehydrateBucket(*_bucketCatalog,
-                                         stats,
-                                         uuid,
+                                         bucketDoc,
+                                         insertContext.key,
+                                         insertContext.options,
+                                         era,
                                          coll->getDefaultCollator(),
-                                         *options,
-                                         BucketToReopen{bucketDoc, validator},
-                                         getCurrentEra(_bucketCatalog->bucketStateRegistry),
-                                         nullptr);
+                                         validator,
+                                         insertContext.stats);
     if (!res.isOK()) {
         return res.getStatus();
     }
     auto bucket = std::move(res.getValue());
 
-    auto stripeNumber = internal::getStripeNumber(*_bucketCatalog, key);
-
     // Register the reopened bucket with the catalog.
-    auto& stripe = *_bucketCatalog->stripes[stripeNumber];
+    auto& stripe = *_bucketCatalog->stripes[insertContext.stripeNumber];
     stdx::lock_guard stripeLock{stripe.mutex};
 
-    ClosedBuckets closedBuckets;
-    return internal::reopenBucket(*_bucketCatalog,
-                                  stripe,
-                                  stripeLock,
-                                  stats,
-                                  key,
-                                  std::move(bucket),
-                                  getCurrentEra(_bucketCatalog->bucketStateRegistry),
-                                  closedBuckets)
+    return internal::loadBucketIntoCatalog(*_bucketCatalog,
+                                           stripe,
+                                           stripeLock,
+                                           insertContext.stats,
+                                           insertContext.key,
+                                           std::move(bucket),
+                                           getCurrentEra(_bucketCatalog->bucketStateRegistry))
         .getStatus();
 }
 
-RolloverAction BucketCatalogTest::_rolloverAction(const std::shared_ptr<WriteBatch>& batch) {
+RolloverReason BucketCatalogTest::_rolloverReason(const std::shared_ptr<WriteBatch>& batch) {
     auto& stripe =
         _bucketCatalog->stripes[internal::getStripeNumber(*_bucketCatalog, batch->bucketId)];
     auto& [key, bucket] = *stripe->openBucketsById.find(batch->bucketId);
-    return bucket->rolloverAction;
+    return bucket->rolloverReason;
 }
 
 void BucketCatalogTest::_testUseBucketSkipsConflictingBucket(
@@ -487,80 +391,279 @@ void BucketCatalogTest::_testUseBucketSkipsConflictingBucket(
     Bucket& bucket1 = internal::allocateBucket(*_bucketCatalog,
                                                *_bucketCatalog->stripes[insertCtx.stripeNumber],
                                                WithLock::withoutLock(),
-                                               insertCtx,
+                                               insertCtx.key,
+                                               insertCtx.options,
                                                time,
-                                               nullptr);
+                                               nullptr,
+                                               insertCtx.stats);
     makeBucketConflict(*_bucketCatalog, bucket1);
 
     Bucket& bucket2 = internal::allocateBucket(*_bucketCatalog,
                                                *_bucketCatalog->stripes[insertCtx.stripeNumber],
                                                WithLock::withoutLock(),
-                                               insertCtx,
+                                               insertCtx.key,
+                                               insertCtx.options,
                                                time,
-                                               nullptr);
+                                               nullptr,
+                                               insertCtx.stats);
 
     ASSERT_EQ(&bucket2,
               internal::useBucket(*_bucketCatalog,
                                   *_bucketCatalog->stripes[insertCtx.stripeNumber],
                                   WithLock::withoutLock(),
                                   insertCtx,
-                                  internal::AllowBucketCreation::kNo,
                                   time,
                                   nullptr));
 }
 
-void BucketCatalogTest::_testUseAlternateBucketSkipsConflictingBucket(
-    std::function<void(BucketCatalog&, Bucket&)> makeBucketConflict) {
-    BSONObj measurement = BSON(_timeField << Date_t::now() << _metaField << 1);
-    auto swResult =
-        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), measurement);
-    ASSERT_OK(swResult);
-    auto& [insertCtx, time] = swResult.getValue();
+void BucketCatalogTest::_testBucketMetadataFieldOrdering(const BSONObj& inputMetadata,
+                                                         const BSONObj& expectedMetadata) {
+    auto swBucketKeyAndTime = internal::extractBucketingParameters(
+        getTrackingContext(_bucketCatalog->trackingContexts, TrackingScope::kOpenBucketsByKey),
+        UUID::gen(),
+        _getTimeseriesOptions(_ns1),
+        BSON(_timeField << Date_t::now() << _metaField << inputMetadata));
+    ASSERT_OK(swBucketKeyAndTime);
 
-    Bucket& bucket1 = internal::allocateBucket(*_bucketCatalog,
-                                               *_bucketCatalog->stripes[insertCtx.stripeNumber],
-                                               WithLock::withoutLock(),
-                                               insertCtx,
-                                               time,
-                                               nullptr);
-    makeBucketConflict(*_bucketCatalog, bucket1);
+    auto metadata = swBucketKeyAndTime.getValue().first.metadata.toBSON();
+    ASSERT_EQ(metadata.woCompare(BSON(_metaField << expectedMetadata)), 0);
+}
 
-    Bucket& bucket2 = internal::allocateBucket(*_bucketCatalog,
-                                               *_bucketCatalog->stripes[insertCtx.stripeNumber],
-                                               WithLock::withoutLock(),
-                                               insertCtx,
-                                               time,
-                                               nullptr);
-    // Temporarily mark bucket2 rolled over so we can open another.
-    bucket2.rolloverAction = RolloverAction::kArchive;
+// currBatchedInsertContextsIndex is the index in batchedInsertContexts that the current write
+// batch should be accessing.
+// numMeasurementsInWriteBatch is the number of measurements that should be in the current write
+// batch returned by stageInsertBatch.
+// The currBatchedInsertContextsIndex.size() == numMeasurementsInWriteBatch.size() == the total
+// number of buckets that should be written to from the input batchOfMeasurements.
+// Example with RolloverReason::kSchemaChange and two distinct meta fields:
+// batchOfMeasurements = [
+//                         {_timeField: Date_t::now(), _metaField: "a",  "deathGrips": "isOnline"},
+//                         {_timeField: Date_t::now(), _metaField: "a",  "deathGrips": "isOffline"},
+//                         {_timeField: Date_t::now() + Second(1), _metaField: "a",  "deathGrips":
+//                         100},
+//                         {_timeField: Date_t::now(), _metaField: "b",  "deathGrips": "isOffline"},
+//                       ]
+// The batchedInsertContexts = [
+//                      {bucketKey: [...], stripeNumber: 0, options: [...], stats: [...],
+//                          measurementsTimesAndIndices: [
+//                              {_timeField: Date_t::now(), _metaField: "a",  "deathGrips":
+//                              "isOnline"},
+//                              {_timeField: Date_t::now(), _metaField: "a",  "deathGrips":
+//                              "isOffline"},
+//                              {_timeField: Date_t::now() + Second(1), _metaField: "a",
+//                              "deathGrips": 100},
+//                          ]},
+//                       {bucketKey: [...], stripeNumber: 1, options: [...], stats: [...],
+//                          measurementsTimesAndIndices: [
+//                              {_timeField: Date_t::now(), _metaField: "b",  "deathGrips":
+//                              "isOffline"},
+//                          ]},
+//                     ]
+// Note: we simplified the measurementsTimesAndIndices vector to consist of measurement's BSONObj
+// and not measurement's BatchedInsertTuple.
+//
+// currBatchedInsertContextsIndex = [0, 0, 1]
+// numMeasurementsInWriteBatch = [2, 1, 1]
+//
+// We are accessing the {_metaField: "a"}/batchedInsertContexts[0] and write the
+// two measurements into one bucket (numMeasurementsInWriteBatch[0]).
+// We detect a schema change with the "deathGrips" field for the
+// last measurement in batchedInsertContexts[0].measurementsTimesAndIndices and write one
+// measurement to a second bucket (numMeasurementsInWriteBatch[1]).
+//
+// We then write one measurement to a third bucket because we have a
+// distinct {_metaField: "b"} in batchedInsertContexts[1] (that doesn't hash to the same stripe)
+// with only one measurement (numMeasurementsInWriteBatch[2]).
+//
+// If we are attempting to trigger kCachePressure, we must call this function with
+// _storageCacheSizeBytes = kLimitedStorageCacheSizeBytes. Otherwise, _storageCacheSizeBytes
+// = kDefaultStorageCacheSizeBytes.
+void BucketCatalogTest::_testStageInsertBatchIntoEligibleBucket(
+    const NamespaceString& ns,
+    const UUID& collectionUUID,
+    const std::vector<BSONObj>& batchOfMeasurements,
+    const std::vector<size_t>& currBatchedInsertContextsIndex,
+    const std::vector<size_t>& numMeasurementsInWriteBatch,
+    size_t numBatchedInsertContexts) const {
+    ASSERT(numMeasurementsInWriteBatch.size() > 0 && numBatchedInsertContexts > 0);
+    // These size values are equivalent to the total number of buckets that should be written to
+    // from the input batchOfMeasurements.
+    ASSERT(currBatchedInsertContextsIndex.size() == numMeasurementsInWriteBatch.size());
 
-    Bucket& bucket3 = internal::allocateBucket(*_bucketCatalog,
-                                               *_bucketCatalog->stripes[insertCtx.stripeNumber],
-                                               WithLock::withoutLock(),
-                                               insertCtx,
-                                               time,
-                                               nullptr);
-    // Unmark bucket2 to ensure we have an open bucket to skip as well.
-    bucket2.rolloverAction = RolloverAction::kNone;
-    bucket3.rolloverAction = RolloverAction::kArchive;
+    AutoGetCollection autoColl(_opCtx, ns.makeTimeseriesBucketsNamespace(), MODE_IS);
+    const auto& bucketsColl = autoColl.getCollection();
+    auto timeseriesOptions = _getTimeseriesOptions(ns);
+    std::vector<timeseries::write_ops::internal::WriteStageErrorAndIndex> errorsAndIndices;
 
-    ASSERT_EQ(&bucket3,
-              internal::useAlternateBucket(*_bucketCatalog,
-                                           *_bucketCatalog->stripes[insertCtx.stripeNumber],
-                                           WithLock::withoutLock(),
-                                           insertCtx,
-                                           time));
+    auto batchedInsertContexts = write_ops::internal::buildBatchedInsertContexts(
+        *_bucketCatalog,
+        collectionUUID,
+        timeseriesOptions,
+        batchOfMeasurements,
+        /*startIndex=*/0,
+        /*numDocsToStage=*/batchOfMeasurements.size(),
+        /*docsToRetry=*/{},
+        errorsAndIndices);
+    ASSERT(errorsAndIndices.empty());
+    ASSERT_EQ(batchedInsertContexts.size(), numBatchedInsertContexts);
+    size_t numMeasurements = 0;
+    for (size_t i = 0; i < batchedInsertContexts.size(); i++) {
+        numMeasurements += batchedInsertContexts[i].measurementsTimesAndIndices.size();
+    }
+    ASSERT_EQ(numMeasurements, batchOfMeasurements.size());
+
+    auto currentBatch = batchedInsertContexts[0];
+    auto measurementTimestamp = std::get<Date_t>(currentBatch.measurementsTimesAndIndices[0]);
+
+    Bucket& bucketToInsertInto =
+        internal::allocateBucket(*_bucketCatalog,
+                                 *_bucketCatalog->stripes[currentBatch.stripeNumber],
+                                 WithLock::withoutLock(),
+                                 currentBatch.key,
+                                 currentBatch.options,
+                                 measurementTimestamp,
+                                 nullptr,
+                                 currentBatch.stats);
+
+    size_t currentPosition = 0;
+    size_t currentPositionFromNumMeasurementsInBatch = 0;
+    auto& stripe = *_bucketCatalog->stripes[currentBatch.stripeNumber];
+    stdx::lock_guard stripeLock{stripe.mutex};
+    auto writeBatch = activeBatch(_bucketCatalog->trackingContexts,
+                                  bucketToInsertInto,
+                                  _opCtx->getOpID(),
+                                  currentBatch.stripeNumber,
+                                  currentBatch.stats);
+    auto successfulInsertion =
+        internal::stageInsertBatchIntoEligibleBucket(*_bucketCatalog,
+                                                     _opCtx->getOpID(),
+                                                     bucketsColl->getDefaultCollator(),
+                                                     currentBatch,
+                                                     stripe,
+                                                     stripeLock,
+                                                     _storageCacheSizeBytes,
+                                                     bucketToInsertInto,
+                                                     currentPosition,
+                                                     writeBatch);
+    currentPositionFromNumMeasurementsInBatch += numMeasurementsInWriteBatch[0];
+    ASSERT_EQ(currentPosition, currentPositionFromNumMeasurementsInBatch);
+
+    if (numMeasurementsInWriteBatch.size() == 1) {
+        ASSERT(successfulInsertion);
+        ASSERT_EQ(currentPosition, batchOfMeasurements.size());
+        ASSERT_EQ(bucketToInsertInto.numMeasurements, batchOfMeasurements.size());
+        ASSERT_EQ(currentPositionFromNumMeasurementsInBatch, batchOfMeasurements.size());
+        return;
+    }
+
+    // We do the first insertion outside of the loop so we don't rollover/allocate an additional
+    // bucket if we don't need to.
+    for (size_t i = 1; i < numMeasurementsInWriteBatch.size(); i++) {
+        auto prevBatch = batchedInsertContexts[currBatchedInsertContextsIndex[i - 1]];
+        // Let's rollover our first bucket and finish inserting the batch with another call into
+        // the helper.
+        auto currentMeasurementTime =
+            std::get<Date_t>(currentBatch.measurementsTimesAndIndices[currentPosition]);
+
+        // We rollover with kSchemaChange regardless of the rollover reason. This will make our
+        // stats inaccurate, but shouldn't impact testing stageInsertBatchIntoEligibleBucket itself.
+        auto newBucketToInsertInto =
+            &internal::rolloverAndAllocateBucket(*_bucketCatalog,
+                                                 stripe,
+                                                 stripeLock,
+                                                 bucketToInsertInto,
+                                                 prevBatch.key,
+                                                 prevBatch.options,
+                                                 RolloverReason::kSchemaChange,
+                                                 currentMeasurementTime,
+                                                 bucketsColl->getDefaultCollator(),
+                                                 prevBatch.stats);
+        auto newWriteBatch = activeBatch(_bucketCatalog->trackingContexts,
+                                         *newBucketToInsertInto,
+                                         _opCtx->getOpID(),
+                                         currentBatch.stripeNumber,
+                                         currentBatch.stats);
+        auto currBatch = batchedInsertContexts[currBatchedInsertContextsIndex[i]];
+        successfulInsertion =
+            internal::stageInsertBatchIntoEligibleBucket(*_bucketCatalog,
+                                                         _opCtx->getOpID(),
+                                                         bucketsColl->getDefaultCollator(),
+                                                         currBatch,
+                                                         stripe,
+                                                         stripeLock,
+                                                         _storageCacheSizeBytes,
+                                                         *newBucketToInsertInto,
+                                                         currentPosition,
+                                                         newWriteBatch);
+        ASSERT_EQ(newBucketToInsertInto->numMeasurements, numMeasurementsInWriteBatch[i]);
+        currentPositionFromNumMeasurementsInBatch += numMeasurementsInWriteBatch[i];
+        ASSERT_EQ(currentPosition, currentPositionFromNumMeasurementsInBatch);
+
+        if (i == (numMeasurementsInWriteBatch.size() - 1)) {
+            ASSERT(successfulInsertion);
+        } else {
+            ASSERT(!successfulInsertion);
+        }
+    }
+}
+
+void BucketCatalogTest::_testStageInsertBatchIntoEligibleBucketWithMetaField(
+    const NamespaceString& ns,
+    const UUID& collectionUUID,
+    const std::vector<BSONObj>& batchOfMeasurements,
+    const std::vector<size_t>& currBatchedInsertContextsIndex,
+    const std::vector<size_t>& numMeasurementsInWriteBatch,
+    size_t numBatchedInsertContexts) const {
+    _assertCollWithMetaField(ns, batchOfMeasurements);
+    _testStageInsertBatchIntoEligibleBucket(ns,
+                                            collectionUUID,
+                                            batchOfMeasurements,
+                                            currBatchedInsertContextsIndex,
+                                            numMeasurementsInWriteBatch,
+                                            numBatchedInsertContexts);
+}
+
+void BucketCatalogTest::_testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+    const NamespaceString& ns,
+    const UUID& collectionUUID,
+    const std::vector<BSONObj>& batchOfMeasurements,
+    const std::vector<size_t>& currBatchedInsertContextsIndex,
+    const std::vector<size_t>& numMeasurementsInWriteBatch,
+    size_t numBatchedInsertContexts) const {
+    _assertCollWithoutMetaField(ns, batchOfMeasurements);
+    _testStageInsertBatchIntoEligibleBucket(ns,
+                                            collectionUUID,
+                                            batchOfMeasurements,
+                                            currBatchedInsertContextsIndex,
+                                            numMeasurementsInWriteBatch,
+                                            numBatchedInsertContexts);
+}
+
+void BucketCatalogTest::_testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+    const NamespaceString& ns,
+    const UUID& collectionUUID,
+    const std::vector<BSONObj>& batchOfMeasurements,
+    const std::vector<size_t>& currBatchedInsertContextsIndex,
+    const std::vector<size_t>& numMeasurementsInWriteBatch,
+    size_t numBatchedInsertContexts) const {
+    _assertNoMetaFieldsInCollWithMetaField(ns, batchOfMeasurements);
+    _testStageInsertBatchIntoEligibleBucket(ns,
+                                            collectionUUID,
+                                            batchOfMeasurements,
+                                            currBatchedInsertContextsIndex,
+                                            numMeasurementsInWriteBatch,
+                                            numBatchedInsertContexts);
 }
 
 TEST_F(BucketCatalogTest, InsertIntoSameBucket) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
 
     // A subsequent insert into the same bucket should land in the same batch.
     auto result2 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
     ASSERT_EQ(batch1, batch2);
 
     // The batch hasn't actually been committed yet.
@@ -585,7 +688,7 @@ TEST_F(BucketCatalogTest, InsertIntoSameBucket) {
 TEST_F(BucketCatalogTest, GetMetadataReturnsEmptyDocOnMissingBucket) {
     auto result =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     auto bucketId = batch->bucketId;
     abort(*_bucketCatalog, batch, {ErrorCodes::TimeseriesBucketCleared, ""});
     ASSERT_BSONOBJ_EQ(BSONObj(), getMetadata(*_bucketCatalog, bucketId));
@@ -606,29 +709,25 @@ TEST_F(BucketCatalogTest, InsertIntoDifferentBuckets) {
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns2, _uuid2, BSON(_timeField << Date_t::now()));
 
     // Inserts should all be into three distinct buckets (and therefore batches).
-    ASSERT_NE(get<SuccessfulInsertion>(result1.getValue()).batch,
-              get<SuccessfulInsertion>(result2.getValue()).batch);
-    ASSERT_NE(get<SuccessfulInsertion>(result1.getValue()).batch,
-              get<SuccessfulInsertion>(result3.getValue()).batch);
-    ASSERT_NE(get<SuccessfulInsertion>(result2.getValue()).batch,
-              get<SuccessfulInsertion>(result3.getValue()).batch);
+    ASSERT_NE(get<SuccessfulInsertion>(result1).batch, get<SuccessfulInsertion>(result2).batch);
+    ASSERT_NE(get<SuccessfulInsertion>(result1).batch, get<SuccessfulInsertion>(result3).batch);
+    ASSERT_NE(get<SuccessfulInsertion>(result2).batch, get<SuccessfulInsertion>(result3).batch);
 
     // Check metadata in buckets.
     ASSERT_BSONOBJ_EQ(
         BSON(_metaField << "123"),
-        getMetadata(*_bucketCatalog, get<SuccessfulInsertion>(result1.getValue()).batch->bucketId));
+        getMetadata(*_bucketCatalog, get<SuccessfulInsertion>(result1).batch->bucketId));
     ASSERT_BSONOBJ_EQ(
         BSON(_metaField << BSONObj()),
-        getMetadata(*_bucketCatalog, get<SuccessfulInsertion>(result2.getValue()).batch->bucketId));
+        getMetadata(*_bucketCatalog, get<SuccessfulInsertion>(result2).batch->bucketId));
     ASSERT(
-        getMetadata(*_bucketCatalog, get<SuccessfulInsertion>(result3.getValue()).batch->bucketId)
-            .isEmpty());
+        getMetadata(*_bucketCatalog, get<SuccessfulInsertion>(result3).batch->bucketId).isEmpty());
 
     // Committing one bucket should only return the one document in that bucket and should not
     // affect the other bucket.
-    _commit(_ns1, get<SuccessfulInsertion>(result1.getValue()).batch, 0);
-    _commit(_ns1, get<SuccessfulInsertion>(result2.getValue()).batch, 0);
-    _commit(_ns2, get<SuccessfulInsertion>(result3.getValue()).batch, 0);
+    _commit(_ns1, get<SuccessfulInsertion>(result1).batch, 0);
+    _commit(_ns1, get<SuccessfulInsertion>(result2).batch, 0);
+    _commit(_ns2, get<SuccessfulInsertion>(result3).batch, 0);
 }
 
 TEST_F(BucketCatalogTest, InsertThroughDifferentCatalogsIntoDifferentBuckets) {
@@ -636,11 +735,11 @@ TEST_F(BucketCatalogTest, InsertThroughDifferentCatalogsIntoDifferentBuckets) {
                                          getTimeseriesIdleBucketExpiryMemoryUsageThresholdBytes);
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
 
     auto result2 = _insertOneHelper(
         _opCtx, temporaryBucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
 
     // Inserts should be into different buckets (and therefore batches) because they went through
     // different bucket catalogs.
@@ -707,8 +806,7 @@ TEST_F(BucketCatalogTest, InsertIntoSameBucketNestedArray) {
         _getTimeseriesOptions(_ns1),
         BSON(_timeField << Date_t::now() << _metaField
                         << BSONObj(BSON("c" << BSON_ARRAY(BSON("a" << 0 << "b" << 1)
-                                                          << BSON_ARRAY("123"
-                                                                        << "456")))))));
+                                                          << BSON_ARRAY("123" << "456")))))));
 
     auto insertContextAndTime2 = uassertStatusOK(prepareInsert(
         *_bucketCatalog,
@@ -716,8 +814,7 @@ TEST_F(BucketCatalogTest, InsertIntoSameBucketNestedArray) {
         _getTimeseriesOptions(_ns1),
         BSON(_timeField << Date_t::now() << _metaField
                         << BSONObj(BSON("c" << BSON_ARRAY(BSON("b" << 1 << "a" << 0)
-                                                          << BSON_ARRAY("123"
-                                                                        << "456")))))));
+                                                          << BSON_ARRAY("123" << "456")))))));
 
     // Check metadata in buckets.
     ASSERT_EQ(std::get<InsertContext>(insertContextAndTime1),
@@ -725,7 +822,6 @@ TEST_F(BucketCatalogTest, InsertIntoSameBucketNestedArray) {
 }
 
 TEST_F(BucketCatalogTest, InsertNullAndMissingMetaFieldIntoDifferentBuckets) {
-
     auto insertContextAndTime1 =
         uassertStatusOK(prepareInsert(*_bucketCatalog,
                                       _uuid1,
@@ -788,7 +884,7 @@ TEST_F(BucketCatalogTest, DropNamespaceBuckets) {
 TEST_F(BucketCatalogTest, InsertBetweenPrepareAndFinish) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch1, _getCollator(_ns1)));
     ASSERT_EQ(batch1->measurements.size(), 1);
     ASSERT_EQ(batch1->numPreviouslyCommittedMeasurements, 0);
@@ -796,7 +892,7 @@ TEST_F(BucketCatalogTest, InsertBetweenPrepareAndFinish) {
     // Insert before finish so there's a second batch live at the same time.
     auto result2 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
     ASSERT_NE(batch1, batch2);
 
     (void)write_ops_utils::makeTimeseriesInsertOp(batch1,
@@ -809,55 +905,60 @@ TEST_F(BucketCatalogTest, InsertBetweenPrepareAndFinish) {
     _commit(_ns1, batch2, 1);
 }
 
-TEST_F(BucketCatalogWithoutMetadataTest, GetMetadataReturnsEmptyDoc) {
-    auto result =
-        _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+TEST_F(BucketCatalogTest, GetMetadataReturnsEmptyDoc) {
+    auto result = _insertOneHelper(
+        _opCtx, *_bucketCatalog, _nsNoMeta, _uuidNoMeta, BSON(_timeField << Date_t::now()));
+    auto batch = get<SuccessfulInsertion>(result).batch;
 
     ASSERT_BSONOBJ_EQ(BSONObj(), getMetadata(*_bucketCatalog, batch->bucketId));
 
-    _commit(_ns1, batch, 0);
+    _commit(_nsNoMeta, batch, 0);
 }
 
-TEST_F(BucketCatalogWithoutMetadataTest, CommitReturnsNewFields) {
+TEST_F(BucketCatalogTest, CommitReturnsNewFields) {
     // Creating a new bucket should return all fields from the initial measurement.
-    auto result = _insertOneHelper(
-        _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now() << "a" << 0));
-    ASSERT(result.isOK());
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto result = _insertOneHelper(_opCtx,
+                                   *_bucketCatalog,
+                                   _nsNoMeta,
+                                   _uuidNoMeta,
+                                   BSON(_timeField << Date_t::now() << "a" << 0));
+    auto batch = get<SuccessfulInsertion>(result).batch;
     auto oldId = batch->bucketId;
-    _commit(_ns1, batch, 0);
+    _commit(_nsNoMeta, batch, 0);
     ASSERT_EQ(2U, batch->newFieldNamesToBeInserted.size()) << batch->toBSON();
     ASSERT(batch->newFieldNamesToBeInserted.count(_timeField)) << batch->toBSON();
     ASSERT(batch->newFieldNamesToBeInserted.count("a")) << batch->toBSON();
 
     // Inserting a new measurement with the same fields should return an empty set of new fields.
-    result = _insertOneHelper(
-        _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now() << "a" << 1));
-    ASSERT(result.isOK());
-    batch = get<SuccessfulInsertion>(result.getValue()).batch;
-    _commit(_ns1, batch, 1);
+    result = _insertOneHelper(_opCtx,
+                              *_bucketCatalog,
+                              _nsNoMeta,
+                              _uuidNoMeta,
+                              BSON(_timeField << Date_t::now() << "a" << 1));
+    batch = get<SuccessfulInsertion>(result).batch;
+    _commit(_nsNoMeta, batch, 1);
     ASSERT_EQ(0U, batch->newFieldNamesToBeInserted.size()) << batch->toBSON();
 
     // Insert a new measurement with the a new field.
     result = _insertOneHelper(_opCtx,
                               *_bucketCatalog,
-                              _ns1,
-                              _uuid1,
+                              _nsNoMeta,
+                              _uuidNoMeta,
                               BSON(_timeField << Date_t::now() << "a" << 2 << "b" << 2));
-    ASSERT(result.isOK());
-    batch = get<SuccessfulInsertion>(result.getValue()).batch;
-    _commit(_ns1, batch, 2);
+    batch = get<SuccessfulInsertion>(result).batch;
+    _commit(_nsNoMeta, batch, 2);
     ASSERT_EQ(1U, batch->newFieldNamesToBeInserted.size()) << batch->toBSON();
     ASSERT(batch->newFieldNamesToBeInserted.count("b")) << batch->toBSON();
 
     // Fill up the bucket.
     for (auto i = 3; i < gTimeseriesBucketMaxCount; ++i) {
-        result = _insertOneHelper(
-            _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now() << "a" << i));
-        ASSERT(result.isOK());
-        batch = get<SuccessfulInsertion>(result.getValue()).batch;
-        _commit(_ns1, batch, i);
+        result = _insertOneHelper(_opCtx,
+                                  *_bucketCatalog,
+                                  _nsNoMeta,
+                                  _uuidNoMeta,
+                                  BSON(_timeField << Date_t::now() << "a" << i));
+        batch = get<SuccessfulInsertion>(result).batch;
+        _commit(_nsNoMeta, batch, i);
         ASSERT_EQ(0U, batch->newFieldNamesToBeInserted.size()) << i << ":" << batch->toBSON();
     }
 
@@ -866,12 +967,12 @@ TEST_F(BucketCatalogWithoutMetadataTest, CommitReturnsNewFields) {
     auto result2 =
         _insertOneHelper(_opCtx,
                          *_bucketCatalog,
-                         _ns1,
-                         _uuid1,
+                         _nsNoMeta,
+                         _uuidNoMeta,
                          BSON(_timeField << Date_t::now() << "a" << gTimeseriesBucketMaxCount));
-    auto& batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto& batch2 = get<SuccessfulInsertion>(result2).batch;
     ASSERT_NE(oldId, batch2->bucketId);
-    _commit(_ns1, batch2, 0);
+    _commit(_nsNoMeta, batch2, 0);
     ASSERT_EQ(2U, batch2->newFieldNamesToBeInserted.size()) << batch2->toBSON();
     ASSERT(batch2->newFieldNamesToBeInserted.count(_timeField)) << batch2->toBSON();
     ASSERT(batch2->newFieldNamesToBeInserted.count("a")) << batch2->toBSON();
@@ -880,7 +981,7 @@ TEST_F(BucketCatalogWithoutMetadataTest, CommitReturnsNewFields) {
 TEST_F(BucketCatalogTest, AbortBatchOnBucketWithPreparedCommit) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch1, _getCollator(_ns1)));
     ASSERT_EQ(batch1->measurements.size(), 1);
     ASSERT_EQ(batch1->numPreviouslyCommittedMeasurements, 0);
@@ -888,7 +989,7 @@ TEST_F(BucketCatalogTest, AbortBatchOnBucketWithPreparedCommit) {
     // Insert before finish so there's a second batch live at the same time.
     auto result2 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
     ASSERT_NE(batch1, batch2);
 
     abort(*_bucketCatalog, batch2, {ErrorCodes::TimeseriesBucketCleared, ""});
@@ -903,7 +1004,7 @@ TEST_F(BucketCatalogTest, AbortBatchOnBucketWithPreparedCommit) {
 TEST_F(BucketCatalogTest, ClearNamespaceWithConcurrentWrites) {
     auto result =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
 
     clear(*_bucketCatalog, _uuid1);
 
@@ -913,7 +1014,7 @@ TEST_F(BucketCatalogTest, ClearNamespaceWithConcurrentWrites) {
 
     result =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    batch = get<SuccessfulInsertion>(result).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
     ASSERT_EQ(batch->measurements.size(), 1);
     ASSERT_EQ(batch->numPreviouslyCommittedMeasurements, 0);
@@ -934,7 +1035,7 @@ TEST_F(BucketCatalogTest, ClearNamespaceWithConcurrentWrites) {
 TEST_F(BucketCatalogTest, ClearBucketWithPreparedBatchThrowsConflict) {
     auto result =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
     ASSERT_EQ(batch->measurements.size(), 1);
     ASSERT_EQ(batch->numPreviouslyCommittedMeasurements, 0);
@@ -950,7 +1051,7 @@ TEST_F(BucketCatalogTest, ClearBucketWithPreparedBatchThrowsConflict) {
 TEST_F(BucketCatalogTest, PrepareCommitOnClearedBatchWithAlreadyPreparedBatch) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch1, _getCollator(_ns1)));
     ASSERT_EQ(batch1->measurements.size(), 1);
     ASSERT_EQ(batch1->numPreviouslyCommittedMeasurements, 0);
@@ -958,7 +1059,7 @@ TEST_F(BucketCatalogTest, PrepareCommitOnClearedBatchWithAlreadyPreparedBatch) {
     // Insert before clear so there's a second batch live at the same time.
     auto result2 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
     ASSERT_NE(batch1, batch2);
     ASSERT_EQ(batch1->bucketId, batch2->bucketId);
 
@@ -977,7 +1078,7 @@ TEST_F(BucketCatalogTest, PrepareCommitOnClearedBatchWithAlreadyPreparedBatch) {
     // state and prevent us from finishing the first batch.
     auto result3 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch3 = get<SuccessfulInsertion>(result3.getValue()).batch;
+    auto batch3 = get<SuccessfulInsertion>(result3).batch;
     ASSERT_NE(batch1, batch3);
     ASSERT_NE(batch2, batch3);
     ASSERT_NE(batch1->bucketId, batch3->bucketId);
@@ -993,7 +1094,7 @@ TEST_F(BucketCatalogTest, PrepareCommitOnClearedBatchWithAlreadyPreparedBatch) {
 TEST_F(BucketCatalogTest, PrepareCommitOnAlreadyAbortedBatch) {
     auto result =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
 
     abort(*_bucketCatalog, batch, {ErrorCodes::TimeseriesBucketCleared, ""});
     ASSERT(isWriteBatchFinished(*batch));
@@ -1004,54 +1105,17 @@ TEST_F(BucketCatalogTest, PrepareCommitOnAlreadyAbortedBatch) {
     ASSERT_EQ(getWriteBatchStatus(*batch), ErrorCodes::TimeseriesBucketCleared);
 }
 
-TEST_F(BucketCatalogTest, InsertRollsOverAlternateBucket) {
-    // Open an initial bucket.
-    auto result1 =
-        _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
-
-    // Insert something backward in time, so mark the first bucket to be archived.
-    auto result2 = _insertOneHelper(
-        _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << (Date_t::now() - Days{1})));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
-    ASSERT_NE(batch1->bucketId.oid, batch2->bucketId.oid);
-    ASSERT_EQ(_rolloverAction(batch1), RolloverAction::kArchive);
-
-    // Continue to insert more to the initial bucket until we rollover to new bucket.
-    size_t bucketCount = 1;
-    while (true) {
-        // Using tryInsert will let us select an alternate bucket, even though it's been marked for
-        // archival.
-        auto result = _tryInsertOneHelper(
-            _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-        auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
-
-        if (batch->bucketId.oid != batch1->bucketId.oid) {
-            // We expect this rollover only happened because we hit a limit that results in a hard
-            // closure.
-            ASSERT_EQ(_rolloverAction(batch1), RolloverAction::kHardClose);
-            // We should go back and mark the open (non-alternate) bucket closed.
-            ASSERT_EQ(_rolloverAction(batch2), RolloverAction::kSoftClose);
-            // The new bucket should be open.
-            ASSERT_EQ(_rolloverAction(batch), RolloverAction::kNone);
-            break;
-        }
-
-        ASSERT_LTE(++bucketCount, gTimeseriesBucketMaxCount);
-    }
-}
-
 TEST_F(BucketCatalogTest, CannotConcurrentlyCommitBatchesForSameBucket) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
 
     auto result2 = _insertOneHelper(_makeOperationContext().second.get(),
                                     *_bucketCatalog,
                                     _ns1,
                                     _uuid1,
                                     BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
 
     // Batch 2 will not be able to commit until batch 1 has finished.
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch1, _getCollator(_ns1)));
@@ -1074,21 +1138,21 @@ TEST_F(BucketCatalogTest, CannotConcurrentlyCommitBatchesForSameBucket) {
 TEST_F(BucketCatalogTest, AbortingBatchEnsuresBucketIsEventuallyClosed) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
 
     auto result2 = _insertOneHelper(_makeOperationContext().second.get(),
                                     *_bucketCatalog,
                                     _ns1,
                                     _uuid1,
                                     BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
 
     auto result3 = _insertOneHelper(_makeOperationContext().second.get(),
                                     *_bucketCatalog,
                                     _ns1,
                                     _uuid1,
                                     BSON(_timeField << Date_t::now()));
-    auto batch3 = get<SuccessfulInsertion>(result3.getValue()).batch;
+    auto batch3 = get<SuccessfulInsertion>(result3).batch;
 
     ASSERT_EQ(batch1->bucketId, batch2->bucketId);
     ASSERT_EQ(batch1->bucketId, batch3->bucketId);
@@ -1119,21 +1183,21 @@ TEST_F(BucketCatalogTest, AbortingBatchEnsuresBucketIsEventuallyClosed) {
     // Make sure a new batch ends up in a new bucket.
     auto result4 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch4 = get<SuccessfulInsertion>(result4.getValue()).batch;
+    auto batch4 = get<SuccessfulInsertion>(result4).batch;
     ASSERT_NE(batch2->bucketId, batch4->bucketId);
 }
 
 TEST_F(BucketCatalogTest, AbortingBatchEnsuresNewInsertsGoToNewBucket) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
 
     auto result2 = _insertOneHelper(_makeOperationContext().second.get(),
                                     *_bucketCatalog,
                                     _ns1,
                                     _uuid1,
                                     BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
 
     // Batch 1 and 2 use the same bucket.
     ASSERT_EQ(batch1->bucketId, batch2->bucketId);
@@ -1150,21 +1214,21 @@ TEST_F(BucketCatalogTest, AbortingBatchEnsuresNewInsertsGoToNewBucket) {
     // aborted batch/bucket.
     auto result3 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch3 = get<SuccessfulInsertion>(result3.getValue()).batch;
+    auto batch3 = get<SuccessfulInsertion>(result3).batch;
     ASSERT_NE(batch1->bucketId, batch3->bucketId);
 }
 
 TEST_F(BucketCatalogTest, DuplicateNewFieldNamesAcrossConcurrentBatches) {
     auto result1 =
         _insertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << Date_t::now()));
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
+    auto batch1 = get<SuccessfulInsertion>(result1).batch;
 
     auto result2 = _insertOneHelper(_makeOperationContext().second.get(),
                                     *_bucketCatalog,
                                     _ns1,
                                     _uuid1,
                                     BSON(_timeField << Date_t::now()));
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result2).batch;
 
     // Batch 2 is the first batch to commit the time field.
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch2, _getCollator(_ns2)));
@@ -1227,77 +1291,80 @@ TEST_F(BucketCatalogTest, ReopenMalformedBucket) {
                             "2":{"$date":"2022-06-06T15:34:30.000Z"}},
                     "a":{"0":1,"1":2,"2":3},
                     "b":{"0":1,"1":2,"2":3}}})");
-
+    BSONObj compressedBucketDoc = _getCompressedBucketDoc(bucketDoc);
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
+    ASSERT_OK(_reopenBucket(autoColl.getCollection(), compressedBucketDoc));
 
     {
         // Missing _id field.
-        BSONObj missingIdObj = bucketDoc.removeField("_id");
+        BSONObj missingIdObj = compressedBucketDoc.removeField("_id");
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), missingIdObj));
 
         // Bad _id type.
-        BSONObj badIdObj = bucketDoc.addFields(BSON("_id" << 123));
+        BSONObj badIdObj = compressedBucketDoc.addFields(BSON("_id" << 123));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), badIdObj));
     }
 
     {
         // Missing control field.
-        BSONObj missingControlObj = bucketDoc.removeField("control");
+        BSONObj missingControlObj = compressedBucketDoc.removeField("control");
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), missingControlObj));
 
         // Bad control type.
-        BSONObj badControlObj = bucketDoc.addFields(BSON("control" << BSONArray()));
+        BSONObj badControlObj = compressedBucketDoc.addFields(BSON("control" << BSONArray()));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), badControlObj));
 
         // Bad control.version type.
-        BSONObj badVersionObj = bucketDoc.addFields(BSON(
-            "control" << BSON("version" << BSONArray() << "min"
-                                        << BSON("time" << BSON("$date"
-                                                               << "2022-06-06T15:34:00.000Z"))
-                                        << "max"
-                                        << BSON("time" << BSON("$date"
-                                                               << "2022-06-06T15:34:30.000Z")))));
+        BSONObj badVersionObj = compressedBucketDoc.addFields(BSON(
+            "control" << BSON(
+                "version" << BSONArray() << "min"
+                          << BSON("time" << BSON("$date" << "2022-06-06T15:34:00.000Z")) << "max"
+                          << BSON("time" << BSON("$date" << "2022-06-06T15:34:30.000Z")))));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), badVersionObj));
 
         // Bad control.min type.
-        BSONObj badMinObj = bucketDoc.addFields(BSON(
-            "control" << BSON("version" << 1 << "min" << 123 << "max"
-                                        << BSON("time" << BSON("$date"
-                                                               << "2022-06-06T15:34:30.000Z")))));
+        BSONObj badMinObj = compressedBucketDoc.addFields(BSON(
+            "control" << BSON("version"
+                              << 1 << "min" << 123 << "max"
+                              << BSON("time" << BSON("$date" << "2022-06-06T15:34:30.000Z")))));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), badMinObj));
 
         // Bad control.max type.
-        BSONObj badMaxObj = bucketDoc.addFields(
-            BSON("control" << BSON("version" << 1 << "min"
-                                             << BSON("time" << BSON("$date"
-                                                                    << "2022-06-06T15:34:00.000Z"))
-                                             << "max" << 123)));
+        BSONObj badMaxObj = compressedBucketDoc.addFields(
+            BSON("control" << BSON("version"
+                                   << 1 << "min"
+                                   << BSON("time" << BSON("$date" << "2022-06-06T15:34:00.000Z"))
+                                   << "max" << 123)));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), badMaxObj));
 
         // Missing control.min.time.
-        BSONObj missingMinTimeObj = bucketDoc.addFields(BSON(
-            "control" << BSON("version" << 1 << "min" << BSON("abc" << 1) << "max"
-                                        << BSON("time" << BSON("$date"
-                                                               << "2022-06-06T15:34:30.000Z")))));
+        BSONObj missingMinTimeObj = compressedBucketDoc.addFields(BSON(
+            "control" << BSON("version"
+                              << 1 << "min" << BSON("abc" << 1) << "max"
+                              << BSON("time" << BSON("$date" << "2022-06-06T15:34:30.000Z")))));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), missingMinTimeObj));
 
         // Missing control.max.time.
-        BSONObj missingMaxTimeObj = bucketDoc.addFields(
-            BSON("control" << BSON("version" << 1 << "min"
-                                             << BSON("time" << BSON("$date"
-                                                                    << "2022-06-06T15:34:00.000Z"))
-                                             << "max" << BSON("abc" << 1))));
+        BSONObj missingMaxTimeObj = compressedBucketDoc.addFields(
+            BSON("control" << BSON("version"
+                                   << 1 << "min"
+                                   << BSON("time" << BSON("$date" << "2022-06-06T15:34:00.000Z"))
+                                   << "max" << BSON("abc" << 1))));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), missingMaxTimeObj));
     }
 
-
     {
         // Missing data field.
-        BSONObj missingDataObj = bucketDoc.removeField("data");
+        BSONObj missingDataObj = compressedBucketDoc.removeField("data");
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), missingDataObj));
 
+        // Bad time field in the data field.
+        BSONObj badTimeFieldInDataFieldObj =
+            compressedBucketDoc.addFields(BSON("data" << BSON("time" << BSON("0" << 123))));
+        ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), badTimeFieldInDataFieldObj));
+
         // Bad data type.
-        BSONObj badDataObj = bucketDoc.addFields(BSON("data" << 123));
+        BSONObj badDataObj = compressedBucketDoc.addFields(BSON("data" << 123));
         ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), badDataObj));
     }
 }
@@ -1321,8 +1388,8 @@ TEST_F(BucketCatalogTest, ReopenMixedSchemaDataBucket) {
                     "x":{"0":1,"1":{"y":"z"},"2":"abc"}}})");
 
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
-
-    ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), bucketDoc));
+    BSONObj compressedBucketDoc = _getCompressedBucketDoc(bucketDoc);
+    ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), compressedBucketDoc));
 
     auto stats = internal::getCollectionExecutionStats(*_bucketCatalog, _uuid1);
     ASSERT_EQ(1, stats->numBucketReopeningsFailed.load());
@@ -1343,9 +1410,16 @@ TEST_F(BucketCatalogTest, ReopenClosedBuckets) {
                             "2":{"$date":"2022-06-06T15:34:30.000Z"}},
                     "a":{"0":1,"1":2,"2":3},
                     "b":{"0":1,"1":2,"2":3}}})");
-        ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), closedBucket));
+        BSONObj compressedClosedBucketDoc = _getCompressedBucketDoc(closedBucket);
+        ASSERT_NOT_OK(_reopenBucket(autoColl.getCollection(), compressedClosedBucketDoc));
+        auto bucketStates = _bucketCatalog->bucketStateRegistry.bucketStates;
+        ASSERT_EQ(1, bucketStates.size());
+        ASSERT(isBucketStateFrozen(bucketStates.begin()->second));
     }
+}
 
+TEST_F(BucketCatalogTest, ReopenNotClosedBuckets) {
+    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
     {
         // control.closed: false
         BSONObj openBucket = ::mongo::fromjson(
@@ -1358,7 +1432,12 @@ TEST_F(BucketCatalogTest, ReopenClosedBuckets) {
                             "2":{"$date":"2022-06-06T15:34:30.000Z"}},
                     "a":{"0":1,"1":2,"2":3},
                     "b":{"0":1,"1":2,"2":3}}})");
-        ASSERT_OK(_reopenBucket(autoColl.getCollection(), openBucket));
+        BSONObj compressedOpenBucketDoc = _getCompressedBucketDoc(openBucket);
+        ASSERT_OK(_reopenBucket(autoColl.getCollection(), compressedOpenBucketDoc));
+        auto bucketStates = _bucketCatalog->bucketStateRegistry.bucketStates;
+        ASSERT_EQ(1, bucketStates.size());
+        ASSERT(std::holds_alternative<BucketState>(bucketStates.begin()->second));
+        ASSERT_EQ(BucketState::kNormal, std::get<BucketState>(bucketStates.begin()->second));
     }
 
     {
@@ -1372,54 +1451,13 @@ TEST_F(BucketCatalogTest, ReopenClosedBuckets) {
                             "2":{"$date":"2022-06-06T15:34:30.000Z"}},
                     "a":{"0":1,"1":2,"2":3},
                     "b":{"0":1,"1":2,"2":3}}})");
-        ASSERT_OK(_reopenBucket(autoColl.getCollection(), openBucket));
+        BSONObj compressedOpenBucketDoc = _getCompressedBucketDoc(openBucket);
+        ASSERT_OK(_reopenBucket(autoColl.getCollection(), compressedOpenBucketDoc));
+        auto bucketStates = _bucketCatalog->bucketStateRegistry.bucketStates;
+        ASSERT_EQ(1, bucketStates.size());
+        ASSERT(std::holds_alternative<BucketState>(bucketStates.begin()->second));
+        ASSERT_EQ(BucketState::kNormal, std::get<BucketState>(bucketStates.begin()->second));
     }
-}
-
-TEST_F(BucketCatalogTest, ReopenUncompressedBucketAndInsertCompatibleMeasurementWithMeta) {
-    // Bucket document to reopen.
-    BSONObj bucketDoc = ::mongo::fromjson(
-        R"({"_id":{"$oid":"629e1e680958e279dc29a642"},
-            "control":{"version":1,"min":{"time":{"$date":"2022-06-06T15:34:00.000Z"},"a":1,"b":1},
-                                   "max":{"time":{"$date":"2022-06-06T15:34:30.000Z"},"a":3,"b":3}},
-            "meta": 42,
-            "data":{"time":{"0":{"$date":"2022-06-06T15:34:30.000Z"},
-                            "1":{"$date":"2022-06-06T15:34:30.000Z"},
-                            "2":{"$date":"2022-06-06T15:34:30.000Z"}},
-                    "a":{"0":1,"1":2,"2":3},
-                    "b":{"0":1,"1":2,"2":3}}})");
-
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
-    Status status = _reopenBucket(autoColl.getCollection(), bucketDoc);
-    ASSERT_OK(status);
-
-    // Insert a measurement that is compatible with the reopened bucket.
-    auto result = _insertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(
-            R"({"time":{"$date":"2022-06-06T15:34:40.000Z"},"tag":42, "a":-100,"b":100})"));
-
-    // No buckets are closed.
-    ASSERT(get<SuccessfulInsertion>(result.getValue()).closedBuckets.empty());
-    ASSERT_EQ(0, _getExecutionStat(_uuid1, kNumSchemaChanges));
-
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
-    ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
-    ASSERT_EQ(batch->measurements.size(), 1);
-
-    // The reopened bucket already contains three committed measurements.
-    ASSERT_EQ(batch->numPreviouslyCommittedMeasurements, 3);
-
-    // Verify that the min and max is updated correctly when inserting new measurements.
-    ASSERT_BSONOBJ_BINARY_EQ(batch->min, BSON("u" << BSON("a" << -100)));
-    ASSERT_BSONOBJ_BINARY_EQ(
-        batch->max,
-        BSON("u" << BSON("time" << Date_t::fromMillisSinceEpoch(1654529680000) << "b" << 100)));
-
-    finish(*_bucketCatalog, batch);
 }
 
 TEST_F(BucketCatalogTest, ReopenCompressedBucketAndInsertCompatibleMeasurement) {
@@ -1433,13 +1471,7 @@ TEST_F(BucketCatalogTest, ReopenCompressedBucketAndInsertCompatibleMeasurement) 
                             "2":{"$date":"2022-06-06T15:34:30.000Z"}},
                     "a":{"0":1,"1":2,"2":3},
                     "b":{"0":1,"1":2,"2":3}}})");
-
-    CompressionResult compressionResult = compressBucket(bucketDoc,
-                                                         _timeField,
-                                                         _ns1,
-                                                         /*validateDecompression*/ true);
-    const BSONObj& compressedBucketDoc = compressionResult.compressedBucket.value();
-
+    BSONObj compressedBucketDoc = _getCompressedBucketDoc(bucketDoc);
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
     auto memUsageBefore = getMemoryUsage(*_bucketCatalog);
     Status status = _reopenBucket(autoColl.getCollection(), compressedBucketDoc);
@@ -1457,11 +1489,9 @@ TEST_F(BucketCatalogTest, ReopenCompressedBucketAndInsertCompatibleMeasurement) 
                          ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:34:40.000Z"},
                                                      "a":-100,"b":100})"));
 
-    // No buckets are closed.
-    ASSERT(get<SuccessfulInsertion>(result.getValue()).closedBuckets.empty());
     ASSERT_EQ(0, _getExecutionStat(_uuid1, kNumSchemaChanges));
 
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
     ASSERT_EQ(batch->measurements.size(), 1);
 
@@ -1488,13 +1518,7 @@ TEST_F(BucketCatalogTest, ReopenCompressedBucketAndInsertIncompatibleMeasurement
                             "2":{"$date":"2022-06-06T15:34:30.000Z"}},
                     "a":{"0":1,"1":2,"2":3},
                     "b":{"0":1,"1":2,"2":3}}})");
-
-    CompressionResult compressionResult = compressBucket(bucketDoc,
-                                                         _timeField,
-                                                         _ns1,
-                                                         /*validateDecompression*/ true);
-    const BSONObj& compressedBucketDoc = compressionResult.compressedBucket.value();
-
+    BSONObj compressedBucketDoc = _getCompressedBucketDoc(bucketDoc);
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
     auto memUsageBefore = getMemoryUsage(*_bucketCatalog);
     Status status = _reopenBucket(autoColl.getCollection(), compressedBucketDoc);
@@ -1512,13 +1536,9 @@ TEST_F(BucketCatalogTest, ReopenCompressedBucketAndInsertIncompatibleMeasurement
                          ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:34:40.000Z"},
                                                      "a":{},"b":{}})"));
 
-    // The reopened bucket is closed but not added to closedBuckets anyore, when the feature flag
-    // is enabled, because closedBuckets only stored buckets that would need to be compressed on
-    // closing. With the feature flag enabled buckets are already compressed.
-    ASSERT_EQ(0, get<SuccessfulInsertion>(result.getValue()).closedBuckets.size());
     ASSERT_EQ(1, _getExecutionStat(_uuid1, kNumSchemaChanges));
 
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
     ASSERT_EQ(batch->measurements.size(), 1);
 
@@ -1528,402 +1548,183 @@ TEST_F(BucketCatalogTest, ReopenCompressedBucketAndInsertIncompatibleMeasurement
     finish(*_bucketCatalog, batch);
 }
 
-TEST_F(BucketCatalogTest, TryInsertWillNotCreateBucketWhenWeShouldTryToReopen) {
-    FailPointEnableBlock failPoint("alwaysUseSameBucketCatalogStripe");
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
-
-    // Try to insert with no open bucket. Should hint to re-open.
-    {
-        auto result = _tryInsertOneHelper(
-            _opCtx,
-            *_bucketCatalog,
-            _ns1,
-            _uuid1,
-            ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:34:40.000Z"}})"));
-        ASSERT_OK(result.getStatus());
-        ASSERT(holds_alternative<ReopeningContext>(result.getValue()));
-        ASSERT_TRUE(holds_alternative<std::vector<BSONObj>>(
-            get<ReopeningContext>(result.getValue()).candidate));
-    }
-
-    // Actually insert so we do have an open bucket to test against.
-    BucketId bucketId{
-        _uuid1, OID::gen(), 0};  // placeholder initialization, will be set properly below
-    {
-        auto result =
-            _insertOneHelper(_opCtx,
-                             *_bucketCatalog,
-                             _ns1,
-                             _uuid1,
-                             ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:34:40.000Z"}})"));
-        ASSERT_OK(result.getStatus());
-        auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
-        ASSERT(batch);
-        bucketId = batch->bucketId;
-        ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
-        ASSERT_EQ(batch->measurements.size(), 1);
-        finish(*_bucketCatalog, batch);
-    }
-
-    // Time backwards should hint to re-open.
-    {
-        auto result = _tryInsertOneHelper(
-            _opCtx,
-            *_bucketCatalog,
-            _ns1,
-            _uuid1,
-            ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:40.000Z"}})"));
-        ASSERT_OK(result.getStatus());
-        ASSERT(holds_alternative<ReopeningContext>(result.getValue()));
-        ASSERT_TRUE(holds_alternative<std::vector<BSONObj>>(
-            get<ReopeningContext>(result.getValue()).candidate));
-    }
-
-    // Time forward should not hint to re-open.
-    {
-        auto result = _tryInsertOneHelper(
-            _opCtx,
-            *_bucketCatalog,
-            _ns1,
-            _uuid1,
-            ::mongo::fromjson(R"({"time":{"$date":"2022-06-07T15:34:40.000Z"}})"));
-        ASSERT_OK(result.getStatus());
-        ASSERT(holds_alternative<ReopeningContext>(result.getValue()));
-        ASSERT(
-            holds_alternative<std::monostate>(get<ReopeningContext>(result.getValue()).candidate));
-    }
-
-    // Set a memory limit that only allows one open bucket at a time.
-    int memoryThreshold = getMemoryUsage(*_bucketCatalog) - 1;
-    RAIIServerParameterControllerForTest memoryController{
-        "timeseriesIdleBucketExpiryMemoryUsageThreshold", memoryThreshold};
-
-    // Now let's insert something with a different meta, so we open a new bucket, see we're past the
-    // memory limit, and archive the existing bucket.
-    {
-        auto result = _insertOneHelper(
-            _opCtx,
-            *_bucketCatalog,
-            _ns1,
-            _uuid1,
-            ::mongo::fromjson(R"({"time":{"$date":"2022-06-07T15:34:40.000Z"}, "tag": "foo"})"));
-        ASSERT_OK(result.getStatus());
-        ASSERT_EQ(1, _getExecutionStat(_uuid1, kNumArchivedDueToMemoryThreshold));
-        ASSERT_EQ(0, _getExecutionStat(_uuid1, kNumClosedDueToMemoryThreshold));
-        auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
-        ASSERT_NE(batch->bucketId, bucketId);
-        ASSERT(batch);
-        ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
-        ASSERT_EQ(batch->measurements.size(), 1);
-        finish(*_bucketCatalog, batch);
-    }
-
-    // If we try to insert something that could fit in the archived bucket, we should get it back as
-    // a candidate.
-    {
-        auto result = _tryInsertOneHelper(
-            _opCtx,
-            *_bucketCatalog,
-            _ns1,
-            _uuid1,
-            ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:35:40.000Z"}})"));
-        ASSERT_OK(result.getStatus());
-        ASSERT(holds_alternative<ReopeningContext>(result.getValue()));
-        ASSERT_TRUE(holds_alternative<OID>(get<ReopeningContext>(result.getValue()).candidate));
-        ASSERT_EQ(get<OID>(get<ReopeningContext>(result.getValue()).candidate), bucketId.oid);
-    }
-}
-
-TEST_F(BucketCatalogTest, TryInsertWillCreateBucketIfWeWouldCloseExistingBucket) {
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
-
-    // Insert a document so we have a base bucket
-    auto result = _insertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:34:40.000Z"}, "a": true})"));
-    ASSERT_OK(result.getStatus());
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
-    ASSERT(batch);
-    auto bucketId = batch->bucketId;
-    ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
-    ASSERT_EQ(batch->measurements.size(), 1);
-    finish(*_bucketCatalog, batch);
-
-    // Incompatible schema would close the existing bucket, so we should expect to open a new bucket
-    // and proceed to insert the document.
-    result = _tryInsertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:35:40.000Z"}, "a": {}})"));
-    ASSERT_OK(result.getStatus());
-    batch = get<SuccessfulInsertion>(result.getValue()).batch;
-    ASSERT(batch);
-    ASSERT_NE(batch->bucketId, bucketId);
-    ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
-    ASSERT_EQ(batch->measurements.size(), 1);
-    finish(*_bucketCatalog, batch);
-}
-
-TEST_F(BucketCatalogTest, CannotInsertIntoOutdatedBucket) {
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
-
-    // Insert a document so we have a base bucket and we can test that we archive it when we reopen
-    // a conflicting bucket.
-    auto result =
-        _insertOneHelper(_opCtx,
-                         *_bucketCatalog,
-                         _ns1,
-                         _uuid1,
-                         ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:40.000Z"}})"));
-    ASSERT_OK(result.getStatus());
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
-    ASSERT(batch);
-    auto oldBucketId = batch->bucketId;
-    ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
-    ASSERT_EQ(batch->measurements.size(), 1);
-    finish(*_bucketCatalog, batch);
-
+TEST_F(BucketCatalogTest, RehydrateMalformedBucket) {
     BSONObj bucketDoc = ::mongo::fromjson(
         R"({"_id":{"$oid":"629e1e680958e279dc29a517"},
-            "control":{"version":1,"min":{"time":{"$date":"2022-06-06T15:34:00.000Z"}},
-                                   "max":{"time":{"$date":"2022-06-06T15:34:30.000Z"}}},
-            "data":{"time":{"0":{"$date":"2022-06-06T15:34:30.000Z"}}}})");
-    ASSERT_NE(bucketDoc["_id"].OID(), oldBucketId.oid);
-    auto validator = [ opCtx = _opCtx, &autoColl ](const BSONObj& bucketDoc) -> auto {
-        return autoColl->checkValidation(opCtx, bucketDoc);
-    };
-
-    // If we advance the catalog era, then we shouldn't use a bucket that was fetched during a
-    // previous era.
-    auto oldCatalogEra = getCurrentEra(_bucketCatalog->bucketStateRegistry);
-    const BucketId fakeId{UUID::gen(), OID(), 0};
-    directWriteStart(_bucketCatalog->bucketStateRegistry, fakeId);
-    directWriteFinish(_bucketCatalog->bucketStateRegistry, fakeId);
-
-    ReopeningContext reopeningContext{*_bucketCatalog,
-                                      *_bucketCatalog->stripes[0],
-                                      WithLock::withoutLock(),
-                                      batch->bucketKey,
-                                      oldCatalogEra,
-                                      {}};
-    reopeningContext.bucketToReopen = BucketToReopen{bucketDoc, validator};
-
-    // We should get an WriteConflict back if we pass in an outdated bucket.
-    result = _insertOneWithReopeningContextHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:35:40.000Z"}})"),
-        reopeningContext);
-    ASSERT_NOT_OK(result.getStatus());
-    ASSERT_EQ(result.getStatus().code(), ErrorCodes::WriteConflict);
-}
-
-TEST_F(BucketCatalogTest, QueryBasedReopeningConflictsWithQueryBasedReopening) {
+            "control":{"version":1,"min":{"time":{"$date":"2022-06-06T15:34:00.000Z"},"a":1,"b":1},
+                                   "max":{"time":{"$date":"2022-06-06T15:34:30.000Z"},"a":3,"b":3}},
+            "data":{"time":{"0":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "1":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "2":{"$date":"2022-06-06T15:34:30.000Z"}},
+                    "a":{"0":1,"1":2,"2":3},
+                    "b":{"0":1,"1":2,"2":3}}})");
+    BSONObj compressedBucketDoc = _getCompressedBucketDoc(bucketDoc);
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
 
-    // First attempt to insert to a series should trigger a reopening request to check for a bucket
-    // on disk.
-    auto result1 = _tryInsertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:40.000Z"},"tag":"a"})"));
-    ASSERT_OK(result1.getStatus());
-    auto* context = get_if<ReopeningContext>(&result1.getValue());
-    ASSERT(context);
-    ASSERT(holds_alternative<std::vector<BSONObj>>(context->candidate));
+    ASSERT_OK(_testRehydrateBucket(autoColl.getCollection(), compressedBucketDoc));
 
-    // A subsequent attempt while the first one is still outstanding should conflict and yield a
-    // InsertWaiter.
-    auto result2 = _tryInsertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:50.000Z"},"tag":"a"})"));
-    ASSERT_OK(result2.getStatus());
-    ASSERT(holds_alternative<InsertWaiter>(result2.getValue()));
+    {
+        // Missing _id field.
+        BSONObj missingIdObj = compressedBucketDoc.removeField("_id");
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), missingIdObj));
+
+        // Bad _id type.
+        BSONObj badIdObj = compressedBucketDoc.addFields(BSON("_id" << 123));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), badIdObj));
+    }
+
+    {
+        // Missing control field.
+        BSONObj missingControlObj = compressedBucketDoc.removeField("control");
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), missingControlObj));
+
+        // Bad control type.
+        BSONObj badControlObj = compressedBucketDoc.addFields(BSON("control" << BSONArray()));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), badControlObj));
+
+        // Bad control.version type.
+        BSONObj badVersionObj = compressedBucketDoc.addFields(BSON(
+            "control" << BSON(
+                "version" << BSONArray() << "min"
+                          << BSON("time" << BSON("$date" << "2022-06-06T15:34:00.000Z")) << "max"
+                          << BSON("time" << BSON("$date" << "2022-06-06T15:34:30.000Z")))));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), badVersionObj));
+
+        // Bad control.min type.
+        BSONObj badMinObj = compressedBucketDoc.addFields(BSON(
+            "control" << BSON("version"
+                              << 1 << "min" << 123 << "max"
+                              << BSON("time" << BSON("$date" << "2022-06-06T15:34:30.000Z")))));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), badMinObj));
+
+        // Bad control.max type.
+        BSONObj badMaxObj = compressedBucketDoc.addFields(
+            BSON("control" << BSON("version"
+                                   << 1 << "min"
+                                   << BSON("time" << BSON("$date" << "2022-06-06T15:34:00.000Z"))
+                                   << "max" << 123)));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), badMaxObj));
+
+        // Missing control.min.time.
+        BSONObj missingMinTimeObj = compressedBucketDoc.addFields(BSON(
+            "control" << BSON("version"
+                              << 1 << "min" << BSON("abc" << 1) << "max"
+                              << BSON("time" << BSON("$date" << "2022-06-06T15:34:30.000Z")))));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), missingMinTimeObj));
+
+        // Missing control.max.time.
+        BSONObj missingMaxTimeObj = compressedBucketDoc.addFields(
+            BSON("control" << BSON("version"
+                                   << 1 << "min"
+                                   << BSON("time" << BSON("$date" << "2022-06-06T15:34:00.000Z"))
+                                   << "max" << BSON("abc" << 1))));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), missingMaxTimeObj));
+    }
+
+    {
+        // Missing data field.
+        BSONObj missingDataObj = compressedBucketDoc.removeField("data");
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), missingDataObj));
+
+        // Bad time field in the data field.
+        BSONObj badTimeFieldInDataFieldObj =
+            compressedBucketDoc.addFields(BSON("data" << BSON("time" << BSON("0" << 123))));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), badTimeFieldInDataFieldObj));
+
+        // Bad data type.
+        BSONObj badDataObj = compressedBucketDoc.addFields(BSON("data" << 123));
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), badDataObj));
+    }
 }
 
-TEST_F(BucketCatalogTest, ReopeningConflictsWithPreparedBatch) {
+TEST_F(BucketCatalogTest, RehydrateMixedSchemaDataBucket) {
+    BSONObj bucketDoc = ::mongo::fromjson(
+        R"({"_id":{"$oid":"02091c2c050b7495eaef4581"},
+            "control":{"version":1,
+                       "min":{"_id":{"$oid":"63091c30138e9261fd70a903"},
+                              "time":{"$date":"2022-08-26T19:19:00Z"},
+                              "x":1},
+                       "max":{"_id":{"$oid":"63091c30138e9261fd70a905"},
+                       "time":{"$date":"2022-08-26T19:19:30Z"},
+                       "x":{"y":"z"}}},
+            "data":{"_id":{"0":{"$oid":"63091c30138e9261fd70a903"},
+                           "1":{"$oid":"63091c30138e9261fd70a904"},
+                           "2":{"$oid":"63091c30138e9261fd70a905"}},
+                    "time":{"0":{"$date":"2022-08-26T19:19:30Z"},
+                            "1":{"$date":"2022-08-26T19:19:30Z"},
+                            "2":{"$date":"2022-08-26T19:19:30Z"}},
+                    "x":{"0":1,"1":{"y":"z"},"2":"abc"}}})");
+
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
+    BSONObj compressedBucketDoc = _getCompressedBucketDoc(bucketDoc);
+    ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), compressedBucketDoc));
 
-    // Stage and prepare an insert.
-    auto result1 = _insertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:40.000Z"},"tag":"b"})"));
-    ASSERT_OK(result1.getStatus());
-    auto batch1 = get<SuccessfulInsertion>(result1.getValue()).batch;
-    ASSERT(batch1);
-    ASSERT_OK(prepareCommit(*_bucketCatalog, batch1, _getCollator(_ns1)));
-    ASSERT_EQ(batch1->measurements.size(), 1);
-
-    // Stage and abort another insert on the same bucket, so that new inserts can't land without
-    // reopening.
-    auto result2 = _insertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:45.000Z"},"tag":"b"})"));
-    ASSERT_OK(result2.getStatus());
-    auto batch2 = get<SuccessfulInsertion>(result2.getValue()).batch;
-    ASSERT(batch2);
-    abort(*_bucketCatalog, batch2, {ErrorCodes::WriteConflict, "foo"});
-
-    // A subsequent attempt to reopen a bucket should conflict and yield a InsertWaiter.
-    auto result3 = _tryInsertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:50.000Z"},"tag":"b"})"));
-    ASSERT_OK(result3.getStatus());
-    ASSERT(holds_alternative<InsertWaiter>(result3.getValue()));
+    auto stats = internal::getCollectionExecutionStats(*_bucketCatalog, _uuid1);
+    ASSERT_EQ(1, stats->numBucketReopeningsFailed.load());
 }
 
-TEST_F(BucketCatalogTest, PreparingBatchConflictsWithQueryBasedReopening) {
+TEST_F(BucketCatalogTest, RehydrateClosedBuckets) {
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
 
-    // First attempt to insert to a series should trigger a reopening request to check for a bucket
-    // on disk.
-    boost::optional<StatusWith<InsertResult>> result1 = _tryInsertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:40.000Z"},"tag":"c"})"));
-    ASSERT_OK(result1->getStatus());
-    auto* context = get_if<ReopeningContext>(&result1->getValue());
-    ASSERT(context);
-    ASSERT(holds_alternative<std::vector<BSONObj>>(context->candidate));
-
-    // Stage an insert for the same series, but a different bucket.
-    auto result2 = _insertOneHelper(
-        _opCtx,
-        *_bucketCatalog,
-        _ns1,
-        _uuid1,
-        ::mongo::fromjson(R"({"time":{"$date":"2022-07-05T15:34:40.000Z"},"tag":"c"})"));
-    ASSERT_OK(result2.getStatus());
-    auto batch = get<SuccessfulInsertion>(result2.getValue()).batch;
-    ASSERT(batch);
-
-    // Ensure it blocks until we resolve the reopening request.
-    auto task = RunBackgroundTaskAndWaitForFailpoint{
-        "hangTimeSeriesBatchPrepareWaitingForConflictingOperation", [&]() {
-            ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
-        }};
-    result1 = boost::none;
+    {
+        // control.closed: true
+        BSONObj closedBucket = ::mongo::fromjson(
+            R"({"_id":{"$oid":"629e1e680958e279dc29a517"},
+            "control":{"version":1,"min":{"time":{"$date":"2022-06-06T15:34:00.000Z"},"a":1,"b":1},
+                                   "max":{"time":{"$date":"2022-06-06T15:34:30.000Z"},"a":3,"b":3},
+                                   "closed": true},
+            "data":{"time":{"0":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "1":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "2":{"$date":"2022-06-06T15:34:30.000Z"}},
+                    "a":{"0":1,"1":2,"2":3},
+                    "b":{"0":1,"1":2,"2":3}}})");
+        BSONObj compressedClosedBucketDoc = _getCompressedBucketDoc(closedBucket);
+        ASSERT_NOT_OK(_testRehydrateBucket(autoColl.getCollection(), compressedClosedBucketDoc));
+        auto bucketStates = _bucketCatalog->bucketStateRegistry.bucketStates;
+        ASSERT_EQ(1, bucketStates.size());
+        ASSERT(isBucketStateFrozen(bucketStates.begin()->second));
+    }
 }
 
-TEST_F(BucketCatalogTest, ArchiveBasedReopeningConflictsWithArchiveBasedReopeningOnSameBucket) {
-    // Simplify test by restricting to a single stripe.
-    FailPointEnableBlock failPoint("alwaysUseSameBucketCatalogStripe");
-
+TEST_F(BucketCatalogTest, RehydrateNotClosedBuckets) {
     AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
 
-    // Inject an archived record.
-    auto options = _getTimeseriesOptions(_ns1);
-    BSONObj doc = ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:40.000Z"},"tag":"c"})");
-    BucketKey key{_uuid1,
-                  BucketMetadata{getTrackingContext(_bucketCatalog->trackingContexts,
-                                                    TrackingScope::kOpenBucketsByKey),
-                                 doc["tag"],
-                                 options.getMetaField()}};
-    auto minTime = roundTimestampToGranularity(doc["time"].Date(), options);
-    BucketId id{_uuid1, OID::gen(), BucketKey::signature(key.hash)};
-    ASSERT_OK(initializeBucketState(_bucketCatalog->bucketStateRegistry, id));
-    _bucketCatalog->stripes[0]->archivedBuckets[std::make_tuple(_uuid1, key.hash, minTime)] =
-        ArchivedBucket{id.oid};
+    {
+        // control.closed: false
+        BSONObj openBucket = ::mongo::fromjson(
+            R"({"_id":{"$oid":"629e1e680958e279dc29a518"},
+            "control":{"version":1,"min":{"time":{"$date":"2022-06-06T15:34:00.000Z"},"a":1,"b":1},
+                                   "max":{"time":{"$date":"2022-06-06T15:34:30.000Z"},"a":3,"b":3},
+                                   "closed": false},
+            "data":{"time":{"0":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "1":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "2":{"$date":"2022-06-06T15:34:30.000Z"}},
+                    "a":{"0":1,"1":2,"2":3},
+                    "b":{"0":1,"1":2,"2":3}}})");
+        BSONObj compressedOpenBucketDoc = _getCompressedBucketDoc(openBucket);
+        ASSERT_OK(_testRehydrateBucket(autoColl.getCollection(), compressedOpenBucketDoc));
+    }
 
-    // Should try to reopen archived bucket.
-    boost::optional<StatusWith<InsertResult>> result1 =
-        _tryInsertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, doc);
-    ASSERT_OK(result1->getStatus());
-    auto* context = get_if<ReopeningContext>(&result1->getValue());
-    ASSERT(context);
-    auto* oid = get_if<OID>(&context->candidate);
-    ASSERT(oid);
-    ASSERT_EQ(*oid, id.oid);
-
-    // A second attempt should block.
-    boost::optional<StatusWith<InsertResult>> result2 =
-        _tryInsertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, doc);
-    ASSERT_OK(result2->getStatus());
-    ASSERT(holds_alternative<InsertWaiter>(result2->getValue()));
-}
-
-TEST_F(BucketCatalogTest,
-       ArchiveBasedReopeningDoesNotConflictWithArchiveBasedReopeningOnDifferentBucket) {
-    // Simplify test by restricting to a single stripe.
-    FailPointEnableBlock failPoint("alwaysUseSameBucketCatalogStripe");
-
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IX);
-
-    // Inject an archived record.
-    auto options = _getTimeseriesOptions(_ns1);
-    BSONObj doc1 = ::mongo::fromjson(R"({"time":{"$date":"2022-06-05T15:34:40.000Z"},"tag":"c"})");
-    BucketKey key{_uuid1,
-                  BucketMetadata{getTrackingContext(_bucketCatalog->trackingContexts,
-                                                    TrackingScope::kOpenBucketsByKey),
-                                 doc1["tag"],
-                                 options.getMetaField()}};
-    auto minTime1 = roundTimestampToGranularity(doc1["time"].Date(), options);
-    BucketId id1{_uuid1, OID::gen(), BucketKey::signature(key.hash)};
-    ASSERT_OK(initializeBucketState(_bucketCatalog->bucketStateRegistry, id1));
-    _bucketCatalog->stripes[0]->archivedBuckets[std::make_tuple(_uuid1, key.hash, minTime1)] =
-        ArchivedBucket{
-            id1.oid,
-        };
-
-    // Should try to reopen archived bucket.
-    boost::optional<StatusWith<InsertResult>> result1 =
-        _tryInsertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, doc1);
-    ASSERT_OK(result1->getStatus());
-    auto* context1 = get_if<ReopeningContext>(&result1->getValue());
-    ASSERT(context1);
-    auto* oid1 = get_if<OID>(&context1->candidate);
-    ASSERT(oid1);
-    ASSERT_EQ(*oid1, id1.oid);
-
-    // Inject another archived record on the same series, but a different bucket.
-    BSONObj doc2 = ::mongo::fromjson(R"({"time":{"$date":"2022-06-06T15:34:40.000Z"},"tag":"c"})");
-    auto minTime2 = roundTimestampToGranularity(doc2["time"].Date(), options);
-    BucketId id2{_uuid1, OID::gen(), BucketKey::signature(key.hash)};
-    ASSERT_OK(initializeBucketState(_bucketCatalog->bucketStateRegistry, id2));
-    _bucketCatalog->stripes[0]->archivedBuckets[std::make_tuple(_uuid1, key.hash, minTime2)] =
-        ArchivedBucket{
-            id2.oid,
-        };
-
-    // A second attempt should block.
-    boost::optional<StatusWith<InsertResult>> result2 =
-        _tryInsertOneHelper(_opCtx, *_bucketCatalog, _ns1, _uuid1, doc2);
-    ASSERT_OK(result2->getStatus());
-    auto* context2 = get_if<ReopeningContext>(&result2->getValue());
-    ASSERT(context2);
-    auto* oid2 = get_if<OID>(&context2->candidate);
-    ASSERT(oid2);
-    ASSERT_EQ(*oid2, id2.oid);
+    {
+        // No control.closed
+        BSONObj openBucket = ::mongo::fromjson(
+            R"({"_id":{"$oid":"629e1e680958e279dc29a517"},
+            "control":{"version":1,"min":{"time":{"$date":"2022-06-06T15:34:00.000Z"},"a":1,"b":1},
+                                   "max":{"time":{"$date":"2022-06-06T15:34:30.000Z"},"a":3,"b":3}},
+            "data":{"time":{"0":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "1":{"$date":"2022-06-06T15:34:30.000Z"},
+                            "2":{"$date":"2022-06-06T15:34:30.000Z"}},
+                    "a":{"0":1,"1":2,"2":3},
+                    "b":{"0":1,"1":2,"2":3}}})");
+        BSONObj compressedOpenBucketDoc = _getCompressedBucketDoc(openBucket);
+        ASSERT_OK(_testRehydrateBucket(autoColl.getCollection(), compressedOpenBucketDoc));
+    }
 }
 
 TEST_F(BucketCatalogTest, ArchivingAndClosingUnderSideBucketCatalogMemoryPressure) {
     // Initialize the side bucket catalog.
-    auto sideBucketCatalog = std::make_unique<timeseries::bucket_catalog::BucketCatalog>(
-        1, getTimeseriesSideBucketCatalogMemoryUsageThresholdBytes);
-    ClosedBuckets closedBuckets;
+    auto sideBucketCatalog =
+        std::make_unique<BucketCatalog>(1, getTimeseriesSideBucketCatalogMemoryUsageThresholdBytes);
 
     // Create dummy bucket and populate bucket state registry.
     auto dummyUUID = UUID::gen();
@@ -1961,7 +1762,7 @@ TEST_F(BucketCatalogTest, ArchivingAndClosingUnderSideBucketCatalogMemoryPressur
     stdx::lock_guard stripeLock{stripe.mutex};
 
     // Create execution stats controller.
-    auto collectionStats = std::make_shared<bucket_catalog::ExecutionStats>();
+    auto collectionStats = std::make_shared<ExecutionStats>();
     auto statsController =
         ExecutionStatsController(collectionStats, sideBucketCatalog->globalExecutionStats);
 
@@ -1984,8 +1785,7 @@ TEST_F(BucketCatalogTest, ArchivingAndClosingUnderSideBucketCatalogMemoryPressur
     // to close archived buckets, until we hit the global expiry max count limit (or if we run out
     // of idle buckets in this stripe). Then, we try to close any archived buckets. In this
     // particular execution we should expect not to close any buckets, but we should archive one.
-    internal::expireIdleBuckets(
-        *sideBucketCatalog, stripe, stripeLock, dummyUUID, statsController, closedBuckets);
+    internal::expireIdleBuckets(*sideBucketCatalog, stripe, stripeLock, dummyUUID, statsController);
 
     ASSERT_EQ(1, collectionStats->numBucketsArchivedDueToMemoryThreshold.load());
     ASSERT_EQ(
@@ -2004,8 +1804,7 @@ TEST_F(BucketCatalogTest, ArchivingAndClosingUnderSideBucketCatalogMemoryPressur
     // previously archived.
     sideContext.stats().bytesAllocated(getTimeseriesSideBucketCatalogMemoryUsageThresholdBytes() -
                                        getMemoryUsage(*sideBucketCatalog) + +1);
-    internal::expireIdleBuckets(
-        *sideBucketCatalog, stripe, stripeLock, dummyUUID, statsController, closedBuckets);
+    internal::expireIdleBuckets(*sideBucketCatalog, stripe, stripeLock, dummyUUID, statsController);
 
     ASSERT_EQ(1, collectionStats->numBucketsArchivedDueToMemoryThreshold.load());
     ASSERT_EQ(
@@ -2053,19 +1852,17 @@ TEST_F(BucketCatalogTest, OIDCollisionIsHandledForFrozenBucket) {
     // Insert a measurement to create a bucket.
     auto result = _insertOneHelper(
         _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << time << _metaField << "A"));
-    ASSERT_OK(result.getStatus());
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     ASSERT(batch);
 
     auto doc = BSON(_timeField << time << _metaField << "B");
     // Get the insertContext so that we can get the key signature for the BucketID — again, to
     // trigger a collision of our frozen bucketID with the bucketID of the bucket we will allocate.
-    auto insertContext = std::get<bucket_catalog::InsertContext>(
+    auto insertContext = std::get<InsertContext>(
         uassertStatusOK(prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), doc)));
 
     // Get the next sequential OID so that we can trigger an ID collision down the line.
-    auto OIDAndRoundedTime =
-        bucket_catalog::internal::generateBucketOID(time, insertContext.options);
+    auto OIDAndRoundedTime = internal::generateBucketOID(time, insertContext.options);
     OID nextBucketOID = std::get<OID>(OIDAndRoundedTime);
 
     BucketId nextBucketId{_uuid1, nextBucketOID, insertContext.key.signature()};
@@ -2083,8 +1880,7 @@ TEST_F(BucketCatalogTest, OIDCollisionIsHandledForFrozenBucket) {
     // succeeding.
     result = _insertOneHelper(
         _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << time << _metaField << "B"));
-    ASSERT_OK(result.getStatus());
-    auto batch2 = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch2 = get<SuccessfulInsertion>(result).batch;
     ASSERT_NE(nextBucketId, batch2->bucketId);
     // We should check that the bucketID that we failed to create is not stored in the stripe.
     ASSERT(!_bucketCatalog->stripes[0]->openBucketsById.contains(nextBucketId));
@@ -2095,8 +1891,7 @@ TEST_F(BucketCatalogTest, WriteConflictIfPrepareCommitOnClearedBucket) {
     // Set up an insert to create a bucket.
     auto result = _insertOneHelper(
         _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << time << _metaField << "A"));
-    ASSERT_OK(result.getStatus());
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     ASSERT(batch);
 
     directWriteStart(_bucketCatalog->bucketStateRegistry, batch->bucketId);
@@ -2112,8 +1907,7 @@ TEST_F(BucketCatalogTest, WriteConflictIfDirectWriteOnPreparedBucket) {
 
     auto result = _insertOneHelper(
         _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << time << _metaField << "A"));
-    ASSERT_OK(result.getStatus());
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     ASSERT_OK(prepareCommit(*_bucketCatalog, batch, _getCollator(_ns1)));
 
     // A direct write on a prepared bucket will throw a write conflict.
@@ -2126,10 +1920,9 @@ TEST_F(BucketCatalogTest, DirectWritesCanStack) {
     auto time = Date_t::now();
     auto result = _insertOneHelper(
         _opCtx, *_bucketCatalog, _ns1, _uuid1, BSON(_timeField << time << _metaField << "A"));
-    ASSERT_OK(result.getStatus());
 
     // The batch can be used for both, as it is only used to obtain the bucketId.
-    auto batch = get<SuccessfulInsertion>(result.getValue()).batch;
+    auto batch = get<SuccessfulInsertion>(result).batch;
     directWriteStart(_bucketCatalog->bucketStateRegistry, batch->bucketId);
     directWriteStart(_bucketCatalog->bucketStateRegistry, batch->bucketId);
 
@@ -2167,223 +1960,915 @@ TEST_F(BucketCatalogTest, UseBucketSkipsFrozenBucket) {
     });
 }
 
-TEST_F(BucketCatalogTest, UseAlternateBucketSkipsBucketWithDirectWrite) {
-    _testUseAlternateBucketSkipsConflictingBucket([](BucketCatalog& catalog, Bucket& bucket) {
-        directWriteStart(catalog.bucketStateRegistry, bucket.bucketId);
-    });
+TEST_F(BucketCatalogTest, FindOpenBucketsEmptyCatalog) {
+    auto dummyBucketKey =
+        BucketKey(_uuid1,
+                  BucketMetadata(getTrackingContext(_bucketCatalog->trackingContexts,
+                                                    TrackingScope::kOpenBucketsByKey),
+                                 BSONElement{},
+                                 boost::none));
+
+    ASSERT(_bucketCatalog->stripes[0]->openBucketsByKey.empty());
+    ASSERT(internal::findOpenBuckets(
+               *_bucketCatalog->stripes[0], WithLock::withoutLock(), dummyBucketKey)
+               .empty());
 }
 
-TEST_F(BucketCatalogTest, UseAlternateBucketSkipsClearedBucket) {
-    _testUseAlternateBucketSkipsConflictingBucket([](BucketCatalog& catalog, Bucket& bucket) {
-        clear(catalog, bucket.bucketId.collectionUUID);
-    });
-}
-
-TEST_F(BucketCatalogTest, UseAlternateBucketSkipsFrozenBucket) {
-    _testUseAlternateBucketSkipsConflictingBucket([](BucketCatalog& catalog, Bucket& bucket) {
-        freezeBucket(catalog.bucketStateRegistry, bucket.bucketId);
-    });
-}
-
-TEST_F(BucketCatalogTest, InsertBatchHelperFillsUpSingleBucket) {
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IS);
-
-    const auto& bucketsColl = autoColl.getCollection();
-    BSONObj measurement = BSON(_timeField << Date_t::now() << _metaField << 1);
+TEST_F(BucketCatalogTest, FindOpenBucketsReturnsBucket) {
     auto swResult =
-        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), measurement);
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
     ASSERT_OK(swResult);
-    auto& [insertContext, time] = swResult.getValue();
+    auto& [insertCtx, time] = swResult.getValue();
 
-    Bucket& bucketToInsertInto =
+    Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                              *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                              WithLock::withoutLock(),
+                                              insertCtx.key,
+                                              insertCtx.options,
+                                              time,
+                                              nullptr,
+                                              insertCtx.stats);
+    auto openBuckets = internal::findOpenBuckets(
+        *_bucketCatalog->stripes[insertCtx.stripeNumber], WithLock::withoutLock(), insertCtx.key);
+    ASSERT_EQ(1, openBuckets.size());
+    ASSERT_EQ(&bucket, openBuckets[0]);
+}
+
+TEST_F(BucketCatalogTest, CheckBucketStateAndCleanupWithBucketWithDirectWrite) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+
+    Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                              *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                              WithLock::withoutLock(),
+                                              insertCtx.key,
+                                              insertCtx.options,
+                                              time,
+                                              nullptr,
+                                              insertCtx.stats);
+
+    directWriteStart(_bucketCatalog->bucketStateRegistry, bucket.bucketId);
+
+    // Ineligible for inserts. Remove from 'openBucketsByKey'.
+    ASSERT(internal::isBucketStateEligibleForInsertsAndCleanup(
+               *_bucketCatalog,
+               *_bucketCatalog->stripes[insertCtx.stripeNumber],
+               WithLock::withoutLock(),
+               &bucket) == internal::BucketStateForInsertAndCleanup::kInsertionConflict);
+    ASSERT(_bucketCatalog->stripes[insertCtx.stripeNumber]->openBucketsByKey.empty());
+}
+
+TEST_F(BucketCatalogTest, CheckBucketStateAndCleanupWithClearedBucket) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+
+    Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                              *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                              WithLock::withoutLock(),
+                                              insertCtx.key,
+                                              insertCtx.options,
+                                              time,
+                                              nullptr,
+                                              insertCtx.stats);
+
+    clear(*_bucketCatalog, bucket.bucketId.collectionUUID);
+
+    // Ineligible for inserts. Remove from 'openBucketsByKey'.
+    ASSERT(internal::isBucketStateEligibleForInsertsAndCleanup(
+               *_bucketCatalog,
+               *_bucketCatalog->stripes[insertCtx.stripeNumber],
+               WithLock::withoutLock(),
+               &bucket) == internal::BucketStateForInsertAndCleanup::kInsertionConflict);
+    ASSERT(_bucketCatalog->stripes[insertCtx.stripeNumber]->openBucketsByKey.empty());
+}
+
+TEST_F(BucketCatalogTest, CheckBucketStateAndCleanupWithFrozenBucket) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+
+    Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                              *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                              WithLock::withoutLock(),
+                                              insertCtx.key,
+                                              insertCtx.options,
+                                              time,
+                                              nullptr,
+                                              insertCtx.stats);
+
+    freezeBucket(_bucketCatalog->bucketStateRegistry, bucket.bucketId);
+
+    // Ineligible for inserts. Remove from 'openBucketsByKey'.
+    ASSERT(internal::isBucketStateEligibleForInsertsAndCleanup(
+               *_bucketCatalog,
+               *_bucketCatalog->stripes[insertCtx.stripeNumber],
+               WithLock::withoutLock(),
+               &bucket) == internal::BucketStateForInsertAndCleanup::kInsertionConflict);
+    ASSERT(_bucketCatalog->stripes[insertCtx.stripeNumber]->openBucketsByKey.empty());
+}
+
+TEST_F(BucketCatalogTest, FindAndRolloverOpenBucketsOpen) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+    auto bucketOpenedDueToMetadata = true;
+
+    Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                              *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                              WithLock::withoutLock(),
+                                              insertCtx.key,
+                                              insertCtx.options,
+                                              time,
+                                              nullptr,
+                                              insertCtx.stats);
+
+    auto potentialBuckets =
+        findAndRolloverOpenBuckets(*_bucketCatalog,
+                                   *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                   WithLock::withoutLock(),
+                                   insertCtx.key,
+                                   time,
+                                   Seconds(*insertCtx.options.getBucketMaxSpanSeconds()),
+                                   bucketOpenedDueToMetadata);
+    ASSERT(!bucketOpenedDueToMetadata);
+    ASSERT_EQ(1, potentialBuckets.size());
+    ASSERT_EQ(&bucket, potentialBuckets[0]);
+}
+
+TEST_F(BucketCatalogTest, FindAndRolloverOpenBucketsSoftClose) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+    auto bucketOpenedDueToMetadata = true;
+
+    Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                              *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                              WithLock::withoutLock(),
+                                              insertCtx.key,
+                                              insertCtx.options,
+                                              time,
+                                              nullptr,
+                                              insertCtx.stats);
+
+    bucket.rolloverReason = RolloverReason::kTimeForward;
+    auto potentialBuckets =
+        findAndRolloverOpenBuckets(*_bucketCatalog,
+                                   *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                   WithLock::withoutLock(),
+                                   insertCtx.key,
+                                   time,
+                                   Seconds(*insertCtx.options.getBucketMaxSpanSeconds()),
+                                   bucketOpenedDueToMetadata);
+    ASSERT(!bucketOpenedDueToMetadata);
+    ASSERT_EQ(1, potentialBuckets.size());
+    ASSERT_EQ(&bucket, potentialBuckets[0]);
+}
+
+TEST_F(BucketCatalogTest, FindAndRolloverOpenBucketsArchive) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+    auto bucketOpenedDueToMetadata = true;
+
+    Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                              *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                              WithLock::withoutLock(),
+                                              insertCtx.key,
+                                              insertCtx.options,
+                                              time,
+                                              nullptr,
+                                              insertCtx.stats);
+
+    bucket.rolloverReason = RolloverReason::kTimeBackward;
+    auto potentialBuckets =
+        findAndRolloverOpenBuckets(*_bucketCatalog,
+                                   *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                   WithLock::withoutLock(),
+                                   insertCtx.key,
+                                   time,
+                                   Seconds(*insertCtx.options.getBucketMaxSpanSeconds()),
+                                   bucketOpenedDueToMetadata);
+    ASSERT(!bucketOpenedDueToMetadata);
+    ASSERT_EQ(1, potentialBuckets.size());
+    ASSERT_EQ(&bucket, potentialBuckets[0]);
+}
+
+TEST_F(BucketCatalogTest, FindAndRolloverOpenBucketsHardClose) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+    std::vector<RolloverReason> allHardClosedRolloverReasons = {RolloverReason::kCount,
+                                                                RolloverReason::kSchemaChange,
+                                                                RolloverReason::kCachePressure,
+                                                                RolloverReason::kSize};
+
+    for (size_t i = 0; i < allHardClosedRolloverReasons.size(); i++) {
+        auto bucketOpenedDueToMetadata = true;
+        Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                                  *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                                  WithLock::withoutLock(),
+                                                  insertCtx.key,
+                                                  insertCtx.options,
+                                                  time,
+                                                  nullptr,
+                                                  insertCtx.stats);
+
+        bucket.rolloverReason = allHardClosedRolloverReasons[i];
+        auto potentialBuckets =
+            findAndRolloverOpenBuckets(*_bucketCatalog,
+                                       *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                       WithLock::withoutLock(),
+                                       insertCtx.key,
+                                       time,
+                                       Seconds(*insertCtx.options.getBucketMaxSpanSeconds()),
+                                       bucketOpenedDueToMetadata);
+        ASSERT(!bucketOpenedDueToMetadata);
+        ASSERT_EQ(0, potentialBuckets.size());
+        ASSERT(_bucketCatalog->stripes[insertCtx.stripeNumber]->openBucketsByKey.empty());
+    }
+}
+
+TEST_F(BucketCatalogTest, FindAndRolloverOpenBucketsUncommitted) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+    std::vector<RolloverReason> allHardClosedRolloverReasons = {RolloverReason::kCount,
+                                                                RolloverReason::kSchemaChange,
+                                                                RolloverReason::kCachePressure,
+                                                                RolloverReason::kSize};
+
+    for (size_t i = 0; i < allHardClosedRolloverReasons.size(); i++) {
+        auto bucketOpenedDueToMetadata = true;
+        Bucket& bucket = internal::allocateBucket(*_bucketCatalog,
+                                                  *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                                  WithLock::withoutLock(),
+                                                  insertCtx.key,
+                                                  insertCtx.options,
+                                                  time,
+                                                  nullptr,
+                                                  insertCtx.stats);
+
+        bucket.rolloverReason = allHardClosedRolloverReasons[i];
+        std::shared_ptr<WriteBatch> batch;
+        auto opId = 0;
+        bucket.batches.emplace(opId, batch);
+        auto potentialBuckets =
+            findAndRolloverOpenBuckets(*_bucketCatalog,
+                                       *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                       WithLock::withoutLock(),
+                                       insertCtx.key,
+                                       time,
+                                       Seconds(*insertCtx.options.getBucketMaxSpanSeconds()),
+                                       bucketOpenedDueToMetadata);
+
+        // No results returned. Do not close the bucket because of uncommitted batches.
+        ASSERT(!bucketOpenedDueToMetadata);
+        ASSERT_EQ(0, potentialBuckets.size());
+        ASSERT(!_bucketCatalog->stripes[insertCtx.stripeNumber]->openBucketsByKey.empty());
+    }
+}
+
+TEST_F(BucketCatalogTest, FindAndRolloverOpenBucketsOrder) {
+    auto swResult =
+        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), _measurement);
+    ASSERT_OK(swResult);
+    auto& [insertCtx, time] = swResult.getValue();
+    auto bucketOpenedDueToMetadata = true;
+
+    Bucket& bucket1 = internal::allocateBucket(*_bucketCatalog,
+                                               *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                               WithLock::withoutLock(),
+                                               insertCtx.key,
+                                               insertCtx.options,
+                                               time,
+                                               nullptr,
+                                               insertCtx.stats);
+    bucket1.rolloverReason = RolloverReason::kTimeBackward;
+
+    Bucket& bucket2 = internal::allocateBucket(*_bucketCatalog,
+                                               *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                               WithLock::withoutLock(),
+                                               insertCtx.key,
+                                               insertCtx.options,
+                                               time,
+                                               nullptr,
+                                               insertCtx.stats);
+
+
+    auto potentialBuckets =
+        findAndRolloverOpenBuckets(*_bucketCatalog,
+                                   *_bucketCatalog->stripes[insertCtx.stripeNumber],
+                                   WithLock::withoutLock(),
+                                   insertCtx.key,
+                                   time,
+                                   Seconds(*insertCtx.options.getBucketMaxSpanSeconds()),
+                                   bucketOpenedDueToMetadata);
+    ASSERT(!bucketOpenedDueToMetadata);
+    ASSERT_EQ(2, potentialBuckets.size());
+    ASSERT_EQ(&bucket1, potentialBuckets[0]);
+    ASSERT_EQ(&bucket2, potentialBuckets[1]);
+}
+
+TEST_F(BucketCatalogTest, GetEligibleBucketAllocateBucket) {
+    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IS);
+    const auto& bucketsColl = autoColl.getCollection();
+    auto measurement = BSON(_timeField << Date_t::now() << _metaField << _metaValue);
+    auto timeseriesOptions = _getTimeseriesOptions(_ns1);
+    std::vector<timeseries::write_ops::internal::WriteStageErrorAndIndex> errorsAndIndices;
+    auto batchedInsertContexts =
+        write_ops::internal::buildBatchedInsertContexts(*_bucketCatalog,
+                                                        _uuid1,
+                                                        timeseriesOptions,
+                                                        {measurement},
+                                                        /*startIndex=*/0,
+                                                        /*numDocsToStage=*/1,
+                                                        /*docsToRetry=*/{},
+                                                        errorsAndIndices);
+    ASSERT(errorsAndIndices.empty());
+
+    auto batchedInsertCtx = batchedInsertContexts[0];
+    auto measurementTimestamp = std::get<1>(batchedInsertCtx.measurementsTimesAndIndices[0]);
+    auto era = getCurrentEra(_bucketCatalog->bucketStateRegistry);
+
+    ASSERT(_bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsByKey.empty());
+    ASSERT(_bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsById.empty());
+
+    {
+        stdx::unique_lock<stdx::mutex> stripeLock(
+            _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->mutex);
+        bool bucketOpenedDueToMetadata = true;
+        auto& bucket = getEligibleBucket(_opCtx,
+                                         *_bucketCatalog,
+                                         *_bucketCatalog->stripes[batchedInsertCtx.stripeNumber],
+                                         stripeLock,
+                                         bucketsColl.get(),
+                                         measurement,
+                                         batchedInsertCtx.key,
+                                         measurementTimestamp,
+                                         batchedInsertCtx.options,
+                                         bucketsColl->getDefaultCollator(),
+                                         era,
+                                         _storageCacheSizeBytes,
+                                         /*compressAndWriteBucketFunc=*/nullptr,
+                                         batchedInsertCtx.stats,
+                                         bucketOpenedDueToMetadata);
+        ASSERT_EQ(0, bucket.size);
+        ASSERT_EQ(RolloverReason::kNone, bucket.rolloverReason);
+        ASSERT_EQ(1,
+                  _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsByKey.size());
+        ASSERT_EQ(1,
+                  _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsById.size());
+        ASSERT(bucketOpenedDueToMetadata);
+    }
+}
+
+TEST_F(BucketCatalogTest, GetEligibleBucketOpenBucket) {
+    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IS);
+    const auto& bucketsColl = autoColl.getCollection();
+    auto measurement = BSON(_timeField << Date_t::now() << _metaField << _metaValue);
+    auto timeseriesOptions = _getTimeseriesOptions(_ns1);
+    std::vector<timeseries::write_ops::internal::WriteStageErrorAndIndex> errorsAndIndices;
+    auto batchedInsertContexts =
+        write_ops::internal::buildBatchedInsertContexts(*_bucketCatalog,
+                                                        _uuid1,
+                                                        timeseriesOptions,
+                                                        {measurement},
+                                                        /*startIndex=*/0,
+                                                        /*numDocsToStage=*/1,
+                                                        /*docsToRetry=*/{},
+                                                        errorsAndIndices);
+    ASSERT(errorsAndIndices.empty());
+
+    auto batchedInsertCtx = batchedInsertContexts[0];
+    auto measurementTimestamp = std::get<1>(batchedInsertCtx.measurementsTimesAndIndices[0]);
+    auto era = getCurrentEra(_bucketCatalog->bucketStateRegistry);
+
+    Bucket& bucketAllocated =
         internal::allocateBucket(*_bucketCatalog,
-                                 *_bucketCatalog->stripes[insertContext.stripeNumber],
+                                 *_bucketCatalog->stripes[batchedInsertCtx.stripeNumber],
                                  WithLock::withoutLock(),
-                                 insertContext,
-                                 time,
-                                 nullptr);
-    size_t currentPosition = 0;
-    std::vector<std::shared_ptr<WriteBatch>> writeBatches;
-    auto& stripe = *_bucketCatalog->stripes[insertContext.stripeNumber];
-    stdx::lock_guard stripeLock{stripe.mutex};
+                                 batchedInsertCtx.key,
+                                 batchedInsertCtx.options,
+                                 measurementTimestamp,
+                                 /*comparator=*/nullptr,
+                                 batchedInsertCtx.stats);
 
-    std::vector<BSONObj> batchOfMeasurements;
+    ASSERT_EQ(1, _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsByKey.size());
+    ASSERT_EQ(1, _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsById.size());
 
-    for (auto i = 0; i < gTimeseriesBucketMaxCount; i++) {
-        batchOfMeasurements.emplace_back(BSON(_timeField << Date_t::now() << _metaField << "a"));
+    {
+        stdx::unique_lock<stdx::mutex> stripeLock(
+            _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->mutex);
+        bool bucketOpenedDueToMetadata = true;
+        auto& bucketFound =
+            getEligibleBucket(_opCtx,
+                              *_bucketCatalog,
+                              *_bucketCatalog->stripes[batchedInsertCtx.stripeNumber],
+                              stripeLock,
+                              bucketsColl.get(),
+                              measurement,
+                              batchedInsertCtx.key,
+                              measurementTimestamp,
+                              batchedInsertCtx.options,
+                              bucketsColl->getDefaultCollator(),
+                              era,
+                              _storageCacheSizeBytes,
+                              /*compressAndWriteBucketFunc=*/nullptr,
+                              batchedInsertCtx.stats,
+                              bucketOpenedDueToMetadata);
+        ASSERT_EQ(&bucketAllocated, &bucketFound);
+        ASSERT_EQ(RolloverReason::kNone, bucketFound.rolloverReason);
+        ASSERT_EQ(1,
+                  _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsByKey.size());
+        ASSERT_EQ(1,
+                  _bucketCatalog->stripes[batchedInsertCtx.stripeNumber]->openBucketsById.size());
+        ASSERT(!bucketOpenedDueToMetadata);
     }
-
-    auto mockGetStorageCacheSizeBytesFunc = [](OperationContext*) {
-        return kStorageCacheSizeBytes;
-    };
-
-    auto insertionResult =
-        internal::insertBatchIntoEligibleBucket(_opCtx,
-                                                *_bucketCatalog,
-                                                bucketsColl.get(),
-                                                bucketsColl->getDefaultCollator(),
-                                                batchOfMeasurements,
-                                                insertContext,
-                                                bucketToInsertInto,
-                                                stripe,
-                                                stripeLock,
-                                                currentPosition,
-                                                writeBatches,
-                                                mockGetStorageCacheSizeBytesFunc);
-    auto successfulInsertion = std::get_if<std::monostate>(&insertionResult);
-    ASSERT(successfulInsertion);
-    ASSERT_EQ(writeBatches.size(), gTimeseriesBucketMaxCount);
-    ASSERT_EQ(bucketToInsertInto.numMeasurements, gTimeseriesBucketMaxCount);
-    ASSERT_EQ(currentPosition, gTimeseriesBucketMaxCount);
 }
 
-TEST_F(BucketCatalogTest, InsertBatchHelperHandlesRollover) {
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IS);
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketFillsUpSingleBucket) {
+    std::vector<BSONObj> batchOfMeasurementsTimeseriesBucketMaxCount =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kNone});
+    std::vector<size_t> currBatchedInsertContextsIndex{0};
+    std::vector<size_t> numMeasurementsInWriteBatch{static_cast<size_t>(gTimeseriesBucketMaxCount)};
 
-    const auto& bucketsColl = autoColl.getCollection();
-    BSONObj measurement = BSON(_timeField << Date_t::now() << _metaField << 1);
-    auto swResult =
-        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), measurement);
-    ASSERT_OK(swResult);
-    auto& [insertContext, time] = swResult.getValue();
+    // Inserting a batch of measurements with meta field values into a collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(
+        _ns1,
+        _uuid1,
+        batchOfMeasurementsTimeseriesBucketMaxCount,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
 
-    Bucket& bucketToInsertInto =
-        internal::allocateBucket(*_bucketCatalog,
-                                 *_bucketCatalog->stripes[insertContext.stripeNumber],
-                                 WithLock::withoutLock(),
-                                 insertContext,
-                                 time,
-                                 nullptr);
+    // Inserting a batch of measurements without meta field values into a collection without a meta
+    // field.
+    std::vector<BSONObj> batchOfMeasurementsTimeseriesBucketMaxCountNoMetaField =
+        _generateMeasurementsWithRolloverReason(
+            {.reason = RolloverReason::kNone, .metaValue = boost::none});
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+        _nsNoMeta,
+        _uuidNoMeta,
+        batchOfMeasurementsTimeseriesBucketMaxCountNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
 
-    size_t currentPosition = 0;
-    std::vector<std::shared_ptr<WriteBatch>> writeBatches;
-    auto& stripe = *_bucketCatalog->stripes[insertContext.stripeNumber];
-    stdx::lock_guard stripeLock{stripe.mutex};
-
-    std::vector<BSONObj> batchOfMeasurements;
-
-    for (auto i = 0; i < 2 * gTimeseriesBucketMaxCount; i++) {
-        batchOfMeasurements.emplace_back(BSON(_timeField << Date_t::now() << _metaField << "a"));
-    }
-
-    auto mockGetStorageCacheSizeBytesFunc = [](OperationContext*) {
-        return kStorageCacheSizeBytes;
-    };
-
-    auto insertionResult =
-        internal::insertBatchIntoEligibleBucket(_opCtx,
-                                                *_bucketCatalog,
-                                                bucketsColl.get(),
-                                                bucketsColl->getDefaultCollator(),
-                                                batchOfMeasurements,
-                                                insertContext,
-                                                bucketToInsertInto,
-                                                stripe,
-                                                stripeLock,
-                                                currentPosition,
-                                                writeBatches,
-                                                mockGetStorageCacheSizeBytesFunc);
-    auto rolloverReason = std::get_if<RolloverReason>(&insertionResult);
-    ASSERT(rolloverReason);
-    ASSERT(*rolloverReason == RolloverReason::kCount);
-    // We should have inserted the first half of the measurements.
-    ASSERT_EQ(currentPosition, gTimeseriesBucketMaxCount);
-    ASSERT_EQ(bucketToInsertInto.numMeasurements, gTimeseriesBucketMaxCount);
-
-    // Let's rollover our first bucket and finish inserting the batch with another call into the
-    // helper.
-    auto currentMeasurementTime = batchOfMeasurements[currentPosition]
-                                      .getField(bucketsColl->getTimeseriesOptions()->getTimeField())
-                                      .Date();
-    auto newBucketToInsertInto = &internal::rollover(*_bucketCatalog,
-                                                     stripe,
-                                                     stripeLock,
-                                                     bucketToInsertInto,
-                                                     insertContext,
-                                                     RolloverAction::kHardClose,
-                                                     currentMeasurementTime,
-                                                     bucketsColl->getDefaultCollator(),
-                                                     nullptr,
-                                                     boost::none);
-
-    insertionResult = internal::insertBatchIntoEligibleBucket(_opCtx,
-                                                              *_bucketCatalog,
-                                                              bucketsColl.get(),
-                                                              bucketsColl->getDefaultCollator(),
-                                                              batchOfMeasurements,
-                                                              insertContext,
-                                                              *newBucketToInsertInto,
-                                                              stripe,
-                                                              stripeLock,
-                                                              currentPosition,
-                                                              writeBatches,
-                                                              mockGetStorageCacheSizeBytesFunc);
-
-    auto successfulInsertion = std::get_if<std::monostate>(&insertionResult);
-    ASSERT(successfulInsertion);
-    ASSERT_EQ(writeBatches.size(), 2 * gTimeseriesBucketMaxCount);
-    ASSERT_EQ(newBucketToInsertInto->numMeasurements, gTimeseriesBucketMaxCount);
-    ASSERT_EQ(currentPosition, 2 * gTimeseriesBucketMaxCount);
+    // Inserting a batch of measurements without meta field values into a collection with a meta
+    // field.
+    _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        _ns1,
+        _uuid1,
+        batchOfMeasurementsTimeseriesBucketMaxCountNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
 }
 
-TEST_F(BucketCatalogTest, InsertBatch) {
-    AutoGetCollection autoColl(_opCtx, _ns1.makeTimeseriesBucketsNamespace(), MODE_IS);
-    const auto& bucketsColl = autoColl.getCollection();
-    auto measurement = BSON(_timeField << Date_t::now());
-    auto swResult =
-        prepareInsert(*_bucketCatalog, _uuid1, _getTimeseriesOptions(_ns1), measurement);
-    ASSERT_OK(swResult);
-    auto& [insertContext, time] = swResult.getValue();
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverkCount) {
+    std::vector<BSONObj> batchOfMeasurementsWithCount =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kCount});
 
+    // batchOfMeasurements will be 2 * gTimeseriesBucketMaxCount measurements with all the
+    // measurements having the same meta field and time, which means we should have two buckets.
+    std::vector<size_t> numMeasurementsInWriteBatch{static_cast<size_t>(gTimeseriesBucketMaxCount),
+                                                    static_cast<size_t>(gTimeseriesBucketMaxCount)};
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0};
 
-    std::vector<BSONObj> batchOfMeasurements;
+    // Inserting a batch of measurements with meta field values into a collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(_ns1,
+                                                         _uuid1,
+                                                         batchOfMeasurementsWithCount,
+                                                         currBatchedInsertContextsIndex,
+                                                         numMeasurementsInWriteBatch,
+                                                         /*numBatchedInsertContexts=*/1);
 
-    for (auto i = 0; i < 10; i++) {
-        batchOfMeasurements.emplace_back(BSON(_timeField << Date_t::now() << _metaField << "a"));
-    }
-    // Case where all measurements fit into one bucket;
-    auto writeBatches = insertBatch(_opCtx,
-                                    *_bucketCatalog,
-                                    bucketsColl.get(),
-                                    bucketsColl->getDefaultCollator(),
-                                    batchOfMeasurements,
-                                    insertContext,
-                                    [](OperationContext*) { return kStorageCacheSizeBytes; });
-    ASSERT_EQ(writeBatches.size(), 10);
+    // Inserting a batch of measurements without meta field values into a collection without a meta
+    // field.
+    std::vector<BSONObj> batchOfMeasurementsWithCountNoMetaField =
+        _generateMeasurementsWithRolloverReason(
+            {.reason = RolloverReason::kCount, .metaValue = boost::none});
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+        _nsNoMeta,
+        _uuidNoMeta,
+        batchOfMeasurementsWithCountNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
 
-    // Try inserting a batch where the measurements don't fit into one bucket.
-    std::vector<BSONObj> biggerBatchOfMeasurements;
-    for (auto i = 0; i < 3 * gTimeseriesBucketMaxCount; i++) {
-        biggerBatchOfMeasurements.emplace_back(
-            BSON(_timeField << Date_t::now() << _metaField << "a"));
-    }
-    writeBatches = insertBatch(_opCtx,
-                               *_bucketCatalog,
-                               bucketsColl.get(),
-                               bucketsColl->getDefaultCollator(),
-                               biggerBatchOfMeasurements,
-                               insertContext,
-                               [](OperationContext*) { return kStorageCacheSizeBytes; });
-    ASSERT_EQ(writeBatches.size(), 3 * gTimeseriesBucketMaxCount);
-
-    // Try inserting a batch where we roll over due to time.
-    std::vector<BSONObj> batchWithTimeForward;
-    for (auto i = 0; i < 10; i++) {
-        batchWithTimeForward.emplace_back(BSON(_timeField << Date_t::now() << _metaField << "a"));
-    }
-    batchWithTimeForward.emplace_back(
-        BSON(_timeField << Date_t::now() + Hours(2) << _metaField << "a"));
-
-    writeBatches = insertBatch(_opCtx,
-                               *_bucketCatalog,
-                               bucketsColl.get(),
-                               bucketsColl->getDefaultCollator(),
-                               batchWithTimeForward,
-                               insertContext,
-                               [](OperationContext*) { return kStorageCacheSizeBytes; });
-    ASSERT_EQ(writeBatches.size(), 11);
+    // Inserting a batch of measurements without meta field values into a collection with a meta
+    // field.
+    _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        _ns1,
+        _uuid1,
+        batchOfMeasurementsWithCountNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
 }
 
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverkTimeForward) {
+    // Max bucket size with only the last measurement having kTimeForward.
+    std::vector<BSONObj> batchOfMeasurementsWithTimeForwardAtEnd =
+        _generateMeasurementsWithRolloverReason(
+            {.reason = RolloverReason::kTimeForward, .metaValue = _metaValue});
 
+    // The last measurement in batchOfMeasurementsWithTimeForwardAtEnd will have a timestamp outside
+    // of the bucket range encompassing the previous measurements, which means that this
+    // measurement will be in a different bucket.
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0};
+    std::vector<size_t> numMeasurementsInWriteBatchAtEnd{
+        static_cast<size_t>(gTimeseriesBucketMaxCount - 1), 1};
+
+    // Inserting a batch of measurements with meta field values into a collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(_ns1,
+                                                         _uuid1,
+                                                         batchOfMeasurementsWithTimeForwardAtEnd,
+                                                         currBatchedInsertContextsIndex,
+                                                         numMeasurementsInWriteBatchAtEnd,
+                                                         /*numBatchedInsertContexts=*/1);
+
+    // Max bucket size with measurements[1:gTimeseriesBucketMaxCount] having kTimeForward.
+    // Inserting a batch of measurements without meta field values into a collection without a meta
+    // field.
+    auto batchOfMeasurementsWithTimeForwardAfterFirstMeasurementNoMetaField =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kTimeForward,
+                                                 .idxWithDiffMeasurement = 1,
+                                                 .metaValue = boost::none});
+    std::vector<size_t> numMeasurementsInWriteBatchAfterFirstMeasurement{
+        1, static_cast<size_t>(gTimeseriesBucketMaxCount - 1)};
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+        _nsNoMeta,
+        _uuidNoMeta,
+        batchOfMeasurementsWithTimeForwardAfterFirstMeasurementNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatchAfterFirstMeasurement,
+        /*numBatchedInsertContexts=*/1);
+
+    // 50 measurements with measurements[25:50] having kTimeForward.
+    // Inserting a batch of measurements without meta field values into a collection with a meta
+    // field.
+    std::vector<size_t> numMeasurementsInWriteBatchInMiddle{25, 25};
+    auto batchOfMeasurementsWithTimeForwardInMiddle =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kTimeForward,
+                                                 .numMeasurements = 50,
+                                                 .idxWithDiffMeasurement = 25,
+                                                 .metaValue = boost::none});
+    _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        _ns1,
+        _uuid1,
+        batchOfMeasurementsWithTimeForwardInMiddle,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatchInMiddle,
+        /*numBatchedInsertContexts=*/1);
+}
+
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverkSchemaChange) {
+    // Max bucket size with only the last measurement having kSchemaChange.
+    auto batchOfMeasurementsWithSchemaChangeAtEnd = _generateMeasurementsWithRolloverReason(
+        {.reason = RolloverReason::kSchemaChange, .metaValue = _metaValue});
+
+    // The last measurement in batchOfMeasurementsWithSchemaChangeAtEnd will have a int rather
+    // than a string for field "deathGrips", which means this measurement will be in a different
+    // bucket.
+    // Inserting a batch of measurements with meta field values into a collection with a meta field.
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0};
+    std::vector<size_t> numMeasurementsInWriteBatchAtEnd{
+        static_cast<size_t>(gTimeseriesBucketMaxCount - 1), 1};
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(_ns1,
+                                                         _uuid1,
+                                                         batchOfMeasurementsWithSchemaChangeAtEnd,
+                                                         currBatchedInsertContextsIndex,
+                                                         numMeasurementsInWriteBatchAtEnd,
+                                                         /*numBatchedInsertContexts=*/1);
+
+    // Max bucket size with measurements[1:gTimeseriesBucketMaxCount] having kSchemaChange.
+    // Inserting a batch of measurements without meta field values into a collection without a meta
+    // field.
+    auto batchOfMeasurementsWithSchemaChangeAfterFirstMeasurementNoMetaField =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kSchemaChange,
+                                                 .idxWithDiffMeasurement = 1,
+                                                 .metaValue = boost::none});
+    std::vector<size_t> numMeasurementsInWriteBatchAfterFirstMeasurement{
+        1, static_cast<size_t>(gTimeseriesBucketMaxCount - 1)};
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+        _nsNoMeta,
+        _uuidNoMeta,
+        batchOfMeasurementsWithSchemaChangeAfterFirstMeasurementNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatchAfterFirstMeasurement,
+        /*numBatchedInsertContexts=*/1);
+
+    // 50 measurements with measurements[25:50] having kSchemaChange.
+    // Inserting a batch of measurements without meta field values into a collection with a meta
+    // field.
+    auto batchOfMeasurementsWithTimeForwardInMiddle =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kSchemaChange,
+                                                 .numMeasurements = 50,
+                                                 .idxWithDiffMeasurement = 25,
+                                                 .metaValue = boost::none});
+    std::vector<size_t> numMeasurementsInWriteBatchInMiddle{25, 25};
+    _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        _ns1,
+        _uuid1,
+        batchOfMeasurementsWithTimeForwardInMiddle,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatchInMiddle,
+        /*numBatchedInsertContexts=*/1);
+}
+
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverkSize) {
+    std::vector<BSONObj> batchOfMeasurementsWithSize =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kSize});
+
+    // The last measurement will exceed the size that the bucket can store. We will trigger kSize,
+    // so the measurement will be in a different bucket.
+    std::vector<size_t> numMeasurementsInWriteBatch{124, 1};
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0};
+
+    // Inserting a batch of measurements with meta field values into a collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(_ns1,
+                                                         _uuid1,
+                                                         batchOfMeasurementsWithSize,
+                                                         currBatchedInsertContextsIndex,
+                                                         numMeasurementsInWriteBatch,
+                                                         /*numBatchedInsertContexts=*/1);
+
+    // Inserting a batch of measurements without meta field values into a collection without a meta
+    // field.
+    std::vector<BSONObj> batchOfMeasurementsWithSizeNoMetaField =
+        _generateMeasurementsWithRolloverReason(
+            {.reason = RolloverReason::kSize, .metaValue = boost::none});
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+        _nsNoMeta,
+        _uuidNoMeta,
+        batchOfMeasurementsWithSizeNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
+
+    // Inserting a batch of measurements without meta field values into a collection with a meta
+    // field.
+    _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        _ns1,
+        _uuid1,
+        batchOfMeasurementsWithSizeNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
+}
+
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverkCachePressure) {
+    // Artificially lower _storageCacheSizeBytes so we can simulate kCachePressure.
+    _storageCacheSizeBytes = kLimitedStorageCacheSizeBytes;
+
+    std::vector<BSONObj> batchOfMeasurementsWithCachePressure =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kCachePressure});
+
+    // The last measurement will exceed the size that the bucket can store. Coupled with the
+    // lowered cache size, we will trigger kCachePressure, so the measurement will be in a
+    // different bucket.
+    std::vector<size_t> numMeasurementsInWriteBatch{3, 1};
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0};
+
+    // Inserting a batch of measurements with meta field values into a collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(_ns1,
+                                                         _uuid1,
+                                                         batchOfMeasurementsWithCachePressure,
+                                                         currBatchedInsertContextsIndex,
+                                                         numMeasurementsInWriteBatch,
+                                                         /*numBatchedInsertContexts=*/1);
+
+    std::vector<BSONObj> batchOfMeasurementsWithCachePressureNoMetaField =
+        _generateMeasurementsWithRolloverReason(
+            {.reason = RolloverReason::kCachePressure, .metaValue = boost::none});
+
+    // Inserting a batch of measurements without meta field values into a collection without a meta
+    // field.
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(
+        _nsNoMeta,
+        _uuidNoMeta,
+        batchOfMeasurementsWithCachePressureNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
+
+    // Inserting a batch of measurements without meta field values into a collection with a meta
+    // field.
+    _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        _ns1,
+        _uuid1,
+        batchOfMeasurementsWithCachePressureNoMetaField,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
+
+    // Reset _storageCacheSizeBytes back to a representative value.
+    _storageCacheSizeBytes = kDefaultStorageCacheSizeBytes;
+}
+
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverMixed) {
+    auto batchOfMeasurementsWithCount = _generateMeasurementsWithRolloverReason(
+        {.reason = RolloverReason::kCount, .timeValue = Date_t::now()});
+
+    auto batchOfMeasurementsWithSchemaChange =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kSchemaChange,
+                                                 .numMeasurements = 50,
+                                                 .idxWithDiffMeasurement = 25,
+                                                 .timeValue = Date_t::now() + Seconds(1)});
+
+    // Generating measurements with kSchema change will require us to add an additional
+    // Seconds(1) to all subsequent measurement vectors because we ensure the measurements with
+    // schema change are at the end of the measurements vector by adding Seconds(1) to the time
+    // field of those measurements.
+    std::vector<BSONObj> batchOfMeasurements = _generateMeasurementsWithRolloverReason(
+        {.reason = RolloverReason::kNone, .timeValue = Date_t::now() + Seconds(3)});
+
+    std::vector<BSONObj> mixedRolloverReasonsMeasurements =
+        _getFlattenedVector(std::vector<std::vector<BSONObj>>({batchOfMeasurementsWithCount,
+                                                               batchOfMeasurementsWithSchemaChange,
+                                                               batchOfMeasurements}));
+    ASSERT_EQ(mixedRolloverReasonsMeasurements.size(),
+              batchOfMeasurementsWithCount.size() + batchOfMeasurementsWithSchemaChange.size() +
+                  batchOfMeasurements.size());
+
+    std::vector<size_t> numWriteBatches{5};
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0, 0, 0, 0};
+
+    // We first fill up two buckets with gTimeseriesBucketMaxCount measurements due to the
+    // batchOfMeasurementsWithCount.
+    // We then fill up a third bucket with 25 measurements before encountering a
+    // kSchemaChange in batchOfMeasurementsWithSchemaChange.
+    // We then fill up a fourth bucket with the rest of the 25 measurements from
+    // batchOfMeasurementsWithSchemaChange and the measurements from batchOfMeasurements.
+    // Because batchOfMeasurements has gTimeseriesBucketMaxCount measurements, we write
+    // gTimeseriesBucketMaxCount - 25 measurements before rolling over due to count and opening
+    // a fifth bucket to insert the last 25 measurements.
+    //
+    // Note that the testing behavior is a bit different from stageInsertBatch (in
+    // _testStageInsertBatchIntoEligibleBucket, as soon as we encounter a RolloverReason, we
+    // rollover) and we would expect the third bucket to be reopened and written to with the
+    // last 25 measurements in batchOfMeasurements in stageInsertBatch.
+    std::vector<size_t> numMeasurementsInWriteBatch{static_cast<size_t>(gTimeseriesBucketMaxCount),
+                                                    static_cast<size_t>(gTimeseriesBucketMaxCount),
+                                                    25,
+                                                    static_cast<size_t>(gTimeseriesBucketMaxCount),
+                                                    25};
+
+    // Test in a collection without a meta field.
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(_nsNoMeta,
+                                                                  _uuidNoMeta,
+                                                                  mixedRolloverReasonsMeasurements,
+                                                                  currBatchedInsertContextsIndex,
+                                                                  numMeasurementsInWriteBatch,
+                                                                  /*numBatchedInsertContexts=*/1);
+
+    // Test in a collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(_ns1,
+                                                         _uuid1,
+                                                         mixedRolloverReasonsMeasurements,
+                                                         currBatchedInsertContextsIndex,
+                                                         numMeasurementsInWriteBatch,
+                                                         /*numBatchedInsertContexts=*/1);
+}
+
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverMixedWithNoMeta) {
+    auto batchOfMeasurementsWithSize = _generateMeasurementsWithRolloverReason(
+        {.reason = RolloverReason::kSize, .metaValue = boost::none, .timeValue = Date_t::now()});
+
+    std::vector<BSONObj> batchOfMeasurements =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kNone,
+                                                 .numMeasurements = 50,
+                                                 .metaValue = boost::none,
+                                                 .timeValue = Date_t::now() + Seconds(1)});
+
+    auto batchOfMeasurementsWithTimeForward =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kTimeForward,
+                                                 .idxWithDiffMeasurement = 1,
+                                                 .metaValue = boost::none,
+                                                 .timeValue = Date_t::now() + Seconds(2)});
+
+    std::vector<BSONObj> mixedRolloverReasonsMeasurements =
+        _getFlattenedVector(std::vector<std::vector<BSONObj>>{
+            batchOfMeasurementsWithSize, batchOfMeasurements, batchOfMeasurementsWithTimeForward});
+    ASSERT_EQ(mixedRolloverReasonsMeasurements.size(),
+              batchOfMeasurementsWithSize.size() + batchOfMeasurements.size() +
+                  batchOfMeasurementsWithTimeForward.size());
+
+    std::vector<size_t> numWriteBatches{3};
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0, 0};
+
+    // We will insert the first 124 measurements from batchOfMeasurementsWithSize into our first
+    // bucket until we encounter the last measurement making us rollover due to size.
+    // We write this last measurement from batchOfMeasurementsWithSize into the second bucket,
+    // and then write all of the measurements from batchOfMeasurements into the second bucket.
+    // We then insert the first measurement from batchOfMeasurementsWithTimeForward into the
+    // second bucket. We then encounter kTimeForward and create a third bucket to write the
+    // remaining gTimeseriesBucketMaxCount - 1 measurements from
+    // batchOfMeasurementsWithTimeForward.
+    std::vector<size_t> numMeasurementsInWriteBatch{
+        124, 52, static_cast<size_t>(gTimeseriesBucketMaxCount - 1)};
+
+    // Test in collection without a meta field.
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(_nsNoMeta,
+                                                                  _uuidNoMeta,
+                                                                  mixedRolloverReasonsMeasurements,
+                                                                  currBatchedInsertContextsIndex,
+                                                                  numMeasurementsInWriteBatch,
+                                                                  /*numBatchedInsertContexts=*/1);
+
+    // Test in collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithoutMetaFieldInCollWithMetaField(
+        _ns1,
+        _uuid1,
+        mixedRolloverReasonsMeasurements,
+        currBatchedInsertContextsIndex,
+        numMeasurementsInWriteBatch,
+        /*numBatchedInsertContexts=*/1);
+}
+
+TEST_F(BucketCatalogTest, StageInsertBatchIntoEligibleBucketHandlesRolloverMixedWithCachePressure) {
+    // Artificially lower _storageCacheSizeBytes so we can simulate kCachePressure.
+    _storageCacheSizeBytes = kLimitedStorageCacheSizeBytes;
+
+    auto batchOfMeasurementsWithSchemaChange =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kSchemaChange,
+                                                 .numMeasurements = 10,
+                                                 .idxWithDiffMeasurement = 1,
+                                                 .timeValue = Date_t::now()});
+
+    // Generating measurements with kSchema change will require us to add an additional
+    // Seconds(1) to all subsequent measurement vectors because we ensure the measurements with
+    // schema change are at the end of the measurements vector by adding Seconds(1) to the time
+    // field of those measurements.
+    auto batchOfMeasurementsWithCachePressure = _generateMeasurementsWithRolloverReason(
+        {.reason = RolloverReason::kCachePressure, .timeValue = Date_t::now() + Seconds(2)});
+
+    auto batchOfMeasurements =
+        _generateMeasurementsWithRolloverReason({.reason = RolloverReason::kNone,
+                                                 .numMeasurements = 10,
+                                                 .timeValue = Date_t::now() + Seconds(3)});
+
+    std::vector<BSONObj> mixedRolloverReasonsMeasurements =
+        _getFlattenedVector(std::vector<std::vector<BSONObj>>{batchOfMeasurementsWithSchemaChange,
+                                                              batchOfMeasurementsWithCachePressure,
+                                                              batchOfMeasurements});
+    ASSERT_EQ(mixedRolloverReasonsMeasurements.size(),
+              batchOfMeasurementsWithSchemaChange.size() +
+                  batchOfMeasurementsWithCachePressure.size() + batchOfMeasurements.size());
+
+    std::vector<size_t> numWriteBatches{3};
+    std::vector<size_t> currBatchedInsertContextsIndex{0, 0, 0};
+
+    // The first bucket will consist of one  measurement from
+    // batchOfMeasurementsWithSchemaChange. We will then rollover due to kSchemaChange. The
+    // second bucket will consist of the remaining 9 measurements from
+    // batchOfMeasurementsWithSchemaChange. We will then insert two measurements from
+    // batchOfMeasurementsWithCachePressure into the second bucket and will rollover due to
+    // kCachePressure.
+    // We will insert the last two measurements from batchOfMeasurementsWithCachePressure into a
+    // third bucket. Finally, we insert all 10 measurements from batchOfMeasurements into the
+    // third bucket.
+    std::vector<size_t> numMeasurementsInWriteBatch{1, 11, 12};
+
+    // Test in collection without a meta field.
+    _testStageInsertBatchIntoEligibleBucketInCollWithoutMetaField(_nsNoMeta,
+                                                                  _uuidNoMeta,
+                                                                  mixedRolloverReasonsMeasurements,
+                                                                  currBatchedInsertContextsIndex,
+                                                                  numMeasurementsInWriteBatch,
+                                                                  /*numBatchedInsertContexts=*/1);
+
+    // Test in collection with a meta field.
+    _testStageInsertBatchIntoEligibleBucketWithMetaField(_ns1,
+                                                         _uuid1,
+                                                         mixedRolloverReasonsMeasurements,
+                                                         currBatchedInsertContextsIndex,
+                                                         numMeasurementsInWriteBatch,
+                                                         /*numBatchedInsertContexts=*/1);
+
+
+    // Reset _storageCacheSizeBytes back to a representative value.
+    _storageCacheSizeBytes = kDefaultStorageCacheSizeBytes;
+}
+
+TEST_F(BucketCatalogTest, BucketMetadataNormalization) {
+    _testBucketMetadataFieldOrdering(BSON("a" << 1 << "b" << 1), BSON("a" << 1 << "b" << 1));
+    _testBucketMetadataFieldOrdering(BSON("b" << 1 << "a" << 1), BSON("a" << 1 << "b" << 1));
+    _testBucketMetadataFieldOrdering(BSON("nested" << BSON("a" << 1 << "b" << 1)),
+                                     BSON("nested" << BSON("a" << 1 << "b" << 1)));
+    _testBucketMetadataFieldOrdering(BSON("nested" << BSON("b" << 1 << "a" << 1)),
+                                     BSON("nested" << BSON("a" << 1 << "b" << 1)));
+}
 }  // namespace
 }  // namespace mongo::timeseries::bucket_catalog

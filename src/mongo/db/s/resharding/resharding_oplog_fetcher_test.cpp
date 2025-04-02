@@ -97,9 +97,8 @@
 #include "mongo/s/catalog/sharding_catalog_client_mock.h"
 #include "mongo/s/catalog/type_shard.h"
 #include "mongo/s/client/shard_registry.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -430,8 +429,7 @@ public:
                         _opCtx,
                         dataColl.getCollection()->ns(),
                         dataColl.getCollection()->uuid(),
-                        BSON("msg"
-                             << "other noop"),
+                        BSON("msg" << "other noop"),
                         boost::none /* o2 */,
                         boost::none,
                         boost::none,
@@ -445,22 +443,18 @@ public:
         repl::StorageInterface::get(_opCtx)->waitForAllEarlierOplogWritesToBeVisible(_opCtx);
 
         // Disable the failpoint.
-        setGlobalFailPoint("addDestinedRecipient",
-                           BSON("mode"
-                                << "off"));
+        setGlobalFailPoint("addDestinedRecipient", BSON("mode" << "off"));
     }
 
     void assertUsedApplyOpsToBatchInsert(NamespaceString nss, int numApplyOpsOplogEntries) {
         ASSERT_EQ(0,
                   itcount(NamespaceString::kRsOplogNamespace,
-                          BSON("op"
-                               << "i"
-                               << "ns" << nss.ns_forTest())));
+                          BSON("op" << "i"
+                                    << "ns" << nss.ns_forTest())));
         ASSERT_EQ(numApplyOpsOplogEntries,
                   itcount(NamespaceString::kRsOplogNamespace,
-                          BSON("o.applyOps.op"
-                               << "i"
-                               << "o.applyOps.ns" << nss.ns_forTest())));
+                          BSON("o.applyOps.op" << "i"
+                                               << "o.applyOps.ns" << nss.ns_forTest())));
     }
 
     long long currentOpFetchedCount() const {

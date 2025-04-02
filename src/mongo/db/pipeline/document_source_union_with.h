@@ -79,7 +79,8 @@ public:
     class LiteParsed final : public LiteParsedDocumentSourceNestedPipelines {
     public:
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec);
+                                                 const BSONElement& spec,
+                                                 const LiteParserOptions& options);
 
         LiteParsed(std::string parseTimeName,
                    NamespaceString foreignNss,
@@ -269,6 +270,11 @@ private:
     // execution
     Variables _variables;
     VariablesParseState _variablesParseState;
+
+    // State that we preserve in the case where we are running explain with 'executionStats' on a
+    // $unionWith with a view. Otherwise we wouldn't be able to see details about the execution of
+    // the view pipeline in the explain result.
+    boost::optional<ResolvedNamespace> _resolvedNsForView;
 };
 
 }  // namespace mongo

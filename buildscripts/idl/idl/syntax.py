@@ -453,7 +453,6 @@ class Validator(common.SourceLocation):
         # type: (str, int, int) -> None
         """Construct a Validator."""
         # Don't lint gt/lt as bad attibute names.
-        # pylint: disable=C0103
         self.gt = None  # type: Expression
         self.lt = None  # type: Expression
         self.gte = None  # type: Expression
@@ -577,7 +576,6 @@ class Struct(common.SourceLocation):
         self.is_command_reply = False  # type: bool
         self.is_catalog_ctxt = False  # type: bool
         self.is_generic_cmd_list = None  # type: Optional[str]
-        # pylint: disable=invalid-name
         self.unsafe_dangerous_disable_extra_field_duplicate_checks = None  # type: bool
 
         # Command only property
@@ -917,8 +915,11 @@ class FeatureFlag(common.SourceLocation):
         self.cpp_varname = None  # type: str
         self.default = None  # type: Expression
         self.version = None  # type: str
-        # pylint: disable=C0103
         self.shouldBeFCVGated = None  # type: Expression
+        self.enable_on_transitional_fcv = None  # type: bool
+        self.incremental_rollout_phase = None  # type: Optional[str]
+        # TODO(SERVER-102615): Remove this parameter once it's not needed anymore
+        self.fcv_context_unaware = None  # type: bool
 
         super(FeatureFlag, self).__init__(file_name, line, column)
 

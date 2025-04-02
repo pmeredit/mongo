@@ -43,6 +43,7 @@ imports:
     - "mongo/db/keypattern.idl"
     - "mongo/db/coll_mod.idl"
     - "mongo/db/basic_types.idl"
+    - "mongo/s/catalog/type_database.idl"
     - "mongo/s/sharding_types.idl"
     - "mongo/s/resharding/common_types.idl"
     - "mongo/db/timeseries/timeseries.idl"
@@ -183,11 +184,6 @@ structs:
                               must also set a maximum size in the 'size' field."
                 type: safeBool
                 default: false
-            autoIndexId:
-                description: "Specify false to disable the automatic creation of an index on the
-                              _id field."
-                type: safeBool
-                optional: true
             idIndex:
                 description: "Specify the default _id index specification."
                 type: object
@@ -410,14 +406,9 @@ structs:
                     retryability purposes."
                 optional: true
             provenance:
-                type: Provenance
+                type: ReshardingProvenance
                 description: "The source operation that called this resharding operation."
                 optional: true
-            implicitlyCreateIndex:
-                type: bool
-                description: "Whether to create an index on the shard key pattern if the shard key
-                              does not already have a support index."
-                default: true
             performVerification:
                 type: bool
                 description: "Whether to perform data comparison verification."
@@ -507,6 +498,12 @@ commands:
         cpp_name: ShardsvrDropDatabaseParticipant
         strict: false
         reply_type: OkReply
+        fields:
+            fromMigrate:
+                type: optionalBool
+                description: "When set to true, the recipient is expected to generate
+                              a not user visible version of the op entry that marks the completion of the request."
+                default: false
 
     _shardsvrDropCollection:
         description: "Parser for the _shardsvrDropCollection command"
@@ -783,6 +780,11 @@ commands:
                     'previousTime' persisted in the 'config.clusterParameters' collection then
                     'setClusterParameter' will fail."
                 optional: true
+            _compatibleWithTopologyChange:
+                type: bool
+                description: "If true, this cluster parameter change can run during a topology
+                              change"
+                default: false
 
     _configsvrClearJumboFlag:
         command_name: _configsvrClearJumboFlag
@@ -834,6 +836,49 @@ commands:
         command_name: _shardsvrUntrackUnsplittableCollection
         cpp_name: ShardsvrUntrackUnsplittableCollection
         description: "Internal command to untrack unsplittable collections"
+        strict: false
+        namespace: type
+        type: namespacestring
+        api_version: ""
+        reply_type: OkReply
+
+    _shardsvrCommitCreateDatabaseMetadata:
+        command_name: _shardsvrCommitCreateDatabaseMetadata
+        cpp_name: ShardsvrCommitCreateDatabaseMetadata
+        description: "Internal command to commit a createDatabase operation to the shard catalog"
+        strict: false
+        namespace: type
+        type: namespacestring
+        api_version: ""
+        fields:
+            dbVersion:
+                type: database_version
+                description: "The database version to commit."
+        reply_type: OkReply
+
+    _shardsvrCommitDropDatabaseMetadata:
+        command_name: _shardsvrCommitDropDatabaseMetadata
+        cpp_name: ShardsvrCommitDropDatabaseMetadata
+        description: "Internal command to commit a dropDatabase operation to the shard catalog"
+        strict: false
+        namespace: type
+        type: namespacestring
+        api_version: ""
+        reply_type: OkReply
+
+    _shardsvrCloneAuthoritativeMetadata:
+        command_name: _shardsvrCloneAuthoritativeMetadata
+        cpp_name: ShardsvrCloneAuthoritativeMetadata
+        description: "Internal command to clone metadata from global catalog to the shard catalog"
+        strict: false
+        namespace: ignored
+        api_version: ""
+        reply_type: OkReply
+
+    _shardsvrFetchCollMetadata:
+        command_name: _shardsvrFetchCollMetadata
+        cpp_name: ShardsvrFetchCollMetadata
+        description: "Internal command to fetch collection metadata from the config server and install it into shard catalog."
         strict: false
         namespace: type
         type: namespacestring

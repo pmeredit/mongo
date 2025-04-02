@@ -9,6 +9,10 @@ const collName = jsTestName();
 const coll = db.getCollection(collName);
 coll.drop();
 
+const scoreDetailsDescription =
+    "value output by reciprocal rank fusion algorithm, computed as sum of (weight * (1 / (60 " +
+    "+ rank))) across input pipelines from which this document is output, from:";
+
 const allDocs = [
     {
         _id: 1,
@@ -50,7 +54,8 @@ assert.commandWorked(coll.insertMany(allDocs));
 
 function testRankFusion({pipeline, expectedResults}) {
     let results = coll.aggregate(pipeline).toArray();
-    assert(orderedArrayEq(results, expectedResults));
+    assert(orderedArrayEq(results, expectedResults),
+           `$rankFusion returned unexpected output: ${tojson(results)}`);
 }
 
 function withAndWithoutIndex({index, assertFn}) {
@@ -123,7 +128,8 @@ function withAndWithoutIndex({index, assertFn}) {
                 tasty: true,
                 details: {
                     value: 0.01639344262295082,
-                    details: {tasty: {rank: 1, details: "Not Calculated"}}
+                    description: scoreDetailsDescription,
+                    details: [{inputPipelineName: "tasty", rank: 1, weight: 1, details: []}]
                 }
             },
             {
@@ -132,7 +138,8 @@ function withAndWithoutIndex({index, assertFn}) {
                 tasty: true,
                 details: {
                     value: 0.016129032258064516,
-                    details: {tasty: {rank: 2, details: "Not Calculated"}}
+                    description: scoreDetailsDescription,
+                    details: [{inputPipelineName: "tasty", rank: 2, weight: 1, details: []}]
                 }
             }
         ]
@@ -169,7 +176,8 @@ function withAndWithoutIndex({index, assertFn}) {
                 tasty: true,
                 details: {
                     value: 0.01639344262295082,
-                    details: {tasty: {rank: 1, details: "Not Calculated"}}
+                    description: scoreDetailsDescription,
+                    details: [{inputPipelineName: "tasty", rank: 1, weight: 1, details: []}]
                 }
             },
             {
@@ -178,7 +186,8 @@ function withAndWithoutIndex({index, assertFn}) {
                 tasty: true,
                 details: {
                     value: 0.016129032258064516,
-                    details: {tasty: {rank: 2, details: "Not Calculated"}}
+                    description: scoreDetailsDescription,
+                    details: [{inputPipelineName: "tasty", rank: 2, weight: 1, details: []}]
                 }
             }
         ];
@@ -294,11 +303,12 @@ function withAndWithoutIndex({index, assertFn}) {
                 tasty: true,
                 details: {
                     value: 0.048915917503966164,
-                    details: {
-                        everything: {rank: 1, details: "Not Calculated"},
-                        has_a_but: {rank: 2, details: "Not Calculated"},
-                        tasty: {rank: 1, details: "Not Calculated"}
-                    }
+                    description: scoreDetailsDescription,
+                    details: [
+                        {inputPipelineName: "everything", rank: 1, weight: 1, details: []},
+                        {inputPipelineName: "has_a_but", rank: 2, weight: 1, details: []},
+                        {inputPipelineName: "tasty", rank: 1, weight: 1, details: []}
+                    ]
                 }
             },
             {
@@ -308,11 +318,12 @@ function withAndWithoutIndex({index, assertFn}) {
                 tasty: true,
                 details: {
                     value: 0.04865990111891751,
-                    details: {
-                        everything: {rank: 1, details: "Not Calculated"},
-                        has_a_but: {rank: 1, details: "Not Calculated"},
-                        tasty: {rank: 3, details: "Not Calculated"}
-                    }
+                    description: scoreDetailsDescription,
+                    details: [
+                        {inputPipelineName: "everything", rank: 1, weight: 1, details: []},
+                        {inputPipelineName: "has_a_but", rank: 1, weight: 1, details: []},
+                        {inputPipelineName: "tasty", rank: 3, weight: 1, details: []}
+                    ]
                 }
             },
             {
@@ -323,11 +334,12 @@ function withAndWithoutIndex({index, assertFn}) {
                 tasty: true,
                 details: {
                     value: 0.03252247488101534,
-                    details: {
-                        everything: {rank: 1, details: "Not Calculated"},
-                        has_a_but: {rank: NumberLong(0)},
-                        tasty: {rank: 2, details: "Not Calculated"}
-                    }
+                    description: scoreDetailsDescription,
+                    details: [
+                        {inputPipelineName: "everything", rank: 1, weight: 1, details: []},
+                        {inputPipelineName: "has_a_but", rank: 0, weight: 1},
+                        {inputPipelineName: "tasty", rank: 2, weight: 1, details: []}
+                    ]
                 }
             }
         ]

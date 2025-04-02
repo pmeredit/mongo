@@ -104,8 +104,6 @@
 #include "mongo/util/duration.h"
 #include "mongo/util/str.h"
 
-using namespace fmt::literals;
-
 namespace mongo {
 
 namespace {
@@ -145,6 +143,10 @@ EncryptedDBClientBase::EncryptedDBClientBase(std::shared_ptr<DBClientBase> conn,
 
 std::string EncryptedDBClientBase::getServerAddress() const {
     return _conn->getServerAddress();
+}
+
+std::string EncryptedDBClientBase::getLocalAddress() const {
+    return _conn->getLocalAddress();
 }
 
 Message EncryptedDBClientBase::_call(Message& toSend, std::string* actualServer) {
@@ -582,7 +584,13 @@ void EncryptedDBClientBase::decrypt(mozjs::MozJSImplScope* scope,
 
 boost::optional<EncryptedFieldConfig> EncryptedDBClientBase::getEncryptedFieldConfig(
     const NamespaceString& nss) {
-    auto collsList = _conn->getCollectionInfos(nss.dbName(), BSON("name" << nss.coll()));
+    // There are no guarantees that retrieving collection information with secondary reads enabled
+    // will reflect its own creation in a sharded cluster. To avoid a NamespaceNotFound error when
+    // using a connection from the router, we should fetch the information from the primary node of
+    // the replica set.
+    bool useSecondaryReads = !_conn->isMongos();
+    auto collsList =
+        _conn->getCollectionInfos(nss.dbName(), BSON("name" << nss.coll()), useSecondaryReads);
     uassert(ErrorCodes::BadValue,
             str::stream() << "Namespace not found: " << nss.toStringForErrorMsg(),
             !collsList.empty());
@@ -607,7 +615,7 @@ std::tuple<NamespaceString, BSONObj> validateStructuredEncryptionParams(JSContex
         uasserted(ErrorCodes::BadValue, str::stream() << cmdName << " requires 1 or 2 args");
     }
     uassert(ErrorCodes::BadValue,
-            "1st param to {} has to be a string"_format(cmdName),
+            fmt::format("1st param to {} has to be a string", cmdName),
             args.get(0).isString());
 
     std::string fullName = mozjs::ValueWriter(cx, args.get(0)).toString();
@@ -619,7 +627,7 @@ std::tuple<NamespaceString, BSONObj> validateStructuredEncryptionParams(JSContex
     BSONObj extra;
     if (args.length() >= 2) {
         uassert(ErrorCodes::BadValue,
-                "2nd param to {} has to be an object"_format(cmdName),
+                fmt::format("2nd param to {} has to be an object", cmdName),
                 args.get(1).isObject());
         extra = mozjs::ValueWriter(cx, args.get(1)).toBSON();
     }
@@ -916,10 +924,8 @@ KeyMaterial EncryptedDBClientBase::getKey(const UUID& uuid) {
 
 SymmetricKey& EncryptedDBClientBase::getKMSLocalKey() {
     if (!_localKey.has_value()) {
-        std::unique_ptr<KMSService> kmsService =
-            KMSServiceController::createFromDisk(_encryptionOptions.getKmsProviders().toBSON(),
-                                                 BSON("provider"
-                                                      << "local"));
+        std::unique_ptr<KMSService> kmsService = KMSServiceController::createFromDisk(
+            _encryptionOptions.getKmsProviders().toBSON(), BSON("provider" << "local"));
         _localKey = std::move(kmsService->getMasterKey());
     }
 

@@ -17,13 +17,13 @@ export function runWithFailpoint(db, failpointName, failpointOpts, func) {
 export function getDiagnosticLogs({description, logFile}) {
     // The log file will not exist if the db was not started with 'useLogFiles' enabled.
     const log = cat(logFile);
-    print("Log file contents", log);
+    jsTest.log.info("Log file contents", {log});
 
     const logLines = log.split("\n");
     assert.gt(logLines.length, 0, `${description}: no log lines`);
 
     return logLines.filter(function(logLine) {
-        return logLine.includes("ScopedDebugInfo") && logLine.includes("commandDiagnostics");
+        return logLine.includes("ScopedDebugInfo");
     });
 }
 
@@ -35,12 +35,21 @@ export function assertOnDiagnosticLogContents({description, logFile, expectedDia
     assert(commandDiagnostics.length > 0,
            `${description}: no log line containing command diagnostics`);
 
-    const matchFound = commandDiagnostics.some(
-        line => expectedDiagnosticInfo.every(diagnosticInfo => line.includes(diagnosticInfo)));
-    assert(matchFound,
+    let errorStr = "";
+    for (let logLine of commandDiagnostics) {
+        const missingDiagnostics =
+            expectedDiagnosticInfo.filter(diagnosticInfo => !logLine.includes(diagnosticInfo));
+
+        // Found a match!
+        if (missingDiagnostics.length == 0) {
+            return;
+        }
+
+        errorStr += `Missing ${missingDiagnostics} in log line: ${logLine}. `;
+    }
+    assert(false,
            `${description}: Failed to find a log line containing all expected diagnostic info. ` +
-               `Candidate logs: ${tojson(commandDiagnostics)}.` +
-               `Expected diagnostic info: ${tojson(expectedDiagnosticInfo)}.`);
+               errorStr);
 }
 
 export const planExecutorAlwaysFails = {
@@ -58,3 +67,13 @@ export const queryPlannerAlwaysFails = {
     failpointOpts: {},
     errorCode: 9656400,
 };
+
+// This is useful in a sharded environment to ensure that we only hit the failpoint for the query we
+// sent via the test, rather than for a background query.
+export function getQueryPlannerAlwaysFailsWithNamespace(namespace) {
+    return {
+        failpointName: queryPlannerAlwaysFails.failpointName,
+        failpointOpts: {'namespace': namespace},
+        errorCode: queryPlannerAlwaysFails.errorCode,
+    };
+}

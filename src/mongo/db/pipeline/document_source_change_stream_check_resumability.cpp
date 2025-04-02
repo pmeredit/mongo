@@ -45,8 +45,6 @@
 #include "mongo/db/pipeline/document_source_change_stream_check_resumability.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
@@ -231,7 +229,7 @@ DocumentSource::GetNextResult DocumentSourceChangeStreamCheckResumability::doGet
 Value DocumentSourceChangeStreamCheckResumability::doSerialize(
     const SerializationOptions& opts) const {
     BSONObjBuilder builder;
-    if (opts.verbosity) {
+    if (opts.isSerializingForExplain()) {
         BSONObjBuilder sub(builder.subobjStart(DocumentSourceChangeStream::kStageName));
         sub.append("stage"_sd, kStageName);
         sub << "resumeToken"_sd << Value(ResumeToken(_tokenFromClient).toDocument(opts));

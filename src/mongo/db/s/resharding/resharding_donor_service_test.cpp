@@ -61,18 +61,16 @@
 #include "mongo/db/s/resharding/resharding_data_copy_util.h"
 #include "mongo/db/s/resharding/resharding_donor_service.h"
 #include "mongo/db/s/resharding/resharding_service_test_helpers.h"
+#include "mongo/db/s/resharding/resharding_test_util.h"
 #include "mongo/db/s/resharding/resharding_util.h"
 #include "mongo/db/s/sharding_recovery_service.h"
 #include "mongo/db/service_context.h"
 #include "mongo/idl/idl_parser.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/duration.h"
@@ -118,6 +116,28 @@ public:
         return std::make_unique<ShardingRecoveryService::NoCustomAction>();
     }
 };
+
+struct TestOptions {
+    bool isAlsoRecipient;
+    bool performVerification = true;
+
+    BSONObj toBSON() const {
+        BSONObjBuilder bob;
+        bob.append("isAlsoRecipient", isAlsoRecipient);
+        bob.append("performVerification", performVerification);
+        return bob.obj();
+    }
+};
+
+std::vector<TestOptions> makeAllTestOptions() {
+    std::vector<TestOptions> testOptions;
+    for (bool isAlsoRecipient : {false, true}) {
+        for (bool performVerification : {false, true}) {
+            testOptions.push_back({isAlsoRecipient, performVerification});
+        }
+    }
+    return testOptions;
+}
 
 class ReshardingDonorServiceForTest : public ReshardingDonorService {
 public:
@@ -165,14 +185,15 @@ public:
         return _controller.get();
     }
 
-    ReshardingDonorDocument makeStateDocument(bool isAlsoRecipient) {
+    ReshardingDonorDocument makeStateDocument(const TestOptions& testOptions) {
         DonorShardContext donorCtx;
         donorCtx.setState(DonorStateEnum::kPreparingToDonate);
 
-        ReshardingDonorDocument doc(std::move(donorCtx),
-                                    {ShardId{"recipient1"},
-                                     isAlsoRecipient ? donorShardId : ShardId{"recipient2"},
-                                     ShardId{"recipient3"}});
+        ReshardingDonorDocument doc(
+            std::move(donorCtx),
+            {ShardId{"recipient1"},
+             testOptions.isAlsoRecipient ? donorShardId : ShardId{"recipient2"},
+             ShardId{"recipient3"}});
 
         NamespaceString sourceNss =
             NamespaceString::createNamespaceString_forTest("sourcedb.sourcecollection");
@@ -184,6 +205,7 @@ public:
             resharding::constructTemporaryReshardingNss(sourceNss, sourceUUID),
             BSON("newKey" << 1));
         commonMetadata.setStartTime(getServiceContext()->getFastClockSource()->now());
+        commonMetadata.setPerformVerification(testOptions.performVerification);
 
         doc.setCommonReshardingMetadata(std::move(commonMetadata));
         return doc;
@@ -194,6 +216,34 @@ public:
         options.uuid = donorDoc.getSourceUUID();
         resharding::data_copy::ensureCollectionDropped(opCtx, donorDoc.getSourceNss());
         resharding::data_copy::ensureCollectionExists(opCtx, donorDoc.getSourceNss(), options);
+
+        cloneTimestamp =
+            repl::ReplicationCoordinator::get(opCtx)->getMyLastAppliedOpTime().getTimestamp();
+    }
+
+    void writeToSourceCollection(OperationContext* opCtx,
+                                 const ReshardingDonorDocument& donorDoc,
+                                 int numInserts,
+                                 int numUpdates,
+                                 int numDeletes) {
+        ASSERT(numInserts >= numUpdates);
+        ASSERT(numInserts >= numDeletes);
+
+        DBDirectClient client(opCtx);
+
+        for (int i = 0; i <= numInserts; i++) {
+            client.insert(donorDoc.getSourceNss(), BSON("_id" << i << "x" << i));
+        }
+        for (int i = 0; i <= numUpdates; i++) {
+            client.update(donorDoc.getSourceNss(),
+                          BSON("_id" << 0),
+                          BSON("$inc" << BSON("x" << 1)),
+                          false /*upsert*/,
+                          false /*multi*/);
+        }
+        for (int i = 0; i <= numDeletes; i++) {
+            client.remove(donorDoc.getSourceNss(), BSON("_id" << i), false);
+        }
     }
 
     void createTemporaryReshardingCollection(OperationContext* opCtx,
@@ -203,6 +253,35 @@ public:
         resharding::data_copy::ensureCollectionDropped(opCtx, donorDoc.getTempReshardingNss());
         resharding::data_copy::ensureCollectionExists(
             opCtx, donorDoc.getTempReshardingNss(), options);
+    }
+
+    void awaitDonorState(OperationContext* opCtx,
+                         const UUID& reshardingUUID,
+                         DonorStateEnum minState) {
+        resharding_test_util::assertSoon(opCtx, [&] {
+            auto persistedDonorDoc = getPersistedDonorDocumentOptional(opCtx, reshardingUUID);
+            return persistedDonorDoc &&
+                (persistedDonorDoc->getMutableState().getState() == minState);
+        });
+    }
+
+    void notifyToStartChangeStreamsMonitor(OperationContext* opCtx,
+                                           DonorStateMachine& donor,
+                                           const ReshardingDonorDocument& donorDoc) {
+        // Wait for the donor to be in the "donating-initial-data" state since the change streams
+        // monitor should only start after the clone timestamp has been chosen.
+        awaitDonorState(opCtx, donorDoc.getReshardingUUID(), DonorStateEnum::kDonatingInitialData);
+
+        auto status = donor.createAndStartChangeStreamsMonitor(cloneTimestamp).getNoThrow(opCtx);
+        if (donorDoc.getPerformVerification()) {
+            ASSERT_OK(status);
+            checkChangeStreamsMonitor(opCtx, donorDoc, boost::none /* documentsDelta */);
+            // Perform some writes against the source collection so we can verify the delta later
+            // in the test.
+            writeToSourceCollection(opCtx, donorDoc, _numInserts, _numUpdates, _numDeletes);
+        } else {
+            ASSERT_EQ(status, ErrorCodes::IllegalOperation);
+        }
     }
 
     void notifyRecipientsDoneCloning(OperationContext* opCtx,
@@ -224,6 +303,21 @@ public:
         _onReshardingFieldsChanges(opCtx, donor, donorDoc, CoordinatorStateEnum::kBlockingWrites);
     }
 
+    void awaitChangeStreamsMonitorCompleted(OperationContext* opCtx,
+                                            DonorStateMachine& donor,
+                                            const ReshardingDonorDocument& donorDoc) {
+        auto swDocumentsDelta = donor.awaitChangeStreamsMonitorCompleted().getNoThrow(opCtx);
+        if (donorDoc.getPerformVerification()) {
+            ASSERT_OK(swDocumentsDelta.getStatus());
+            // Verify the delta.
+            auto documentsDelta = _numInserts - _numDeletes;
+            ASSERT_EQ(swDocumentsDelta.getValue(), documentsDelta);
+            checkChangeStreamsMonitor(opCtx, donorDoc, documentsDelta);
+        } else {
+            ASSERT_EQ(swDocumentsDelta.getStatus(), ErrorCodes::IllegalOperation);
+        }
+    }
+
     void notifyReshardingCommitting(OperationContext* opCtx,
                                     DonorStateMachine& donor,
                                     const ReshardingDonorDocument& donorDoc) {
@@ -238,20 +332,37 @@ public:
         ASSERT_TRUE(bool(donorColl->isEmpty(opCtx)));
     }
 
-    ReshardingDonorDocument getPersistedDonorDocument(OperationContext* opCtx,
-                                                      UUID reshardingUUID) {
-        boost::optional<ReshardingDonorDocument> persistedDonorDocument;
+    boost::optional<ReshardingDonorDocument> getPersistedDonorDocumentOptional(
+        OperationContext* opCtx, const UUID& reshardingUUID) {
+        boost::optional<ReshardingDonorDocument> doc;
         PersistentTaskStore<ReshardingDonorDocument> store(
             NamespaceString::kDonorReshardingOperationsNamespace);
         store.forEach(opCtx,
                       BSON(ReshardingDonorDocument::kReshardingUUIDFieldName << reshardingUUID),
                       [&](const auto& donorDocument) {
-                          persistedDonorDocument.emplace(donorDocument);
+                          doc.emplace(donorDocument);
                           return false;
                       });
+        return doc;
+    }
 
-        ASSERT(persistedDonorDocument);
-        return persistedDonorDocument.get();
+    ReshardingDonorDocument getPersistedDonorDocument(OperationContext* opCtx,
+                                                      const UUID& reshardingUUID) {
+        auto doc = getPersistedDonorDocumentOptional(opCtx, reshardingUUID);
+        ASSERT(doc);
+        return doc.get();
+    }
+
+    void checkChangeStreamsMonitor(OperationContext* opCtx,
+                                   const ReshardingDonorDocument& donorDoc,
+                                   boost::optional<int64_t> documentsDelta) {
+        auto persistedDonorDoc = getPersistedDonorDocument(opCtx, donorDoc.getReshardingUUID());
+        auto changeStreamsMonitorCtx = persistedDonorDoc.getChangeStreamsMonitor();
+        ASSERT(changeStreamsMonitorCtx);
+        ASSERT_EQ(changeStreamsMonitorCtx->getStartAtOperationTime(), cloneTimestamp + 1);
+        if (documentsDelta) {
+            ASSERT_EQ(changeStreamsMonitorCtx->getDocumentsDelta(), *documentsDelta);
+        }
     }
 
 private:
@@ -269,28 +380,43 @@ private:
     }
 
     std::shared_ptr<DonorStateTransitionController> _controller;
+
+    // The number of writes after the clone timestamp.
+    const int64_t _numInserts = 5;
+    const int64_t _numUpdates = 1;
+    const int64_t _numDeletes = 2;
+
+    // Set the batch size 1 to test multi-batch processing in unit tests with multiple events.
+    RAIIServerParameterControllerForTest _batchSize{
+        "reshardingVerificationChangeStreamsEventsBatchSizeLimit", 1};
+
+protected:
+    // The clone timestamp is set per test case after creating the source collection.
+    Timestamp cloneTimestamp;
 };
 
 TEST_F(ReshardingDonorServiceTest, CanTransitionThroughEachStateToCompletion) {
-    for (bool isAlsoRecipient : {false, true}) {
+    for (auto& testOptions : makeAllTestOptions()) {
         LOGV2(5641800,
               "Running case",
               "test"_attr = _agent.getTestName(),
-              "isAlsoRecipient"_attr = isAlsoRecipient);
+              "testOptions"_attr = testOptions);
 
-        auto doc = makeStateDocument(isAlsoRecipient);
+        auto doc = makeStateDocument(testOptions);
         auto opCtx = makeOperationContext();
 
         createSourceCollection(opCtx.get(), doc);
-        if (isAlsoRecipient) {
+        if (testOptions.isAlsoRecipient) {
             createTemporaryReshardingCollection(opCtx.get(), doc);
         }
 
         DonorStateMachine::insertStateDocument(opCtx.get(), doc);
         auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
+        notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
         notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
         notifyToStartBlockingWrites(opCtx.get(), *donor, doc);
+        awaitChangeStreamsMonitorCompleted(opCtx.get(), *donor, doc);
         notifyReshardingCommitting(opCtx.get(), *donor, doc);
 
         ASSERT_OK(donor->getCompletionFuture().getNoThrow());
@@ -302,7 +428,7 @@ TEST_F(ReshardingDonorServiceTest, WritesNoOpOplogEntryOnReshardingBegin) {
     boost::optional<PauseDuringStateTransitions> donatingInitialDataTransitionGuard;
     donatingInitialDataTransitionGuard.emplace(controller(), DonorStateEnum::kDonatingInitialData);
 
-    auto doc = makeStateDocument(false /* isAlsoRecipient */);
+    auto doc = makeStateDocument({.isAlsoRecipient = false});
     auto opCtx = makeOperationContext();
     auto rawOpCtx = opCtx.get();
     DonorStateMachine::insertStateDocument(rawOpCtx, doc);
@@ -343,7 +469,7 @@ TEST_F(ReshardingDonorServiceTest, WritesNoOpOplogEntryToGenerateMinFetchTimesta
     boost::optional<PauseDuringStateTransitions> donatingInitialDataTransitionGuard;
     donatingInitialDataTransitionGuard.emplace(controller(), DonorStateEnum::kDonatingInitialData);
 
-    auto doc = makeStateDocument(false /* isAlsoRecipient */);
+    auto doc = makeStateDocument({.isAlsoRecipient = false});
     auto opCtx = makeOperationContext();
     DonorStateMachine::insertStateDocument(opCtx.get(), doc);
     auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
@@ -378,11 +504,12 @@ TEST_F(ReshardingDonorServiceTest, WritesFinalReshardOpOplogEntriesWhileWritesBl
     boost::optional<PauseDuringStateTransitions> blockingWritesTransitionGuard;
     blockingWritesTransitionGuard.emplace(controller(), DonorStateEnum::kBlockingWrites);
 
-    auto doc = makeStateDocument(false /* isAlsoRecipient */);
+    auto doc = makeStateDocument({.isAlsoRecipient = false});
     auto opCtx = makeOperationContext();
     DonorStateMachine::insertStateDocument(opCtx.get(), doc);
     auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
+    notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
     notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
     notifyToStartBlockingWrites(opCtx.get(), *donor, doc);
 
@@ -441,14 +568,14 @@ TEST_F(ReshardingDonorServiceTest, StepDownStepUpEachTransition) {
         {DonorStateEnum::kBlockingWrites, true},
         {DonorStateEnum::kDone, true}};
 
-    for (bool isAlsoRecipient : {false, true}) {
+    for (auto& testOptions : makeAllTestOptions()) {
         LOGV2(5641801,
               "Running case",
               "test"_attr = _agent.getTestName(),
-              "isAlsoRecipient"_attr = isAlsoRecipient);
+              "testOptions"_attr = testOptions);
 
         PauseDuringStateTransitions stateTransitionsGuard{controller(), donorStates};
-        auto doc = makeStateDocument(isAlsoRecipient);
+        auto doc = makeStateDocument(testOptions);
         auto instanceId =
             BSON(ReshardingDonorDocument::kReshardingUUIDFieldName << doc.getReshardingUUID());
 
@@ -462,7 +589,7 @@ TEST_F(ReshardingDonorServiceTest, StepDownStepUpEachTransition) {
             auto donor = [&] {
                 if (prevState == DonorStateEnum::kUnused) {
                     createSourceCollection(opCtx.get(), doc);
-                    if (isAlsoRecipient) {
+                    if (testOptions.isAlsoRecipient) {
                         createTemporaryReshardingCollection(opCtx.get(), doc);
                     }
 
@@ -487,6 +614,7 @@ TEST_F(ReshardingDonorServiceTest, StepDownStepUpEachTransition) {
             // on it.
             switch (state) {
                 case DonorStateEnum::kDonatingOplogEntries: {
+                    notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
                     notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
                     break;
                 }
@@ -512,6 +640,7 @@ TEST_F(ReshardingDonorServiceTest, StepDownStepUpEachTransition) {
                     break;
                 }
                 case DonorStateEnum::kDone: {
+                    awaitChangeStreamsMonitorCompleted(opCtx.get(), *donor, doc);
                     notifyReshardingCommitting(opCtx.get(), *donor, doc);
                     break;
                 }
@@ -541,6 +670,7 @@ TEST_F(ReshardingDonorServiceTest, StepDownStepUpEachTransition) {
         auto donor = *maybeDonor;
         stateTransitionsGuard.unset(DonorStateEnum::kDone);
 
+        awaitChangeStreamsMonitorCompleted(opCtx.get(), *donor, doc);
         notifyReshardingCommitting(opCtx.get(), *donor, doc);
         ASSERT_OK(donor->getCompletionFuture().getNoThrow());
         checkStateDocumentRemoved(opCtx.get());
@@ -551,7 +681,7 @@ TEST_F(ReshardingDonorServiceTest, ReportForCurrentOpAfterCompletion) {
     const auto donorState = DonorStateEnum::kDonatingInitialData;
 
     PauseDuringStateTransitions stateTransitionsGuard{controller(), donorState};
-    auto doc = makeStateDocument(false /* isAlsoRecipient */);
+    auto doc = makeStateDocument({.isAlsoRecipient = false});
     auto instanceId =
         BSON(ReshardingDonorDocument::kReshardingUUIDFieldName << doc.getReshardingUUID());
 
@@ -597,28 +727,40 @@ TEST_F(ReshardingDonorServiceTest, ReportForCurrentOpAfterCompletion) {
 }
 
 DEATH_TEST_REGEX_F(ReshardingDonorServiceTest, CommitFn, "4457001.*tripwire") {
-    auto doc = makeStateDocument(false /* isAlsoRecipient */);
-    auto opCtx = makeOperationContext();
+    for (auto& testOptions : makeAllTestOptions()) {
+        LOGV2(9858405,
+              "Running case",
+              "test"_attr = _agent.getTestName(),
+              "testOptions"_attr = testOptions);
+        auto doc = makeStateDocument(testOptions);
+        auto opCtx = makeOperationContext();
 
-    createSourceCollection(opCtx.get(), doc);
+        createSourceCollection(opCtx.get(), doc);
+        if (testOptions.isAlsoRecipient) {
+            createTemporaryReshardingCollection(opCtx.get(), doc);
+        }
 
-    DonorStateMachine::insertStateDocument(opCtx.get(), doc);
-    auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
+        DonorStateMachine::insertStateDocument(opCtx.get(), doc);
+        auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
-    notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
+        notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
+        notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
 
-    ASSERT_THROWS_CODE(donor->commit(), DBException, ErrorCodes::ReshardCollectionInProgress);
+        ASSERT_THROWS_CODE(donor->commit(), DBException, ErrorCodes::ReshardCollectionInProgress);
 
-    notifyToStartBlockingWrites(opCtx.get(), *donor, doc);
-    donor->awaitInBlockingWritesOrError().get();
+        notifyToStartBlockingWrites(opCtx.get(), *donor, doc);
+        awaitChangeStreamsMonitorCompleted(opCtx.get(), *donor, doc);
 
-    donor->commit();
+        donor->awaitInBlockingWritesOrError().get();
 
-    ASSERT_OK(donor->getCompletionFuture().getNoThrow());
+        donor->commit();
+
+        ASSERT_OK(donor->getCompletionFuture().getNoThrow());
+    }
 }
 
 TEST_F(ReshardingDonorServiceTest, DropsSourceCollectionWhenDone) {
-    auto doc = makeStateDocument(false /* isAlsoRecipient */);
+    auto doc = makeStateDocument({.isAlsoRecipient = false});
     auto opCtx = makeOperationContext();
 
     createSourceCollection(opCtx.get(), doc);
@@ -626,6 +768,7 @@ TEST_F(ReshardingDonorServiceTest, DropsSourceCollectionWhenDone) {
     DonorStateMachine::insertStateDocument(opCtx.get(), doc);
     auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
+    notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
     notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
     notifyToStartBlockingWrites(opCtx.get(), *donor, doc);
 
@@ -635,6 +778,7 @@ TEST_F(ReshardingDonorServiceTest, DropsSourceCollectionWhenDone) {
         ASSERT_EQ(coll->uuid(), doc.getSourceUUID());
     }
 
+    awaitChangeStreamsMonitorCompleted(opCtx.get(), *donor, doc);
     notifyReshardingCommitting(opCtx.get(), *donor, doc);
     ASSERT_OK(donor->getCompletionFuture().getNoThrow());
     checkStateDocumentRemoved(opCtx.get());
@@ -646,7 +790,7 @@ TEST_F(ReshardingDonorServiceTest, DropsSourceCollectionWhenDone) {
 }
 
 TEST_F(ReshardingDonorServiceTest, RenamesTemporaryReshardingCollectionWhenDone) {
-    auto doc = makeStateDocument(true /* isAlsoRecipient */);
+    auto doc = makeStateDocument({.isAlsoRecipient = true});
     auto opCtx = makeOperationContext();
 
     createSourceCollection(opCtx.get(), doc);
@@ -655,6 +799,7 @@ TEST_F(ReshardingDonorServiceTest, RenamesTemporaryReshardingCollectionWhenDone)
     DonorStateMachine::insertStateDocument(opCtx.get(), doc);
     auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
+    notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
     notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
     notifyToStartBlockingWrites(opCtx.get(), *donor, doc);
 
@@ -664,6 +809,7 @@ TEST_F(ReshardingDonorServiceTest, RenamesTemporaryReshardingCollectionWhenDone)
         ASSERT_EQ(coll->uuid(), doc.getSourceUUID());
     }
 
+    awaitChangeStreamsMonitorCompleted(opCtx.get(), *donor, doc);
     notifyReshardingCommitting(opCtx.get(), *donor, doc);
     ASSERT_OK(donor->getCompletionFuture().getNoThrow());
     checkStateDocumentRemoved(opCtx.get());
@@ -676,29 +822,30 @@ TEST_F(ReshardingDonorServiceTest, RenamesTemporaryReshardingCollectionWhenDone)
 }
 
 TEST_F(ReshardingDonorServiceTest, CompletesWithStepdownAfterAbort) {
-    for (bool isAlsoRecipient : {false, true}) {
+    for (auto& testOptions : makeAllTestOptions()) {
         LOGV2(5641802,
               "Running case",
               "test"_attr = _agent.getTestName(),
-              "isAlsoRecipient"_attr = isAlsoRecipient);
+              "testOptions"_attr = testOptions);
 
         boost::optional<PauseDuringStateTransitions> doneTransitionGuard;
         doneTransitionGuard.emplace(controller(), DonorStateEnum::kDone);
 
-        auto doc = makeStateDocument(isAlsoRecipient);
+        auto doc = makeStateDocument(testOptions);
         auto instanceId =
             BSON(ReshardingDonorDocument::kReshardingUUIDFieldName << doc.getReshardingUUID());
 
         auto opCtx = makeOperationContext();
 
         createSourceCollection(opCtx.get(), doc);
-        if (isAlsoRecipient) {
+        if (testOptions.isAlsoRecipient) {
             createTemporaryReshardingCollection(opCtx.get(), doc);
         }
 
         DonorStateMachine::insertStateDocument(opCtx.get(), doc);
         auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
+        notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
         notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
         // The call to notifyToStartBlockingWrites() is skipped here because the donor is being
         // notified that the resharding operation is aborting before the donor would have
@@ -736,23 +883,24 @@ TEST_F(ReshardingDonorServiceTest, CompletesWithStepdownAfterAbort) {
 }
 
 TEST_F(ReshardingDonorServiceTest, RetainsSourceCollectionOnAbort) {
-    for (bool isAlsoRecipient : {false, true}) {
+    for (auto& testOptions : makeAllTestOptions()) {
         LOGV2(5641803,
               "Running case",
               "test"_attr = _agent.getTestName(),
-              "isAlsoRecipient"_attr = isAlsoRecipient);
+              "testOptions"_attr = testOptions);
 
-        auto doc = makeStateDocument(isAlsoRecipient);
+        auto doc = makeStateDocument(testOptions);
         auto opCtx = makeOperationContext();
 
         createSourceCollection(opCtx.get(), doc);
-        if (isAlsoRecipient) {
+        if (testOptions.isAlsoRecipient) {
             createTemporaryReshardingCollection(opCtx.get(), doc);
         }
 
         DonorStateMachine::insertStateDocument(opCtx.get(), doc);
         auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
+        notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
         notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
         notifyToStartBlockingWrites(opCtx.get(), *donor, doc);
 
@@ -775,21 +923,22 @@ TEST_F(ReshardingDonorServiceTest, RetainsSourceCollectionOnAbort) {
 }
 
 TEST_F(ReshardingDonorServiceTest, TruncatesXLErrorOnDonorDocument) {
-    for (bool isAlsoRecipient : {false, true}) {
+    for (auto& testOptions : makeAllTestOptions()) {
         LOGV2(5568601,
               "Running case",
               "test"_attr = _agent.getTestName(),
-              "isAlsoRecipient"_attr = isAlsoRecipient);
+              "testOptions"_attr = testOptions);
 
         std::string xlErrMsg(6000, 'x');
         FailPointEnableBlock failpoint("reshardingDonorFailsAfterTransitionToDonatingOplogEntries",
                                        BSON("errmsg" << xlErrMsg));
 
-        auto doc = makeStateDocument(isAlsoRecipient);
+        auto doc = makeStateDocument(testOptions);
         auto opCtx = makeOperationContext();
         DonorStateMachine::insertStateDocument(opCtx.get(), doc);
         auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
 
+        notifyToStartChangeStreamsMonitor(opCtx.get(), *donor, doc);
         notifyRecipientsDoneCloning(opCtx.get(), *donor, doc);
 
         auto localTransitionToErrorFuture = donor->awaitInBlockingWritesOrError();
@@ -823,7 +972,10 @@ TEST_F(ReshardingDonorServiceTest, RestoreMetricsOnKBlockingWrites) {
     auto kDoneState = DonorStateEnum::kDone;
     PauseDuringStateTransitions stateTransitionsGuard{controller(), kDoneState};
     auto opCtx = makeOperationContext();
-    auto doc = makeStateDocument(false);
+    // Only test with verification disabled since this test manually writes to the state doc to
+    // force the donor to enter the "blocking-writes" state. The change streams monitor used for
+    // verification is expected to get stuck waiting 'ReshardBlockingWrites' event.
+    auto doc = makeStateDocument({.isAlsoRecipient = false, .performVerification = false});
 
     auto makeDonorCtx = [&]() {
         DonorShardContext donorCtx;
@@ -850,9 +1002,8 @@ TEST_F(ReshardingDonorServiceTest, RestoreMetricsOnKBlockingWrites) {
         ->acquireRecoverableCriticalSectionBlockWrites(
             opCtx.get(),
             doc.getSourceNss(),
-            BSON("command"
-                 << "resharding_donor"
-                 << "collection" << doc.getSourceNss().toString_forTest()),
+            BSON("command" << "resharding_donor"
+                           << "collection" << doc.getSourceNss().toString_forTest()),
             ShardingCatalogClient::kLocalWriteConcern);
 
     auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
@@ -872,26 +1023,77 @@ TEST_F(ReshardingDonorServiceTest, RestoreMetricsOnKBlockingWrites) {
     ASSERT_OK(donor->getCompletionFuture().getNoThrow());
 }
 
+TEST_F(ReshardingDonorServiceTest, AbortWhileChangeStreamsMonitorInProgress) {
+    auto opCtx = makeOperationContext();
+    // This test manually writes to the state doc to force the donor to enter the "blocking-writes"
+    // state. The change streams monitor used for verification is expected to get stuck waiting
+    // 'ReshardBlockingWrites' event until the resharding operation is aborted.
+    auto doc = makeStateDocument({.isAlsoRecipient = false, .performVerification = true});
+
+    auto makeDonorCtx = [&]() {
+        DonorShardContext donorCtx;
+        donorCtx.setState(DonorStateEnum::kBlockingWrites);
+        donorCtx.setMinFetchTimestamp(Timestamp(Date_t::now()));
+        donorCtx.setBytesToClone(1);
+        donorCtx.setDocumentsToClone(1);
+        return donorCtx;
+    };
+    doc.setMutableState(makeDonorCtx());
+
+    auto timeNow = getServiceContext()->getFastClockSource()->now();
+    const auto opTimeDurationSecs = 60;
+    auto commonMetadata = doc.getCommonReshardingMetadata();
+    commonMetadata.setStartTime(timeNow - Seconds(opTimeDurationSecs));
+    doc.setCommonReshardingMetadata(std::move(commonMetadata));
+
+    createSourceCollection(opCtx.get(), doc);
+    auto makeChangeStreamsMonitorCtx = [&]() {
+        ChangeStreamsMonitorContext changeStreamsMonitorCtx(cloneTimestamp, 0 /* documentsDelta */);
+        return changeStreamsMonitorCtx;
+    };
+    doc.setChangeStreamsMonitor(makeChangeStreamsMonitorCtx());
+
+    DonorStateMachine::insertStateDocument(opCtx.get(), doc);
+
+    // This acquires the critical section required by resharding donor machine when it is in
+    // kBlockingWrites.
+    ShardingRecoveryService::get(opCtx.get())
+        ->acquireRecoverableCriticalSectionBlockWrites(
+            opCtx.get(),
+            doc.getSourceNss(),
+            BSON("command" << "resharding_donor"
+                           << "collection" << doc.getSourceNss().toString_forTest()),
+            ShardingCatalogClient::kLocalWriteConcern);
+
+    auto donor = DonorStateMachine::getOrCreate(opCtx.get(), _service, doc.toBSON());
+    ASSERT_OK(donor->awaitChangeStreamsMonitorStarted().getNoThrow());
+    donor->abort(false);
+    auto status = donor->awaitChangeStreamsMonitorCompleted().getNoThrow();
+    ASSERT((status == ErrorCodes::CallbackCanceled) || (status == ErrorCodes::Interrupted));
+
+    ASSERT_OK(donor->getCompletionFuture().getNoThrow());
+}
+
 TEST_F(ReshardingDonorServiceTest, AbortAfterStepUpWithAbortReasonFromCoordinator) {
     repl::primaryOnlyServiceTestStepUpWaitForRebuildComplete.setMode(FailPoint::alwaysOn);
     const auto abortErrMsg = "Recieved abort from the resharding coordinator";
 
-    for (bool isAlsoRecipient : {false, true}) {
+    for (auto& testOptions : makeAllTestOptions()) {
         LOGV2(8743302,
               "Running case",
               "test"_attr = _agent.getTestName(),
-              "isAlsoRecipient"_attr = isAlsoRecipient);
+              "testOptions"_attr = testOptions);
 
         auto removeDonorDocFailpoint = globalFailPointRegistry().find("removeDonorDocFailpoint");
         auto timesEnteredFailPoint = removeDonorDocFailpoint->setMode(FailPoint::alwaysOn);
 
-        auto doc = makeStateDocument(isAlsoRecipient);
+        auto doc = makeStateDocument(testOptions);
         auto instanceId =
             BSON(ReshardingDonorDocument::kReshardingUUIDFieldName << doc.getReshardingUUID());
 
         auto opCtx = makeOperationContext();
         createSourceCollection(opCtx.get(), doc);
-        if (isAlsoRecipient) {
+        if (testOptions.isAlsoRecipient) {
             createTemporaryReshardingCollection(opCtx.get(), doc);
         }
 
@@ -935,17 +1137,17 @@ TEST_F(ReshardingDonorServiceTest, AbortAfterStepUpWithAbortReasonFromCoordinato
 }
 
 TEST_F(ReshardingDonorServiceTest, FailoverAfterDonorErrorsPriorToObtainingTimestamp) {
-    for (bool isAlsoRecipient : {false, true}) {
+    for (auto& testOptions : makeAllTestOptions()) {
         LOGV2(8743303,
               "Running case",
               "test"_attr = _agent.getTestName(),
-              "isAlsoRecipient"_attr = isAlsoRecipient);
+              "testOptions"_attr = testOptions);
 
         std::string errMsg("Simulating an unrecoverable error for testing");
         FailPointEnableBlock failpoint("reshardingDonorFailsBeforeObtainingTimestamp",
                                        BSON("errmsg" << errMsg));
 
-        auto doc = makeStateDocument(isAlsoRecipient);
+        auto doc = makeStateDocument(testOptions);
         auto instanceId =
             BSON(ReshardingDonorDocument::kReshardingUUIDFieldName << doc.getReshardingUUID());
 

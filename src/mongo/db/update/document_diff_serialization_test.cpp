@@ -40,9 +40,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/update/document_diff_serialization.h"
 #include "mongo/db/update/document_diff_test_helpers.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
@@ -189,9 +187,7 @@ TEST(DiffSerializationTest, SubDiff) {
 }
 
 TEST(DiffSerializationTest, SubArrayWithSubDiff) {
-    const BSONObj kDummyObj(BSON("a" << 1 << "b"
-                                     << BSON("foo"
-                                             << "bar")));
+    const BSONObj kDummyObj(BSON("a" << 1 << "b" << BSON("foo" << "bar")));
     diff_tree::DocumentSubDiffNode diffNode;
     {
         auto subDiffNode = std::make_unique<diff_tree::ArrayNode>();
@@ -329,16 +325,13 @@ TEST(DiffSerializationTest, SubArrayHighIndex) {
 
 TEST(DiffSerializationTest, ValidateComputeApproxSize) {
     const size_t padding = 25;
-    const auto storage = BSON("num" << 4 << "str"
-                                    << "val"
-                                    << "emptyStr"
-                                    << ""
-                                    << "null" << BSONNULL << "array"
-                                    << BSON_ARRAY("val1"
-                                                  << "val2" << 3)
-                                    << "subObj"
-                                    << BSON(""
-                                            << "update"));
+    const auto storage =
+        BSON("num" << 4 << "str"
+                   << "val"
+                   << "emptyStr"
+                   << ""
+                   << "null" << BSONNULL << "array" << BSON_ARRAY("val1" << "val2" << 3) << "subObj"
+                   << BSON("" << "update"));
 
     diff_tree::DocumentSubDiffNode diffNode(padding);
     diffNode.addDelete("deleteField");

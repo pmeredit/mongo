@@ -265,7 +265,7 @@ public:
      * Sets the OperationContext that currently owns this RecoveryUnit. Should only be called by the
      * OperationContext.
      */
-    void setOperationContext(OperationContext* opCtx);
+    virtual void setOperationContext(OperationContext* opCtx);
 
     /**
      * Extensible structure for configuring options to begin a new transaction.
@@ -444,13 +444,6 @@ public:
     }
 
     /**
-     * Retrieve metrics from the storage layer.
-     */
-    AtomicStorageMetrics& getStorageMetrics() {
-        return _storageMetrics;
-    }
-
-    /**
      * The ReadSource indicates which external or provided timestamp to read from for future
      * transactions.
      */
@@ -545,7 +538,7 @@ public:
      * data, and will attempt to keep higher-priority data from being evicted from the cache. This
      * may not be called in an active transaction.
      */
-    virtual void setReadOnce(bool readOnce){};
+    virtual void setReadOnce(bool readOnce) {};
 
     virtual bool getReadOnce() const {
         return false;
@@ -566,7 +559,7 @@ public:
      *
      * Must be reset when the WriteUnitOfWork is either committed or rolled back.
      */
-    virtual void ignoreAllMultiTimestampConstraints(){};
+    virtual void ignoreAllMultiTimestampConstraints() {};
 
     /**
      * Registers a callback to be called prior to a WriteUnitOfWork committing the storage
@@ -602,8 +595,9 @@ public:
     public:
         virtual ~Change() {}
 
-        virtual void rollback(OperationContext* opCtx) = 0;
-        virtual void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) = 0;
+        virtual void rollback(OperationContext* opCtx) noexcept = 0;
+        virtual void commit(OperationContext* opCtx,
+                            boost::optional<Timestamp> commitTime) noexcept = 0;
     };
 
     /**
@@ -627,10 +621,10 @@ public:
         public:
             CallbackChange(CommitCallback&& commit, RollbackCallback&& rollback)
                 : _rollback(std::move(rollback)), _commit(std::move(commit)) {}
-            void rollback(OperationContext* opCtx) final {
+            void rollback(OperationContext* opCtx) noexcept final {
                 _rollback(opCtx);
             }
-            void commit(OperationContext* opCtx, boost::optional<Timestamp> ts) final {
+            void commit(OperationContext* opCtx, boost::optional<Timestamp> ts) noexcept final {
                 _commit(opCtx, ts);
             }
 
@@ -678,10 +672,10 @@ public:
         class OnRollbackChange final : public Change {
         public:
             OnRollbackChange(Callback&& callback) : _callback(std::move(callback)) {}
-            void rollback(OperationContext* opCtx) final {
+            void rollback(OperationContext* opCtx) noexcept final {
                 _callback(opCtx);
             }
-            void commit(OperationContext* opCtx, boost::optional<Timestamp>) final {}
+            void commit(OperationContext* opCtx, boost::optional<Timestamp>) noexcept final {}
 
         private:
             Callback _callback;
@@ -704,8 +698,9 @@ public:
         class OnCommitChange final : public Change {
         public:
             OnCommitChange(Callback&& callback) : _callback(std::move(callback)) {}
-            void rollback(OperationContext* opCtx) final {}
-            void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) final {
+            void rollback(OperationContext* opCtx) noexcept final {}
+            void commit(OperationContext* opCtx,
+                        boost::optional<Timestamp> commitTime) noexcept final {
                 _callback(opCtx, commitTime);
             }
 
@@ -728,8 +723,9 @@ public:
         class OnCommitTwoPhaseChange final : public Change {
         public:
             OnCommitTwoPhaseChange(Callback&& callback) : _callback(std::move(callback)) {}
-            void rollback(OperationContext* opCtx) final {}
-            void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) final {
+            void rollback(OperationContext* opCtx) noexcept final {}
+            void commit(OperationContext* opCtx,
+                        boost::optional<Timestamp> commitTime) noexcept final {
                 _callback(opCtx, commitTime);
             }
 
@@ -814,12 +810,12 @@ public:
         return _getState();
     }
 
-    void setNoEvictionAfterRollback() {
-        _noEvictionAfterRollback = true;
+    void setNoEvictionAfterCommitOrRollback() {
+        _noEvictionAfterCommitOrRollback = true;
     }
 
-    bool getNoEvictionAfterRollback() const {
-        return _noEvictionAfterRollback;
+    bool getNoEvictionAfterCommitOrRollback() const {
+        return _noEvictionAfterCommitOrRollback;
     }
 
     void setDataCorruptionDetectionMode(DataCorruptionDetectionMode mode) {
@@ -868,7 +864,6 @@ public:
     bool getBlockingAllowed() const {
         return _blockingAllowed;
     }
-
 
 protected:
     RecoveryUnit() = default;
@@ -919,7 +914,7 @@ protected:
      */
     void _executeRollbackHandlers();
 
-    bool _noEvictionAfterRollback = false;
+    bool _noEvictionAfterCommitOrRollback = false;
 
     AbandonSnapshotMode _abandonSnapshotMode = AbandonSnapshotMode::kAbort;
 
@@ -936,6 +931,8 @@ protected:
     void resetSnapshot() {
         _snapshot.reset();
     }
+
+    OperationContext* _opCtx = nullptr;
 
 private:
     virtual void doBeginUnitOfWork() = 0;
@@ -954,8 +951,6 @@ private:
     // Is constructed lazily when accessed or when an underlying storage snapshot is opened.
     boost::optional<Snapshot> _snapshot;
     State _state = State::kInactive;
-    AtomicStorageMetrics _storageMetrics;
-    OperationContext* _opCtx = nullptr;
     bool _readOnly = false;
     bool _blockingAllowed = true;
 };

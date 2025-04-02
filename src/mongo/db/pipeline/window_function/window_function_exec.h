@@ -36,17 +36,14 @@
 #include <utility>
 
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/db/memory_tracking/memory_usage_tracker.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_source_set_window_fields.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/window_function/partition_iterator.h"
-#include "mongo/db/pipeline/window_function/window_bounds.h"
 #include "mongo/db/pipeline/window_function/window_function.h"
 #include "mongo/db/query/sort_pattern.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/intrusive_counter.h"
-#include "mongo/util/memory_usage_tracker.h"
 
 namespace mongo {
 
@@ -90,11 +87,11 @@ public:
     virtual void reset() = 0;
 
 protected:
-    WindowFunctionExec(PartitionAccessor iter, MemoryUsageTracker::Impl* memTracker)
-        : _iter(iter), _memTracker(memTracker){};
+    WindowFunctionExec(PartitionAccessor iter, SimpleMemoryUsageTracker* memTracker)
+        : _iter(iter), _memTracker(memTracker) {};
 
     PartitionAccessor _iter;
-    MemoryUsageTracker::Impl* _memTracker;
+    SimpleMemoryUsageTracker* _memTracker;
 };
 
 /**
@@ -126,7 +123,7 @@ protected:
                                 PartitionAccessor::Policy policy,
                                 boost::intrusive_ptr<Expression> input,
                                 std::unique_ptr<WindowFunctionState> function,
-                                MemoryUsageTracker::Impl* memTracker)
+                                SimpleMemoryUsageTracker* memTracker)
         : WindowFunctionExec(PartitionAccessor(iter, policy), memTracker),
           _input(std::move(input)),
           _function(std::move(function)) {

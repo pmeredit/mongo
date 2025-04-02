@@ -25,9 +25,7 @@ selector:
     - jstests/core/**/fsync.js # uses fsync.
     - jstests/core/**/geo_s2cursorlimitskip.js # profiling.
     - jstests/core/**/geo_update_btree2.js # notablescan.
-    - jstests/core/**/index9.js # "local" database.
     - jstests/core/**/queryoptimizera.js # "local" database.
-    - jstests/core/**/stages*.js # stageDebug.
     - jstests/core/**/startup_log.js # "local" database.
     - jstests/core/**/query/top/top.js # top.
     # The following tests fail because mongos behaves differently from mongod when testing certain
@@ -40,10 +38,10 @@ selector:
 
     # The tests below are disabled because of embedded router role and replica set endpoint.
     # TODO (SERVER-87512): Support role-aware serverStatus on mongod with router role.
-    - jstests/core/write/find_and_modify/find_and_modify_metrics.js
-    - jstests/core/write/update/update_metrics.js
+    - jstests/core/query/find_and_modify/find_and_modify_metrics.js
+    - jstests/core/query/update/update_metrics.js
     # This test runs {find: uuid} commands which are not supported for replica set endpoints.
-    - jstests/core/commands_with_uuid.js
+    - jstests/core/query/commands_with_uuid.js
     # TODO (SERVER-80416): cloneCollectionAsCapped command stops working after a replica set
     # is bootstrapped as a sharded cluster.
     - jstests/core/query/collation/collation.js

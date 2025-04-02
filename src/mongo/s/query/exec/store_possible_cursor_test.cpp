@@ -41,9 +41,7 @@
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/s/query/exec/cluster_cursor_manager.h"
 #include "mongo/s/query/exec/store_possible_cursor.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/net/hostandport.h"
 
@@ -115,8 +113,7 @@ TEST_F(StorePossibleCursorTest, FailsGracefullyOnBadCursorResponseDocument) {
 // Test that storePossibleCursor() passes up the command response if it is not recognized as a
 // cursor response.
 TEST_F(StorePossibleCursorTest, PassesUpCommandResultIfItDoesNotDescribeACursor) {
-    BSONObj notACursorObj = BSON("not"
-                                 << "cursor");
+    BSONObj notACursorObj = BSON("not" << "cursor");
     auto outgoingCursorResponse = storePossibleCursor(opCtx(),
                                                       shardId,
                                                       hostAndPort,

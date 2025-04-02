@@ -54,6 +54,7 @@
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/curop.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index/multikey_paths.h"
@@ -83,10 +84,6 @@
 #include "mongo/db/timeseries/timeseries_index_schema_conversion_functions.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
@@ -196,7 +193,7 @@ MultiIndexBlock::OnCleanUpFn MultiIndexBlock::kNoopOnCleanUpFn = []() {
 
 void MultiIndexBlock::abortIndexBuild(OperationContext* opCtx,
                                       CollectionWriter& collection,
-                                      OnCleanUpFn onCleanUp) noexcept {
+                                      OnCleanUpFn onCleanUp) {
     if (_collectionUUID) {
         // init() was previously called with a collection pointer, so ensure that the same
         // collection is being provided for clean up and the interface in not being abused.
@@ -378,7 +375,7 @@ StatusWith<std::vector<BSONObj>> MultiIndexBlock::init(
             if (options &&
                 timeseries::doesBucketsIndexIncludeMeasurement(
                     opCtx, collection->ns(), *options, info)) {
-                invariant(collection->getTimeseriesBucketsMayHaveMixedSchemaData());
+                invariant(collection->getTimeseriesMixedSchemaBucketsState().isValid());
                 _containsIndexBuildOnTimeseriesMeasurement = true;
             }
 
@@ -795,7 +792,8 @@ Status MultiIndexBlock::_insert(
     // expression below. Only check for mixed-schema data if it's possible for the time-series
     // collection to have it.
     if (_containsIndexBuildOnTimeseriesMeasurement &&
-        *collection->getTimeseriesBucketsMayHaveMixedSchemaData()) {
+        collection->getTimeseriesMixedSchemaBucketsState()
+            .mustConsiderMixedSchemaBucketsInReads()) {
         auto docHasMixedSchemaData =
             collection->doesTimeseriesBucketsDocContainMixedSchemaData(doc);
 
@@ -824,7 +822,8 @@ Status MultiIndexBlock::_insert(
     }
 
     for (size_t i = 0; i < _indexes.size(); i++) {
-        if (_indexes[i].filterExpression && !_indexes[i].filterExpression->matchesBSON(doc)) {
+        if (_indexes[i].filterExpression &&
+            !exec::matcher::matchesBSON(_indexes[i].filterExpression, doc)) {
             continue;
         }
 
@@ -1116,11 +1115,10 @@ Status MultiIndexBlock::commit(OperationContext* opCtx,
     // because this node doesn't contain mixed-schema it doesn't mean that other shards can't have
     // mixed schema data. This flag needs to be consistent across the shards.
     if (_containsIndexBuildOnTimeseriesMeasurement && !_timeseriesBucketContainsMixedSchemaData) {
-        boost::optional<bool> mayContainMixedSchemaData =
-            collection->getTimeseriesBucketsMayHaveMixedSchemaData();
-        invariant(mayContainMixedSchemaData);
+        auto mixedSchemaState = collection->getTimeseriesMixedSchemaBucketsState();
+        invariant(mixedSchemaState.isValid());
 
-        if (*mayContainMixedSchemaData) {
+        if (mixedSchemaState.mustConsiderMixedSchemaBucketsInReads()) {
             LOGV2_WARNING(9301400,
                           "Index build finished for time-series collection marked as containing "
                           "mixed schema buckets without detecting any buckets with mixed schema.");

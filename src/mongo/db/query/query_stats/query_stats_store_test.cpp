@@ -57,22 +57,19 @@
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/query/parsed_find_command.h"
-#include "mongo/db/query/query_shape/query_shape.h"
 #include "mongo/db/query/query_shape/serialization_options.h"
+#include "mongo/db/query/query_shape/shape_helpers.h"
 #include "mongo/db/query/query_stats/agg_key.h"
 #include "mongo/db/query/query_stats/aggregated_metric.h"
 #include "mongo/db/query/query_stats/find_key.h"
 #include "mongo/db/query/query_stats/key.h"
 #include "mongo/db/query/query_stats/query_stats.h"
-#include "mongo/db/query/query_stats/transform_algorithm_gen.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
-#include "mongo/util/str.h"
 
 namespace mongo::query_stats {
 
@@ -91,7 +88,9 @@ public:
         auto fcr = std::make_unique<FindCommandRequest>(kDefaultTestNss);
         fcr->setFilter(filter.getOwned());
         auto parsedFind = uassertStatusOK(parsed_find_command::parse(expCtx, {std::move(fcr)}));
-        return std::make_unique<FindKey>(expCtx, *parsedFind, collectionType);
+        auto findShape = std::make_unique<query_shape::FindCmdShape>(*parsedFind, expCtx);
+        return std::make_unique<FindKey>(
+            expCtx, *parsedFind->findCommandRequest, std::move(findShape), collectionType);
     }
 
     static constexpr auto collectionType = query_shape::CollectionType::kCollection;
@@ -100,7 +99,9 @@ public:
                                          bool applyHmac) {
         auto fcrCopy = std::make_unique<FindCommandRequest>(fcr);
         auto parsedFind = uassertStatusOK(parsed_find_command::parse(expCtx, {std::move(fcrCopy)}));
-        FindKey findKey(expCtx, *parsedFind, collectionType);
+        auto findShape = std::make_unique<query_shape::FindCmdShape>(*parsedFind, expCtx);
+        FindKey findKey(
+            expCtx, *parsedFind->findCommandRequest, std::move(findShape), collectionType);
         SerializationOptions opts = SerializationOptions::kDebugShapeAndMarkIdentifiers_FOR_TEST;
         if (!applyHmac) {
             opts.transformIdentifiers = false;
@@ -115,13 +116,10 @@ public:
                                               const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                               LiteralSerializationPolicy literalPolicy,
                                               bool applyHmac = false) {
-
-        auto aggKey = std::make_unique<AggKey>(acr,
-                                               pipeline,
-                                               expCtx,
-                                               pipeline.getInvolvedCollections(),
-                                               acr.getNamespace(),
-                                               collectionType);
+        auto aggShape = std::make_unique<query_shape::AggCmdShape>(
+            acr, acr.getNamespace(), pipeline.getInvolvedCollections(), pipeline, expCtx);
+        auto aggKey = std::make_unique<AggKey>(
+            expCtx, acr, std::move(aggShape), pipeline.getInvolvedCollections(), collectionType);
 
         // SerializationOptions opts{.literalPolicy = literalPolicy};
         SerializationOptions opts = SerializationOptions::kMarkIdentifiers_FOR_TEST;
@@ -215,8 +213,7 @@ TEST_F(QueryStatsStoreTest, EvictionTest) {
         // evicted first but the partition will still be over budget so the final, too large entry
         // will also be evicted.
         auto opCtx = makeOperationContext();
-        auto fcr = std::make_unique<FindCommandRequest>(NamespaceStringOrUUID(
-            NamespaceString::createNamespaceString_forTest("testDB.testColl")));
+        auto fcr = std::make_unique<FindCommandRequest>(kDefaultTestNss);
         fcr->setLet(BSON("var" << 2));
         fcr->setFilter(fromjson("{$expr: [{$eq: ['$a', '$$var']}]}"));
         fcr->setProjection(fromjson("{varIs: '$$var'}"));
@@ -225,8 +222,7 @@ TEST_F(QueryStatsStoreTest, EvictionTest) {
         fcr->setBatchSize(25);
         fcr->setMaxTimeMS(1000);
         fcr->setNoCursorTimeout(false);
-        opCtx->setComment(BSON("comment"
-                               << " foo bar baz"));
+        opCtx->setComment(BSON("comment" << " foo bar baz"));
         fcr->setSingleBatch(false);
         fcr->setAllowDiskUse(false);
         fcr->setAllowPartialResults(true);
@@ -239,8 +235,10 @@ TEST_F(QueryStatsStoreTest, EvictionTest) {
         fcr->setSort(BSON("sortVal" << 1 << "otherSort" << -1));
         auto expCtx = ExpressionContextBuilder{}.fromRequest(opCtx.get(), *fcr).build();
         auto parsedFind = uassertStatusOK(parsed_find_command::parse(expCtx, {std::move(fcr)}));
+        auto findShape = std::make_unique<query_shape::FindCmdShape>(*parsedFind, expCtx);
 
-        key = std::make_unique<query_stats::FindKey>(expCtx, *parsedFind, collectionType);
+        key = std::make_unique<query_stats::FindKey>(
+            expCtx, *parsedFind->findCommandRequest, std::move(findShape), collectionType);
         auto lookupHash = absl::HashOf(key);
         QueryStatsEntry testMetrics{std::move(key)};
         queryStatsStore.put(lookupHash, testMetrics);
@@ -284,10 +282,18 @@ TEST_F(QueryStatsStoreTest, GenerateMaxBsonSizeQueryShape) {
     // The shapification process will bloat the input query over the 16 MB memory limit. Assert
     // that calling registerRequest() doesn't throw and that the opDebug isn't registered with a
     // key hash (thus metrics won't be tracked for this query).
-    ASSERT_DOES_NOT_THROW(query_stats::registerRequest(opCtx.get(), nss, [&]() {
-        return std::make_unique<query_stats::FindKey>(
-            expCtx, *parsedFind, query_shape::CollectionType::kCollection);
-    }));
+    ASSERT_DOES_NOT_THROW(([&]() {
+        if (auto findShape =
+                shape_helpers::tryMakeShape<query_shape::FindCmdShape>(*parsedFind, expCtx)) {
+            query_stats::registerRequest(opCtx.get(), nss, [&]() {
+                return std::make_unique<query_stats::FindKey>(
+                    expCtx,
+                    *parsedFind->findCommandRequest,
+                    std::move(findShape),
+                    query_shape::CollectionType::kCollection);
+            });
+        }
+    })());
     auto& opDebug = CurOp::get(*opCtx)->debug();
     ASSERT_EQ(opDebug.queryStatsInfo.keyHash, boost::none);
 }
@@ -516,13 +522,9 @@ TEST_F(QueryStatsStoreTest, CorrectlyRedactsFindCommandRequestAllFields) {
     fcr.setAllowDiskUse(false);
     fcr.setShowRecordId(true);
     fcr.setMirrored(true);
-    auto readPreference = BSON("mode"
-                               << "nearest"
-                               << "tags"
-                               << BSON_ARRAY(BSON("some"
-                                                  << "tag")
-                                             << BSON("some"
-                                                     << "other tag")));
+    auto readPreference =
+        BSON("mode" << "nearest"
+                    << "tags" << BSON_ARRAY(BSON("some" << "tag") << BSON("some" << "other tag")));
     ReadPreferenceSetting::get(expCtx->getOperationContext()) =
         uassertStatusOK(ReadPreferenceSetting::fromInnerBSON(readPreference));
     key = makeQueryStatsKeyFindRequest(fcr, expCtx, true);
@@ -735,8 +737,7 @@ TEST_F(QueryStatsStoreTest, CorrectlyRedactsHintsWithOptions) {
         key);
     // Test with a string hint. Note that this is the internal representation of the string hint
     // generated at parse time.
-    fcr.setHint(BSON("$hint"
-                     << "z"));
+    fcr.setHint(BSON("$hint" << "z"));
 
     key = makeQueryStatsKeyFindRequest(fcr, expCtx, false);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -993,8 +994,7 @@ TEST_F(QueryStatsStoreTest, CorrectlyTokenizesAggregateCommandRequestAllFieldsSi
     // Add the fields that shouldn't be abstracted.
     acr.setAllowDiskUse(false);
     acr.setHint(BSON("z" << 1 << "c" << 1));
-    acr.setCollation(BSON("locale"
-                          << "simple"));
+    acr.setCollation(BSON("locale" << "simple"));
     shapified = makeQueryStatsKeyAggregateRequest(
         acr, *pipeline, expCtx, LiteralSerializationPolicy::kToDebugTypeString, true);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -1062,9 +1062,7 @@ TEST_F(QueryStatsStoreTest, CorrectlyTokenizesAggregateCommandRequestAllFieldsSi
         shapified);
 
     // Add let.
-    acr.setLet(BSON("var1" << BSON("$literal"
-                                   << "$foo")
-                           << "var2"
+    acr.setLet(BSON("var1" << BSON("$literal" << "$foo") << "var2"
                            << "bar"));
     shapified = makeQueryStatsKeyAggregateRequest(
         acr, *pipeline, expCtx, LiteralSerializationPolicy::kToDebugTypeString, true);
@@ -1142,8 +1140,7 @@ TEST_F(QueryStatsStoreTest, CorrectlyTokenizesAggregateCommandRequestAllFieldsSi
     acr.setCursor(cursorOptions);
     acr.setMaxTimeMS(500);
     acr.setBypassDocumentValidation(true);
-    expCtx->getOperationContext()->setComment(BSON("comment"
-                                                   << "note to self"));
+    expCtx->getOperationContext()->setComment(BSON("comment" << "note to self"));
     shapified = makeQueryStatsKeyAggregateRequest(
         acr, *pipeline, expCtx, LiteralSerializationPolicy::kToDebugTypeString, true);
     ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
@@ -1588,6 +1585,7 @@ TEST_F(QueryStatsStoreTest, BasicDiskUsage) {
                               .append("bytesRead", emptyIntMetric)
                               .append("readTimeMicros", emptyIntMetric)
                               .append("workingTimeMillis", emptyIntMetric)
+                              .append("cpuNanos", emptyIntMetric)
                               .append("hasSortStage", boolMetricBson(0, 0))
                               .append("usedDisk", boolMetricBson(0, 0))
                               .append("fromMultiPlanner", boolMetricBson(0, 0))
@@ -1622,6 +1620,7 @@ TEST_F(QueryStatsStoreTest, BasicDiskUsage) {
                               .append("bytesRead", emptyIntMetric)
                               .append("readTimeMicros", emptyIntMetric)
                               .append("workingTimeMillis", emptyIntMetric)
+                              .append("cpuNanos", emptyIntMetric)
                               .append("hasSortStage", boolMetricBson(0, 1))
                               .append("usedDisk", boolMetricBson(1, 0))
                               .append("fromMultiPlanner", boolMetricBson(0, 0))

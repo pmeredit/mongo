@@ -97,6 +97,7 @@
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
+#include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/executor/network_test_env.h"
 #include "mongo/executor/remote_command_request.h"
@@ -113,9 +114,7 @@
 #include "mongo/s/request_types/move_range_request_gen.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/uuid.h"
@@ -298,8 +297,16 @@ public:
         return _coll->isTemporary();
     }
 
-    boost::optional<bool> getTimeseriesBucketsMayHaveMixedSchemaData() const override {
-        return _coll->getTimeseriesBucketsMayHaveMixedSchemaData();
+    bool isTimeseriesCollection() const override {
+        return _coll->isTimeseriesCollection();
+    }
+
+    bool isNewTimeseriesWithoutView() const override {
+        return _coll->isNewTimeseriesWithoutView();
+    }
+
+    timeseries::MixedSchemaBucketsState getTimeseriesMixedSchemaBucketsState() const override {
+        return _coll->getTimeseriesMixedSchemaBucketsState();
     }
 
     void setTimeseriesBucketsMayHaveMixedSchemaData(OperationContext* opCtx,
@@ -316,11 +323,15 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    void removeLegacyTimeseriesBucketingParametersHaveChanged(OperationContext* opCtx) override {
+        MONGO_UNREACHABLE;
+    }
+
     bool areTimeseriesBucketsFixed() const override {
-        auto tsOptions = getTimeseriesOptions();
-        boost::optional<bool> parametersChanged = timeseriesBucketingParametersHaveChanged();
-        return parametersChanged.has_value() && !parametersChanged.get() && tsOptions &&
-            tsOptions->getBucketMaxSpanSeconds() == tsOptions->getBucketRoundingSeconds();
+        const auto tsOptions = getTimeseriesOptions();
+        // Assume parameters have changed unless otherwise specified.
+        const auto parametersChanged = timeseriesBucketingParametersHaveChanged().value_or(true);
+        return tsOptions && timeseries::areTimeseriesBucketsFixed(*tsOptions, parametersChanged);
     }
 
     StatusWith<bool> doesTimeseriesBucketsDocContainMixedSchemaData(
@@ -384,7 +395,8 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx) override {
+    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx,
+                                                       bool removeDeprecatedFields) override {
         MONGO_UNREACHABLE;
     }
 
@@ -519,6 +531,10 @@ public:
         return _coll->dataSize(opCtx);
     }
 
+    int64_t sizeOnDisk(OperationContext* opCtx, const StorageEngine& storageEngine) const override {
+        return _coll->sizeOnDisk(opCtx, storageEngine);
+    }
+
     bool isEmpty(OperationContext* opCtx) const override {
         return _coll->isEmpty(opCtx);
     }
@@ -545,7 +561,7 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    boost::optional<TimeseriesOptions> getTimeseriesOptions() const override {
+    const boost::optional<TimeseriesOptions>& getTimeseriesOptions() const override {
         return _coll->getTimeseriesOptions();
     }
 
@@ -729,10 +745,7 @@ protected:
                 ->setFilteringMetadata(
                     operationContext(),
                     CollectionMetadata(
-                        ChunkManager(ShardId("dummyShardId"),
-                                     DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                                     makeStandaloneRoutingTableHistory(std::move(rt)),
-                                     boost::none),
+                        ChunkManager(makeStandaloneRoutingTableHistory(std::move(rt)), boost::none),
                         ShardId("dummyShardId")));
         }();
 
@@ -1484,8 +1497,7 @@ TEST_F(MigrationChunkClonerSourceTest, CorrectDocumentsFetchedWithDottedShardKey
 }
 
 TEST_F(MigrationChunkClonerSourceTest, CorrectDocumentsFetchedWithHasheddShardKeyPattern) {
-    const ShardKeyPattern hashedShardKeyPattern(BSON("X"
-                                                     << "hashed"));
+    const ShardKeyPattern hashedShardKeyPattern(BSON("X" << "hashed"));
 
     const ShardsvrMoveRange req = createMoveRangeRequest(
         ChunkRange(BSON("X" << 6000000000000000000ll), BSON("X" << 9003000000000000000ll)));
@@ -1619,8 +1631,7 @@ TEST_F(MigrationChunkClonerSourceTest, UpdatedDocumentsFetched) {
 }
 
 TEST_F(MigrationChunkClonerSourceTest, UpdatedDocumentsFetchedWithHashedShardKey) {
-    const ShardKeyPattern shardKeyPattern(BSON("X"
-                                               << "hashed"));
+    const ShardKeyPattern shardKeyPattern(BSON("X" << "hashed"));
 
     const ShardsvrMoveRange req = createMoveRangeRequest(
         ChunkRange(BSON("X" << 6000000000000000000ll), BSON("X" << 9003000000000000000ll)));

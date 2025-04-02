@@ -53,9 +53,7 @@
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/s/write_ops/write_without_shard_key_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -91,7 +89,7 @@ private:
                                          false,
                                          {BSON("a" << 50 << "b" << 50)},
                                          {})
-            .cm;
+            .getChunkManager();
     }
 
     boost::optional<ChunkManager> _cm;
@@ -117,10 +115,9 @@ private:
                                          nullptr,
                                          false,
                                          {BSON("meta.a" << 50 << "meta.b" << 50)},
-                                         {},
                                          boost::none,
                                          std::move(timeseriesFields))
-            .cm;
+            .getChunkManager();
     }
 };
 
@@ -434,7 +431,8 @@ TEST_F(UnshardedCollectionTest, UnshardedCollectionDoesNotUseTwoPhaseProtocol) {
     }
 
     auto cri = *future.default_timed_get();
-    ASSERT(!cri.cm.isSharded());
+    ASSERT(!cri.isSharded());
+    ASSERT(!cri.getChunkManager().isSharded());
 
     auto useTwoPhaseProtocol =
         write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
@@ -467,7 +465,8 @@ TEST_F(TimeseriesUnshardedCollectionTest, UnshardedCollectionDoesNotUseTwoPhaseP
     }
 
     auto cri = *future.default_timed_get();
-    ASSERT(!cri.cm.isSharded());
+    ASSERT(!cri.isSharded());
+    ASSERT(!cri.getChunkManager().isSharded());
 
     auto useTwoPhaseProtocol =
         write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
@@ -484,137 +483,125 @@ TEST_F(TimeseriesUnshardedCollectionTest, UnshardedCollectionDoesNotUseTwoPhaseP
 
 TEST_F(WriteWithoutShardKeyUtilTest,
        WriteQueryWithFullShardKeyAndCollationWithCollatableTypesUsesTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("a"
-                                                          << "a"
-                                                          << "b"
-                                                          << "b"),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     false /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("a" << "a"
+                 << "b"
+                 << "b"),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        false /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, true);
 }
 
 TEST_F(TimeseriesWriteWithoutShardKeyUtilTest,
        WriteQueryWithFullShardKeyAndCollationWithCollatableTypesUsesTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("m.a"
-                                                          << "a"
-                                                          << "m.b"
-                                                          << "b"),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     true /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("m.a" << "a"
+                   << "m.b"
+                   << "b"),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        true /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, true);
 }
 
 TEST_F(WriteWithoutShardKeyUtilTest,
        WriteQueryWithFullShardKeyAndCollationWithoutCollatableTypesDoesNotUseTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("a" << 1 << "b" << 1),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     false /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("a" << 1 << "b" << 1),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        false /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, false);
 }
 
 TEST_F(TimeseriesWriteWithoutShardKeyUtilTest,
        WriteQueryWithFullShardKeyAndCollationWithoutCollatableTypesDoesNotUseTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("m.a" << 1 << "m.b" << 1),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     true /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("m.a" << 1 << "m.b" << 1),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        true /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, false);
 }
 
 TEST_F(WriteWithoutShardKeyUtilTest,
        WriteQueryWithOnlyIdAndCollationWithCollatableTypeUsesTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("_id"
-                                                          << "hello"),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     false /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("_id" << "hello"),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        false /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, true);
 }
 
 TEST_F(TimeseriesWriteWithoutShardKeyUtilTest,
        WriteQueryWithOnlyIdAndCollationWithCollatableTypeUsesTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("_id"
-                                                          << "hello"),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     true /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("_id" << "hello"),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        true /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, true);
 }
 
 TEST_F(WriteWithoutShardKeyUtilTest,
        WriteQueryWithOnlyIdAndCollationWithoutCollatableTypeDoesNotUseTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("_id" << 1),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     false /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("_id" << 1),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        false /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, false);
 }
 
 TEST_F(TimeseriesWriteWithoutShardKeyUtilTest,
        WriteQueryWithOnlyIdAndCollationWithoutCollatableTypeDoesUsesTwoPhaseProtocol) {
-    auto useTwoPhaseProtocol =
-        write_without_shard_key::useTwoPhaseProtocol(getOpCtx(),
-                                                     ns(),
-                                                     true /* isUpdateOrDelete */,
-                                                     false /* isUpsert */,
-                                                     BSON("_id" << 1),
-                                                     BSON("collation"
-                                                          << "lowercase") /* collation */,
-                                                     boost::none /* let */,
-                                                     boost::none /* legacyRuntimeConstants */,
-                                                     true /* isTimeseriesViewRequest */);
+    auto useTwoPhaseProtocol = write_without_shard_key::useTwoPhaseProtocol(
+        getOpCtx(),
+        ns(),
+        true /* isUpdateOrDelete */,
+        false /* isUpsert */,
+        BSON("_id" << 1),
+        BSON("collation" << "lowercase") /* collation */,
+        boost::none /* let */,
+        boost::none /* legacyRuntimeConstants */,
+        true /* isTimeseriesViewRequest */);
     ASSERT_EQ(useTwoPhaseProtocol, true);
 }
 
@@ -776,12 +763,9 @@ TEST_F(ProduceUpsertDocumentTest, produceUpsertDocumentUsingArrayFilterAndModifi
 TEST_F(ProduceUpsertDocumentTest, produceUpsertDocumentUsingCollation) {
     write_ops::UpdateOpEntry entry;
     BSONArrayBuilder arrayBuilder;
-    arrayBuilder.append(BSON("a"
-                             << "BAR"));
-    arrayBuilder.append(BSON("a"
-                             << "bar"));
-    arrayBuilder.append(BSON("a"
-                             << "foo"));
+    arrayBuilder.append(BSON("a" << "BAR"));
+    arrayBuilder.append(BSON("a" << "bar"));
+    arrayBuilder.append(BSON("a" << "foo"));
     entry.setQ(BSON("_id" << 4 << "x" << arrayBuilder.arr()));
     entry.setU(write_ops::UpdateModification::parseFromClassicUpdate(
         fromjson("{$set: {'x.$[b].a': 'FOO'}}")));

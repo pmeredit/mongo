@@ -42,9 +42,9 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_connection.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_error_util.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/temp_dir.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source_mock.h"
 
 namespace mongo {
@@ -76,9 +76,7 @@ public:
     WiredTigerTestHelper() {
         _ru = std::make_unique<WiredTigerRecoveryUnit>(&_connection, nullptr);
         _session = _ru->getSession();
-        auto wt_session = _session->getSession();
-        invariant(
-            wtRCToStatus(wt_session->create(wt_session, "table:mytable", nullptr), wt_session));
+        invariant(wtRCToStatus(_session->create("table:mytable", nullptr), *_session));
         _ru->abandonSnapshot();
     }
 

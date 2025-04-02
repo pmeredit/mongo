@@ -644,8 +644,6 @@ def _parse_struct(ctxt, spec, name, node):
         },
     )
 
-    # PyLint has difficulty with some iterables: https://github.com/PyCQA/pylint/issues/3105
-    # pylint: disable=not-an-iterable
     if (
         struct.generate_comparison_operators
         and struct.fields
@@ -998,13 +996,14 @@ def _parse_feature_flag(ctxt, spec, name, node):
         {
             "description": _RuleDesc("scalar", _RuleDesc.REQUIRED),
             "cpp_varname": _RuleDesc("scalar"),
-            "default": _RuleDesc(
-                "scalar_or_mapping", _RuleDesc.REQUIRED, mapping_parser_func=_parse_expression
-            ),
+            "default": _RuleDesc("scalar_or_mapping", mapping_parser_func=_parse_expression),
             "version": _RuleDesc("scalar"),
             "shouldBeFCVGated": _RuleDesc(
                 "scalar_or_mapping", _RuleDesc.REQUIRED, mapping_parser_func=_parse_expression
             ),
+            "enable_on_transitional_fcv": _RuleDesc("bool_scalar"),
+            "incremental_rollout_phase": _RuleDesc("scalar"),
+            "fcv_context_unaware": _RuleDesc("bool_scalar"),
         },
     )
 

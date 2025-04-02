@@ -84,6 +84,10 @@ DBCollection.prototype.bulkWrite = function(operations, options) {
     // Use bulk operation API already in the shell
     var bulkOp = opts.ordered ? this.initializeOrderedBulkOp() : this.initializeUnorderedBulkOp();
 
+    if (opts.rawData) {
+        bulkOp.setRawData();
+    }
+
     // Contains all inserted _ids
     var insertedIds = {};
 
@@ -266,6 +270,10 @@ DBCollection.prototype.insertOne = function(document, options) {
 
     // Use bulk operation API already in the shell
     var bulk = this.initializeOrderedBulkOp();
+
+    if (opts.rawData)
+        bulk.setRawData(opts.rawData);
+
     bulk.insert(document);
 
     try {
@@ -326,6 +334,9 @@ DBCollection.prototype.insertMany = function(documents, options) {
     // Use bulk operation API already in the shell
     var bulk = opts.ordered ? this.initializeOrderedBulkOp() : this.initializeUnorderedBulkOp();
 
+    if (opts.rawData)
+        bulk.setRawData(opts.rawData);
+
     // Add all operations to the bulk operation
     documents.forEach(function(doc) {
         bulk.insert(doc);
@@ -374,6 +385,10 @@ DBCollection.prototype.deleteOne = function(filter, options) {
     // Add the collation, if there is one.
     if (opts.collation) {
         removeOp.collation(opts.collation);
+    }
+
+    if (opts.rawData) {
+        bulk.setRawData(opts.rawData);
     }
 
     // Add the deleteOne operation.
@@ -431,6 +446,10 @@ DBCollection.prototype.deleteMany = function(filter, options) {
     // Add the collation, if there is one.
     if (opts.collation) {
         removeOp.collation(opts.collation);
+    }
+
+    if (opts.rawData) {
+        bulk.setRawData(opts.rawData);
     }
 
     // Add the deleteOne operation.
@@ -510,6 +529,10 @@ DBCollection.prototype.replaceOne = function(filter, replacement, options) {
 
     if (opts.hint) {
         op.hint(opts.hint);
+    }
+
+    if (opts.rawData) {
+        bulk.setRawData(opts.rawData);
     }
 
     op.replaceOne(replacement);
@@ -603,6 +626,10 @@ DBCollection.prototype.updateOne = function(filter, update, options) {
 
     if (opts.arrayFilters) {
         op.arrayFilters(opts.arrayFilters);
+    }
+
+    if (opts.rawData) {
+        bulk.setRawData(opts.rawData);
     }
 
     op.updateOne(update);
@@ -701,6 +728,10 @@ DBCollection.prototype.updateMany = function(filter, update, options) {
         op.arrayFilters(opts.arrayFilters);
     }
 
+    if (opts.rawData) {
+        bulk.setRawData(opts.rawData);
+    }
+
     op.update(update);
 
     try {
@@ -768,6 +799,10 @@ DBCollection.prototype.findOneAndDelete = function(filter, options) {
         cmd.collation = opts.collation;
     }
 
+    if (opts.rawData) {
+        cmd.rawData = opts.rawData;
+    }
+
     // Get the write concern
     var writeConcern = this._createWriteConcern(opts);
 
@@ -833,6 +868,10 @@ DBCollection.prototype.findOneAndReplace = function(filter, replacement, options
 
     if (opts.hint) {
         cmd.hint = opts.hint;
+    }
+
+    if (opts.rawData) {
+        cmd.rawData = opts.rawData;
     }
 
     // Set flags
@@ -910,6 +949,10 @@ DBCollection.prototype.findOneAndUpdate = function(filter, update, options) {
 
     if (opts.hint) {
         cmd.hint = opts.hint;
+    }
+
+    if (opts.rawData) {
+        cmd.rawData = opts.rawData;
     }
 
     // Set flags

@@ -744,7 +744,7 @@ done:
    return kms_request_str_detach (sig);
 }
 
-void
+static void
 kms_request_validate (kms_request_t *request)
 {
    if (!check_and_prohibit_kmip (request)) {
@@ -789,7 +789,7 @@ kms_request_get_signed (kms_request_t *request)
    }
 
    if (!check_and_prohibit_kmip (request)) {
-      return false;
+      return NULL;
    }
 
    if (!finalize (request)) {
@@ -857,11 +857,11 @@ kms_request_to_string (kms_request_t *request)
    size_t i;
 
    if (!finalize (request)) {
-      return false;
+      return NULL;
    }
 
    if (!check_and_prohibit_kmip (request)) {
-      return false;
+      return NULL;
    }
 
    if (request->to_string) {

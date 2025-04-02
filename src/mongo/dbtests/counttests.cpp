@@ -57,8 +57,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -80,8 +79,8 @@ public:
             collection = _database->createCollection(&_opCtx, nss());
 
             IndexCatalog* indexCatalog = collection->getIndexCatalog();
-            auto indexSpec = BSON("v" << static_cast<int>(IndexDescriptor::kLatestIndexVersion)
-                                      << "key" << BSON("a" << 1) << "name"
+            auto indexSpec = BSON("v" << static_cast<int>(IndexConfig::kLatestIndexVersion) << "key"
+                                      << BSON("a" << 1) << "name"
                                       << "a_1");
             uassertStatusOK(
                 indexCatalog->createIndexOnEmptyCollection(&_opCtx, collection, indexSpec));

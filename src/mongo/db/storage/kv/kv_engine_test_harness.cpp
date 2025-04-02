@@ -43,12 +43,10 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/oid.h"
 #include "mongo/bson/timestamp.h"
-#include "mongo/db/catalog/collection_impl.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
-#include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/multitenancy_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
@@ -67,9 +65,8 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/db/transaction_resources.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
@@ -114,7 +111,12 @@ protected:
                            const CollectionOptions& options,
                            DurableCatalog* catalog) {
         Lock::DBLock dbLk(opCtx, ns.dbName(), MODE_IX);
-        auto swEntry = catalog->_addEntry(opCtx, ns, options);
+        // TODO SERVER-103136: Evaluate the better way to test idents generated with different
+        // <Directory<PerDb/ForIndexes>> options without relying on the DurableCatalog's tracking of
+        // the parameters.
+        const auto ident = ident::generateNewCollectionIdent(
+            ns.dbName(), catalog->_directoryPerDb, catalog->_directoryForIndexes);
+        auto swEntry = catalog->_addEntry(opCtx, ns, ident, options);
         ASSERT_OK(swEntry.getStatus());
         return swEntry.getValue().catalogId;
     }
@@ -305,24 +307,22 @@ TEST_F(KVEngineTestHarness, SimpleSorted1) {
         uow.commit();
     }
 
-    std::unique_ptr<Collection> collection;
-    {
-        auto opCtx = _makeOperationContext(engine);
-        WriteUnitOfWork uow(opCtx.get());
-        collection =
-            std::make_unique<CollectionImpl>(opCtx.get(), nss, RecordId(0), mdPtr, std::move(rs));
-        uow.commit();
-    }
-
-    IndexDescriptor desc("",
-                         BSON("v" << static_cast<int>(IndexDescriptor::kLatestIndexVersion) << "key"
-                                  << BSON("a" << 1)));
+    std::string indexName = "name";
+    auto spec = BSON("v" << static_cast<int>(IndexConfig::kLatestIndexVersion) << "key"
+                         << BSON("a" << 1) << "name" << indexName);
+    auto ordering = Ordering::allAscending();
+    IndexConfig config{false /* isIdIndex */,
+                       false /* unique */,
+                       IndexConfig::kLatestIndexVersion,
+                       spec,
+                       indexName,
+                       ordering};
     std::unique_ptr<SortedDataInterface> sorted;
     {
         auto opCtx = _makeOperationContext(engine);
         ASSERT_OK(engine->createSortedDataInterface(
-            *shard_role_details::getRecoveryUnit(opCtx.get()), nss, options, ident, &desc));
-        sorted = engine->getSortedDataInterface(opCtx.get(), nss, options, ident, &desc);
+            *shard_role_details::getRecoveryUnit(opCtx.get()), nss, options, ident, config));
+        sorted = engine->getSortedDataInterface(opCtx.get(), nss, options, ident, config);
         ASSERT(sorted);
     }
 
@@ -1199,7 +1199,7 @@ TEST_F(DurableCatalogTest, Idx1) {
                                   CollectionOptions(),
                                   catalog.get());
         ASSERT_NOT_EQUALS("a.b", catalog->getEntry(catalogId).ident);
-        ASSERT_TRUE(ident::isUserDataIdent(catalog->getEntry(catalogId).ident));
+        ASSERT_TRUE(ident::isCollectionOrIndexIdent(catalog->getEntry(catalogId).ident));
         uow.commit();
     }
 
@@ -1212,8 +1212,7 @@ TEST_F(DurableCatalogTest, Idx1) {
         md.nss = NamespaceString::createNamespaceString_forTest(boost::none, "a.b");
 
         BSONCollectionCatalogEntry::IndexMetaData imd;
-        imd.spec = BSON("name"
-                        << "foo");
+        imd.spec = BSON("name" << "foo");
         imd.ready = false;
         imd.multikey = false;
         md.indexes.push_back(imd);
@@ -1232,7 +1231,8 @@ TEST_F(DurableCatalogTest, Idx1) {
         auto clientAndCtx = makeClientAndCtx("opCtx");
         auto opCtx = clientAndCtx.opCtx();
         ASSERT_EQUALS(idxIndent, getIndexIdent(opCtx, catalog.get(), catalogId, "foo"));
-        ASSERT_TRUE(ident::isUserDataIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
+        ASSERT_TRUE(
+            ident::isCollectionOrIndexIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
     }
 
     {
@@ -1245,8 +1245,7 @@ TEST_F(DurableCatalogTest, Idx1) {
         putMetaData(opCtx, catalog.get(), catalogId, md);  // remove index
 
         BSONCollectionCatalogEntry::IndexMetaData imd;
-        imd.spec = BSON("name"
-                        << "foo");
+        imd.spec = BSON("name" << "foo");
         imd.ready = false;
         imd.multikey = false;
         md.indexes.push_back(imd);
@@ -1292,7 +1291,7 @@ TEST_F(DurableCatalogTest, DirectoryPerDb1) {
                                   CollectionOptions(),
                                   catalog.get());
         ASSERT_STRING_CONTAINS(catalog->getEntry(catalogId).ident, "a/");
-        ASSERT_TRUE(ident::isUserDataIdent(catalog->getEntry(catalogId).ident));
+        ASSERT_TRUE(ident::isCollectionOrIndexIdent(catalog->getEntry(catalogId).ident));
         uow.commit();
     }
 
@@ -1305,14 +1304,14 @@ TEST_F(DurableCatalogTest, DirectoryPerDb1) {
         md.nss = NamespaceString::createNamespaceString_forTest(boost::none, "a.b");
 
         BSONCollectionCatalogEntry::IndexMetaData imd;
-        imd.spec = BSON("name"
-                        << "foo");
+        imd.spec = BSON("name" << "foo");
         imd.ready = false;
         imd.multikey = false;
         md.indexes.push_back(imd);
         putMetaData(opCtx, catalog.get(), catalogId, md);
         ASSERT_STRING_CONTAINS(getIndexIdent(opCtx, catalog.get(), catalogId, "foo"), "a/");
-        ASSERT_TRUE(ident::isUserDataIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
+        ASSERT_TRUE(
+            ident::isCollectionOrIndexIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
         uow.commit();
     }
 }
@@ -1348,7 +1347,7 @@ TEST_F(DurableCatalogTest, Split1) {
                                   CollectionOptions(),
                                   catalog.get());
         ASSERT_STRING_CONTAINS(catalog->getEntry(catalogId).ident, "collection/");
-        ASSERT_TRUE(ident::isUserDataIdent(catalog->getEntry(catalogId).ident));
+        ASSERT_TRUE(ident::isCollectionOrIndexIdent(catalog->getEntry(catalogId).ident));
         uow.commit();
     }
 
@@ -1361,14 +1360,14 @@ TEST_F(DurableCatalogTest, Split1) {
         md.nss = NamespaceString::createNamespaceString_forTest(boost::none, "a.b");
 
         BSONCollectionCatalogEntry::IndexMetaData imd;
-        imd.spec = BSON("name"
-                        << "foo");
+        imd.spec = BSON("name" << "foo");
         imd.ready = false;
         imd.multikey = false;
         md.indexes.push_back(imd);
         putMetaData(opCtx, catalog.get(), catalogId, md);
         ASSERT_STRING_CONTAINS(getIndexIdent(opCtx, catalog.get(), catalogId, "foo"), "index/");
-        ASSERT_TRUE(ident::isUserDataIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
+        ASSERT_TRUE(
+            ident::isCollectionOrIndexIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
         uow.commit();
     }
 }
@@ -1378,6 +1377,8 @@ TEST_F(DurableCatalogTest, DirectoryPerAndSplit1) {
 
     std::unique_ptr<RecordStore> rs;
     std::unique_ptr<DurableCatalog> catalog;
+    const bool directoryPerDB = true;
+    const bool directoryPerIndexes = true;
     {
         auto clientAndCtx = makeClientAndCtx("opCtx");
         auto opCtx = clientAndCtx.opCtx();
@@ -1390,7 +1391,8 @@ TEST_F(DurableCatalogTest, DirectoryPerAndSplit1) {
                                     NamespaceString::createNamespaceString_forTest("catalog"),
                                     "catalog",
                                     CollectionOptions());
-        catalog = std::make_unique<DurableCatalog>(rs.get(), true, true, nullptr);
+        catalog = std::make_unique<DurableCatalog>(
+            rs.get(), directoryPerDB, directoryPerIndexes, nullptr);
         uow.commit();
     }
 
@@ -1404,7 +1406,7 @@ TEST_F(DurableCatalogTest, DirectoryPerAndSplit1) {
                                   CollectionOptions(),
                                   catalog.get());
         ASSERT_STRING_CONTAINS(catalog->getEntry(catalogId).ident, "a/collection/");
-        ASSERT_TRUE(ident::isUserDataIdent(catalog->getEntry(catalogId).ident));
+        ASSERT_TRUE(ident::isCollectionOrIndexIdent(catalog->getEntry(catalogId).ident));
         uow.commit();
     }
 
@@ -1417,14 +1419,14 @@ TEST_F(DurableCatalogTest, DirectoryPerAndSplit1) {
         md.nss = NamespaceString::createNamespaceString_forTest(boost::none, "a.b");
 
         BSONCollectionCatalogEntry::IndexMetaData imd;
-        imd.spec = BSON("name"
-                        << "foo");
+        imd.spec = BSON("name" << "foo");
         imd.ready = false;
         imd.multikey = false;
         md.indexes.push_back(imd);
         putMetaData(opCtx, catalog.get(), catalogId, md);
         ASSERT_STRING_CONTAINS(getIndexIdent(opCtx, catalog.get(), catalogId, "foo"), "a/index/");
-        ASSERT_TRUE(ident::isUserDataIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
+        ASSERT_TRUE(
+            ident::isCollectionOrIndexIdent(getIndexIdent(opCtx, catalog.get(), catalogId, "foo")));
         uow.commit();
     }
 }
@@ -1434,59 +1436,6 @@ TEST_F(DurableCatalogTest, BackupImplemented) {
     ASSERT(engine);
     ASSERT_OK(engine->beginBackup());
     engine->endBackup();
-}
-
-DEATH_TEST_REGEX_F(DurableCatalogTest,
-                   TerminateOnNonNumericIndexVersion,
-                   "Fatal assertion.*50942") {
-    KVEngine* engine = helper->getEngine();
-    ASSERT(engine);
-
-    std::string ident = "abc";
-    NamespaceString nss = NamespaceString::createNamespaceString_forTest("mydb.mycoll");
-
-    CollectionOptions options;
-    options.uuid = UUID::gen();
-
-    auto mdPtr = std::make_shared<BSONCollectionCatalogEntry::MetaData>();
-    mdPtr->nss = nss;
-    mdPtr->options = options;
-
-    std::unique_ptr<RecordStore> rs;
-    {
-        auto clientAndCtx = makeClientAndCtx("opCtx");
-        auto opCtx = clientAndCtx.opCtx();
-        WriteUnitOfWork uow(opCtx);
-        ASSERT_OK(engine->createRecordStore(
-            NamespaceString::createNamespaceString_forTest("catalog"), "catalog", options));
-        rs = engine->getRecordStore(
-            opCtx, NamespaceString::createNamespaceString_forTest("catalog"), "catalog", options);
-        uow.commit();
-    }
-
-    std::unique_ptr<CollectionImpl> collection;
-    {
-        auto clientAndCtx = makeClientAndCtx("opCtx");
-        auto opCtx = clientAndCtx.opCtx();
-        WriteUnitOfWork uow(opCtx);
-        collection =
-            std::make_unique<CollectionImpl>(opCtx, nss, RecordId(0), mdPtr, std::move(rs));
-        uow.commit();
-    }
-
-    IndexDescriptor desc("",
-                         BSON("v"
-                              << "1"
-                              << "key" << BSON("a" << 1)));
-    std::unique_ptr<SortedDataInterface> sorted;
-    {
-        auto clientAndCtx = makeClientAndCtx("opCtx");
-        auto opCtx = clientAndCtx.opCtx();
-        ASSERT_OK(engine->createSortedDataInterface(
-            *shard_role_details::getRecoveryUnit(opCtx), nss, CollectionOptions(), ident, &desc));
-        sorted = engine->getSortedDataInterface(opCtx, nss, CollectionOptions(), ident, &desc);
-        ASSERT(sorted);
-    }
 }
 
 TEST_F(DurableCatalogTest, EntryIncludesTenantIdInMultitenantEnv) {

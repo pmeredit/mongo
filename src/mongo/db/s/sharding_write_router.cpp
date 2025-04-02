@@ -44,7 +44,8 @@
 
 namespace mongo {
 
-ShardingWriteRouter::ShardingWriteRouter(OperationContext* opCtx, const NamespaceString& nss) {
+ShardingWriteRouter::ShardingWriteRouter(OperationContext* opCtx, const NamespaceString& nss)
+    : _disableRuntimeChecks(opCtx) {
     if (serverGlobalParams.clusterRole.has(ClusterRole::ShardServer)) {
         _scopedCss.emplace(CollectionShardingState::assertCollectionLockedAndAcquire(opCtx, nss));
         _collDesc = (*_scopedCss)->getCollectionDescription(opCtx);
@@ -68,15 +69,12 @@ ShardingWriteRouter::ShardingWriteRouter(OperationContext* opCtx, const Namespac
             auto catalogCache = Grid::get(opCtx)->catalogCache();
             invariant(catalogCache);
 
-            _reshardingChunkMgr =
-                uassertStatusOK(
-                    catalogCache->getCollectionRoutingInfo(
-                        opCtx, donorFields->getTempReshardingNss(), true /* allowLocks */))
-                    .cm;
-
+            const auto& cri = uassertStatusOK(catalogCache->getCollectionRoutingInfo(
+                opCtx, donorFields->getTempReshardingNss(), true /* allowLocks */));
             tassert(6862800,
                     "Routing information for the temporary resharding collection is stale",
-                    _reshardingChunkMgr->hasRoutingTable());
+                    cri.hasRoutingTable());
+            _reshardingChunkMgr = cri.getChunkManager();
         }
     }
 }

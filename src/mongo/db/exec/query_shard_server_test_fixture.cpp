@@ -147,17 +147,17 @@ CollectionMetadata QueryShardServerTestFixture::prepareTestData(
                                            true,
                                            _chunks);
 
-    ChunkManager cm(curShard,
-                    DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                    makeStandaloneRoutingTableHistory(std::move(rt)),
-                    boost::none);
+    ChunkManager cm(makeStandaloneRoutingTableHistory(std::move(rt)), boost::none);
     ASSERT_EQ(_chunks.size(), cm.numChunks());
 
     {
         AutoGetCollection autoColl(operationContext(), _testNss, MODE_X);
+        // TODO(SERVER-101914): Refactor away from using CollectionShardingRuntime.
+        // NOLINTBEGIN(mongo-collection-sharding-runtime-check)
         auto scopedCsr = CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
             operationContext(), _testNss);
         scopedCsr->setFilteringMetadata(operationContext(), CollectionMetadata(cm, curShard));
+        // NOLINTEND(mongo-collection-sharding-runtime-check)
     }
 
     _manager = std::make_shared<MetadataManager>(

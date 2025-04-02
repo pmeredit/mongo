@@ -94,8 +94,9 @@ public:
 
         void typedRun(OperationContext* opCtx) {
             uassert(ErrorCodes::CommandNotSupported,
-                    format(FMT_STRING("{} command not enabled"), definition()->getName()),
+                    fmt::format("{} command not enabled", definition()->getName()),
                     feature_flags::gGlobalIndexesShardingCatalog.isEnabled(
+                        VersionContext::getDecoration(opCtx),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
             ShardingState::get(opCtx)->assertCanAcceptShardedCommands();
 
@@ -177,8 +178,9 @@ public:
 
         void typedRun(OperationContext* opCtx) {
             uassert(ErrorCodes::CommandNotSupported,
-                    format(FMT_STRING("{} command not enabled"), definition()->getName()),
+                    fmt::format("{} command not enabled", definition()->getName()),
                     feature_flags::gGlobalIndexesShardingCatalog.isEnabled(
+                        VersionContext::getDecoration(opCtx),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
             ShardingState::get(opCtx)->assertCanAcceptShardedCommands();
 

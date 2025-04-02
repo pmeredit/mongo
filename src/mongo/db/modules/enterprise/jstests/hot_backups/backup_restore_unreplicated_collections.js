@@ -22,11 +22,6 @@ const rst = new ReplSetTest({
         // Disable checkpoints to avoid races with taking backups.
         syncdelay: 0,
         setParameter: {
-            // Set the history window to zero to prevent delaying ident drops.
-            minSnapshotHistoryWindowInSeconds: 0,
-            // Control the timestamp monitor to prevent the system.profile collection from being
-            // dropped before a backup is taken.
-            "failpoint.pauseTimestampMonitor": tojson({mode: "alwaysOn"}),
             // Set storage logComponentVerbosity to one so we see the log id 22214.
             logComponentVerbosity: tojson({storage: 1}),
         }
@@ -52,13 +47,13 @@ checkLog.containsJson(primary, 22214, {namespace: "test.system.profile"});
 
 // Take a backup.
 const backupPath = primary.dbpath + "backup_restore";
-const backupCursor = openBackupCursor(primary.getDB("admin"));
+// Opt out of taking a checkpoint when we open the backup cursor so we preserve the state of the
+// catalog entries before the database drop.
+const backupCursor = openBackupCursor(primary.getDB("admin"), {takeCheckpoint: false});
 const metadata = getBackupCursorMetadata(backupCursor);
 copyBackupCursorFiles(
     backupCursor, /*namespacesToSkip=*/[], metadata.dbpath, backupPath, false /* async */);
-
-assert.commandWorked(
-    primary.adminCommand({configureFailPoint: "pauseTimestampMonitor", mode: "off"}));
+backupCursor.close();
 
 rst.stopSet(/*signal=*/ null, /*forRestart=*/ true);
 

@@ -51,9 +51,7 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/executor/test_network_connection_hook.h"
 #include "mongo/rpc/metadata.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/notification.h"
 #include "mongo/util/duration.h"
@@ -75,25 +73,23 @@ TEST_F(NetworkInterfaceMockTest, ConnectionHook) {
     bool handleReplyCalled = false;
     bool gotExpectedReply = false;
 
-    RemoteCommandRequest expectedRequest{testHost(),
-                                         DatabaseName::createDatabaseName_forTest(boost::none,
-                                                                                  "test"),
-                                         BSON("1" << 2),
-                                         BSON("some"
-                                              << "stuff"),
-                                         nullptr};
+    RemoteCommandRequest expectedRequest{
+        testHost(),
+        DatabaseName::createDatabaseName_forTest(boost::none, "test"),
+        BSON("1" << 2),
+        BSON("some" << "stuff"),
+        nullptr};
 
-    RemoteCommandResponse expectedResponse = RemoteCommandResponse::make_forTest(BSON("foo"
-                                                                                      << "bar"
-                                                                                      << "baz"
-                                                                                      << "garply"
-                                                                                      << "bar"
-                                                                                      << "baz"),
-                                                                                 Milliseconds(30));
+    RemoteCommandResponse expectedResponse =
+        RemoteCommandResponse::make_forTest(BSON("foo" << "bar"
+                                                       << "baz"
+                                                       << "garply"
+                                                       << "bar"
+                                                       << "baz"),
+                                            Milliseconds(30));
 
     // need to copy as it will be moved
-    auto helloReplyData = BSON("iamyour"
-                               << "father");
+    auto helloReplyData = BSON("iamyour" << "father");
 
     RemoteCommandResponse helloReply =
         RemoteCommandResponse::make_forTest(helloReplyData.copy(), Milliseconds(20));
@@ -138,10 +134,8 @@ TEST_F(NetworkInterfaceMockTest, ConnectionHook) {
         BSON("test" << 1),
         rpc::makeEmptyMetadata(),
         nullptr};
-    RemoteCommandResponse actualResponseExpected{testHost(),
-                                                 BSON("1212121212"
-                                                      << "12121212121212"),
-                                                 Milliseconds(0)};
+    RemoteCommandResponse actualResponseExpected{
+        testHost(), BSON("1212121212" << "12121212121212"), Milliseconds(0)};
 
     net()
         .startCommand(cb, actualCommandExpected)
@@ -477,9 +471,8 @@ TEST_F(NetworkInterfaceMockTest, DestroyCancellationSourceBeforeRunning) {
 
     TaskExecutor::CallbackHandle cb{};
     RemoteCommandRequest request{kUnimportantRequest};
-    RemoteCommandResponse resp = RemoteCommandResponse::make_forTest(BSON("foo"
-                                                                          << "bar"),
-                                                                     Milliseconds(30));
+    RemoteCommandResponse resp =
+        RemoteCommandResponse::make_forTest(BSON("foo" << "bar"), Milliseconds(30));
     CancellationSource source;
 
     auto deferred = net().startCommand(cb, request, nullptr, source.token());
@@ -500,9 +493,8 @@ TEST_F(NetworkInterfaceMockTest, CancelCommandAfterResponse) {
 
     TaskExecutor::CallbackHandle cb{};
     RemoteCommandRequest request{kUnimportantRequest};
-    RemoteCommandResponse resp = RemoteCommandResponse::make_forTest(BSON("foo"
-                                                                          << "bar"),
-                                                                     Milliseconds(30));
+    RemoteCommandResponse resp =
+        RemoteCommandResponse::make_forTest(BSON("foo" << "bar"), Milliseconds(30));
     CancellationSource source;
 
     auto deferred = net().startCommand(cb, request, nullptr, source.token());
@@ -530,9 +522,8 @@ TEST_F(NetworkInterfaceMockTest, DrainUnfinishedNetworkOperations) {
 
     TaskExecutor::CallbackHandle cb{};
     RemoteCommandRequest request{kUnimportantRequest};
-    RemoteCommandResponse resp = RemoteCommandResponse::make_forTest(BSON("foo"
-                                                                          << "bar"),
-                                                                     Milliseconds(30));
+    RemoteCommandResponse resp =
+        RemoteCommandResponse::make_forTest(BSON("foo" << "bar"), Milliseconds(30));
 
     auto deferred = net().startCommand(cb, request, nullptr, CancellationToken::uncancelable());
 
@@ -582,9 +573,8 @@ TEST_F(NetworkInterfaceMockTest, TestNumReadyRequests) {
     ASSERT_EQ(net().getNumReadyRequests(), 4);
 
 
-    RemoteCommandResponse resp = RemoteCommandResponse::make_forTest(BSON("foo"
-                                                                          << "bar"),
-                                                                     Milliseconds(30));
+    RemoteCommandResponse resp =
+        RemoteCommandResponse::make_forTest(BSON("foo" << "bar"), Milliseconds(30));
     auto req = net().getNextReadyRequest();
     net().scheduleResponse(req, net().now(), resp);
     net().runReadyNetworkOperations();

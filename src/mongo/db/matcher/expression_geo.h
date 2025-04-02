@@ -46,12 +46,10 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/util/builder_fwd.h"
 #include "mongo/db/geo/geometry_container.h"
-#include "mongo/db/geo/geoparser.h"
 #include "mongo/db/geo/shapes.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/matcher/expression_visitor.h"
-#include "mongo/db/matcher/match_details.h"
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/util/assert_util.h"
 
@@ -113,16 +111,6 @@ public:
                        clonable_ptr<ErrorAnnotation> annotation = nullptr);
 
     ~GeoMatchExpression() override {}
-    static bool contains(const GeometryContainer& queryGeom,
-                         const GeoExpression::Predicate& queryPredicate,
-                         bool skipValidation,
-                         const BSONElement& e,
-                         MatchDetails*);
-    static bool contains(const GeometryContainer& queryGeom,
-                         const GeoExpression::Predicate& queryPredicate,
-                         GeometryContainer* geometry);
-    bool matchesSingleElement(const BSONElement&, MatchDetails* details = nullptr) const final;
-    bool matchesGeoContainer(const GeometryContainer&) const;
 
     void debugString(StringBuilder& debug, int indentationLevel = 0) const override;
 
@@ -227,12 +215,6 @@ public:
 
     ~GeoNearMatchExpression() override {}
 
-    /**
-     * Stub implementation that should never be called, since geoNear execution requires an
-     * appropriate geo index.
-     */
-    bool matchesSingleElement(const BSONElement&, MatchDetails* details = nullptr) const final;
-
     void debugString(StringBuilder& debug, int indentationLevel = 0) const override;
 
     void appendSerializedRightHandSide(BSONObjBuilder* bob,
@@ -288,17 +270,6 @@ public:
         out->append("$TwoDPtInAnnulusExpression", true);
     }
 
-    bool matchesSingleElement(const BSONElement& e, MatchDetails* details = nullptr) const final {
-        if (!e.isABSONObj())
-            return false;
-
-        PointWithCRS point;
-        if (!GeoParser::parseStoredPoint(e, &point).isOK())
-            return false;
-
-        return _annulus.contains(point.oldPoint);
-    }
-
     //
     // These won't be called.
     //
@@ -306,20 +277,20 @@ public:
     void appendSerializedRightHandSide(BSONObjBuilder* bob,
                                        const SerializationOptions& opts = {},
                                        bool includePath = true) const final {
-        MONGO_UNREACHABLE;
+        MONGO_UNREACHABLE_TASSERT(9911958);
     }
 
     void debugString(StringBuilder& debug, int level = 0) const final {
-        MONGO_UNREACHABLE;
+        MONGO_UNREACHABLE_TASSERT(9911959);
     }
 
     bool equivalent(const MatchExpression* other) const final {
-        MONGO_UNREACHABLE;
+        MONGO_UNREACHABLE_TASSERT(9911960);
         return false;
     }
 
     std::unique_ptr<MatchExpression> clone() const final {
-        MONGO_UNREACHABLE;
+        MONGO_UNREACHABLE_TASSERT(9911961);
         return nullptr;
     }
 

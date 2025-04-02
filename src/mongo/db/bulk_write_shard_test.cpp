@@ -74,8 +74,7 @@
 #include "mongo/s/shard_version.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
@@ -156,7 +155,7 @@ void installDatabaseMetadata(OperationContext* opCtx,
 }
 
 void installUnshardedCollectionMetadata(OperationContext* opCtx, const NamespaceString& nss) {
-    const auto unshardedCollectionMetadata = CollectionMetadata();
+    const auto unshardedCollectionMetadata = CollectionMetadata::UNTRACKED();
     AutoGetCollection coll(opCtx, nss, MODE_IX);
     CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, nss)
         ->setFilteringMetadata(opCtx, unshardedCollectionMetadata);
@@ -164,7 +163,6 @@ void installUnshardedCollectionMetadata(OperationContext* opCtx, const Namespace
 
 void installShardedCollectionMetadata(OperationContext* opCtx,
                                       const NamespaceString& nss,
-                                      const DatabaseVersion& dbVersion,
                                       std::vector<ChunkType> chunks,
                                       ShardId thisShardId) {
     ASSERT(!chunks.empty());
@@ -197,8 +195,8 @@ void installShardedCollectionMetadata(OperationContext* opCtx,
         RoutingTableHistoryValueHandle(std::make_shared<RoutingTableHistory>(std::move(rt)),
                                        ComparableChunkVersion::makeComparableChunkVersion(version));
 
-    const auto collectionMetadata = CollectionMetadata(
-        ChunkManager(thisShardId, dbVersion, rtHandle, boost::none), thisShardId);
+    const auto collectionMetadata =
+        CollectionMetadata(ChunkManager(rtHandle, boost::none), thisShardId);
 
     AutoGetCollection coll(opCtx, nss, MODE_IX);
     CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, nss)
@@ -229,7 +227,6 @@ void BulkWriteShardTest::setUp() {
     installShardedCollectionMetadata(
         opCtx(),
         nssShardedCollection1,
-        dbVersionTestDb1,
         {ChunkType(uuidShardedCollection1,
                    ChunkRange{BSON("skey" << MINKEY), BSON("skey" << MAXKEY)},
                    shardVersionShardedCollection1.placementVersion(),
@@ -242,7 +239,6 @@ void BulkWriteShardTest::setUp() {
     installShardedCollectionMetadata(
         opCtx(),
         nssShardedCollection2,
-        dbVersionTestDb2,
         {ChunkType(uuidShardedCollection2,
                    ChunkRange{BSON("skey" << MINKEY), BSON("skey" << MAXKEY)},
                    shardVersionShardedCollection2.placementVersion(),

@@ -73,7 +73,6 @@
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/md5.h"
 #include "mongo/util/net/socket_utils.h"
@@ -307,7 +306,7 @@ public:
             // TODO:SERVER-75848 Make this lock-free
             Lock::CollectionLock clk(opCtx, *nss, MODE_IS);
 
-            const Collection* collection = catalog->establishConsistentCollection(
+            auto collection = catalog->establishConsistentCollection(
                 opCtx,
                 {dbName, uuid},
                 shard_role_details::getRecoveryUnit(opCtx)->getPointInTimeReadTimestamp());
@@ -317,7 +316,7 @@ public:
                 continue;
             }
 
-            (void)checkAndHashCollection(collection);
+            (void)checkAndHashCollection(collection.get());
         }
 
         BSONObjBuilder bb(result.subobjStart("collections"));

@@ -64,6 +64,10 @@ public:
                    const optimizer::Let& let,
                    optimizer::ABT&,
                    optimizer::ABT& in);
+    void prepare(optimizer::ABT&, const optimizer::MultiLet& multiLet);
+    void transport(optimizer::ABT& n,
+                   const optimizer::MultiLet& multiLet,
+                   std::vector<optimizer::ABT>& args);
     void transport(optimizer::ABT& n,
                    const optimizer::LambdaApplication& app,
                    optimizer::ABT& lam,
@@ -77,6 +81,9 @@ public:
                    optimizer::ABT& lhs,
                    optimizer::ABT& rhs);
     void transport(optimizer::ABT& n,
+                   const optimizer::NaryOp& op,
+                   std::vector<optimizer::ABT>& args);
+    void transport(optimizer::ABT& n,
                    const optimizer::FunctionCall& op,
                    std::vector<optimizer::ABT>& args);
     void transport(optimizer::ABT& n,
@@ -84,6 +91,9 @@ public:
                    optimizer::ABT& cond,
                    optimizer::ABT& thenBranch,
                    optimizer::ABT& elseBranch);
+    void transport(optimizer::ABT& n,
+                   const optimizer::Switch& op,
+                   std::vector<optimizer::ABT>& args);
 
     void prepare(optimizer::ABT&, const optimizer::References& refs);
     void transport(optimizer::ABT& n,
@@ -91,7 +101,7 @@ public:
                    std::vector<optimizer::ABT>&);
 
     // The tree is passed in as NON-const reference as we will be updating it.
-    bool optimize(optimizer::ABT& n);
+    void optimize(optimizer::ABT& n);
 
 private:
     struct RefHash {
@@ -105,9 +115,10 @@ private:
     optimizer::DefinitionsMap _variableDefinitions;
     const CollatorInterface* _collator;
 
-    optimizer::opt::unordered_set<const optimizer::Variable*> _singleRef;
-    optimizer::opt::unordered_map<const optimizer::Let*, std::vector<const optimizer::Variable*>>
-        _letRefs;
+    optimizer::ProjectionNameSet _singleRef;
+    optimizer::opt::
+        unordered_map<optimizer::ProjectionName, size_t, optimizer::ProjectionName::Hasher>
+            _varRefs;
     optimizer::opt::
         unordered_map<optimizer::ABT::reference_type, optimizer::ABT::reference_type, RefHash>
             _staleDefs;

@@ -103,6 +103,11 @@ bool SubplanStage::canUseSubplanning(const CanonicalQuery& query) {
         return false;
     }
 
+    // Distinct-eligible queries cannot use subplanning.
+    if (query.getDistinct()) {
+        return false;
+    }
+
     // We can only subplan rooted $or queries, and only if they have at least one clause.
     return MatchExpression::OR == expr->matchType() && expr->numChildren() > 0;
 }
@@ -219,7 +224,7 @@ Status SubplanStage::pickBestPlan(const QueryPlannerParams& plannerParams,
             CardinalityEstimate{
                 CardinalityType{plannerParams.mainCollectionInfo.collStats->getCardinality()},
                 EstimationSource::Metadata},
-            SamplingConfidenceIntervalEnum::k95,
+            _query->getExpCtx()->getQueryKnobConfiguration().getConfidenceInterval(),
             samplingMarginOfError.load(),
             internalQueryNumChunksForChunkBasedSampling.load());
     }

@@ -79,12 +79,11 @@
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/db/update/update_util.h"
+#include "mongo/db/version_context.h"
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/reply_builder_interface.h"
 #include "mongo/s/async_requests_sender.h"
@@ -159,9 +158,7 @@ std::set<ShardId> getShardsToTarget(OperationContext* opCtx,
                                     const CollectionRoutingInfo& cri,
                                     NamespaceString nss,
                                     const ParsedCommandInfo& parsedInfo) {
-    const auto& cm = cri.cm;
-    std::set<ShardId> allShardsContainingChunksForNs;
-    uassert(ErrorCodes::NamespaceNotSharded, "The collection was dropped", cm.isSharded());
+    uassert(ErrorCodes::NamespaceNotSharded, "The collection was dropped", cri.isSharded());
 
     auto query = parsedInfo.query;
     auto collation = parsedInfo.collation;
@@ -173,7 +170,10 @@ std::set<ShardId> getShardsToTarget(OperationContext* opCtx,
                                                      boost::none,  // explain
                                                      parsedInfo.let,
                                                      boost::none /* legacyRuntimeConstants */);
-    getShardIdsForQuery(expCtx, query, collation, cm, &allShardsContainingChunksForNs);
+
+    std::set<ShardId> allShardsContainingChunksForNs;
+    getShardIdsForQuery(
+        expCtx, query, collation, cri.getChunkManager(), &allShardsContainingChunksForNs);
 
     // We must either get a subset of shards to target in the case of a partial shard key or we must
     // target all shards.
@@ -222,7 +222,8 @@ BSONObj createAggregateCmdObj(
 
     aggregate.setCollation(parsedInfo.collation);
     aggregate.setIsClusterQueryWithoutShardKeyCmd(true);
-    aggregation_request_helper::setFromRouter(aggregate, true);
+    aggregation_request_helper::setFromRouter(
+        VersionContext::getDecoration(opCtx), aggregate, true);
 
     if (parsedInfo.sort) {
         aggregate.setNeedsMerge(true);
@@ -424,21 +425,24 @@ public:
             auto allShardsContainingChunksForNs =
                 getShardsToTarget(opCtx, cri, nss, parsedInfoFromRequest);
 
-            // If the request omits the collation use the collection default collation. If
-            // the collection just has the simple collation, we can leave the collation as
-            // an empty BSONObj.
+            // If the request omits the collation use the collection default collation. If the
+            // collection just has the simple collation, we can leave the collation as an empty
+            // BSONObj. Note that this block assumes that we have a routing table (if we do not, we
+            // cannot know the collection default collation without contacting the primary shard).
+            tassert(8557201,
+                    "This function should not be invoked if we do not have a routing table",
+                    cri.hasRoutingTable());
+            const auto& cm = cri.getChunkManager();
             if (parsedInfoFromRequest.collation.isEmpty()) {
-                if (cri.cm.getDefaultCollator()) {
-                    parsedInfoFromRequest.collation =
-                        cri.cm.getDefaultCollator()->getSpec().toBSON();
+                if (const auto& defaultCollator = cm.getDefaultCollator()) {
+                    parsedInfoFromRequest.collation = defaultCollator->getSpec().toBSON();
                 }
             }
 
-            const auto& collectionUUID = cri.cm.getUUID();
-            const auto& timeseriesFields = cri.cm.isSharded() &&
-                    cri.cm.getTimeseriesFields().has_value() &&
+            const auto& collectionUUID = cm.getUUID();
+            const auto& timeseriesFields = cm.isSharded() && cm.getTimeseriesFields().has_value() &&
                     parsedInfoFromRequest.isTimeseriesNamespace
-                ? cri.cm.getTimeseriesFields()
+                ? cm.getTimeseriesFields()
                 : boost::none;
 
             auto cmdObj =
@@ -538,7 +542,7 @@ public:
                     timeseriesFields
                         ? boost::make_optional(timeseriesFields->getTimeseriesOptions())
                         : boost::none,
-                    cri.cm.getDefaultCollator());
+                    cri.getChunkManager().getDefaultCollator());
                 res.setTargetDoc(upsertDoc);
                 res.setUpsertRequired(true);
 

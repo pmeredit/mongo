@@ -29,12 +29,12 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/abt/abt_lower.h"
 #include "mongo/db/exec/sbe/stages/loop_join.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
+#include "mongo/db/exec/sbe/stages/window.h"
 #include "mongo/db/exec/sbe/values/cell_interface.h"
+#include "mongo/db/query/stage_builder/sbe/builder_state.h"
 #include "mongo/db/query/stage_builder/sbe/gen_abt_helpers.h"
-#include "mongo/db/query/stage_builder/sbe/gen_helpers.h"
 #include "mongo/db/query/stage_builder/sbe/sbexpr.h"
 
 namespace mongo::stage_builder {
@@ -156,8 +156,10 @@ public:
     SbExpr makeUnaryOp(sbe::EPrimUnary::Op unaryOp, SbExpr e);
     SbExpr makeUnaryOp(optimizer::Operations unaryOp, SbExpr e);
 
-    SbExpr makeBinaryOp(sbe::EPrimBinary::Op unaryOp, SbExpr lhs, SbExpr rhs);
-    SbExpr makeBinaryOp(optimizer::Operations unaryOp, SbExpr lhs, SbExpr rhs);
+    SbExpr makeBinaryOp(sbe::EPrimBinary::Op binaryOp, SbExpr lhs, SbExpr rhs);
+    SbExpr makeBinaryOp(optimizer::Operations binaryOp, SbExpr lhs, SbExpr rhs);
+
+    SbExpr makeNaryOp(optimizer::Operations naryOp, SbExpr::Vector args);
 
     SbExpr makeConstant(sbe::value::TypeTags tag, sbe::value::Value val);
     SbExpr makeNothingConstant();
@@ -240,15 +242,16 @@ public:
     }
 
     /**
-     * Creates a balanced boolean binary expression tree from given collection of leaf expression.
+     * Creates a boolean expression tree from given collection of leaf expression.
      */
-    SbExpr makeBalancedBooleanOpTree(sbe::EPrimBinary::Op logicOp, SbExpr::Vector leaves) {
-        return stage_builder::makeBalancedBooleanOpTree(logicOp, std::move(leaves), _state);
+    SbExpr makeBooleanOpTree(optimizer::Operations logicOp, SbExpr lhs, SbExpr rhs) {
+        SbExpr::Vector leaves;
+        leaves.emplace_back(std::move(lhs));
+        leaves.emplace_back(std::move(rhs));
+        return stage_builder::makeBooleanOpTree(logicOp, std::move(leaves), _state);
     }
-
-    SbExpr makeBalancedBooleanOpTree(optimizer::Operations logicOp, SbExpr::Vector leaves) {
-        return stage_builder::makeBalancedBooleanOpTree(
-            getEPrimBinaryOp(logicOp), std::move(leaves), _state);
+    SbExpr makeBooleanOpTree(optimizer::Operations logicOp, SbExpr::Vector leaves) {
+        return stage_builder::makeBooleanOpTree(logicOp, std::move(leaves), _state);
     }
 
     std::unique_ptr<sbe::EExpression> lower(SbExpr& e, const VariableTypes* varTypes = nullptr) {
@@ -464,6 +467,8 @@ public:
 
     SbStage makeUnique(SbStage stage, const SbSlotVector& keys);
 
+    SbStage makeUniqueRoaring(SbStage stage, SbSlot key);
+
     SbStage makeSort(SbStage stage,
                      const SbSlotVector& orderBy,
                      std::vector<sbe::value::SortDirection> dirs,
@@ -488,46 +493,12 @@ public:
                      size_t memoryLimit);
 
     std::tuple<SbStage, SbSlotVector, SbSlotVector> makeHashAgg(
-        SbStage stage,
-        const SbSlotVector& groupBySlots,
-        SbAggExprVector sbAggExprs,
-        boost::optional<sbe::value::SlotId> collatorSlot,
-        SbExprSbSlotVector mergingExprs) {
-        return makeHashAgg(VariableTypes{},
-                           std::move(stage),
-                           groupBySlots,
-                           std::move(sbAggExprs),
-                           collatorSlot,
-                           std::move(mergingExprs));
-    }
-
-    std::tuple<SbStage, SbSlotVector, SbSlotVector> makeHashAgg(
         const VariableTypes& varTypes,
         SbStage stage,
         const SbSlotVector& groupBySlots,
         SbAggExprVector sbAggExprs,
         boost::optional<sbe::value::SlotId> collatorSlot,
         SbExprSbSlotVector mergingExprs);
-
-    std::tuple<SbStage, SbSlotVector, SbSlotVector> makeBlockHashAgg(
-        SbStage stage,
-        const SbSlotVector& groupBySlots,
-        SbAggExprVector sbAggExprs,
-        SbSlot selectivityBitmapSlot,
-        const SbSlotVector& blockAccArgSlots,
-        SbSlot bitmapInternalSlot,
-        const SbSlotVector& accumulatorDataSlots,
-        SbExprSbSlotVector mergingExprs) {
-        return makeBlockHashAgg(VariableTypes{},
-                                std::move(stage),
-                                groupBySlots,
-                                std::move(sbAggExprs),
-                                selectivityBitmapSlot,
-                                blockAccArgSlots,
-                                bitmapInternalSlot,
-                                accumulatorDataSlots,
-                                std::move(mergingExprs));
-    }
 
     std::tuple<SbStage, SbSlotVector, SbSlotVector> makeBlockHashAgg(
         const VariableTypes& varTypes,
@@ -718,5 +689,20 @@ protected:
     SbSlotVector allocateOutSlotsForMergeStage(const std::vector<SbSlotVector>& slots);
 
     PlanNodeId _nodeId;
+
+private:
+    bool useIncreasedSpilling(bool allowDiskUse,
+                              SbeHashAggIncreasedSpillingModeEnum forceIncreasedSpillingMode) {
+        switch (forceIncreasedSpillingMode) {
+            case SbeHashAggIncreasedSpillingModeEnum::kAlways:
+                return true;
+            case SbeHashAggIncreasedSpillingModeEnum::kNever:
+                return false;
+            case SbeHashAggIncreasedSpillingModeEnum::kInDebug:
+                return kDebugBuild && allowDiskUse;
+            default:
+                tasserted(9915702, "Unknown forceIncreasedSpillingMode");
+        }
+    }
 };
 }  // namespace mongo::stage_builder

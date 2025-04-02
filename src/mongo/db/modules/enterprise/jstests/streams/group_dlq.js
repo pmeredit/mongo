@@ -39,6 +39,7 @@ function smokeTest() {
                 allowedLateness: {size: NumberInt(0), unit: 'second'}
             }
         },
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {
             $merge: {
                 into: {

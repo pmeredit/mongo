@@ -38,7 +38,7 @@ protected:
 
 // Test that $validate works for $jsonSchema with required fields in it.
 TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Planner planner(_context.get(), {});
     std::string pipeline = R"(
 [
@@ -83,7 +83,7 @@ TEST_F(ValidateOperatorTest, JsonSchemaRequiredFields) {
 
 // Test that $validate works for $jsonSchema that specifies a specific range of values for a field.
 TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Planner planner(_context.get(), {});
     std::string pipeline = R"(
 [
@@ -139,7 +139,7 @@ TEST_F(ValidateOperatorTest, JsonSchemaValueRange) {
 // Test that $validate works when validator uses query operators.
 // DLQ failed docs
 TEST_F(ValidateOperatorTest, QueryExpression) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Planner planner(_context.get(), {});
     std::string pipeline = R"(
 [

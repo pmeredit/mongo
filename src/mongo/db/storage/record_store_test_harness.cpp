@@ -51,9 +51,8 @@
 #include "mongo/db/storage/damage_vector.h"
 #include "mongo/db/storage/record_data.h"
 #include "mongo/db/storage/record_store.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 
@@ -712,8 +711,7 @@ TEST(RecordStoreTestHarness, ClusteredRecordStore) {
     }
 
     {
-        BSONObj doc = BSON("i"
-                           << "updated");
+        BSONObj doc = BSON("i" << "updated");
 
         StorageWriteTransaction txn(ru);
         for (int i = 0; i < numRecords; i += 10) {

@@ -64,9 +64,6 @@
 #include "mongo/db/write_concern_options.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/client/shard.h"
@@ -260,7 +257,7 @@ public:
             long long totalCloneTime =
                 ShardingStatistics::get(opCtx).totalDonorChunkCloneTimeMillis.load();
 
-            MigrationSourceManager migrationSourceManager(
+            auto&& migrationSourceManager = MigrationSourceManager::createMigrationSourceManager(
                 opCtx, std::move(request), std::move(writeConcern), donorConnStr, recipientHost);
 
             migrationSourceManager.startClone();

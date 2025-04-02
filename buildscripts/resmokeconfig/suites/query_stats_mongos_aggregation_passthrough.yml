@@ -20,12 +20,15 @@ selector:
     - jstests/aggregation/accumulators/internal_js_reduce_with_scope.js
     - jstests/aggregation/expressions/internal_js_emit_with_scope.js
     # Based on SERVER-81917
-    - jstests/aggregation/query_limits_test.js
+    - jstests/aggregation/exec/query_limits_test.js
     # $unionWith explain output does not check whether the collection is sharded in a sharded
     # cluster.
     - jstests/aggregation/sources/unionWith/unionWith_explain.js
     # TODO SERVER-96515 Re-enable this test.
     - jstests/aggregation/expressions/expression_set_field_null_chars.js
+    # This test runs many aggregations, and is especially slow in this passthrough. Since it doesn't
+    # provide additional useful coverage in this passthrough we can exclude it.
+    - jstests/aggregation/timeseries/timeseries_group_aggregations.js
   exclude_with_any_tags:
     # The following tests start their own ShardingTest or ReplSetTest, respectively.
     - requires_sharding

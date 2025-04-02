@@ -6,10 +6,10 @@
  *   assumes_read_concern_unchanged,
  *   assumes_read_preference_unchanged,
  *   assumes_unsharded_collection,
- *   # TODO SERVER-89286 re-enable this test
- *   assumes_balancer_off,
  * ]
  */
+
+import {EncryptedClient} from "jstests/fle2/libs/encrypted_client_util.js";
 
 const dbName = jsTestName();
 const collName = jsTestName();
@@ -19,8 +19,7 @@ const kms = {
         "/tu9jUCBqZdwCelwE/EAm/4WqdxrSMi04B8e9uAV+m30rI1J2nhKZZtQjdvsSCwuI4erR6IEcEK+5eGUAODv43NDNIR9QheT2edWFewUfHKsl9cnzTc86meIzOmYl6dr")
 };
 
-var testdb = db.getSiblingDB(dbName);
-testdb.dropDatabase();
+db.getSiblingDB(dbName).dropDatabase();
 
 const csfleOpts = {
     kmsProviders: {
@@ -30,8 +29,9 @@ const csfleOpts = {
     schemaMap: {},
 };
 
-var shell = Mongo(db.getMongo().host.toString(), csfleOpts);
-var kv = shell.getKeyVault();
+const mongo = db.getMongo();
+const shell = Mongo(mongo.host.toString(), csfleOpts);
+const kv = shell.getKeyVault();
 
 const schema = {
     "fields": [
@@ -44,18 +44,16 @@ const schema = {
     ]
 };
 
-var edb = shell.getDB(jsTestName());
-edb.createCollection(collName, {encryptedFields: schema});
+const client = new EncryptedClient(mongo, dbName);
+assert.commandWorked(client.createEncryptionCollection(collName, {encryptedFields: schema}));
 
-var ecoll = edb.getCollection(collName);
-ecoll.createIndex({__safeContent__: 1});
+const ecoll = client.getDB().getCollection(collName);
+ecoll.einsertOne({foo: "foovalue"});
 
-ecoll.insertOne({foo: "foovalue"});
+assert.commandWorked(ecoll.eupdateOne({$and: [{foo: "foovalue"}, {bar: "barvalue"}]},
+                                      {$set: {foo: "other_foovalue", bar: "other_barvalue"}},
+                                      {upsert: true}));
 
-assert.commandWorked(ecoll.updateOne({$and: [{foo: "foovalue"}, {bar: "barvalue"}]},
-                                     {$set: {foo: "other_foovalue", bar: "other_barvalue"}},
-                                     {upsert: true}));
-
-const doc = ecoll.find({foo: "other_foovalue"}, {_id: 0, __safeContent__: 0}).toArray()[0];
+const doc = ecoll.efindOne({foo: "other_foovalue"}, {_id: 0, __safeContent__: 0});
 assert.eq(doc.foo, "other_foovalue", tojson(doc));
 assert.eq(doc.bar, "other_barvalue", tojson(doc));

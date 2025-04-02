@@ -57,9 +57,7 @@
 #include "mongo/db/query/query_request_helper.h"
 #include "mongo/db/query/tailable_mode_gen.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -99,7 +97,8 @@ Status isValid(const std::string& queryStr, const FindCommandRequest& findComman
     BSONObj queryObj = fromjson(queryStr);
     std::unique_ptr<MatchExpression> me(parseMatchExpression(queryObj));
     me = MatchExpression::optimize(std::move(me));
-    if (auto status = parsed_find_command::isValid(me.get(), findCommand).getStatus();
+    if (auto status =
+            parsed_find_command::validateAndGetAvailableMetadata(me.get(), findCommand).getStatus();
         !status.isOK()) {
         return status;
     }

@@ -1,17 +1,14 @@
 load("@poetry//:dependencies.bzl", "dependency")
+load("@npm//:eslint/package_json.bzl", "bin")
 
-py_binary(
-    name = "codeowners",
-    srcs = ["codeowners_generate.py"],
-    main = "codeowners_generate.py",
-    visibility = ["//visibility:public"],
-    deps = [
-        dependency(
-            "pyyaml",
-            group = "core",
-        ),
-    ],
-)
+exports_files([
+    "candle_wrapper.py",
+    "cheetah_source_generator.py",
+    "clang_tidy_config_gen.py",
+    "jstoh.py",
+    "msitrim.py",
+    "pip_requirements.py",
+])
 
 py_binary(
     name = "simple_report",
@@ -22,6 +19,10 @@ py_binary(
         dependency(
             "click",
             group = "evergreen",
+        ),
+        dependency(
+            "typing-extensions",
+            group = "core",
         ),
     ],
 )
@@ -54,6 +55,10 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         "//buildscripts/resmokelib",
+        dependency(
+            "typer",
+            group = "core",
+        ),
     ],
 )
 
@@ -95,6 +100,11 @@ py_library(
             "typing-extensions",
             group = "core",
         ),
+        dependency(
+            "retry",
+            group = "testing",
+        ),
+        "simple_report",
     ],
 )
 
@@ -104,6 +114,12 @@ py_library(
         "download_buildifier.py",
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        dependency(
+            "retry",
+            group = "testing",
+        ),
+    ],
 )
 
 py_binary(
@@ -134,8 +150,6 @@ py_binary(
     ],
 )
 
-exports_files(["cheetah_source_generator.py"])
-
 sh_binary(
     name = "shellscripts_linters",
     srcs = ["shellscripts-linters.sh"],
@@ -146,4 +160,88 @@ sh_binary(
         "SHFMT_PATH": "$(execpath @shfmt//:shfmt)",
     },
     visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "mongo_toolchain",
+    srcs = [
+        "mongo_toolchain.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        dependency(
+            "typer",
+            group = "core",
+        ),
+    ],
+)
+
+py_library(
+    name = "clang_tidy_lib",
+    srcs = [
+        "apply_clang_tidy_fixes.py",
+        "clang_tidy.py",
+        "clang_tidy_vscode.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "mongo_toolchain",
+        "simple_report",
+    ],
+)
+
+py_binary(
+    name = "sbom_linter",
+    srcs = [
+        "sbom_linter.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        dependency(
+            "jsonschema",
+            group = "build-metrics",
+        ),
+    ],
+)
+
+bin.eslint_binary(
+    name = "eslint_binary",
+    # Allow the binary to be run outside bazel
+    # See more details about this by commenting this out and running `bazel run //:format`
+    env = {"BAZEL_BINDIR": "."},
+)
+
+sh_binary(
+    name = "auto_install_db_contrib_tool",
+    srcs = ["auto_install_db_contrib_tool.sh"],
+)
+
+sh_binary(
+    name = "setup_engflow_creds",
+    srcs = ["setup_engflow_creds.sh"],
+)
+
+sh_binary(
+    name = "consolidate_repos",
+    srcs = ["consolidate-repos.sh"],
+)
+
+sh_binary(
+    name = "consolidate_repos_enterprise",
+    srcs = ["consolidate-repos-enterprise.sh"],
+)
+
+sh_binary(
+    name = "poetry_sync",
+    srcs = ["poetry_sync.sh"],
+)
+
+sh_binary(
+    name = "setup_node_env",
+    srcs = ["setup_node_env.sh"],
+)
+
+sh_binary(
+    name = "mount_drives",
+    srcs = ["mount_drives.sh"],
 )

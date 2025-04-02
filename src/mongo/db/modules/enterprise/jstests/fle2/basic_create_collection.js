@@ -255,4 +255,20 @@ if (FeatureFlagUtil.isPresentAndDisabled(db.getMongo(), 'QETextSearchPreview')) 
     badSchema.encryptedFields.fields[0].queries =
         [{queryType: "equality"}, {queryType: "equality"}];
     assert.commandFailedWithCode(db.createCollection("basic_text", badSchema), 9783414);
+
+    const strEncodeVersionSchema = {
+        encryptedFields: {
+            "fields": [
+                {
+                    "path": "ssn",
+                    "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+                    "bsonType": "int",
+                    "queries": {"queryType": "equality"},
+                },
+            ],
+            "strEncodeVersion": NumberInt(1)
+        }
+    };
+    assert.commandFailedWithCode(db.createCollection("basic_text", strEncodeVersionSchema),
+                                 10075600);
 }

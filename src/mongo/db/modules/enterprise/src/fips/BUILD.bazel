@@ -75,7 +75,7 @@ mongo_cc_unit_test(
         "fips_options_test.cpp",
         "//src/mongo/util/cmdline_utils:censor_cmdline_test.h",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         ":fips_mode_server",
         "//src/mongo/db:server_options_servers",

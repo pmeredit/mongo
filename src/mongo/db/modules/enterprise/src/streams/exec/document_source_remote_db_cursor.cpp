@@ -15,7 +15,6 @@
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/query/getmore_command_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/mongocxx_utils.h"
@@ -33,8 +32,6 @@ const char* DocumentSourceRemoteDbCursor::getSourceName() const {
 void DocumentSourceRemoteDbCursor::doDispose() {}
 
 DocumentSource::GetNextResult DocumentSourceRemoteDbCursor::doGetNext() {
-    using namespace fmt::literals;
-
     while (_batchIter != _batch.cend() || _cursorId != 0) {
         // First, tries to exhaust the current batch.
         if (_batchIter != _batch.cend()) {
@@ -85,17 +82,18 @@ DocumentSource::GetNextResult DocumentSourceRemoteDbCursor::doGetNext() {
                 "'cursor' field absent or not an object",
                 _reply.hasField("cursor") && _reply["cursor"].isABSONObj());
         auto cursor = _reply["cursor"].embeddedObject();
-        tassert(
-            8369604,
-            "'cursor' field missing '{}' field"_format(GetMoreResponseCursor::kCursorIdFieldName),
-            cursor.hasField(GetMoreResponseCursor::kCursorIdFieldName) &&
-                cursor[GetMoreResponseCursor::kCursorIdFieldName].type() == BSONType::NumberLong);
+        tassert(8369604,
+                fmt::format("'cursor' field missing '{}' field",
+                            GetMoreResponseCursor::kCursorIdFieldName),
+                cursor.hasField(GetMoreResponseCursor::kCursorIdFieldName) &&
+                    cursor[GetMoreResponseCursor::kCursorIdFieldName].type() ==
+                        BSONType::NumberLong);
         _cursorId = cursor[GetMoreResponseCursor::kCursorIdFieldName].numberLong();
-        tassert(
-            8369605,
-            "'cursor' field missing '{}' field"_format(GetMoreResponseCursor::kNextBatchFieldName),
-            cursor.hasField(GetMoreResponseCursor::kNextBatchFieldName) &&
-                cursor[GetMoreResponseCursor::kNextBatchFieldName].type() == BSONType::Array);
+        tassert(8369605,
+                fmt::format("'cursor' field missing '{}' field",
+                            GetMoreResponseCursor::kNextBatchFieldName),
+                cursor.hasField(GetMoreResponseCursor::kNextBatchFieldName) &&
+                    cursor[GetMoreResponseCursor::kNextBatchFieldName].type() == BSONType::Array);
         _batch = cursor[GetMoreResponseCursor::kNextBatchFieldName].Array();
         _batchIter = _batch.cbegin();
     }
@@ -108,8 +106,6 @@ DocumentSourceRemoteDbCursor::~DocumentSourceRemoteDbCursor() {}
 DocumentSourceRemoteDbCursor::DocumentSourceRemoteDbCursor(MongoDBProcessInterface* procItf,
                                                            const Pipeline* pipeline)
     : DocumentSource(kStageName, pipeline->getContext()), _procItf(procItf) {
-    using namespace fmt::literals;
-
     AggregateCommandRequest request(pExpCtx->getNamespaceString(), pipeline->serializeToBson());
     SimpleCursorOptions cursorOptions;
     cursorOptions.setBatchSize(kDefaultBatchSize);
@@ -146,13 +142,15 @@ DocumentSourceRemoteDbCursor::DocumentSourceRemoteDbCursor(MongoDBProcessInterfa
             "'cursor' field absent or not an object",
             _reply.hasField("cursor") && _reply["cursor"].isABSONObj());
     auto cursor = _reply["cursor"].embeddedObject();
-    tassert(8369601,
-            "'cursor' field missing '{}' field"_format(InitialResponseCursor::kCursorIdFieldName),
-            cursor.hasField(InitialResponseCursor::kCursorIdFieldName) &&
-                cursor[InitialResponseCursor::kCursorIdFieldName].type() == BSONType::NumberLong);
+    tassert(
+        8369601,
+        fmt::format("'cursor' field missing '{}' field", InitialResponseCursor::kCursorIdFieldName),
+        cursor.hasField(InitialResponseCursor::kCursorIdFieldName) &&
+            cursor[InitialResponseCursor::kCursorIdFieldName].type() == BSONType::NumberLong);
     _cursorId = cursor[InitialResponseCursor::kCursorIdFieldName].numberLong();
     tassert(8369602,
-            "'cursor' field missing '{}' field"_format(InitialResponseCursor::kFirstBatchFieldName),
+            fmt::format("'cursor' field missing '{}' field",
+                        InitialResponseCursor::kFirstBatchFieldName),
             cursor.hasField(InitialResponseCursor::kFirstBatchFieldName) &&
                 cursor[InitialResponseCursor::kFirstBatchFieldName].type() == BSONType::Array);
     _batch = cursor[InitialResponseCursor::kFirstBatchFieldName].Array();

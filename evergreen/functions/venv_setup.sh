@@ -28,11 +28,6 @@ fi
 # Loop 5 times to retry the poetry install
 # We have seen weird network errors that can sometimes mess up the pip install
 # By retrying we would like to only see errors that happen consistently
-if uname -a | grep -q 's390x\|ppc64le'; then
-  # s390x and ppc64le both require these old versions for some reason
-  # They are pinned deps as well
-  EXTRA_IBM_ARGS="pyOpenSSL==19.0.0"
-fi
 poetry_dir="${workdir}/poetry_dir"
 mkdir -p $poetry_dir
 export POETRY_CONFIG_DIR="$poetry_dir/config"
@@ -40,7 +35,7 @@ export POETRY_DATA_DIR="$poetry_dir/data"
 export POETRY_CACHE_DIR="$poetry_dir/cache"
 export PIP_CACHE_DIR="$poetry_dir/pip_cache"
 for i in {1..5}; do
-  $POETRY_VENV_PYTHON -m pip install "poetry==1.8.3" ${EXTRA_IBM_ARGS} && RET=0 && break || RET=$? && sleep 1
+  $POETRY_VENV_PYTHON -m pip install "poetry==2.0.0" && RET=0 && break || RET=$? && sleep 1
   echo "Python failed to install poetry, retrying..."
 done
 
@@ -123,6 +118,7 @@ for i in {1..5}; do
   yes | $POETRY_VENV_PYTHON -m poetry cache clear . --all
   rm -rf $poetry_dir/*
   $POETRY_VENV_PYTHON -m poetry install --no-root --sync && RET=0 && break || RET=$? && sleep 1
+
   echo "Python failed install required deps with poetry, retrying..."
   sleep $((count * count * 20))
   count=$((count + 1))

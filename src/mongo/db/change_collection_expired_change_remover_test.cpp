@@ -76,9 +76,7 @@
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/s/database_version.h"
 #include "mongo/s/shard_version.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
@@ -245,12 +243,9 @@ TEST_F(ChangeCollectionExpiredChangeRemoverTest, ShouldRemoveOnlyExpiredDocument
     const auto opCtx = operationContext();
     dropAndRecreateChangeCollection(opCtx, _tenantId);
 
-    const BSONObj firstExpired = BSON("_id"
-                                      << "firstExpired");
-    const BSONObj secondExpired = BSON("_id"
-                                       << "secondExpired");
-    const BSONObj notExpired = BSON("_id"
-                                    << "notExpired");
+    const BSONObj firstExpired = BSON("_id" << "firstExpired");
+    const BSONObj secondExpired = BSON("_id" << "secondExpired");
+    const BSONObj notExpired = BSON("_id" << "notExpired");
 
     insertDocumentToChangeCollection(opCtx, _tenantId, firstExpired);
     clockSource()->advance(Hours(1));

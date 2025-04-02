@@ -48,6 +48,7 @@
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/read_concern_level.h"
 #include "mongo/db/repl/repl_client_info.h"
+#include "mongo/db/s/config/remove_shard_command_helpers.h"
 #include "mongo/db/s/config/sharding_catalog_manager.h"
 #include "mongo/db/s/sharding_statistics.h"
 #include "mongo/db/server_options.h"
@@ -55,9 +56,7 @@
 #include "mongo/db/shard_id.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
+#include "mongo/s/grid.h"
 #include "mongo/s/request_types/transition_to_dedicated_config_server_gen.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/util/assert_util.h"
@@ -84,6 +83,8 @@ public:
         using InvocationBase::InvocationBase;
 
         Response typedRun(OperationContext* opCtx) {
+            opCtx->setAlwaysInterruptAtStepDownOrUp_UNSAFE();
+
             // (Ignore FCV check): TODO(SERVER-75389): add why FCV is ignored here.
             uassert(7368402,
                     "The transition to config shard feature is disabled",
@@ -112,12 +113,15 @@ public:
             auto shardingState = ShardingState::get(opCtx);
             shardingState->assertCanAcceptShardedCommands();
             const auto shardId = shardingState->shardId();
+            const auto shard =
+                uassertStatusOK(Grid::get(opCtx)->shardRegistry()->getShard(opCtx, shardId));
+            const auto replicaSetName = shard->getConnString().getReplicaSetName();
 
             const auto shardingCatalogManager = ShardingCatalogManager::get(opCtx);
 
             const auto shardDrainingStatus = [&] {
                 try {
-                    return shardingCatalogManager->removeShard(opCtx, shardId);
+                    return topology_change_helpers::removeShard(opCtx, shardId, replicaSetName);
                 } catch (const DBException& ex) {
                     LOGV2(7470500,
                           "Failed to remove shard",
@@ -131,10 +135,10 @@ public:
             shardingCatalogManager->appendShardDrainingStatus(
                 opCtx, result, shardDrainingStatus, shardId);
 
-            if (shardDrainingStatus.status == RemoveShardProgress::COMPLETED) {
+            if (shardDrainingStatus.getState() == ShardDrainingStateEnum::kCompleted) {
                 ShardingStatistics::get(opCtx)
                     .countTransitionToDedicatedConfigServerCompleted.addAndFetch(1);
-            } else if (shardDrainingStatus.status == RemoveShardProgress::STARTED) {
+            } else if (shardDrainingStatus.getState() == ShardDrainingStateEnum::kStarted) {
                 ShardingStatistics::get(opCtx)
                     .countTransitionToDedicatedConfigServerStarted.addAndFetch(1);
             }

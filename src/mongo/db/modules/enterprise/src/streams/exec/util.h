@@ -8,6 +8,7 @@
 #include <bsoncxx/document/value.hpp>
 #include <mongocxx/exception/exception.hpp>
 
+#include "mongo/bson/bsonobj.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/message.h"
@@ -23,17 +24,21 @@ namespace streams {
 using BSONPipeline = std::vector<mongo::BSONObj>;
 bool isSourceStage(mongo::StringData name);
 bool isSinkStage(mongo::StringData name);
+bool isSinkOnlyStage(mongo::StringData name);
+bool isMiddleAndSinkStage(mongo::StringData name);
 bool isWindowStage(mongo::StringData name);
 bool hasWindow(const std::vector<mongo::BSONObj>& pipeline);
-bool hasHttpsStage(const std::vector<mongo::BSONObj>& pipeline);
-bool hasHttpsStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline);
+bool hasPayloadStage(const std::vector<mongo::BSONObj>& pipeline);
+bool hasPayloadStageBeforeWindow(const std::vector<mongo::BSONObj>& pipeline);
 bool isLookUpStage(mongo::StringData name);
 bool isEmitStage(mongo::StringData name);
 bool isMergeStage(mongo::StringData name);
+bool isLimitStage(mongo::StringData name);
 bool isWindowAwareStage(mongo::StringData name);
 bool isBlockingWindowAwareStage(mongo::StringData name);
 bool hasBlockingStage(const BSONPipeline& pipeline);
-bool isHttpsStage(mongo::StringData name);
+bool isPayloadStage(mongo::StringData name);
+bool isExternalFunctionStage(mongo::StringData name);
 
 int64_t toMillis(mongo::StreamTimeUnitEnum unit, int count);
 
@@ -55,6 +60,12 @@ mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& s
                                            const mongo::Document& doc,
                                            const std::string& operatorName,
                                            boost::optional<std::string> error);
+
+// Builds a DLQ message for the given Status
+mongo::BSONObjBuilder toDeadLetterQueueMsg(const boost::optional<std::string>& streamMetaFieldName,
+                                           const StreamDocument& streamDoc,
+                                           const std::string& operatorName,
+                                           mongo::Status status);
 
 // Gets the namespace string for the given 'db' and 'coll' literals.
 mongo::NamespaceString getNamespaceString(const std::string& dbStr, const std::string& collStr);
@@ -78,5 +89,35 @@ std::vector<mongo::StringData> getLoggablePipeline(const std::vector<mongo::BSON
 
 // Change all Date fields to ISO8601 strings.
 mongo::Document convertDateToISO8601(mongo::Document doc);
+
+// Change all json strings to json for the provided document.
+mongo::Document convertJsonStringsToJson(mongo::Document doc);
+
+// Change all json strings to json for the provided array.
+std::vector<mongo::Value> jsonStringToValue(const std::vector<mongo::Value>& arr);
+
+// Generic helper function for recursively converting fields for a Document
+mongo::Document convertAllFields(mongo::Document doc,
+                                 std::function<mongo::Value(const mongo::Value&)> convertFunc);
+
+// Generic helper function for recursively converting fields for an array
+std::vector<mongo::Value> convertAllFields(
+    const std::vector<mongo::Value>& arr,
+    std::function<mongo::Value(const mongo::Value&)> convertFunc);
+
+// Modifies document so that it may be represented in BasicJson format when serialized
+mongo::Document modifyDocumentForBasicJson(const mongo::Document& doc);
+
+// JSON formatting modes supported in Streams
+enum class JsonStringFormat { Basic, Relaxed, Canonical };
+
+// Serializes a BSONObj to JSON
+std::string serializeJson(const mongo::BSONObj& bsonObj,
+                          JsonStringFormat format = JsonStringFormat::Canonical,
+                          bool pretty = false);
+
+// parseAndDeserializeResponse will convert a json response to a mongo value. If specified, any
+// json strings embedded within will also be parsed
+mongo::Value parseAndDeserializeJsonResponse(mongo::StringData rawResponse, bool parseJsonStrings);
 
 }  // namespace streams

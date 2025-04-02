@@ -62,9 +62,7 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 #include "mongo/util/uuid.h"
@@ -109,16 +107,11 @@ TEST(AggregationRequestTest, ShouldParseAllKnownOptions) {
         request.getCursor().getBatchSize().value_or(aggregation_request_helper::kDefaultBatchSize),
         10);
     ASSERT_BSONOBJ_EQ(request.getHint().value_or(BSONObj()), BSON("a" << 1));
-    ASSERT_BSONOBJ_EQ(request.getCollation().value_or(BSONObj()),
-                      BSON("locale"
-                           << "en_US"));
+    ASSERT_BSONOBJ_EQ(request.getCollation().value_or(BSONObj()), BSON("locale" << "en_US"));
     ASSERT_EQ(*request.getMaxTimeMS(), 100u);
-    ASSERT_BSONOBJ_EQ(request.getReadConcern()->toBSONInner(),
-                      BSON("level"
-                           << "linearizable"));
+    ASSERT_BSONOBJ_EQ(request.getReadConcern()->toBSONInner(), BSON("level" << "linearizable"));
     ASSERT_BSONOBJ_EQ(request.getUnwrappedReadPref().value_or(BSONObj()),
-                      BSON("$readPreference"
-                           << "nearest"));
+                      BSON("$readPreference" << "nearest"));
     ASSERT_TRUE(request.getExchange().has_value());
     ASSERT_TRUE(request.getIsMapReduceCommand());
     ASSERT_TRUE(request.getIncludeQueryStatsMetrics());
@@ -141,8 +134,8 @@ TEST(AggregationRequestTest, ShouldParseExplicitExplainTrue) {
         fromjson("{aggregate: 'collection', pipeline: [], explain: true, cursor: {}, $db: 'a'}");
     auto request =
         unittest::assertGet(aggregation_request_helper::parseFromBSONForTests(inputBson));
-    ASSERT_TRUE(request.getExplain());
-    ASSERT(*request.getExplain() == ExplainOptions::Verbosity::kQueryPlanner);
+    ASSERT(request.getExplain());
+    ASSERT(request.getExplain().value());
 }
 
 TEST(AggregationRequestTest, ShouldParseExplicitExplainFalseWithCursorOption) {
@@ -164,8 +157,8 @@ TEST(AggregationRequestTest, ShouldParseWithSeparateQueryPlannerExplainModeArg) 
         fromjson("{aggregate: 'collection', pipeline: [], cursor: {}, $db: 'a'}");
     auto request = unittest::assertGet(aggregation_request_helper::parseFromBSONForTests(
         inputBson, boost::none, ExplainOptions::Verbosity::kQueryPlanner));
-    ASSERT_TRUE(request.getExplain());
-    ASSERT(*request.getExplain() == ExplainOptions::Verbosity::kQueryPlanner);
+    ASSERT(request.getExplain());
+    ASSERT(request.getExplain().value());
 }
 
 TEST(AggregationRequestTest, ShouldParseWithSeparateQueryPlannerExplainModeArgAndCursorOption) {
@@ -174,8 +167,8 @@ TEST(AggregationRequestTest, ShouldParseWithSeparateQueryPlannerExplainModeArgAn
         fromjson("{aggregate: 'collection', pipeline: [], cursor: {batchSize: 10}, $db: 'a'}");
     auto request = unittest::assertGet(aggregation_request_helper::parseFromBSONForTests(
         inputBson, boost::none, ExplainOptions::Verbosity::kExecStats));
-    ASSERT_TRUE(request.getExplain());
-    ASSERT(*request.getExplain() == ExplainOptions::Verbosity::kExecStats);
+    ASSERT(request.getExplain());
+    ASSERT(request.getExplain().value());
     ASSERT_EQ(
         request.getCursor().getBatchSize().value_or(aggregation_request_helper::kDefaultBatchSize),
         10);
@@ -190,10 +183,9 @@ TEST(AggregationRequestTest, ShouldParseExplainFlagWithReadConcern) {
         "$db: 'a'}");
     auto request =
         unittest::assertGet(aggregation_request_helper::parseFromBSONForTests(inputBson));
-    ASSERT_TRUE(request.getExplain());
-    ASSERT_BSONOBJ_EQ(request.getReadConcern()->toBSONInner(),
-                      BSON("level"
-                           << "majority"));
+    ASSERT(request.getExplain());
+    ASSERT(request.getExplain().value());
+    ASSERT_BSONOBJ_EQ(request.getReadConcern()->toBSONInner(), BSON("level" << "majority"));
 }
 
 //
@@ -225,18 +217,14 @@ TEST(AggregationRequestTest, ShouldSerializeOptionalValuesIfSet) {
     request.setMaxTimeMS(10u);
     const auto hintObj = BSON("a" << 1);
     request.setHint(hintObj);
-    const auto collationObj = BSON("locale"
-                                   << "en_US");
+    const auto collationObj = BSON("locale" << "en_US");
     request.setCollation(collationObj);
-    const auto readPrefObj = BSON("$readPreference"
-                                  << "nearest");
+    const auto readPrefObj = BSON("$readPreference" << "nearest");
     request.setUnwrappedReadPref(readPrefObj);
-    const auto readConcernObj = BSON("level"
-                                     << "linearizable");
+    const auto readConcernObj = BSON("level" << "linearizable");
     request.setReadConcern(repl::ReadConcernArgs::kLinearizable);
     request.setIsMapReduceCommand(true);
-    const auto letParamsObj = BSON("foo"
-                                   << "bar");
+    const auto letParamsObj = BSON("foo" << "bar");
     request.setLet(letParamsObj);
     auto uuid = UUID::gen();
     request.setCollectionUUID(uuid);
@@ -311,9 +299,7 @@ TEST(AggregationRequestTest, ShouldAcceptHintAsString) {
         "'a'}");
     auto request = aggregation_request_helper::parseFromBSONForTests(inputBson);
     ASSERT_OK(request.getStatus());
-    ASSERT_BSONOBJ_EQ(request.getValue().getHint().value_or(BSONObj()),
-                      BSON("$hint"
-                           << "a_1"));
+    ASSERT_BSONOBJ_EQ(request.getValue().getHint().value_or(BSONObj()), BSON("$hint" << "a_1"));
 }
 
 TEST(AggregationRequestTest, ShouldNotSerializeBatchSizeWhenExplainSet) {
@@ -322,7 +308,7 @@ TEST(AggregationRequestTest, ShouldNotSerializeBatchSizeWhenExplainSet) {
     SimpleCursorOptions cursor;
     cursor.setBatchSize(10);
     request.setCursor(cursor);
-    request.setExplain(ExplainOptions::Verbosity::kQueryPlanner);
+    request.setExplain(true);
 
     auto expectedSerialization =
         Document{{AggregateCommandRequest::kCommandName, nss.coll()},
@@ -780,8 +766,6 @@ TEST(AggregationRequestTest, ShouldIgnoreQueryOptions) {
 }
 
 TEST(AggregationRequestTest, ShouldRejectRequestResumeTokenIfNonBooleanType) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagReshardingImprovements",
-                                                               true);
     NamespaceString nss = NamespaceString::createNamespaceString_forTest("a.collection");
     const BSONObj validRequest = fromjson(
         "{aggregate: 'collection',"
@@ -796,8 +780,6 @@ TEST(AggregationRequestTest, ShouldRejectRequestResumeTokenIfNonBooleanType) {
 }
 
 TEST(AggregationRequestTest, ShouldRejectRequestResumeTokenIfOplogNss) {
-    RAIIServerParameterControllerForTest featureFlagController("featureFlagReshardingImprovements",
-                                                               true);
     const BSONObj validRequest = fromjson(
         "{aggregate: 'collection',"
         "pipeline: [],"

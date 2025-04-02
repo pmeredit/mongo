@@ -103,6 +103,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestDefaultSerialization) {
             R"({
                 "$backupCursor": {
                     "incrementalBackup": false,
+                    "takeCheckpoint": true,
                     "blockSize": 16,
                     "disableIncrementalBackup": false
                 }
@@ -112,6 +113,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestDefaultSerialization) {
             R"({
                 "$backupCursor": {
                     "incrementalBackup": false,
+                    "takeCheckpoint": true,
                     "blockSize": "?number",
                     "disableIncrementalBackup": false
                 }
@@ -123,6 +125,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestDefaultSerialization) {
             R"({
                 "$backupCursor": {
                     "incrementalBackup": false,
+                    "takeCheckpoint": true,
                     "blockSize": 1,
                     "disableIncrementalBackup": false
                 }
@@ -157,6 +160,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestComplexSerialization) {
             R"({
                 "$backupCursor": {
                     "incrementalBackup": true,
+                    "takeCheckpoint": true,
                     "thisBackupName": "obviously this is a test",
                     "srcBackupName": "test",
                     "blockSize": 32,
@@ -168,6 +172,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestComplexSerialization) {
             R"({
                 "$backupCursor": {
                     "incrementalBackup": true,
+                    "takeCheckpoint": true,
                     "thisBackupName": "?string",
                     "srcBackupName": "?string",
                     "blockSize": "?number",
@@ -181,6 +186,7 @@ TEST_F(DocumentSourceBackupCursorTest, TestComplexSerialization) {
             R"({
             "$backupCursor": {
                 "incrementalBackup": true,
+                "takeCheckpoint": true,
                 "thisBackupName": "?",
                 "srcBackupName": "?",
                 "blockSize": 1,

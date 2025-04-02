@@ -52,21 +52,23 @@
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/service_context.h"
+#include "mongo/db/storage/execution_context.h"
 #include "mongo/db/storage/key_format.h"
 #include "mongo/db/storage/record_data.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/recovery_unit_test_harness.h"
 #include "mongo/db/storage/snapshot_manager.h"
+#include "mongo/db/storage/storage_parameters_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_cursor_helpers.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/transaction_resources.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/str.h"
@@ -76,17 +78,16 @@ namespace {
 
 class WiredTigerRecoveryUnitHarnessHelper final : public RecoveryUnitHarnessHelper {
 public:
-    WiredTigerRecoveryUnitHarnessHelper()
-        : _dbpath("wt_test"),
-          _engine(std::string{kWiredTigerEngineName},  // .canonicalName
-                  _dbpath.path(),                      // .path
-                  &_cs,                                // .cs
-                  "",                                  // .extraOpenOptions
-                  1,                                   // .cacheSizeMB
-                  0,                                   // .maxCacheOverflowFileSizeMB
-                  false,                               // .ephemeral
-                  false                                // .repair
-          ) {
+    WiredTigerRecoveryUnitHarnessHelper() : _dbpath("wt_test") {
+        WiredTigerKVEngine::WiredTigerConfig wtConfig = getWiredTigerConfigFromStartupOptions();
+        wtConfig.cacheSizeMB = 1;
+        _engine = std::make_unique<WiredTigerKVEngine>(std::string{kWiredTigerEngineName},
+                                                       _dbpath.path(),
+                                                       &_cs,
+                                                       std::move(wtConfig),
+                                                       false,
+                                                       false);
+
         // Use a replica set so that writes to replicated collections are not journaled and thus
         // retain their timestamps.
         repl::ReplSettings replSettings;
@@ -95,28 +96,29 @@ public:
         repl::ReplicationCoordinator::set(getGlobalServiceContext(),
                                           std::make_unique<repl::ReplicationCoordinatorMock>(
                                               getGlobalServiceContext(), replSettings));
-        _engine.notifyStorageStartupRecoveryComplete();
+        _engine->notifyStorageStartupRecoveryComplete();
     }
 
     ~WiredTigerRecoveryUnitHarnessHelper() override {}
 
     std::unique_ptr<RecoveryUnit> newRecoveryUnit() final {
-        return std::unique_ptr<RecoveryUnit>(_engine.newRecoveryUnit());
+        return std::unique_ptr<RecoveryUnit>(_engine->newRecoveryUnit());
     }
 
     std::unique_ptr<RecordStore> createRecordStore(OperationContext* opCtx,
                                                    const std::string& ns) final {
         std::string ident = ns;
         NamespaceString nss = NamespaceString::createNamespaceString_forTest(ns);
-        std::string uri = WiredTigerKVEngine::kTableUriPrefix + ns;
+        std::string uri = WiredTigerKVEngine::kTableUriPrefix + ident;
+        WiredTigerRecordStore::WiredTigerTableConfig wtTableConfig =
+            getWiredTigerTableConfigFromStartupOptions();
+        wtTableConfig.keyFormat = KeyFormat::Long;
+        wtTableConfig.logEnabled = WiredTigerUtil::useTableLogging(nss);
         StatusWith<std::string> result = WiredTigerRecordStore::generateCreateString(
             std::string{kWiredTigerEngineName},
             NamespaceStringUtil::serializeForCatalog(nss),
-            ident,
             CollectionOptions(),
-            "",
-            KeyFormat::Long,
-            WiredTigerUtil::useTableLogging(nss),
+            wtTableConfig,
             nss.isOplog());
         ASSERT_TRUE(result.isOK());
         std::string config = result.getValue();
@@ -125,8 +127,8 @@ public:
             auto& ru =
                 *checked_cast<WiredTigerRecoveryUnit*>(shard_role_details::getRecoveryUnit(opCtx));
             StorageWriteTransaction txn(ru);
-            WT_SESSION* s = ru.getSession()->getSession();
-            invariantWTOK(s->create(s, uri.c_str(), config.c_str()), s);
+            WiredTigerSession* s = ru.getSession();
+            invariantWTOK(s->create(uri.c_str(), config.c_str()), *s);
             txn.commit();
         }
 
@@ -135,7 +137,7 @@ public:
         params.engineName = std::string{kWiredTigerEngineName};
         params.keyFormat = KeyFormat::Long;
         params.overwrite = true;
-        params.isEphemeral = false;
+        params.inMemory = false;
         params.isLogged = WiredTigerUtil::useTableLogging(nss);
         params.isChangeCollection = nss.isChangeCollection();
         params.sizeStorer = nullptr;
@@ -143,20 +145,24 @@ public:
         params.forceUpdateWithFullDocument = false;
 
         auto ret = std::make_unique<WiredTigerRecordStore>(
-            &_engine,
+            _engine.get(),
             WiredTigerRecoveryUnit::get(*shard_role_details::getRecoveryUnit(opCtx)),
             params);
         return std::move(ret);
     }
 
     WiredTigerKVEngine* getEngine() {
-        return &_engine;
+        return _engine.get();
+    }
+
+    ClockSourceMock* getClockSourceMock() {
+        return &_cs;
     }
 
 private:
     unittest::TempDir _dbpath;
     ClockSourceMock _cs;
-    WiredTigerKVEngine _engine;
+    std::unique_ptr<WiredTigerKVEngine> _engine;
 };
 
 std::unique_ptr<RecoveryUnitHarnessHelper> makeWTRUHarnessHelper() {
@@ -199,7 +205,7 @@ public:
         ru2 = checked_cast<WiredTigerRecoveryUnit*>(
             shard_role_details::getRecoveryUnit(clientAndCtx2.second.get()));
         ru2->setOperationContext(clientAndCtx2.second.get());
-        snapshotManager = dynamic_cast<WiredTigerSnapshotManager*>(
+        snapshotManager = static_cast<WiredTigerSnapshotManager*>(
             harnessHelper->getEngine()->getSnapshotManager());
     }
 
@@ -709,7 +715,7 @@ TEST_F(WiredTigerRecoveryUnitTestFixture, CheckpointCursorsAreNotCached) {
 
     std::unique_ptr<RecordStore> rs(
         harnessHelper->createRecordStore(opCtx, "test.checkpoint_cached"));
-    auto uri = dynamic_cast<WiredTigerRecordStore*>(rs.get())->getURI();
+    auto uri = static_cast<WiredTigerRecordStore*>(rs.get())->getURI();
 
     WiredTigerKVEngine* engine = harnessHelper->getEngine();
 
@@ -760,11 +766,47 @@ TEST_F(WiredTigerRecoveryUnitTestFixture, CheckpointCursorsAreNotCached) {
     ASSERT_EQ(ru1->getTimestampReadSource(), WiredTigerRecoveryUnit::ReadSource::kCheckpoint);
 }
 
+TEST_F(WiredTigerRecoveryUnitTestFixture, StorageStatsSubsequentTransactions) {
+    auto opCtx = clientAndCtx1.second.get();
+
+    std::unique_ptr<RecordStore> rs(harnessHelper->createRecordStore(opCtx, "test.storage_stats"));
+    auto uri = static_cast<WiredTigerRecordStore*>(rs.get())->getURI();
+
+    // Insert a record.
+    StorageWriteTransaction txn1(*ru1);
+    StatusWith<RecordId> s = rs->insertRecord(opCtx, "rec1", 4, Timestamp());
+    ASSERT_TRUE(s.isOK());
+    ASSERT_EQUALS(1, rs->numRecords());
+
+    // Checking the storage stats
+    auto storageStats = ru1->computeOperationStatisticsSinceLastCall();
+    WiredTigerStats* wtStats = dynamic_cast<WiredTigerStats*>(storageStats.get());
+    ASSERT_TRUE(wtStats != nullptr);
+
+    // txnDirtyBytes should be greater than zero since there is uncommitted data on the transaction
+    ASSERT_GT(wtStats->txnBytesDirty(), 0);
+
+    txn1.commit();
+
+    // A new transaction will reset stats
+    StorageWriteTransaction txn2(*ru1);
+    // The transaction won't actually start until the session is accessed
+    ru1->getSession();
+
+    storageStats = ru1->computeOperationStatisticsSinceLastCall();
+    wtStats = dynamic_cast<WiredTigerStats*>(storageStats.get());
+    ASSERT_TRUE(wtStats != nullptr);
+
+    // txnDirtyBytes should be zero since transaction was just restarted
+    ASSERT_EQUALS(wtStats->txnBytesDirty(), 0);
+    txn2.abort();
+}
+
 TEST_F(WiredTigerRecoveryUnitTestFixture, ReadOnceCursorsCached) {
     auto opCtx = clientAndCtx1.second.get();
 
     std::unique_ptr<RecordStore> rs(harnessHelper->createRecordStore(opCtx, "test.read_once"));
-    auto uri = dynamic_cast<WiredTigerRecordStore*>(rs.get())->getURI();
+    auto uri = static_cast<WiredTigerRecordStore*>(rs.get())->getURI();
 
     // Insert a record.
     StorageWriteTransaction txn(*ru1);
@@ -1005,6 +1047,44 @@ TEST_F(WiredTigerRecoveryUnitTestFixture, AbandonSnapshotAbortMode) {
     ASSERT_EQ(0, strncmp(key, returnedKey, strlen(key)));
 }
 
+// Validate the return of mdb_handle_general when killing an opCtx with the RU configured to cancel
+// cache eviction. While there is gating in place, ensure that the gating fully disables the
+// feature
+TEST_F(WiredTigerRecoveryUnitTestFixture, OptionalEvictionCanBeInterrupted) {
+    for (bool enableFeature : {false, true}) {
+        RAIIServerParameterControllerForTest featureFlag{"featureFlagStorageEngineInterruptibility",
+                                                         enableFeature};
+        auto clientAndCtx =
+            makeClientAndOpCtx(harnessHelper.get(), "test" + std::to_string(enableFeature));
+        OperationContext* opCtx = clientAndCtx.second.get();
+        auto ru = WiredTigerRecoveryUnit::get(shard_role_details::getRecoveryUnit(opCtx));
+
+        WiredTigerEventHandler eventHandler;
+        WT_SESSION* session = ru->getSessionNoTxn()->with([](WT_SESSION* arg) { return arg; });
+        ASSERT_EQ(0,
+                  eventHandler.getWtEventHandler()->handle_general(eventHandler.getWtEventHandler(),
+                                                                   ru->getConnection()->conn(),
+                                                                   session,
+                                                                   WT_EVENT_EVICTION,
+                                                                   nullptr));
+
+        opCtx->markKilled(ErrorCodes::Interrupted);
+        ASSERT_EQ(
+            enableFeature,
+            (bool)eventHandler.getWtEventHandler()->handle_general(eventHandler.getWtEventHandler(),
+                                                                   ru->getConnection()->conn(),
+                                                                   session,
+                                                                   WT_EVENT_EVICTION,
+                                                                   nullptr));
+
+        if (enableFeature) {
+            ASSERT_EQ(WiredTigerUtil::getCancelledCacheMetric_forTest(), 1);
+        } else {
+            ASSERT_EQ(WiredTigerUtil::getCancelledCacheMetric_forTest(), 0);
+        }
+    }
+}
+
 class SnapshotTestDecoration {
 public:
     void hit() {
@@ -1063,6 +1143,41 @@ TEST_F(WiredTigerRecoveryUnitTestFixture, AbortSnapshotChange) {
 
     // A snapshot is closed, reconstructing our decoration.
     ASSERT_EQ(0, getSnapshotDecoration(ru1->getSnapshot()).getHits());
+}
+
+TEST_F(WiredTigerRecoveryUnitTestFixture, PreparedTransactionSkipsOptionalEviction) {
+    RAIIServerParameterControllerForTest truncateFeatureFlag{
+        "featureFlagStorageEngineInterruptibility", true};
+
+    // A snapshot is already open from when the RU was constructed.
+    ASSERT(ru1->getSession());
+    ASSERT(!ru1->getNoEvictionAfterCommitOrRollback());
+
+    // Abort WUOW.
+    ru1->beginUnitOfWork(/*readOnly=*/false);
+    ASSERT(!ru1->getNoEvictionAfterCommitOrRollback());
+
+    ru1->setPrepareTimestamp({1, 1});
+    ru1->prepareUnitOfWork();
+
+    ASSERT(ru1->getNoEvictionAfterCommitOrRollback());
+
+    ru1->abortUnitOfWork();
+    ASSERT(!ru1->getNoEvictionAfterCommitOrRollback());
+
+    // Commit WUOW.
+    ru1->beginUnitOfWork(/*readOnly=*/false);
+    ru1->setDurableTimestamp({1, 1});
+    ASSERT(!ru1->getNoEvictionAfterCommitOrRollback());
+
+    ru1->setPrepareTimestamp({1, 1});
+    ru1->prepareUnitOfWork();
+
+    ASSERT(ru1->getNoEvictionAfterCommitOrRollback());
+
+    ru1->setCommitTimestamp({1, 1});
+    ru1->commitUnitOfWork();
+    ASSERT(!ru1->getNoEvictionAfterCommitOrRollback());
 }
 
 DEATH_TEST_REGEX_F(WiredTigerRecoveryUnitTestFixture,

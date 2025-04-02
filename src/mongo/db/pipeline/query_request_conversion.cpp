@@ -37,7 +37,8 @@ namespace mongo {
 
 namespace query_request_conversion {
 
-AggregateCommandRequest asAggregateCommandRequest(const FindCommandRequest& findCommand) {
+AggregateCommandRequest asAggregateCommandRequest(const FindCommandRequest& findCommand,
+                                                  bool hasExplain) {
     // First, check if this query has options that are not supported in aggregation.
     uassert(ErrorCodes::InvalidPipelineOperator,
             str::stream() << "Option " << FindCommandRequest::kMinFieldName
@@ -86,20 +87,6 @@ AggregateCommandRequest asAggregateCommandRequest(const FindCommandRequest& find
             str::stream() << "Option " << FindCommandRequest::kStartAtFieldName
                           << " not supported in aggregation.",
             findCommand.getStartAt().isEmpty());
-
-    // Some options are disallowed when resharding improvements are disabled.
-    if (!resharding::gFeatureFlagReshardingImprovements.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        uassert(ErrorCodes::InvalidPipelineOperator,
-                str::stream() << "Option " << FindCommandRequest::kRequestResumeTokenFieldName
-                              << " not supported in aggregation.",
-                !findCommand.getRequestResumeToken());
-
-        uassert(ErrorCodes::InvalidPipelineOperator,
-                str::stream() << "Option " << FindCommandRequest::kResumeAfterFieldName
-                              << " not supported in aggregation.",
-                findCommand.getResumeAfter().isEmpty());
-    }
 
     // Now that we've successfully validated this QR, begin building the aggregation command.
     tassert(ErrorCodes::BadValue,
@@ -171,25 +158,28 @@ AggregateCommandRequest asAggregateCommandRequest(const FindCommandRequest& find
     if (findCommand.getLet()) {
         result.setLet(findCommand.getLet()->getOwned());
     }
-    if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        result.setRequestResumeToken(findCommand.getRequestResumeToken());
+    result.setRequestResumeToken(findCommand.getRequestResumeToken());
 
-        if (!findCommand.getResumeAfter().isEmpty()) {
-            result.setResumeAfter(findCommand.getResumeAfter().getOwned());
-        }
+    if (!findCommand.getResumeAfter().isEmpty()) {
+        result.setResumeAfter(findCommand.getResumeAfter().getOwned());
+    }
 
-        if (!findCommand.getStartAt().isEmpty()) {
-            result.setStartAt(findCommand.getStartAt().getOwned());
-        }
+    if (!findCommand.getStartAt().isEmpty()) {
+        result.setStartAt(findCommand.getStartAt().getOwned());
     }
     result.setIncludeQueryStatsMetrics(findCommand.getIncludeQueryStatsMetrics());
+
+    if (hasExplain) {
+        result.setExplain(true);
+    } else {
+        result.setExplain(boost::none);
+    }
 
     return result;
 }
 
-AggregateCommandRequest asAggregateCommandRequest(
-    const CountCommandRequest& countCommand, boost::optional<ExplainOptions::Verbosity> verbosity) {
+AggregateCommandRequest asAggregateCommandRequest(const CountCommandRequest& countCommand,
+                                                  bool hasExplain) {
 
     tassert(ErrorCodes::BadValue,
             "Unsupported type UUID for namspace",
@@ -208,8 +198,7 @@ AggregateCommandRequest asAggregateCommandRequest(
     if (auto limit = countCommand.getLimit()) {
         pipeline.push_back(BSON("$limit" << limit.value()));
     }
-    pipeline.push_back(BSON("$count"
-                            << "count"));
+    pipeline.push_back(BSON("$count" << "count"));
     result.setPipeline(std::move(pipeline));
 
 
@@ -233,7 +222,12 @@ AggregateCommandRequest asAggregateCommandRequest(
         result.setUnwrappedReadPref(unwrapped);
     }
 
-    result.setExplain(verbosity);
+    if (hasExplain) {
+        result.setExplain(true);
+    } else {
+        result.setExplain(boost::none);
+    }
+
     result.setDbName(nss.dbName());
     result.setIncludeQueryStatsMetrics(countCommand.getIncludeQueryStatsMetrics());
     result.setSerializationContext(countCommand.getSerializationContext());

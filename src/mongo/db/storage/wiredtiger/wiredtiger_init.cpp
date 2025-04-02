@@ -62,8 +62,6 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_tag.h"
 #include "mongo/util/processinfo.h"
 
 #if __has_feature(address_sanitizer)
@@ -82,6 +80,7 @@ std::once_flag initializeServerStatusSectionFlag;
 class WiredTigerFactory : public StorageEngine::Factory {
 public:
     ~WiredTigerFactory() override {}
+
     std::unique_ptr<StorageEngine> create(OperationContext* opCtx,
                                           const StorageGlobalParams& params,
                                           const StorageEngineLockFile* lockFile) const override {
@@ -132,14 +131,19 @@ public:
                               "RAM. See http://dochub.mongodb.org/core/faq-memory-diagnostics-wt");
             }
         }
+
+        WiredTigerKVEngine::WiredTigerConfig wtConfig = getWiredTigerConfigFromStartupOptions();
+        wtConfig.cacheSizeMB = cacheMB;
+        wtConfig.inMemory = params.inMemory;
+        if (params.inMemory) {
+            wtConfig.logEnabled = false;
+        }
         auto kv =
             std::make_unique<WiredTigerKVEngine>(getCanonicalName().toString(),
                                                  params.dbpath,
                                                  getGlobalServiceContext()->getFastClockSource(),
-                                                 wiredTigerGlobalOptions.engineConfig,
-                                                 cacheMB,
-                                                 wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
-                                                 params.ephemeral,
+                                                 std::move(wtConfig),
+                                                 params.inMemory,
                                                  params.repair);
         kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(wiredTigerGlobalOptions.indexConfig);
@@ -149,7 +153,7 @@ public:
         // stateless.
         std::call_once(initializeServerStatusSectionFlag, [] {
             *ServerStatusSectionBuilder<WiredTigerServerStatusSection>(
-                 std::string{kWiredTigerEngineName})
+                 std::string{WiredTigerServerStatusSection::kServerStatusSectionName})
                  .forShard();
         });
 

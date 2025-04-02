@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/document_source_feeder.h"
+
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"

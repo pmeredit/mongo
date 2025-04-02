@@ -46,9 +46,6 @@
 #include "mongo/db/s/balancer/balancer_policy.h"
 #include "mongo/s/balancer_configuration.h"
 #include "mongo/s/catalog/type_chunk.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
@@ -132,10 +129,8 @@ RoutingTableHistory makeRoutingTable(const std::vector<ChunkType>& chunks) {
 }
 
 ChunkManager makeChunkManager(const std::vector<ChunkType>& chunks) {
-    static const auto kConfigId = ShardId("config");
-    DatabaseVersion dbVersion;
     auto rt = std::make_shared<RoutingTableHistory>(makeRoutingTable(chunks));
-    return {kConfigId, std::move(dbVersion), {std::move(rt)}, boost::none /* atClusterTime */};
+    return {{std::move(rt)}, boost::none /* atClusterTime */};
 }
 
 DistributionStatus makeDistStatus(const ChunkManager& cm, ZoneInfo zoneInfo = ZoneInfo()) {

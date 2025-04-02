@@ -38,9 +38,8 @@
 #include "mongo/db/update/unset_node.h"
 #include "mongo/db/update/update_executor.h"
 #include "mongo/db/update/update_node_test_fixture.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -181,7 +180,7 @@ TEST_F(UnsetNodeTest, UnsetNestedPath) {
     UnsetNode node;
     ASSERT_OK(node.init(update["$unset"]["a.b.c"], expCtx));
 
-    mutablebson::Document doc(fromjson("{a: {b: {c: 6}}}}"));
+    mutablebson::Document doc(fromjson("{a: {b: {c: 6}}}"));
     setPathTaken(makeRuntimeUpdatePathForTest("a.b.c"));
     addIndexedPath("a");
     auto result = node.apply(getApplyParams(doc.root()["a"]["b"]["c"]), getUpdateNodeApplyParams());
@@ -200,7 +199,7 @@ TEST_F(UnsetNodeTest, UnsetObject) {
     UnsetNode node;
     ASSERT_OK(node.init(update["$unset"]["a.b"], expCtx));
 
-    mutablebson::Document doc(fromjson("{a: {b: {c: 6}}}}"));
+    mutablebson::Document doc(fromjson("{a: {b: {c: 6}}}"));
     setPathTaken(makeRuntimeUpdatePathForTest("a.b"));
     addIndexedPath("a");
     auto result = node.apply(getApplyParams(doc.root()["a"]["b"]), getUpdateNodeApplyParams());
@@ -374,8 +373,7 @@ TEST_F(UnsetNodeTest, ApplyCannotRemoveRequiredPartOfDBRef) {
     auto result = node.apply(getApplyParams(doc.root()["a"]["$id"]), getUpdateNodeApplyParams());
     ASSERT_FALSE(result.noop);
     ASSERT_FALSE(getIndexAffectedFromLogEntry());
-    auto updated = BSON("a" << BSON("$ref"
-                                    << "c"));
+    auto updated = BSON("a" << BSON("$ref" << "c"));
     ASSERT_EQUALS(updated, doc);
     ASSERT_FALSE(doc.isInPlaceModeEnabled());
 
@@ -396,8 +394,7 @@ TEST_F(UnsetNodeTest, ApplyCanRemoveRequiredPartOfDBRefIfValidateForStorageIsFal
     auto result = node.apply(getApplyParams(doc.root()["a"]["$id"]), getUpdateNodeApplyParams());
     ASSERT_FALSE(result.noop);
     ASSERT_TRUE(getIndexAffectedFromLogEntry());
-    auto updated = BSON("a" << BSON("$ref"
-                                    << "c"));
+    auto updated = BSON("a" << BSON("$ref" << "c"));
     ASSERT_EQUALS(updated, doc);
     ASSERT_FALSE(doc.isInPlaceModeEnabled());
 

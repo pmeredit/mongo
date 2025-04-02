@@ -43,7 +43,7 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_error_util.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/platform/compiler.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
@@ -83,7 +83,6 @@ bool allowUntimestampedWrites() {
 
 }  // namespace
 
-using namespace fmt::literals;
 using NoReadTimestamp = WiredTigerBeginTxnBlock::NoReadTimestamp;
 
 static inline int getConfigOffset(int ignore_prepare,
@@ -144,7 +143,6 @@ WiredTigerBeginTxnBlock::WiredTigerBeginTxnBlock(
     RecoveryUnit::UntimestampedWriteAssertionLevel allowUntimestampedWrite)
     : _session(session) {
     invariant(!_rollback);
-    _wt_session = _session->getSession();
 
     NoReadTimestamp no_timestamp = NoReadTimestamp::kFalse;
     if (allowUntimestampedWrite != RecoveryUnit::UntimestampedWriteAssertionLevel::kEnforce ||
@@ -162,29 +160,28 @@ WiredTigerBeginTxnBlock::WiredTigerBeginTxnBlock(
     if (config > 0) {
         compiled_config = compiledBeginTransactions[config - 1].getConfig(_session);
     }
-    invariantWTOK(_wt_session->begin_transaction(_wt_session, compiled_config), _wt_session);
+    invariantWTOK(_session->begin_transaction(compiled_config), *_session);
     _rollback = true;
 }
 
 WiredTigerBeginTxnBlock::WiredTigerBeginTxnBlock(WiredTigerSession* session, const char* config)
     : _session(session) {
     invariant(!_rollback);
-    _wt_session = _session->getSession();
-    invariantWTOK(_wt_session->begin_transaction(_wt_session, config), _wt_session);
+    invariantWTOK(_session->begin_transaction(config), *_session);
     _rollback = true;
 }
 
 WiredTigerBeginTxnBlock::~WiredTigerBeginTxnBlock() {
     if (_rollback) {
-        invariant(_wt_session->rollback_transaction(_wt_session, nullptr) == 0);
+        invariant(_session->rollback_transaction(nullptr) == 0);
     }
 }
 
 Status WiredTigerBeginTxnBlock::setReadSnapshot(Timestamp readTimestamp) {
     invariant(_rollback);
-    return wtRCToStatus(_wt_session->timestamp_transaction_uint(
-                            _wt_session, WT_TS_TXN_TYPE_READ, readTimestamp.asULL()),
-                        _wt_session);
+    return wtRCToStatus(
+        _session->timestamp_transaction_uint(WT_TS_TXN_TYPE_READ, readTimestamp.asULL()),
+        *_session);
 }
 
 void WiredTigerBeginTxnBlock::done() {

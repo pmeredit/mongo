@@ -34,7 +34,6 @@
 #include <boost/optional/optional.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 
-#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/window_function/window_function_exec_removable_range.h"
 #include "mongo/util/assert_util.h"
@@ -50,7 +49,7 @@ WindowFunctionExecRemovableRange::WindowFunctionExecRemovableRange(
     boost::intrusive_ptr<ExpressionFieldPath> sortBy,
     std::unique_ptr<WindowFunctionState> function,
     WindowBounds bounds,
-    MemoryUsageTracker::Impl* memTracker)
+    SimpleMemoryUsageTracker* memTracker)
     : WindowFunctionExecRemovable(iter,
                                   PartitionAccessor::Policy::kEndpoints,
                                   std::move(input),

@@ -41,8 +41,6 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/random.h"
 #include "mongo/stdx/thread.h"
@@ -375,6 +373,23 @@ void OperationContext::markKilled(ErrorCodes::Error killCode) {
         LOGV2(20883, "Interrupted operation as its client disconnected", "opId"_attr = getOpID());
     }
 
+    // Set this before assigning the _killCode to ensure that any thread that observes the interrupt
+    // is guaranteed to see the write. If multiple threads race here, the first one to execute will
+    // win. While it isn't guaranteed to be the same thread that wins the _killCode race, it is
+    // conceptually a better kill time anyway. In theory, we could do better with atomicMin,
+    // however it is probably better to preserve the rule that this is written to exactly once, and
+    // only prior to the store to _killCode.
+    {
+        auto setIfZero = TickSource::Tick(0);
+        auto tickSource =
+            _client ? _client->getServiceContext()->getTickSource() : globalSystemTickSource();
+        auto ticks = tickSource->getTicks();
+        if (!ticks) {
+            ticks = TickSource::Tick(-1);
+        }
+        _killTime.compareAndSwap(&setIfZero, ticks);
+    }
+
     if (auto status = ErrorCodes::OK; _killCode.compareAndSwap(&status, killCode)) {
         _cancelSource.cancel();
         if (_baton) {
@@ -454,7 +469,7 @@ void OperationContext::setTxnRetryCounter(TxnRetryCounter txnRetryCounter) {
     _txnRetryCounter = txnRetryCounter;
 }
 
-std::unique_ptr<RecoveryUnit> OperationContext::releaseRecoveryUnit_DO_NOT_USE() {
+std::unique_ptr<RecoveryUnit> OperationContext::releaseRecoveryUnit_DO_NOT_USE(ClientLock&) {
     if (_recoveryUnit) {
         _recoveryUnit->setOperationContext(nullptr);
     }
@@ -462,22 +477,25 @@ std::unique_ptr<RecoveryUnit> OperationContext::releaseRecoveryUnit_DO_NOT_USE()
     return std::move(_recoveryUnit);
 }
 
-std::unique_ptr<RecoveryUnit> OperationContext::releaseAndReplaceRecoveryUnit_DO_NOT_USE() {
-    auto ru = releaseRecoveryUnit_DO_NOT_USE();
+std::unique_ptr<RecoveryUnit> OperationContext::releaseAndReplaceRecoveryUnit_DO_NOT_USE(
+    ClientLock& clientLock) {
+    auto ru = releaseRecoveryUnit_DO_NOT_USE(clientLock);
     setRecoveryUnit_DO_NOT_USE(
         std::unique_ptr<RecoveryUnit>(getServiceContext()->getStorageEngine()->newRecoveryUnit()),
-        WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
+        WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
+        clientLock);
     return ru;
 }
 
-void OperationContext::replaceRecoveryUnit_DO_NOT_USE() {
+void OperationContext::replaceRecoveryUnit_DO_NOT_USE(ClientLock& clientLock) {
     setRecoveryUnit_DO_NOT_USE(
         std::unique_ptr<RecoveryUnit>(getServiceContext()->getStorageEngine()->newRecoveryUnit()),
-        WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
+        WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
+        clientLock);
 }
 
 WriteUnitOfWork::RecoveryUnitState OperationContext::setRecoveryUnit_DO_NOT_USE(
-    std::unique_ptr<RecoveryUnit> unit, WriteUnitOfWork::RecoveryUnitState state) {
+    std::unique_ptr<RecoveryUnit> unit, WriteUnitOfWork::RecoveryUnitState state, ClientLock&) {
     _recoveryUnit = std::move(unit);
     if (_recoveryUnit) {
         _recoveryUnit->setOperationContext(this);
@@ -495,7 +513,7 @@ void OperationContext::setLockState_DO_NOT_USE(std::unique_ptr<Locker> locker) {
 }
 
 std::unique_ptr<Locker> OperationContext::swapLockState_DO_NOT_USE(std::unique_ptr<Locker> locker,
-                                                                   WithLock clientLock) {
+                                                                   ClientLock& clientLock) {
     invariant(_locker);
     invariant(locker);
     _locker.swap(locker);

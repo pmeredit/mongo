@@ -59,9 +59,6 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
@@ -214,7 +211,7 @@ StatusWith<ShardDatabaseType> readShardDatabasesEntry(OperationContext* opCtx,
                                                       const DatabaseName& dbName) {
     try {
         DBDirectClient client(opCtx);
-        FindCommandRequest findRequest{NamespaceString::kShardConfigDatabasesNamespace};
+        FindCommandRequest findRequest{NamespaceString::kConfigCacheDatabasesNamespace};
         findRequest.setFilter(
             BSON(ShardDatabaseType::kDbNameFieldName
                  << DatabaseNameUtil::serialize(dbName, findRequest.getSerializationContext())));
@@ -223,7 +220,7 @@ StatusWith<ShardDatabaseType> readShardDatabasesEntry(OperationContext* opCtx,
         if (!cursor) {
             return Status(ErrorCodes::OperationFailed,
                           str::stream() << "Failed to establish a cursor for reading "
-                                        << NamespaceString::kShardConfigDatabasesNamespace
+                                        << NamespaceString::kConfigCacheDatabasesNamespace
                                                .toStringForErrorMsg()
                                         << " from local storage");
         }
@@ -241,7 +238,7 @@ StatusWith<ShardDatabaseType> readShardDatabasesEntry(OperationContext* opCtx,
         return ex.toStatus(
             str::stream() << "Failed to read the '" << dbName.toStringForErrorMsg()
                           << "' entry locally from "
-                          << NamespaceString::kShardConfigDatabasesNamespace.toStringForErrorMsg());
+                          << NamespaceString::kConfigCacheDatabasesNamespace.toStringForErrorMsg());
     }
 }
 
@@ -305,7 +302,7 @@ Status updateShardDatabasesEntry(OperationContext* opCtx,
 
         auto commandResponse = client.runCommand([&] {
             write_ops::UpdateCommandRequest updateOp(
-                NamespaceString::kShardConfigDatabasesNamespace);
+                NamespaceString::kConfigCacheDatabasesNamespace);
             updateOp.setUpdates({[&] {
                 write_ops::UpdateOpEntry entry;
                 entry.setQ(query);
@@ -521,7 +518,7 @@ Status deleteDatabasesEntry(OperationContext* opCtx, const DatabaseName& dbName)
         DBDirectClient client(opCtx);
         auto deleteCommandResponse = client.runCommand([&] {
             write_ops::DeleteCommandRequest deleteOp(
-                NamespaceString::kShardConfigDatabasesNamespace);
+                NamespaceString::kConfigCacheDatabasesNamespace);
             deleteOp.setDeletes({[&] {
                 write_ops::DeleteOpEntry entry;
                 entry.setQ(BSON(ShardDatabaseType::kDbNameFieldName << DatabaseNameUtil::serialize(

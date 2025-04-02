@@ -67,17 +67,20 @@
 #include "mongo/db/exec/disk_use_options_gen.h"
 #include "mongo/db/fle_crud.h"
 #include "mongo/db/logical_time.h"
+#include "mongo/db/memory_tracking/operation_memory_usage_tracker.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/change_stream_invalidation_info.h"
 #include "mongo/db/pipeline/document_source_exchange.h"
 #include "mongo/db/pipeline/document_source_geo_near.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/pipeline_d.h"
 #include "mongo/db/pipeline/plan_executor_pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
 #include "mongo/db/pipeline/search/search_helper.h"
+#include "mongo/db/pipeline/shard_role_transaction_resources_stasher_for_pipeline.h"
 #include "mongo/db/pipeline/visitors/document_source_visitor_docs_needed_bounds.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/client_cursor/clientcursor.h"
@@ -85,8 +88,9 @@
 #include "mongo/db/query/client_cursor/cursor_manager.h"
 #include "mongo/db/query/client_cursor/cursor_response.h"
 #include "mongo/db/query/collation/collator_interface.h"
-#include "mongo/db/query/collection_query_info.h"
+#include "mongo/db/query/collection_index_usage_tracker_decoration.h"
 #include "mongo/db/query/explain.h"
+#include "mongo/db/query/explain_diagnostic_printer.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/db/query/find_common.h"
 #include "mongo/db/query/multiple_collection_accessor.h"
@@ -94,26 +98,31 @@
 #include "mongo/db/query/plan_executor_factory.h"
 #include "mongo/db/query/plan_explainer.h"
 #include "mongo/db/query/plan_summary_stats.h"
-#include "mongo/db/query/query_settings/query_settings_utils.h"
+#include "mongo/db/query/query_request_helper.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
+#include "mongo/db/query/query_shape/agg_cmd_shape.h"
 #include "mongo/db/query/query_stats/agg_key.h"
 #include "mongo/db/query/query_stats/query_stats.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
+#include "mongo/db/query/timeseries/timeseries_rewrites.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/read_concern.h"
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/s/operation_sharding_state.h"
 #include "mongo/db/s/query_analysis_writer.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/server_parameter.h"
 #include "mongo/db/stats/resource_consumption_metrics.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/tenant_id.h"
+#include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/views/resolved_view.h"
 #include "mongo/db/views/view.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/analyze_shard_key_common_gen.h"
 #include "mongo/s/query_analysis_sampler_util.h"
@@ -156,30 +165,13 @@ std::unique_ptr<Pipeline, PipelineDeleter> handleViewHelper(
         // TODO SERVER-82101 Re-organize timeseries rewrites so timeseries can follow the
         // same pattern here as other views
         return Pipeline::parse(aggExState.getRequest().getPipeline(), expCtx);
+    } else if (search_helpers::isMongotPipeline(pipeline.get()) &&
+               expCtx->isFeatureFlagMongotIndexedViewsEnabled()) {
+        // For search queries on views don't do any of the pipeline stitching that is done for
+        // normal views.
+        return pipeline;
     }
 
-    else if (search_helpers::isMongotPipeline(pipeline.get()) &&
-             expCtx->isFeatureFlagMongotIndexedViewsEnabled()) {
-        if (search_helpers::isStoredSource(pipeline.get())) {
-            // For returnStoredSource queries, the documents returned by mongot already include the
-            // fields transformed by the view pipeline. As such, mongod doesn't need to apply the
-            // view pipeline after idLookup.
-            return pipeline;
-        } else {
-            // Search queries on views behave differently than non-search aggregations on views.
-            // When a user pipeline contains a $search/$vectorSearch stage, idLookup will apply the
-            // view transforms as part of its subpipeline. In this way, the view stages will always
-            // be applied directly after $_internalSearchMongotRemote and before the remaining
-            // stages of the user pipeline. This is to ensure the stages following
-            // $search/$vectorSearch in the user pipeline will receive the modified documents: when
-            // storedSource is disabled, idLookup will retrieve full/unmodified documents during
-            // (from the _id values returned by mongot), apply the view's data transforms, and pass
-            // said transformed documents through the rest of the user pipeline.
-            search_helpers::addResolvedNamespaceForSearch(
-                aggExState.getOriginalNss(), aggExState.getResolvedView().value(), expCtx, uuid);
-            return pipeline;
-        }
-    }
     // Parse the view pipeline, then stitch the user pipeline and view pipeline together
     // to build the total aggregation pipeline.
     auto userPipeline = std::move(pipeline);
@@ -269,6 +261,10 @@ ClientCursorPin registerCursor(const AggExState& aggExState,
     if (extDataSrcGuard) {
         ExternalDataSourceScopeGuard::get(pin.getCursor()) = extDataSrcGuard;
     }
+
+    // Transfer ownership of the OperationMemoryUsageTracker from the opCtx to the cursor so that it
+    // is tracked across getMore() calls.
+    OperationMemoryUsageTracker::moveToCursorIfAvailable(opCtx, pin.getCursor());
     return pin;
 }
 
@@ -355,6 +351,10 @@ bool getFirstBatch(const AggExState& aggExState,
                    boost::intrusive_ptr<ExpressionContext> expCtx,
                    PlanExecutor& exec,
                    CursorResponseBuilder& responseBuilder) {
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics("explainDiagnostics",
+                                       diagnostic_printers::ExplainDiagnosticPrinter{&exec});
+
     auto opCtx = aggExState.getOpCtx();
     long long batchSize = aggExState.getRequest().getCursor().getBatchSize().value_or(
         aggregation_request_helper::kDefaultBatchSize);
@@ -399,7 +399,9 @@ bool getFirstBatch(const AggExState& aggExState,
                           "stats"_attr = redact(stats),
                           "cmd"_attr = redact(*aggExState.getDeferredCmd()));
 
-            exception.addContext("PlanExecutor error during aggregation");
+            exception.addContext(str::stream()
+                                 << "Executor error during aggregate command on namespace: "
+                                 << aggExState.getOriginalNss().toStringForErrorMsg());
             throw;
         }
 
@@ -505,7 +507,7 @@ boost::optional<ClientCursorPin> executeSingleExecUntilFirstBatch(
  * getMore() if necessary.
  */
 void executeUntilFirstBatch(const AggExState& aggExState,
-                            const AggCatalogState& aggCatalogState,
+                            AggCatalogState& aggCatalogState,
                             boost::intrusive_ptr<ExpressionContext> expCtx,
                             std::vector<unique_ptr<PlanExecutor, PlanExecutor::Deleter>>& execs,
                             rpc::ReplyBuilderInterface* result) {
@@ -528,6 +530,17 @@ void executeUntilFirstBatch(const AggExState& aggExState,
         std::vector<ClientCursorPin> pinnedCursors;
         for (auto&& exec : execs) {
             auto pinnedCursor = registerCursor(aggExState, expCtx, std::move(exec));
+
+            // The first executor is the main executor. The following ones are additionalExecutors.
+            // AdditionalExecutors must never have associated ShardRole resources – therefore, we
+            // stash empty TransactionResources to their stashed cursor.
+            if (!pinnedCursors.empty() &&
+                pinnedCursor->getExecutor()->lockPolicy() ==
+                    PlanExecutor::LockPolicy::kLocksInternally) {
+                pinnedCursor->stashTransactionResources(StashedTransactionResources{
+                    std::make_unique<shard_role_details::TransactionResources>(),
+                    shard_role_details::TransactionResources::State::EMPTY});
+            }
             pinnedCursors.emplace_back(std::move(pinnedCursor));
         }
         handleMultipleCursorsForExchange(aggExState, expCtx, pinnedCursors, result);
@@ -543,9 +556,12 @@ void executeUntilFirstBatch(const AggExState& aggExState,
         auto exec =
             maybePinnedCursor ? maybePinnedCursor->getCursor()->getExecutor() : execs[0].get();
         const auto& planExplainer = exec->getPlanExplainer();
-        if (const auto& coll = aggCatalogState.getPrimaryCollection()) {
-            CollectionQueryInfo::get(coll).notifyOfQuery(
-                coll, CurOp::get(aggExState.getOpCtx())->debug());
+        if (const auto& coll = aggCatalogState.getMainCollectionOrView().getCollectionPtr()) {
+            auto& debugInfo = CurOp::get(aggExState.getOpCtx())->debug();
+            CollectionIndexUsageTrackerDecoration::get(coll.get())
+                .recordCollectionIndexUsage(debugInfo.collectionScans,
+                                            debugInfo.collectionScansNonTailable,
+                                            debugInfo.indexesUsed);
         }
         // For SBE pushed down pipelines, we may need to report stats saved for secondary
         // collections separately.
@@ -554,10 +570,19 @@ void executeUntilFirstBatch(const AggExState& aggExState,
             if (coll) {
                 PlanSummaryStats secondaryStats;
                 planExplainer.getSecondarySummaryStats(secondaryNss, &secondaryStats);
-                CollectionQueryInfo::get(coll).notifyOfQuery(
-                    aggExState.getOpCtx(), coll, secondaryStats);
+                CollectionIndexUsageTrackerDecoration::get(coll.get())
+                    .recordCollectionIndexUsage(secondaryStats.collectionScans,
+                                                secondaryStats.collectionScansNonTailable,
+                                                secondaryStats.indexesUsed);
             }
         }
+    }
+
+    // For optimized away pipelines, which use LockPolicy::kLockExternally, stash the ShardRole
+    // TransactionResources on the cursor.
+    if (aggCatalogState.lockAcquired() && maybePinnedCursor) {
+        invariant(maybePinnedCursor->getCursor());
+        aggCatalogState.stashResources(maybePinnedCursor->getCursor());
     }
 }
 
@@ -573,8 +598,8 @@ std::vector<std::unique_ptr<Pipeline, PipelineDeleter>> createExchangePipelinesI
     if (aggExState.getRequest().getExchange() && !pipeline->getContext()->getExplain()) {
         auto expCtx = pipeline->getContext();
         // The Exchange constructor deregisters the pipeline from the context. Since we need a valid
-        // opCtx for the makeExpressionContext call below, store the pointer ahead of the Exchange()
-        // call.
+        // opCtx for the ExpressionContextBuilder call below, store the pointer ahead of the
+        // Exchange() call.
         auto* opCtx = aggExState.getOpCtx();
         auto exchange = make_intrusive<Exchange>(aggExState.getRequest().getExchange().value(),
                                                  std::move(pipeline));
@@ -596,6 +621,8 @@ std::vector<std::unique_ptr<Pipeline, PipelineDeleter>> createExchangePipelinesI
                          .resolvedNamespace(uassertStatusOK(aggExState.resolveInvolvedNamespaces()))
                          .tmpDir(storageGlobalParams.dbpath + "/_tmp")
                          .collationMatchesDefault(expCtx->getCollationMatchesDefault())
+                         .canBeRejected(query_settings::canPipelineBeRejected(
+                             aggExState.getRequest().getPipeline()))
                          .build();
             // Create a new pipeline for the consumer consisting of a single
             // DocumentSourceExchange.
@@ -621,6 +648,7 @@ std::vector<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecuto
     AggCatalogState& aggCatalogState,
     std::unique_ptr<Pipeline, PipelineDeleter> pipeline) {
     const auto expCtx = pipeline->getContext();
+    const auto mainCollectionUUID = aggCatalogState.getUUID();
     // Check if the pipeline has a $geoNear stage, as it will be ripped away during the build query
     // executor phase below (to be replaced with a $geoNearCursorStage later during the executor
     // attach phase).
@@ -646,20 +674,23 @@ std::vector<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecuto
         execs.emplace_back(std::move(executor));
     } else {
         // Complete creation of the initial $cursor stage, if needed.
-        PipelineD::attachInnerQueryExecutorToPipeline(
-            aggCatalogState.getCollections(), attachCallback, std::move(executor), pipeline.get());
+        auto sharedStasher = make_intrusive<ShardRoleTransactionResourcesStasherForPipeline>();
+        PipelineD::attachInnerQueryExecutorToPipeline(aggCatalogState.getCollections(),
+                                                      attachCallback,
+                                                      std::move(executor),
+                                                      pipeline.get(),
+                                                      sharedStasher);
 
         std::vector<std::unique_ptr<Pipeline, PipelineDeleter>> pipelines;
         // Any pipeline that relies on calls to mongot requires additional setup.
         if (search_helpers::isMongotPipeline(pipeline.get())) {
-            uassert(6253506,
-                    "Cannot have exchange specified in a search pipeline",
-                    !aggExState.getRequest().getExchange());
-
             // Release locks early, before we generate the search pipeline, so that we don't hold
             // them during network calls to mongot. This is fine for search pipelines since they are
             // not reading any local (lock-protected) data in the main pipeline.
-            aggCatalogState.relinquishLocks();
+            // Stash the ShardRole TransactionResources on the 'sharedStasher' we shared with the
+            // pipeline stages.
+            aggCatalogState.stashResources(sharedStasher.get());
+
             pipelines.push_back(std::move(pipeline));
 
             // TODO SERVER-89546 extractDocsNeededBounds should be called internally within
@@ -690,12 +721,16 @@ std::vector<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecuto
                                                                  aggExState.hasChangeStream())));
         }
 
-        // With the pipelines created, we can relinquish locks as they will manage the locks
-        // internally further on. We still need to keep the lock for an optimized away pipeline
-        // though, as we will be changing its lock policy to 'kLockExternally' (see details
-        // below), and in order to execute the initial getNext() call in 'handleCursorCommand',
-        // we need to hold the collection lock.
-        aggCatalogState.relinquishLocks();
+        if (aggCatalogState.lockAcquired()) {
+            // With the pipelines created, we can relinquish locks as they will manage the locks
+            // internally further on. We still need to keep the lock for an optimized away pipeline
+            // though, as we will be changing its lock policy to 'kLockExternally' (see details
+            // below), and in order to execute the initial getNext() call in 'handleCursorCommand',
+            // we need to hold the collection lock.
+            // Stash the ShardRole TransactionResources on the 'sharedStasher' we shared with the
+            // pipeline stages.
+            aggCatalogState.stashResources(sharedStasher.get());
+        }
     }
 
     for (auto& exec : additionalExecutors) {
@@ -714,8 +749,7 @@ std::vector<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecuto
     hangAfterCreatingAggregationPlan.executeIf(
         [](const auto&) { hangAfterCreatingAggregationPlan.pauseWhileSet(); },
         [&](const BSONObj& data) {
-            boost::optional<UUID> uuid{aggCatalogState.getUUID()};
-            return uuid && UUID::parse(data["uuid"]) == *uuid;
+            return mainCollectionUUID && UUID::parse(data["uuid"]) == *mainCollectionUUID;
         });
 
     return execs;
@@ -726,6 +760,9 @@ void executeExplain(const AggExState& aggExState,
                     boost::intrusive_ptr<ExpressionContext> expCtx,
                     PlanExecutor* explainExecutor,
                     rpc::ReplyBuilderInterface* result) {
+    // Capture diagnostics to be logged in the case of a failure.
+    ScopedDebugInfo explainDiagnostics(
+        "explainDiagnostics", diagnostic_printers::ExplainDiagnosticPrinter{explainExecutor});
     auto bodyBuilder = result->getBodyBuilder();
     if (auto pipelineExec = dynamic_cast<PlanExecutorPipeline*>(explainExecutor)) {
         Explain::explainPipeline(pipelineExec,
@@ -780,25 +817,34 @@ Status runAggregateOnView(AggExState& aggExState,
             "mapReduce on a view is not supported",
             !aggExState.getRequest().getIsMapReduceCommand());
 
+    // TODO SERVER-101661 Enable $rankFusion run on views.
+    uassert(ErrorCodes::CommandNotSupportedOnView,
+            "$rankFusion is currently unsupported on views",
+            !aggExState.isRankFusionStage());
+
     // Resolve the request's collation and check that the default collation of 'view' is compatible
     // with the operation's collation. The collation resolution and check are both skipped if the
     // request did not specify a collation.
-    const ViewDefinition* view = aggCatalogState->getPrimaryView();
+    tassert(10240800, "Expected a view", aggCatalogState->getMainCollectionOrView().isView());
+    const auto& view = aggCatalogState->getMainCollectionOrView().getView();
+    const auto& viewDefinition = view.getViewDefinition();
+
     if (!aggExState.getRequest().getCollation().get_value_or(BSONObj()).isEmpty()) {
         auto [collatorToUse, collatorToUseMatchesDefault] = aggCatalogState->resolveCollator();
-        if (!CollatorInterface::collatorsMatch(view->defaultCollator(), collatorToUse.get()) &&
-            !view->timeseries()) {
+        if (!CollatorInterface::collatorsMatch(viewDefinition.defaultCollator(),
+                                               collatorToUse.get()) &&
+            !viewDefinition.timeseries()) {
             return {ErrorCodes::OptionNotSupportedOnView,
                     "Cannot override a view's default collation"};
         }
     }
 
-    aggExState.setView(aggCatalogState, view);
+    aggExState.setView(aggCatalogState, viewDefinition);
     // Resolved view will be available after view has been set on AggregationExecutionState
     auto resolvedView = aggExState.getResolvedView().value();
 
     // With the view & collation resolved, we can relinquish locks.
-    aggCatalogState->relinquishLocks();
+    aggCatalogState->relinquishResources();
 
     auto status{Status::OK()};
     if (!OperationShardingState::get(aggExState.getOpCtx())
@@ -871,6 +917,20 @@ std::unique_ptr<Pipeline, PipelineDeleter> parsePipelineAndRegisterQueryStats(
     const AggExState& aggExState,
     const AggCatalogState& aggCatalogState,
     boost::intrusive_ptr<ExpressionContext> expCtx) {
+    // If applicable, ensure that the resolved namespace is added to the resolvedNamespaces map on
+    // the expCtx before calling Pipeline::parse(). This is necessary for search on views as
+    // Pipeline::parse() will first check if a view exists directly on the stage specification and
+    // if none is found, will then check for the view using the expCtx. As such, it's necessary to
+    // add the resolved namespace to the expCtx prior to any call to Pipeline::parse().
+    if (aggExState.getResolvedView()) {
+        search_helpers::checkAndAddResolvedNamespaceForSearch(
+            expCtx,
+            aggExState.getOriginalRequest().getPipeline(),
+            *aggExState.getResolvedView(),
+            aggExState.getOriginalNss(),
+            aggCatalogState.getUUID());
+    }
+
     // If we're operating over a view, we first parse just the original user-given request
     // for the sake of registering query stats. Then, we'll parse the view pipeline and stitch
     // the two pipelines together below.
@@ -882,8 +942,28 @@ std::unique_ptr<Pipeline, PipelineDeleter> parsePipelineAndRegisterQueryStats(
     // Register query stats with the pre-optimized pipeline. Exclude queries against collections
     // with encrypted fields. We still collect query stats on collection-less aggregations.
     bool hasEncryptedFields = aggCatalogState.lockAcquired() &&
-        aggCatalogState.getPrimaryCollection() &&
-        aggCatalogState.getPrimaryCollection()->getCollectionOptions().encryptedFieldConfig;
+        aggCatalogState.getMainCollectionOrView().collectionExists() &&
+        aggCatalogState.getMainCollectionOrView()
+            .getCollectionPtr()
+            ->getCollectionOptions()
+            .encryptedFieldConfig;
+
+    // Perform the query settings lookup and attach it to 'expCtx'.
+    query_shape::DeferredQueryShape deferredShape{[&]() {
+        return shape_helpers::tryMakeShape<query_shape::AggCmdShape>(
+            requestForQueryStats,
+            aggExState.getOriginalNss(),
+            aggExState.getInvolvedNamespaces(),
+            *pipeline,
+            expCtx);
+    }};
+    expCtx->setQuerySettingsIfNotPresent(
+        query_settings::lookupQuerySettingsWithRejectionCheckOnShard(
+            expCtx,
+            deferredShape,
+            aggExState.getOriginalNss(),
+            requestForQueryStats.getQuerySettings()));
+
     if (!hasEncryptedFields) {
         // If this is a query over a resolved view, we want to register query stats with the
         // original user-given request and pipeline, rather than the new request generated when
@@ -894,11 +974,11 @@ std::unique_ptr<Pipeline, PipelineDeleter> parsePipelineAndRegisterQueryStats(
             aggExState.getOpCtx(),
             aggExState.getOriginalNss(),
             [&]() {
-                return std::make_unique<query_stats::AggKey>(requestForQueryStats,
-                                                             *pipeline,
-                                                             expCtx,
+                uassert(8472502, "Failed computing query shape", deferredShape());
+                return std::make_unique<query_stats::AggKey>(expCtx,
+                                                             requestForQueryStats,
+                                                             std::move(*deferredShape),
                                                              std::move(pipelineInvolvedNamespaces),
-                                                             aggExState.getOriginalNss(),
                                                              collectionType);
             },
             aggExState.hasChangeStream());
@@ -909,17 +989,6 @@ std::unique_ptr<Pipeline, PipelineDeleter> parsePipelineAndRegisterQueryStats(
             CurOp::get(aggExState.getOpCtx())->debug().queryStatsInfo.metricsRequested = true;
         }
     }
-
-    // Lookup the query settings and attach it to the 'expCtx'.
-    // TODO: SERVER-73632 Remove feature flag for PM-635.
-    // Query settings will only be looked up on mongos and therefore should be part of command
-    // body on mongod if present.
-    expCtx->setQuerySettingsIfNotPresent(
-        query_settings::lookupQuerySettingsForAgg(expCtx,
-                                                  requestForQueryStats,
-                                                  *pipeline,
-                                                  aggExState.getInvolvedNamespaces(),
-                                                  aggExState.getOriginalNss()));
 
     if (aggExState.getResolvedView().has_value()) {
         expCtx->startExpressionCounters();
@@ -987,6 +1056,18 @@ StatusWith<std::unique_ptr<Pipeline, PipelineDeleter>> preparePipeline(
         aggExState.getRequest().getEncryptionInformation()->setCrudProcessed(true);
     }
 
+    if (search_helpers::isMongotPipeline(pipeline.get())) {
+        // Before preparing the pipeline executor, we need to do dependency analysis to validate
+        // the metadata dependencies.
+        // TODO SERVER-40900 Consider performing $meta validation for all queries at this point
+        // before optimization.
+        pipeline->validateMetaDependencies();
+
+        uassert(6253506,
+                "Cannot have exchange specified in a search pipeline",
+                !aggExState.getRequest().getExchange());
+    }
+
     pipeline->optimizePipeline();
 
     constexpr bool alreadyOptimized = true;
@@ -1007,6 +1088,27 @@ StatusWith<std::unique_ptr<Pipeline, PipelineDeleter>> preparePipeline(
     }
 
     return std::move(pipeline);
+}
+
+/**
+ * Rewrite the AggregateCommandRequest pipeline if the query is over a timeseries collection.
+ */
+void rewritePipelineIfTimeseries(const AggExState& aggExState,
+                                 const AggCatalogState& aggCatalogState) {
+    // Conditions for enabling the viewless code path: feature flag is on, request does not use
+    // the rawData flag, and we're querying against a viewless timeseries collection.
+    if (aggCatalogState.lockAcquired()) {
+        if (const auto& coll = aggCatalogState.getMainCollectionOrView().getCollectionPtr();
+            timeseries::isEligibleForViewlessTimeseriesRewrites(aggExState.getOpCtx(), coll)) {
+            const auto timeseriesOptions = coll->getTimeseriesOptions();
+            tassert(10000200,
+                    "Timeseries options must be present for timeseries collection",
+                    timeseriesOptions);
+            // Handle re-rewrite prevention in the callee.
+            timeseries::rewriteRequestPipelineAndHintForTimeseriesCollection(
+                aggExState.getRequest(), *coll.get(), *timeseriesOptions);
+        }
+    }
 }
 
 Status _runAggregate(AggExState& aggExState, rpc::ReplyBuilderInterface* result) {
@@ -1031,24 +1133,46 @@ Status _runAggregate(AggExState& aggExState, rpc::ReplyBuilderInterface* result)
     // Acquire any catalog locks needed by the pipeline, and create catalog-dependent state.
     std::unique_ptr<AggCatalogState> aggCatalogState = aggExState.createAggCatalogState();
 
+    BSONObj shardKey = BSONObj();
+    if (aggCatalogState->lockAcquired() &&
+        aggCatalogState->getMainCollectionOrView().isCollection()) {
+        const auto& mainCollShardingDescription =
+            aggCatalogState->getMainCollectionOrView().getCollection().getShardingDescription();
+        if (mainCollShardingDescription.isSharded()) {
+            shardKey = mainCollShardingDescription.getShardKeyPattern().toBSON();
+        }
+    }
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics("ShardKeyDiagnostics",
+                                        diagnostic_printers::ShardKeyDiagnosticPrinter{shardKey});
+
     boost::optional<AutoStatsTracker> statsTracker;
     aggCatalogState->getStatsTrackerIfNeeded(statsTracker);
 
     // If this is a view, we must resolve the view, then recursively call runAggregate from
     // runAggregateOnView.
-    if (aggCatalogState->lockAcquired() && aggCatalogState->getPrimaryView()) {
+    if (aggCatalogState->lockAcquired() && aggCatalogState->getMainCollectionOrView().isView()) {
         // We do not need to expand the view pipeline when there is a $collStats stage, as
         // $collStats is supported on a view namespace. For a time-series collection, however,
         // the view is abstracted out for the users, so we needed to resolve the namespace to
         // get the underlying bucket collection.
+        const auto& view = aggCatalogState->getMainCollectionOrView().getView();
         bool shouldViewBeExpanded =
-            !aggExState.startsWithCollStats() || aggCatalogState->getPrimaryView()->timeseries();
+            !aggExState.startsWithCollStats() || view.getViewDefinition().timeseries();
         if (shouldViewBeExpanded) {
             return runAggregateOnView(aggExState, std::move(aggCatalogState), result);
         }
     }
 
+    rewritePipelineIfTimeseries(aggExState, *aggCatalogState);
+
     boost::intrusive_ptr<ExpressionContext> expCtx = aggCatalogState->createExpressionContext();
+
+    // Create an RAII object that prints useful information about the ExpressionContext in the case
+    // of a tassert or crash.
+    ScopedDebugInfo expCtxDiagnostics("ExpCtxDiagnostics",
+                                      diagnostic_printers::ExpressionContextPrinter{expCtx});
 
     // Prepare the parsed pipeline for execution. This involves parsing the pipeline,
     // registering query stats, rewriting the pipeline to support queryable encryption, and
@@ -1085,12 +1209,12 @@ Status runAggregate(
     const LiteParsedPipeline& liteParsedPipeline,
     const BSONObj& cmdObj,
     const PrivilegeVector& privileges,
+    boost::optional<ExplainOptions::Verbosity> verbosity,
     rpc::ReplyBuilderInterface* result,
     const std::vector<std::pair<NamespaceString, std::vector<ExternalDataSourceInfo>>>&
         usedExternalDataSources) {
-
     AggExState aggExState(
-        opCtx, request, liteParsedPipeline, cmdObj, privileges, usedExternalDataSources);
+        opCtx, request, liteParsedPipeline, cmdObj, privileges, usedExternalDataSources, verbosity);
 
     Status status = _runAggregate(aggExState, result);
 

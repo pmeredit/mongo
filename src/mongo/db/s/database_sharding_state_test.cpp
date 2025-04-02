@@ -64,8 +64,7 @@
 #include "mongo/s/catalog_cache_loader.h"
 #include "mongo/s/catalog_cache_loader_mock.h"
 #include "mongo/s/sharding_state.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/uuid.h"
@@ -152,9 +151,7 @@ TEST_F(DatabaseShardingStateTestWithMockedLoader, OnDbVersionMismatch) {
         const auto newDbVersion = newDb.getVersion();
         auto opCtx = operationContext();
         auto getActiveDbVersion = [&] {
-            AutoGetDb autoDb(opCtx, kDbName, MODE_IS);
-            const auto scopedDss =
-                DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, kDbName);
+            const auto scopedDss = DatabaseShardingState::acquireShared(opCtx, kDbName);
             return scopedDss->getDbVersion(opCtx);
         };
 
@@ -189,9 +186,7 @@ TEST_F(DatabaseShardingStateTestWithMockedLoader, ForceDatabaseRefresh) {
             FilteringMetadataCache::get(opCtx)->onDbVersionMismatch(opCtx, kDbName, boost::none));
 
         boost::optional<DatabaseVersion> activeDbVersion = [&] {
-            AutoGetDb autoDb(opCtx, kDbName, MODE_IS);
-            const auto scopedDss =
-                DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, kDbName);
+            const auto scopedDss = DatabaseShardingState::acquireShared(opCtx, kDbName);
             return scopedDss->getDbVersion(opCtx);
         }();
         ASSERT_TRUE(activeDbVersion);

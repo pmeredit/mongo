@@ -46,8 +46,6 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/string_map.h"
 #include "mongo/util/time_support.h"
@@ -101,8 +99,7 @@ static const StringMap<StringData> kArrayTypeStringConstants{
 
 static constexpr auto kRepresentativeString = "?"_sd;
 static constexpr auto kRepresentativeNumber = 1;
-static const auto kRepresentativeObject = BSON("?"
-                                               << "?");
+static const auto kRepresentativeObject = BSON("?" << "?");
 static const auto kRepresentativeArray = BSONArray();
 static constexpr auto kRepresentativeBinData = BSONBinData();
 static const auto kRepresentativeObjectId = OID::max();
@@ -520,4 +517,29 @@ std::string SerializationOptions::serializeFieldPathFromString(StringData path) 
     }
     return path.toString();
 }
+
+bool SerializationOptions::isDefaultSerialization() const {
+    return literalPolicy == LiteralSerializationPolicy::kUnchanged && !transformIdentifiers;
+}
+
+bool SerializationOptions::isKeepingLiteralsUnchanged() const {
+    return literalPolicy == LiteralSerializationPolicy::kUnchanged;
+}
+
+bool SerializationOptions::isSerializingLiteralsAsDebugTypes() const {
+    return literalPolicy == LiteralSerializationPolicy::kToDebugTypeString;
+}
+
+bool SerializationOptions::isReplacingLiteralsWithRepresentativeValues() const {
+    return literalPolicy == LiteralSerializationPolicy::kToRepresentativeParseableValue;
+}
+
+bool SerializationOptions::isSerializingForExplain() const {
+    return verbosity.has_value();
+}
+
+bool SerializationOptions::isSerializingForQueryStats() const {
+    return literalPolicy != LiteralSerializationPolicy::kUnchanged || transformIdentifiers;
+}
+
 }  // namespace mongo

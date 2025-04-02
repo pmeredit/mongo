@@ -30,18 +30,25 @@ const executionStatsIngoredFields = [
     "executionTimeMillisEstimate",
     "saveState",
     "restoreState",
+    "costEstimate",
+    "cardinalityEstimate",
+    "estimatesMetadata",
+    "numKeysEstimate",
 ];
 
 const stagesIgnoredFields = [
     "slots",
     "optimizationTimeMillis",
+    "planCacheKey",
+    "querySettings",
+    "isCached",
 ];
 
 const mongosIgnoredFields = [
     "works",
     "needTime",
+    "queryHash",
     "planCacheShapeHash",
-    "planCacheKey",
     "optimizationTimeMillis",
 ].concat(executionStatsIngoredFields, stagesIgnoredFields);
 

@@ -31,7 +31,6 @@
 
 #include <boost/smart_ptr/allocate_unique.hpp>
 #include <memory>
-#include <scoped_allocator>
 
 #include "mongo/util/tracking/allocator.h"
 #include "mongo/util/tracking/context.h"
@@ -55,36 +54,37 @@ public:
     unique_ptr(Context& Context, Args&&... args)
         : _uniquePtr(
               boost::allocate_unique<T>(Context.makeAllocator<T>(), std::forward<Args>(args)...)) {}
-    unique_ptr(unique_ptr& utp) noexcept : _uniquePtr(*utp.get()){};
+    unique_ptr(Context& Context, std::nullptr_t)
+        : _uniquePtr(nullptr, boost::alloc_deleter<T, Allocator<T>>(Context.makeAllocator<T>())) {}
     unique_ptr(unique_ptr&&) = default;
     ~unique_ptr() = default;
 
-    T* operator->() {
+    T* operator->() noexcept {
         return _uniquePtr.get().ptr();
     }
 
-    T* operator->() const {
+    T* operator->() const noexcept {
         return _uniquePtr.get().ptr();
     }
 
-    T* get() {
+    T* get() noexcept {
         return _uniquePtr.get().ptr();
     }
 
-    T* get() const {
+    T* get() const noexcept {
         return _uniquePtr.get().ptr();
     }
 
-    T& operator*() {
+    T& operator*() noexcept {
         return *get();
     }
 
-    T& operator*() const {
+    T& operator*() const noexcept {
         return *get();
     }
 
     T* release() noexcept {
-        return _uniquePtr.release();
+        return _uniquePtr.release().ptr();
     }
 
     void reset(T* ptr = nullptr) noexcept {
@@ -103,7 +103,7 @@ public:
     }
 
     unique_ptr<T>& operator=(unique_ptr<T>&& other) noexcept {
-        _uniquePtr = other._uniquePtr;
+        _uniquePtr = std::move(other._uniquePtr);
         return *this;
     }
 

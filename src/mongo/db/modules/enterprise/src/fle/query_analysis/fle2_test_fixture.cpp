@@ -3,12 +3,14 @@
  */
 
 #include "fle2_test_fixture.h"
+#include "fle_test_fixture.h"
 
 #include "mongo/bson/json.h"
 
 namespace mongo {
 
 void FLE2TestFixture::setUp() {
+    registerEncTextSearchExpressions();
     kSsnFields = fromjson(R"(
             {
                 "fields": [
@@ -145,6 +147,18 @@ void FLE2TestFixture::setUp() {
                         "diacriticSensitive": true
                     }
                 },
+                {
+                    "keyId": {'$binary': "ESNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
+                    "path": "nested.prefixField",
+                    "bsonType": "string",
+                    "queries": {
+                        "queryType": "prefixPreview",
+                        "strMinQueryLength": 2,
+                        "strMaxQueryLength": 20,
+                        "caseSensitive": false,
+                        "diacriticSensitive": true
+                    }
+                }, 
                 {
                     "keyId": {'$binary': "DSNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
                     "path": "comboField",

@@ -61,9 +61,6 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/s/async_requests_sender.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/grid.h"
@@ -128,7 +125,7 @@ public:
     void checkForFailedRequests();
 
     /**
-     * Take all cursors currently tracked by the CursorEstablsher.
+     * Take all cursors currently tracked by the CursorEstablisher.
      */
     std::vector<RemoteCursor> takeCursors() {
         return std::exchange(_remoteCursors, {});
@@ -155,7 +152,7 @@ private:
      * Favors interruption/unyield failures > UUID mismatch error with actual ns > UUID mismatch
      * error > other errors > retargeting errors
      */
-    void _prioritizeFailures(Status newError, bool isInterruption) noexcept;
+    void _prioritizeFailures(Status newError, bool isInterruption);
 
     OperationContext* const _opCtx;
     const std::shared_ptr<executor::TaskExecutor> _executor;
@@ -351,7 +348,7 @@ void CursorEstablisher::checkForFailedRequests() {
     uassertStatusOK(*_maybeFailure);
 }
 
-void CursorEstablisher::_prioritizeFailures(Status newError, bool isInterruption) noexcept {
+void CursorEstablisher::_prioritizeFailures(Status newError, bool isInterruption) {
     invariant(!newError.isOK());
     invariant(!_maybeFailure->isOK());
 
@@ -485,9 +482,7 @@ void CursorEstablisher::killOpOnShards(ServiceContext* srvCtx,
  */
 BSONObj appendReadPreferenceNearest(BSONObj cmdObj) {
     BSONObjBuilder cmdWithReadPrefBob(std::move(cmdObj));
-    cmdWithReadPrefBob.append("$readPreference",
-                              BSON("mode"
-                                   << "nearest"));
+    cmdWithReadPrefBob.append("$readPreference", BSON("mode" << "nearest"));
     return cmdWithReadPrefBob.obj();
 }
 
@@ -591,9 +586,7 @@ std::vector<RemoteCursor> establishCursorsOnAllHosts(
     // primary or secondary.
     BSONObjBuilder newCmd(std::move(cmdObj));
     appendOpKey(opKey, &newCmd);
-    newCmd.append("$readPreference",
-                  BSON("mode"
-                       << "nearest"));
+    newCmd.append("$readPreference", BSON("mode" << "nearest"));
 
     executor::AsyncMulticaster::Options options;
     options.maxConcurrency = internalQueryAggMulticastMaxConcurrency;

@@ -2989,6 +2989,45 @@ class TestBinder(testcase.IDLTestcase):
             """)
         )
 
+        # IFR flag does not need a default or version
+        self.assert_bind(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: released
+                    shouldBeFCVGated: false
+            """)
+        )
+
+        # IFR flag can specify a compatible version
+        self.assert_bind(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: released
+                    default: true
+                    shouldBeFCVGated: false
+            """)
+        )
+
+        # explicitly mark non-IFR flag
+        self.assert_bind(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: not_for_incremental_rollout
+                    default: true
+                    version: 123
+                    shouldBeFCVGated: true
+            """)
+        )
+
         # if shouldBeFCVGated: true and default: true, a version is required
         self.assert_bind_fail(
             textwrap.dedent("""
@@ -3041,7 +3080,128 @@ class TestBinder(testcase.IDLTestcase):
                     version: 123
                     shouldBeFCVGated: false
             """),
-            idl.errors.ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_VERSION,
+            idl.errors.ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_UNSUPPORTED_OPTION,
+        )
+
+        # if shouldBeFCVGated is false, enable_on_transitional_fcv is not allowed
+        self.assert_bind_fail(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    default: true
+                    shouldBeFCVGated: false
+                    enable_on_transitional_fcv: true
+            """),
+            idl.errors.ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_UNSUPPORTED_OPTION,
+        )
+
+        # if shouldBeFCVGated: true, enable_on_transitional_fcv is allowed
+        self.assert_bind(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    default: true
+                    version: 123
+                    shouldBeFCVGated: true
+                    enable_on_transitional_fcv: true
+            """)
+        )
+
+        # if shouldBeFCVGated is false, fcv_context_unaware is not allowed
+        self.assert_bind_fail(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    default: true
+                    shouldBeFCVGated: false
+                    fcv_context_unaware: true
+            """),
+            idl.errors.ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_UNSUPPORTED_OPTION,
+        )
+
+        # if shouldBeFCVGated: true, fcv_context_unaware is allowed
+        self.assert_bind(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    default: false
+                    shouldBeFCVGated: true
+                    fcv_context_unaware: true
+            """)
+        )
+
+        # incremental_rollout_phase must have a valid value
+        self.assert_bind_fail(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: waning_gibbous
+                    shouldBeFCVGated: false
+            """),
+            idl.errors.ERROR_ID_INCREMENTAL_ROLLOUT_PHASE_INVALID_VALUE,
+        )
+
+        # if set for incremental feature rollout (IFR), version not allowed
+        self.assert_bind_fail(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: released
+                    default: true
+                    shouldBeFCVGated: true
+            """),
+            idl.errors.ERROR_ID_ILLEGALLY_FCV_GATED_FEATURE_FLAG,
+        )
+
+        # incremental_rollout_phase must not specify incompatible default
+        self.assert_bind_fail(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: in_development
+                    default: true
+                    shouldBeFCVGated: false
+            """),
+            idl.errors.ERROR_ID_INCREMENTAL_FEATURE_FLAG_DEFAULT_VALUE,
+        )
+
+        # default required for non-IFR feature flag
+        self.assert_bind_fail(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    shouldBeFCVGated: true
+            """),
+            idl.errors.ERROR_ID_FEATURE_FLAG_WITHOUT_DEFAULT_VALUE,
+        )
+        # incremental_rollout_phase must have a valid value
+        self.assert_bind_fail(
+            textwrap.dedent("""
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: rollout
+                    version: 123
+                    shouldBeFCVGated: false
+            """),
+            idl.errors.ERROR_ID_IFR_FLAG_WITH_VERSION,
         )
 
     def test_access_check(self):
@@ -3563,7 +3723,6 @@ class TestBinder(testcase.IDLTestcase):
             idl.errors.ERROR_ID_CANNOT_DECLARE_SHAPE_LITERAL,
         )
 
-    # pylint: disable=invalid-name
     def test_struct_unsafe_dangerous_disable_extra_field_duplicate_checks_negative(self):
         # type: () -> None
         """Negative struct tests for unsafe_dangerous_disable_extra_field_duplicate_checks."""

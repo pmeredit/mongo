@@ -1,5 +1,12 @@
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
+TagInfo = provider(
+    doc = "A rule provider to pass around tags that were passed to rules.",
+    fields = {
+        "tags": "Bazel tags that were attached to the rule.",
+    },
+)
+
 WITH_DEBUG_SUFFIX = "_with_debug"
 CC_SHARED_LIBRARY_SUFFIX = "_shared"
 SHARED_ARCHIVE_SUFFIX = "_shared_archive"
@@ -264,6 +271,23 @@ def create_new_cc_shared_library_info(ctx, cc_toolchain, output_shared_lib, orig
         linker_input = linker_input,
     )
 
+# TODO(SERVER-101906): We assume the worst-case resource usage to avoid OOMs. Figure out if we can
+# generalize numInputs for all link configurations so that this can more intelligently set resource
+# expectations.
+def linux_extract_resource_set(os, numInputs):
+    return {
+        "cpu": 6,
+        "memory": 20 * 1024,  # 20 GB
+        "local_test": 1,
+    }
+
+def linux_strip_resource_set(os, numInputs):
+    return {
+        "cpu": 3,
+        "memory": 10 * 1024,  # 10 GB
+        "local_test": 1,
+    }
+
 def linux_extraction(ctx, cc_toolchain, inputs):
     outputs = []
     unstripped_static_bin = None
@@ -276,6 +300,7 @@ def linux_extraction(ctx, cc_toolchain, inputs):
                 executable = cc_toolchain.objcopy_executable,
                 outputs = [debug_info],
                 inputs = inputs,
+                resource_set = linux_extract_resource_set if ctx.attr.type == "program" else None,
                 arguments = [
                     "--only-keep-debug",
                     input_bin.path,
@@ -288,6 +313,7 @@ def linux_extraction(ctx, cc_toolchain, inputs):
                 executable = cc_toolchain.objcopy_executable,
                 outputs = [output_bin],
                 inputs = depset([debug_info], transitive = [inputs]),
+                resource_set = linux_strip_resource_set if ctx.attr.type == "program" else None,
                 arguments = [
                     "--strip-debug",
                     "--add-gnu-debuglink",
@@ -540,14 +566,20 @@ def extract_debuginfo_impl(ctx):
         # for the intermediates because we end up taking a dependency
         # on the _with_debug .a files
         if ctx.attr.skip_archive and ctx.attr.cc_shared_library == None:
-            return ctx.attr.binary_with_debug[CcInfo]
-        return linux_extraction(ctx, cc_toolchain, inputs)
+            return_info = [ctx.attr.binary_with_debug[CcInfo]]
+        else:
+            return_info = linux_extraction(ctx, cc_toolchain, inputs)
     elif ctx.target_platform_has_constraint(macos_constraint):
         if ctx.attr.skip_archive and ctx.attr.cc_shared_library == None:
-            return ctx.attr.binary_with_debug[CcInfo]
-        return macos_extraction(ctx, cc_toolchain, inputs)
+            return_info = [ctx.attr.binary_with_debug[CcInfo]]
+        else:
+            return_info = macos_extraction(ctx, cc_toolchain, inputs)
     elif ctx.target_platform_has_constraint(windows_constraint):
-        return windows_extraction(ctx, cc_toolchain, inputs)
+        return_info = windows_extraction(ctx, cc_toolchain, inputs)
+
+    tag_provider = TagInfo(tags = ctx.attr.tags)
+    return_info.append(tag_provider)
+    return return_info
 
 extract_debuginfo = rule(
     extract_debuginfo_impl,

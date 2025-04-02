@@ -45,11 +45,12 @@
 #include "mongo/db/auth/validated_tenancy_scope_factory.h"
 #include "mongo/db/basic_types.h"
 #include "mongo/db/client.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/write_block_bypass.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/metadata/audit_client_attrs.h"
-#include "mongo/rpc/metadata/impersonated_user_metadata.h"
-#include "mongo/rpc/metadata/impersonated_user_metadata_gen.h"
+#include "mongo/rpc/metadata/audit_metadata.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -64,17 +65,15 @@ ForwardableOperationMetadata::ForwardableOperationMetadata(OperationContext* opC
         setComment(optComment->wrap());
     }
 
-    if (const auto authMetadata = rpc::getImpersonatedUserMetadata(opCtx)) {
-        if (authMetadata->getUser()) {
-            AuthenticationMetadata metadata;
-            metadata.setUser(authMetadata->getUser().get());
-            metadata.setRoles(authMetadata->getRoles());
-            setImpersonatedUserMetadata(metadata);
-        }
-    }
+    setAuditUserMetadata(rpc::AuditUserAttrs::get(opCtx));
 
     if (auto auditClientAttrs = rpc::AuditClientAttrs::get(opCtx->getClient())) {
         setAuditClientMetadata(std::move(auditClientAttrs));
+    }
+
+    // TODO SERVER-99655: update once gSnapshotFCVInDDLCoordinators is enabled on the lastLTS
+    if (auto& vCtx = VersionContext::getDecoration(opCtx); vCtx.isInitialized()) {
+        setVersionContext(VersionContext::getDecoration(opCtx));
     }
 
     boost::optional<StringData> originalSecurityToken = boost::none;
@@ -85,6 +84,8 @@ ForwardableOperationMetadata::ForwardableOperationMetadata(OperationContext* opC
     setValidatedTenancyScopeToken(originalSecurityToken);
 
     setMayBypassWriteBlocking(WriteBlockBypass::get(opCtx).isWriteBlockBypassEnabled());
+
+    setRawData(isRawDataOperation(opCtx));
 }
 
 void ForwardableOperationMetadata::setOn(OperationContext* opCtx) const {
@@ -94,21 +95,24 @@ void ForwardableOperationMetadata::setOn(OperationContext* opCtx) const {
         opCtx->setComment(comment.value());
     }
 
-    if (const auto& optAuthMetadata = getImpersonatedUserMetadata()) {
-        const auto& authMetadata = optAuthMetadata.value();
-        UserName username(authMetadata.getUser().value_or(UserName()));
-
-        if (!authMetadata.getRoles().empty()) {
-            AuthorizationSession::get(client)->setImpersonatedUserData(username,
-                                                                       authMetadata.getRoles());
-        }
+    if (const auto& optAuditUserMetadata = getAuditUserMetadata()) {
+        rpc::AuditUserAttrs::set(opCtx, optAuditUserMetadata.value());
     }
 
     if (const auto& optAuditClientMetadata = getAuditClientMetadata()) {
         rpc::AuditClientAttrs::set(client, optAuditClientMetadata.value());
     }
 
+    // TODO SERVER-99655: update once gSnapshotFCVInDDLCoordinators is enabled on the lastLTS
+    if (const auto& vCtx = getVersionContext()) {
+        ClientLock lk(opCtx->getClient());
+        VersionContext::setDecoration(lk, opCtx, vCtx.value());
+    }
+
     WriteBlockBypass::get(opCtx).set(getMayBypassWriteBlocking());
+
+    isRawDataOperation(opCtx) = getRawData();
+
     boost::optional<auth::ValidatedTenancyScope> validatedTenancyScope = boost::none;
     const auto originalToken = getValidatedTenancyScopeToken();
     if (originalToken != boost::none && !originalToken->empty()) {

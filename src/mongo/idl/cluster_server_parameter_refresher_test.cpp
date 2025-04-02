@@ -35,8 +35,7 @@
 #include "mongo/idl/cluster_server_parameter_refresher.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/fail_point.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
@@ -63,10 +62,9 @@ protected:
         // ClusterServerParameterRefresher. This FCV reference should exist across binary versions.
         _fcv = multiversion::GenericFCV::kLatest;
         _clusterParameterDocs.insert({"maxIncomingConnections",
-                                      BSON("_id"
-                                           << "maxIncomingConnections"
-                                           << "value" << 3000 << "type"
-                                           << "int")});
+                                      BSON("_id" << "maxIncomingConnections"
+                                                 << "value" << 3000 << "type"
+                                                 << "int")});
     }
 
     void mockFCVAndClusterParametersResponses() {
@@ -77,9 +75,8 @@ protected:
             return BSON(
                 "ok" << 1 << "cursor"
                      << BSON("firstBatch"
-                             << BSON_ARRAY(BSON("_id"
-                                                << "featureCompatibilityVersion"
-                                                << "version" << multiversion::toString(_fcv)))
+                             << BSON_ARRAY(BSON("_id" << "featureCompatibilityVersion"
+                                                      << "version" << multiversion::toString(_fcv)))
                              << "atClusterTime" << atClusterTime << "id" << 0LL << "ns"
                              << NamespaceString::kServerConfigurationNamespace.toString_forTest()));
         });

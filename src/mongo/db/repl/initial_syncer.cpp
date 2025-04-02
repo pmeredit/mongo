@@ -83,9 +83,6 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
@@ -939,9 +936,8 @@ Status InitialSyncer::_scheduleGetBeginFetchingOpTime(
                BSON("state" << BSON("$in" << BSON_ARRAY(preparedState << inProgressState))));
     cmd.append("sort", BSON(SessionTxnRecord::kStartOpTimeFieldName << 1));
     cmd.append("readConcern",
-               BSON("level"
-                    << "local"
-                    << "afterClusterTime" << defaultBeginFetchingOpTime.getTimestamp()));
+               BSON("level" << "local"
+                            << "afterClusterTime" << defaultBeginFetchingOpTime.getTimestamp()));
     cmd.append("limit", 1);
 
     _beginFetchingOpTimeFetcher = std::make_unique<Fetcher>(

@@ -47,7 +47,7 @@ class DBClientGRPCTest : public ServiceContextTest {
 public:
     inline static const HostAndPort kServerHostAndPort = HostAndPort("localhost", 12345);
 
-    void setUp() {
+    void setUp() override {
         ServiceContextTest::setUp();
 
         // Mock resolver that automatically returns the producer end of the test's pipe.
@@ -69,7 +69,7 @@ public:
         _server = std::make_unique<MockServer>(std::move(_pipe.consumer));
     }
 
-    void tearDown() {
+    void tearDown() override {
         getServiceContext()->getTransportLayerManager()->shutdown();
         ServiceContextTest::tearDown();
     }
@@ -87,8 +87,7 @@ public:
 
     OpMsgRequest pingRequest() {
         OpMsgRequest request;
-        request.body = BSON("msg"
-                            << "ping");
+        request.body = BSON("msg" << "ping");
         return request;
     }
 
@@ -135,6 +134,8 @@ public:
 private:
     MockRPCQueue::Pipe _pipe;
     std::unique_ptr<MockServer> _server;
+    unittest::MinimumLoggedSeverityGuard logSeverityGuardNetwork{logv2::LogComponent::kNetwork,
+                                                                 logv2::LogSeverity::Debug(4)};
 };
 
 TEST_F(DBClientGRPCTest, BasicConnect) {

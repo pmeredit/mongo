@@ -41,8 +41,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/idl/mutable_observer_registry.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
@@ -127,14 +125,14 @@ void PeriodicThreadToAbortExpiredTransactions::_init(ServiceContext* serviceCont
 
             // This thread needs storage rollback to complete timely, so instruct the storage
             // engine to not do any extra eviction for this thread, if supported.
-            shard_role_details::getRecoveryUnit(opCtx.get())->setNoEvictionAfterRollback();
+            shard_role_details::getRecoveryUnit(opCtx.get())->setNoEvictionAfterCommitOrRollback();
 
             try {
                 int64_t numKills = 0;
                 int64_t numTimeOuts = 0;
                 killAllExpiredTransactions(
                     opCtx.get(),
-                    Milliseconds(gAbortExpiredTransactionsSessionCheckoutTimeout),
+                    Milliseconds(gAbortExpiredTransactionsSessionCheckoutTimeout.load()),
                     &numKills,
                     &numTimeOuts);
                 abortExpiredTransactionsPasses.increment(1);

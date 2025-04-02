@@ -70,11 +70,7 @@ Status AuthorizationBackendLDAP::initialize(OperationContext* opCtx) {
     // Detect if any documents exist in $external. If yes, log that they will not be
     // accessable while LDAP Authorization is active.
     BSONObj userObj;
-    if (findOne(opCtx,
-                NamespaceString::kAdminUsersNamespace,
-                BSON("db"
-                     << "$external"),
-                &userObj)
+    if (findOne(opCtx, NamespaceString::kAdminUsersNamespace, BSON("db" << "$external"), &userObj)
             .isOK()) {
         LOGV2(24216,
               "LDAP Authorization has been enabled. Authorization attempts on the "

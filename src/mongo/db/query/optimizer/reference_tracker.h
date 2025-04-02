@@ -34,7 +34,6 @@
 #include <functional>
 #include <memory>
 
-#include "mongo/db/query/optimizer/algebra/polyvalue.h"
 #include "mongo/db/query/optimizer/defs.h"
 #include "mongo/db/query/optimizer/syntax/expr.h"
 #include "mongo/db/query/optimizer/syntax/syntax.h"
@@ -104,11 +103,6 @@ public:
             [](const ProjectionName&) {});
 
     ~VariableEnvironment();
-
-    /**
-     * Returns the projections produced by the root of the ABT.
-     */
-    ProjectionNameSet topLevelProjections() const;
 
     /**
      * Returns the defintion of 'var' in the ABT, regardless of the visibility of 'var' in the tree.

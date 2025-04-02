@@ -1,5 +1,9 @@
 /**
  * Test shardCollection command behavior
+ * @tags: [
+ *  # This test performs explicit calls to shardCollection
+ *  assumes_unsharded_collection,
+ * ]
  */
 
 var kDbName = db.getName();
@@ -108,9 +112,7 @@ assert.commandWorked(db.adminCommand({enableSharding: kDbName}));
     if (
         // If we are running in suites with authentication this will fail with
         // ErrorCodes.Unauthorized
-        !TestData.auth &&
-        // TODO SERVER-98119: sharding system collection can fail in suite with config transition
-        !TestData.shardsAddedRemoved) {
+        !TestData.auth) {
         assert.commandWorked(
             db.adminCommand({shardCollection: "config.system.sessions", key: {_id: 1}}));
     }

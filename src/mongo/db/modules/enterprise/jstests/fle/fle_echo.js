@@ -5,9 +5,9 @@
 import {MongoCryptD} from "src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js";
 import {
     fle2Enabled,
-    generateSchema
+    generateSchema,
+    kDeterministicAlgo
 } from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
-import {kDeterministicAlgo} from "src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js";
 
 const mongocryptd = new MongoCryptD();
 

@@ -33,13 +33,10 @@
 
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/values/slot.h"
-#include "mongo/db/query/stage_builder/sbe/abt_holder_def.h"
-#include "mongo/db/query/stage_builder/sbe/type_signature.h"
-
-#include "mongo/db/exec/sbe/abt/abt_lower_defs.h"
-#include "mongo/db/exec/sbe/abt/slots_provider.h"
 #include "mongo/db/query/optimizer/syntax/expr.h"
 #include "mongo/db/query/optimizer/syntax/syntax.h"
+#include "mongo/db/query/stage_builder/sbe/abt_holder_def.h"
+#include "mongo/db/query/stage_builder/sbe/type_signature.h"
 
 namespace mongo::stage_builder {
 
@@ -72,11 +69,10 @@ public:
     optimizer::ProjectionName getNextId(const char (&prefix)[N]) {
         return optimizer::ProjectionName{visit(
             [&]<typename T>(T& v) -> std::string {
-                using namespace fmt::literals;
                 if constexpr (std::is_same_v<T, IdType>)
-                    return "p{}"_format(v++);
+                    return fmt::format("p{}", v++);
                 else if constexpr (std::is_same_v<T, PrefixMapType>)
-                    return "{}_{}"_format(prefix, v[prefix]++);
+                    return fmt::format("{}_{}", prefix, v[prefix]++);
             },
             _ids)};
     }

@@ -84,6 +84,7 @@
 #include "mongo/db/query/write_ops/write_ops_gen.h"
 #include "mongo/db/query/write_ops/write_ops_parsers.h"
 #include "mongo/db/query/write_ops/write_ops_retryability.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/repl/repl_client_info.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/s/collection_sharding_state.h"
@@ -101,6 +102,7 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/transaction_validation.h"
 #include "mongo/db/update/update_util.h"
+#include "mongo/db/version_context.h"
 #include "mongo/logv2/log_component.h"
 #include "mongo/logv2/log_severity.h"
 #include "mongo/platform/compiler.h"
@@ -290,6 +292,10 @@ public:
             return true;
         }
 
+        bool supportsRawData() const final {
+            return true;
+        }
+
         bool isSubjectToIngressAdmissionControl() const override {
             return true;
         }
@@ -381,6 +387,10 @@ void CmdFindAndModify::Invocation::explain(OperationContext* opCtx,
 
     auto [isTimeseriesViewRequest, nss] = timeseries::isTimeseriesViewRequest(opCtx, request);
 
+    if (isRawDataOperation(opCtx)) {
+        isTimeseriesViewRequest = false;
+    }
+
     uassertStatusOK(userAllowedWriteNS(opCtx, nss));
     OpDebug* const opDebug = &curOp->debug();
     auto const dbName = request.getDbName();
@@ -404,6 +414,7 @@ void CmdFindAndModify::Invocation::explain(OperationContext* opCtx,
 
         if (isTimeseriesViewRequest) {
             timeseries::timeseriesRequestChecks<DeleteRequest>(
+                VersionContext::getDecoration(opCtx),
                 collection.getCollectionPtr(),
                 &deleteRequest,
                 timeseries::deleteRequestCheckFunction);
@@ -447,6 +458,7 @@ void CmdFindAndModify::Invocation::explain(OperationContext* opCtx,
                 DatabaseHolder::get(opCtx)->getDb(opCtx, nss.dbName()));
         if (isTimeseriesViewRequest) {
             timeseries::timeseriesRequestChecks<UpdateRequest>(
+                VersionContext::getDecoration(opCtx),
                 collection.getCollectionPtr(),
                 &updateRequest,
                 timeseries::updateRequestCheckFunction);
@@ -499,7 +511,10 @@ write_ops::FindAndModifyCommandReply CmdFindAndModify::Invocation::typedRun(
         }
     }
 
-    const NamespaceString& nsString = req.getNamespace();
+    auto nsString = req.getNamespace();
+    if (isRawDataOperation(opCtx)) {
+        nsString = timeseries::isTimeseriesViewRequest(opCtx, this->request()).second;
+    }
     uassertStatusOK(userAllowedWriteNS(opCtx, nsString));
 
     static_cast<const CmdFindAndModify*>(definition())->collectMetrics(req);

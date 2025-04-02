@@ -44,10 +44,8 @@
 #include "mongo/db/ftdc/file_writer.h"
 #include "mongo/db/ftdc/ftdc_test.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -64,12 +62,10 @@ TEST_F(FTDCFileTest, TestFileBasicMetadata) {
 
     deleteFileIfNeeded(p);
 
-    BSONObj doc1 = BSON("name"
-                        << "joe"
-                        << "key1" << 34 << "key2" << 45);
-    BSONObj doc2 = BSON("name"
-                        << "joe"
-                        << "key3" << 34 << "key5" << 45);
+    BSONObj doc1 = BSON("name" << "joe"
+                               << "key1" << 34 << "key2" << 45);
+    BSONObj doc2 = BSON("name" << "joe"
+                               << "key3" << 34 << "key5" << 45);
 
     FTDCConfig config;
     FTDCFileWriter writer(&config, UseMultiServiceSchema{false});
@@ -109,12 +105,10 @@ TEST_F(FTDCFileTest, TestFileBasicCompress) {
 
     deleteFileIfNeeded(p);
 
-    BSONObj doc1 = BSON("name"
-                        << "joe"
-                        << "key1" << 34 << "key2" << 45);
-    BSONObj doc2 = BSON("name"
-                        << "joe"
-                        << "key3" << 34 << "key5" << 45);
+    BSONObj doc1 = BSON("name" << "joe"
+                               << "key1" << 34 << "key2" << 45);
+    BSONObj doc2 = BSON("name" << "joe"
+                               << "key3" << 34 << "key5" << 45);
 
     FTDCConfig config;
     FTDCFileWriter writer(&config, UseMultiServiceSchema{false});
@@ -300,43 +294,35 @@ private:
 TEST_F(FTDCFileTest, TestSchemaChanges) {
     FileTestTie c;
 
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key1" << 33 << "key2" << 42));
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key1" << 34 << "key2" << 45));
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key1" << 34 << "key2" << 45));
+    c.addSample(BSON("name" << "joe"
+                            << "key1" << 33 << "key2" << 42));
+    c.addSample(BSON("name" << "joe"
+                            << "key1" << 34 << "key2" << 45));
+    c.addSample(BSON("name" << "joe"
+                            << "key1" << 34 << "key2" << 45));
 
     // Add Value
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key1" << 34 << "key2" << 45 << "key3" << 47));
+    c.addSample(BSON("name" << "joe"
+                            << "key1" << 34 << "key2" << 45 << "key3" << 47));
 
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key1" << 34 << "key2" << 45 << "key3" << 47));
+    c.addSample(BSON("name" << "joe"
+                            << "key1" << 34 << "key2" << 45 << "key3" << 47));
 
     // Rename field
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key1" << 34 << "key5" << 45 << "key3" << 47));
+    c.addSample(BSON("name" << "joe"
+                            << "key1" << 34 << "key5" << 45 << "key3" << 47));
 
     // Change type
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key1" << 34 << "key5"
-                     << "45"
-                     << "key3" << 47));
+    c.addSample(BSON("name" << "joe"
+                            << "key1" << 34 << "key5"
+                            << "45"
+                            << "key3" << 47));
 
     // RemoveField
-    c.addSample(BSON("name"
-                     << "joe"
-                     << "key5"
-                     << "45"
-                     << "key3" << 47));
+    c.addSample(BSON("name" << "joe"
+                            << "key5"
+                            << "45"
+                            << "key3" << 47));
 }
 
 // Test a full buffer
@@ -345,24 +331,21 @@ TEST_F(FTDCFileTest, TestFull) {
     for (int j = 0; j < 2; j++) {
         FileTestTie c;
 
-        c.addSample(BSON("name"
-                         << "joe"
-                         << "key1" << 33 << "key2" << 42));
+        c.addSample(BSON("name" << "joe"
+                                << "key1" << 33 << "key2" << 42));
 
         for (size_t i = 0; i <= FTDCConfig::kMaxSamplesPerArchiveMetricChunkDefault - 2; i++) {
-            c.addSample(BSON("name"
-                             << "joe"
-                             << "key1" << static_cast<long long int>(i * j) << "key2" << 45));
+            c.addSample(BSON("name" << "joe"
+                                    << "key1" << static_cast<long long int>(i * j) << "key2"
+                                    << 45));
         }
 
-        c.addSample(BSON("name"
-                         << "joe"
-                         << "key1" << 34 << "key2" << 45));
+        c.addSample(BSON("name" << "joe"
+                                << "key1" << 34 << "key2" << 45));
 
         // Add Value
-        c.addSample(BSON("name"
-                         << "joe"
-                         << "key1" << 34 << "key2" << 45));
+        c.addSample(BSON("name" << "joe"
+                                << "key1" << 34 << "key2" << 45));
     }
 }
 

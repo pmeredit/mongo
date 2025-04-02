@@ -3,7 +3,9 @@
  *
  * @tags: [
  *   requires_fcv_71,
- *   # TODO SERVER-99245: re-enable this test once the gRPC error code is correctly reported.
+ *   # This test relies on the behavior that ending a transport session results in a HostUnreachable
+ *   # error code, which is not the case for gRPC. It also isn't relevant for community, as this
+ *   # test was developed to address an issue with the envoy transcoder (SERVER-77230).
  *   search_community_incompatible,
  * ]
  */
@@ -48,13 +50,14 @@ function runStandaloneTest(stageRegex, pipeline, expectedCommand) {
     // Simulate a case where mongot closes the connection after getting a command,
     // and closes the connection again after receiving the retry.
     // Mongod should only retry once, and the network error from the closed connection should
-    // be propogated to the client on retry.
+    // be propagated to the client on retry.
     {
         mongotmock.closeConnectionInResponseToNextNRequests(2);
 
         const result = assert.throws(() => coll.aggregate(pipeline, {cursor: {batchSize: 2}}));
         assert(isNetworkError(result));
-        assert(stageRegex.test(result), `Error wasn't due to stage failing: ${result}`);
+        assert(stageRegex.test(stringifyErrorMessageAndAttributes(result)),
+               `Error wasn't due to stage failing: ${result}`);
     }
 }
 

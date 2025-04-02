@@ -69,7 +69,7 @@ private:
         if (_mockTimer) {
             return _mockTimer->millis();
         } else {
-            return mongo::curTimeMillis64();
+            return curTimeMillis64Monotonic();
         }
     }
 

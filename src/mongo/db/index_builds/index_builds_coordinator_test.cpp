@@ -42,8 +42,7 @@
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/storage/write_unit_of_work.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -94,7 +93,7 @@ TEST_F(IndexBuildsCoordinatorTest, ForegroundUniqueEnforce) {
     ASSERT(collection);
     auto indexKey = BSON("a" << 1);
     auto spec =
-        BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey << "name"
+        BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
                  << (indexKey.firstElementFieldNameStringData() + "_1") << "unique" << true);
     auto indexBuildsCoord = IndexBuildsCoordinator::get(opCtx);
     auto indexConstraints = IndexBuildsManager::IndexConstraints::kEnforce;
@@ -116,7 +115,7 @@ TEST_F(IndexBuildsCoordinatorTest, ForegroundUniqueRelax) {
     ASSERT(collection);
     auto indexKey = BSON("a" << 1);
     auto spec =
-        BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey << "name"
+        BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
                  << (indexKey.firstElementFieldNameStringData() + "_1") << "unique" << true);
     auto indexBuildsCoord = IndexBuildsCoordinator::get(opCtx);
     auto indexConstraints = IndexBuildsManager::IndexConstraints::kRelax;
@@ -135,7 +134,7 @@ TEST_F(IndexBuildsCoordinatorTest, ForegroundIndexAlreadyExists) {
     AutoGetCollection collection(opCtx, nss, MODE_X);
     ASSERT(collection);
     auto indexKey = BSON("a" << 1);
-    auto spec = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey << "name"
+    auto spec = BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
                          << (indexKey.firstElementFieldNameStringData() + "_1"));
     auto indexBuildsCoord = IndexBuildsCoordinator::get(opCtx);
     auto indexConstraints = IndexBuildsManager::IndexConstraints::kEnforce;
@@ -160,10 +159,10 @@ TEST_F(IndexBuildsCoordinatorTest, ForegroundIndexOptionsConflictEnforce) {
     AutoGetCollection collection(opCtx, nss, MODE_X);
     ASSERT(collection);
     auto indexKey = BSON("a" << 1);
-    auto spec1 = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey
-                          << "name" << (indexKey.firstElementFieldNameStringData() + "_1"));
-    auto spec2 = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey
-                          << "name" << (indexKey.firstElementFieldNameStringData() + "_2"));
+    auto spec1 = BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
+                          << (indexKey.firstElementFieldNameStringData() + "_1"));
+    auto spec2 = BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
+                          << (indexKey.firstElementFieldNameStringData() + "_2"));
     auto indexBuildsCoord = IndexBuildsCoordinator::get(opCtx);
     auto indexConstraints = IndexBuildsManager::IndexConstraints::kEnforce;
     auto fromMigrate = false;
@@ -188,10 +187,10 @@ TEST_F(IndexBuildsCoordinatorTest, ForegroundIndexOptionsConflictRelax) {
     AutoGetCollection collection(opCtx, nss, MODE_X);
     ASSERT(collection);
     auto indexKey = BSON("a" << 1);
-    auto spec1 = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey
-                          << "name" << (indexKey.firstElementFieldNameStringData() + "_1"));
-    auto spec2 = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key" << indexKey
-                          << "name" << (indexKey.firstElementFieldNameStringData() + "_2"));
+    auto spec1 = BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
+                          << (indexKey.firstElementFieldNameStringData() + "_1"));
+    auto spec2 = BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << indexKey << "name"
+                          << (indexKey.firstElementFieldNameStringData() + "_2"));
     auto indexBuildsCoord = IndexBuildsCoordinator::get(opCtx);
     auto indexConstraints = IndexBuildsManager::IndexConstraints::kRelax;
     auto fromMigrate = false;

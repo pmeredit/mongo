@@ -34,7 +34,7 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
 namespace audit {
@@ -44,7 +44,6 @@ std::function<void(ServiceContext*)> initializeSynchronizeJob;
 std::function<void()> shutdownSynchronizeJob;
 
 #if !MONGO_ENTERPRISE_AUDIT
-ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {}
 void rotateAuditLog() {}
 #endif
 

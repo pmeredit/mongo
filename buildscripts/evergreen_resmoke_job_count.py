@@ -45,6 +45,7 @@ VARIANT_TASK_FACTOR_OVERRIDES = {
         # Non-TSAN variants don't need this adjustment as they have a reasonable free memory margin
         {"task": r"fcv_upgrade_downgrade_sharded_collections_jscore_passthrough.*", "factor": 0.27},
         {"task": r"shard.*uninitialized_fcv_jscore_passthrough.*", "factor": 0.125},
+        {"task": r"sharding_kill_stepdown_terminate_jscore_passthrough.*", "factor": 0.125},
     ],
     "enterprise-rhel8-debug-tsan-all-feature-flags": [
         # Lower the default resmoke_jobs_factor for TSAN to reduce memory pressure for this suite,
@@ -57,6 +58,7 @@ VARIANT_TASK_FACTOR_OVERRIDES = {
         },
         {"task": r"fcv_upgrade_downgrade_replica_sets_jscore_passthrough.*", "factor": 0.27},
         {"task": r"shard.*uninitialized_fcv_jscore_passthrough.*", "factor": 0.125},
+        {"task": r"sharding_kill_stepdown_terminate_jscore_passthrough.*", "factor": 0.125},
     ],
     "rhel8-debug-aubsan-classic-engine": [
         {"task": r"shard.*uninitialized_fcv_jscore_passthrough.*", "factor": 0.25}
@@ -108,6 +110,11 @@ VARIANT_TASK_FACTOR_OVERRIDES = {
     "windows": [{"task": "noPassthrough", "factor": 0.5}],
 }
 
+# Copy the task factor overrides for 'toolchain-v5'
+VARIANT_TASK_FACTOR_OVERRIDES["enterprise-rhel8-debug-tsan-all-feature-flags-toolchain-v5"] = (
+    VARIANT_TASK_FACTOR_OVERRIDES["enterprise-rhel8-debug-tsan-all-feature-flags"]
+)
+
 TASKS_FACTORS = [{"task": r"replica_sets.*", "factor": 0.5}, {"task": r"sharding.*", "factor": 0.5}]
 
 DISTRO_MULTIPLIERS = {"rhel8.8-large": 1.618}
@@ -147,7 +154,7 @@ def get_original_task_name(task_name, variant_name):
     /<task name>_[0-9]+-<platform>/ or /burn_in:<task name>_gen-<variant>_[0-9]+/
 
     For example, "sharding_0-linux-debug" -> "sharding" or
-    "burn_in:sharding_gen-enterprise-amazon-linux2-arm64-all-feature-flags-generated-by-burn-in-tags_0" -> "sharding".
+    "burn_in:sharding_gen-enterprise-amazon-linux2023-arm64-all-feature-flags-generated-by-burn-in-tags_0" -> "sharding".
     """
     return (
         re.compile("_[0-9]+")
@@ -161,7 +168,7 @@ def get_original_variant_name(variant_name):
     """
     Return the original variant name.
 
-    For example, "amazon-linux2-generated-by-burn-in-tags" -> "amazon-linux2".
+    For example, "amazon-linux2023-generated-by-burn-in-tags" -> "amazon-linux2023".
     """
     return variant_name.removesuffix(BURN_IN_VARIANT_SUFFIX)
 
@@ -257,13 +264,14 @@ def maybe_override_num_jobs_on_required(task_name, variant, jobs):
         "unsplittable_collections_created_on_any_shard_jscore_passthrough": 0.5,
     }
 
-    if (
-        variant != "enterprise-amazon-linux2-arm64-all-feature-flags"
-        and variant != "linux-64-debug-required"
+    if variant in (
+        "enterprise-amazon-linux2023-arm64-all-feature-flags",
+        "enterprise-amazon-linux2023-arm64-all-feature-flags-toolchain-v5",
     ):
-        LOGGER.info(f"Variant '{variant}' cannot have its jobs increased. Keeping {jobs} jobs.")
-        return jobs
-    elif variant == "linux-64-debug-required":
+        all_factors |= {
+            "search_no_pinned_connections_auth": 0.5,
+        }
+    elif variant in ("linux-64-debug-required", "linux-64-debug-required-toolchain-v5"):
         all_factors |= {
             "^noPassthrough$": 0.5,
             "read_concern_linearizable_passthrough": 1,
@@ -271,9 +279,8 @@ def maybe_override_num_jobs_on_required(task_name, variant, jobs):
             "sharding_csrs_continuous_config_stepdown": 1,
         }
     else:
-        all_factors |= {
-            "search_no_pinned_connections_auth": 0.5,
-        }
+        LOGGER.info(f"Variant '{variant}' cannot have its jobs increased. Keeping {jobs} jobs.")
+        return jobs
 
     factor = global_task_factor(task_name, all_factors, -1)
 

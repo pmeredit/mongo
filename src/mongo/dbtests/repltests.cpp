@@ -68,7 +68,7 @@
 #include "mongo/db/op_observer/operation_logger_impl.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/find_command.h"
-#include "mongo/db/query/query_settings/query_settings_manager.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
 #include "mongo/db/repl/apply_ops_command_info.h"
 #include "mongo/db/repl/member_state.h"
 #include "mongo/db/repl/oplog.h"
@@ -94,15 +94,12 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/database_version.h"
 #include "mongo/s/shard_version.h"
 #include "mongo/transport/asio/asio_transport_layer.h"
 #include "mongo/transport/transport_layer.h"
 #include "mongo/transport/transport_layer_manager_impl.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/time_support.h"
@@ -199,7 +196,8 @@ public:
         // Start with a fresh oplog.
         deleteAll(cllNS());
 
-        query_settings::QuerySettingsManager::create(_opCtx.getServiceContext(), {}, {});
+        // Initialize the query settings.
+        query_settings::initializeForTest(_opCtx.getServiceContext());
     }
 
     ~Base() {
@@ -295,7 +293,10 @@ protected:
                 for (auto& stmt : stmts) {
                     ops.push_back(ApplierOperation(&stmt));
                 }
-                shard_role_details::releaseAndReplaceRecoveryUnit(&_opCtx);
+                {
+                    ClientLock clientLock(_opCtx.getClient());
+                    shard_role_details::releaseAndReplaceRecoveryUnit(&_opCtx, clientLock);
+                }
                 uassertStatusOK(
                     OplogApplierUtils::applyOplogBatchCommon(&_opCtx,
                                                              &ops,
@@ -964,10 +965,7 @@ protected:
 class SetNumToStr : public Base {
 public:
     void doIt() const override {
-        _client.update(nss(),
-                       BSON("_id" << 0),
-                       BSON("$set" << BSON("a"
-                                           << "bcd")));
+        _client.update(nss(), BSON("_id" << 0), BSON("$set" << BSON("a" << "bcd")));
     }
     void check() const override {
         ASSERT_EQUALS(1, count());

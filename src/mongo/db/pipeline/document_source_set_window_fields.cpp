@@ -240,7 +240,8 @@ list<intrusive_ptr<DocumentSource>> document_source_set_window_fields::create(
             // Partitioning by a constant, non-array expression is equivalent to not partitioning
             // (putting everything in the same partition).
         } else if (auto exprFieldPath = dynamic_cast<ExpressionFieldPath*>(partitionBy->get());
-                   exprFieldPath && !exprFieldPath->isVariableReference()) {
+                   exprFieldPath && !exprFieldPath->isVariableReference() &&
+                   !exprFieldPath->isROOT()) {
             // ExpressionFieldPath has "CURRENT" as an explicit first component,
             // but for $sort we don't want that.
             simplePartitionBy = exprFieldPath->getFieldPath().tail();
@@ -365,7 +366,8 @@ Value DocumentSourceInternalSetWindowFields::serialize(const SerializationOption
     MutableDocument out;
     out[getSourceName()] = Value(spec.freeze());
 
-    if (opts.verbosity && *opts.verbosity >= ExplainOptions::Verbosity::kExecStats) {
+    if (opts.isSerializingForExplain() &&
+        *opts.verbosity >= ExplainOptions::Verbosity::kExecStats) {
         MutableDocument md;
 
         for (auto&& [fieldName, function] : _executableOutputs) {

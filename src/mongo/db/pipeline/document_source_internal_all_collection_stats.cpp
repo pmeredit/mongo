@@ -43,6 +43,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/pipeline/document_source_coll_stats.h"
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
@@ -85,7 +86,8 @@ DocumentSource::GetNextResult DocumentSourceInternalAllCollectionStats::doGetNex
 
         // Avoid computing stats for collections that do not match the absorbed filter on the 'ns'
         // field.
-        if (_absorbedMatch && !_absorbedMatch->getMatchExpression()->matchesBSON(obj)) {
+        if (_absorbedMatch &&
+            !exec::matcher::matchesBSON(_absorbedMatch->getMatchExpression(), obj)) {
             continue;
         }
 
@@ -140,7 +142,8 @@ Pipeline::SourceContainer::iterator DocumentSourceInternalAllCollectionStats::do
             _absorbedMatch = std::move(splitMatch.second);
         } else {
             // We have already absorbed a $match. We need to join it with splitMatch.second.
-            _absorbedMatch->joinMatchWith(std::move(splitMatch.second), "$and"_sd);
+            _absorbedMatch->joinMatchWith(std::move(splitMatch.second),
+                                          MatchExpression::MatchType::AND);
         }
     }
 

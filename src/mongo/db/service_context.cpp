@@ -49,8 +49,6 @@
 #include "mongo/db/storage/recovery_unit_noop.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/transport/service_entry_point.h"
 #include "mongo/transport/session.h"
 #include "mongo/transport/transport_layer_manager.h"
@@ -312,17 +310,19 @@ ServiceContext::UniqueOperationContext ServiceContext::makeOperationContext(Clie
     auto lk = _storageChangeMutex.readLock();
 
     onCreate(opCtx.get(), _clientObservers);
-    ScopeGuard onCreateGuard([&] { onDestroy(opCtx.get(), _clientObservers); });
-
-    if (!opCtx->recoveryUnit_DO_NOT_USE()) {
-        opCtx->setRecoveryUnit_DO_NOT_USE(std::make_unique<RecoveryUnitNoop>(),
-                                          WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
-    }
-
-    ScopeGuard batonGuard([&] { opCtx->getBaton()->detach(); });
+    ScopeGuard onCreateAndBatonGuard([&] {
+        onDestroy(opCtx.get(), _clientObservers);
+        opCtx->getBaton()->detach();
+    });
 
     {
         ClientLock lk(client);
+
+        if (!opCtx->recoveryUnit_DO_NOT_USE()) {
+            opCtx->setRecoveryUnit_DO_NOT_USE(std::make_unique<RecoveryUnitNoop>(),
+                                              WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
+                                              lk);
+        }
 
         // If we have a previous operation context, it's not worth crashing the process in
         // production. However, we do want to prevent it from doing more work and complain
@@ -338,8 +338,7 @@ ServiceContext::UniqueOperationContext ServiceContext::makeOperationContext(Clie
         client->_setOperationContext(opCtx.get());
     }
 
-    onCreateGuard.dismiss();
-    batonGuard.dismiss();
+    onCreateAndBatonGuard.dismiss();
 
     return UniqueOperationContext(opCtx.release());
 };
@@ -430,7 +429,7 @@ void ServiceContext::killOperation(ClientLock& clientLock,
     }
 }
 
-void ServiceContext::_delistOperation(OperationContext* opCtx) noexcept {
+void ServiceContext::_delistOperation(OperationContext* opCtx) {
     auto client = opCtx->getClient();
     {
         stdx::lock_guard clientLock(*client);
@@ -446,7 +445,7 @@ void ServiceContext::_delistOperation(OperationContext* opCtx) noexcept {
     opCtx->releaseOperationKey();
 }
 
-void ServiceContext::delistOperation(OperationContext* opCtx) noexcept {
+void ServiceContext::delistOperation(OperationContext* opCtx) {
     auto client = opCtx->getClient();
     invariant(client);
 
@@ -456,8 +455,7 @@ void ServiceContext::delistOperation(OperationContext* opCtx) noexcept {
     _delistOperation(opCtx);
 }
 
-void ServiceContext::killAndDelistOperation(OperationContext* opCtx,
-                                            ErrorCodes::Error killCode) noexcept {
+void ServiceContext::killAndDelistOperation(OperationContext* opCtx, ErrorCodes::Error killCode) {
 
     auto client = opCtx->getClient();
     invariant(client);

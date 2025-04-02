@@ -44,9 +44,7 @@
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/collation/collator_interface_mock.h"
 #include "mongo/db/service_context_d_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -80,10 +78,9 @@ TEST_F(IndexSpecValidateTest, ReturnsAnErrorIfKeyPatternIsNotAnObject) {
                                            << "indexName")));
     ASSERT_EQ(ErrorCodes::TypeMismatch,
               validateIndexSpec(opCtx.get(),
-                                BSON("key"
-                                     << "not an object"
-                                     << "name"
-                                     << "indexName")));
+                                BSON("key" << "not an object"
+                                           << "name"
+                                           << "indexName")));
     ASSERT_EQ(ErrorCodes::TypeMismatch,
               validateIndexSpec(opCtx.get(),
                                 BSON("key" << BSONArray() << "name"
@@ -109,9 +106,7 @@ TEST_F(IndexSpecValidateTest, ReturnsAnErrorIfKeyPatternIsNotPresent) {
     auto opCtx = makeOperationContext();
 
     ASSERT_EQ(ErrorCodes::FailedToParse,
-              validateIndexSpec(opCtx.get(),
-                                BSON("name"
-                                     << "indexName")));
+              validateIndexSpec(opCtx.get(), BSON("name" << "indexName")));
 }
 
 TEST_F(IndexSpecValidateTest, ReturnsAnErrorIfNameIsNotAString) {
@@ -202,9 +197,7 @@ TEST_F(IndexSpecValidateTest, ReturnsAnErrorIfVersionIsUnsupported) {
               validateIndexSpec(opCtx.get(),
                                 BSON("key" << BSON("field" << 1) << "name"
                                            << "indexName"
-                                           << "v" << 3 << "collation"
-                                           << BSON("locale"
-                                                   << "en"))));
+                                           << "v" << 3 << "collation" << BSON("locale" << "en"))));
 
     ASSERT_EQ(ErrorCodes::CannotCreateIndex,
               validateIndexSpec(opCtx.get(),
@@ -309,33 +302,28 @@ TEST_F(IndexSpecValidateTest, ReturnsAnErrorIfCollationIsEmpty) {
 TEST_F(IndexSpecValidateTest, ReturnsAnErrorIfCollationIsPresentAndVersionIsLessThanV2) {
     auto opCtx = makeOperationContext();
 
-    ASSERT_EQ(ErrorCodes::CannotCreateIndex,
-              validateIndexSpec(opCtx.get(),
-                                BSON("key" << BSON("field" << 1) << "name"
-                                           << "indexName"
-                                           << "collation"
-                                           << BSON("locale"
-                                                   << "simple")
-                                           << "v" << 1)));
+    ASSERT_EQ(
+        ErrorCodes::CannotCreateIndex,
+        validateIndexSpec(opCtx.get(),
+                          BSON("key" << BSON("field" << 1) << "name"
+                                     << "indexName"
+                                     << "collation" << BSON("locale" << "simple") << "v" << 1)));
 }
 
 TEST_F(IndexSpecValidateTest, AcceptsAnyNonEmptyObjectValueForCollation) {
     auto opCtx = makeOperationContext();
 
-    auto result = validateIndexSpec(opCtx.get(),
-                                    BSON("key" << BSON("field" << 1) << "name"
-                                               << "indexName"
-                                               << "v" << 2 << "collation"
-                                               << BSON("locale"
-                                                       << "simple")));
+    auto result =
+        validateIndexSpec(opCtx.get(),
+                          BSON("key" << BSON("field" << 1) << "name"
+                                     << "indexName"
+                                     << "v" << 2 << "collation" << BSON("locale" << "simple")));
     ASSERT_OK(result.getStatus());
 
     // We don't care about the order of the fields in the resulting index specification.
     ASSERT_BSONOBJ_EQ(sorted(BSON("key" << BSON("field" << 1) << "name"
                                         << "indexName"
-                                        << "v" << 2 << "collation"
-                                        << BSON("locale"
-                                                << "simple"))),
+                                        << "v" << 2 << "collation" << BSON("locale" << "simple"))),
                       sorted(result.getValue()));
 
     result = validateIndexSpec(opCtx.get(),
@@ -356,20 +344,17 @@ TEST_F(IndexSpecValidateTest, AcceptsAnyNonEmptyObjectValueForCollation) {
 TEST_F(IndexSpecValidateTest, AcceptsIndexSpecIfCollationIsPresentAndVersionIsEqualToV2) {
     auto opCtx = makeOperationContext();
 
-    auto result = validateIndexSpec(opCtx.get(),
-                                    BSON("key" << BSON("field" << 1) << "name"
-                                               << "indexName"
-                                               << "v" << 2 << "collation"
-                                               << BSON("locale"
-                                                       << "en")));
+    auto result =
+        validateIndexSpec(opCtx.get(),
+                          BSON("key" << BSON("field" << 1) << "name"
+                                     << "indexName"
+                                     << "v" << 2 << "collation" << BSON("locale" << "en")));
     ASSERT_OK(result.getStatus());
 
     // We don't care about the order of the fields in the resulting index specification.
     ASSERT_BSONOBJ_EQ(sorted(BSON("key" << BSON("field" << 1) << "name"
                                         << "indexName"
-                                        << "v" << 2 << "collation"
-                                        << BSON("locale"
-                                                << "en"))),
+                                        << "v" << 2 << "collation" << BSON("locale" << "en"))),
                       sorted(result.getValue()));
 }
 
@@ -454,9 +439,7 @@ TEST_F(IdIndexSpecValidateTest, ReturnsAnErrorIfFieldNotAllowedForIdIndex) {
 TEST_F(IdIndexSpecValidateTest, ReturnsOKStatusIfAllFieldsAllowedForIdIndex) {
     ASSERT_OK(
         validateIdIndexSpec(BSON("key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName
-                                       << "v" << 2 << "collation"
-                                       << BSON("locale"
-                                               << "simple"))));
+                                       << "v" << 2 << "collation" << BSON("locale" << "simple"))));
 }
 
 }  // namespace id_index_spec_validate_test
@@ -479,8 +462,7 @@ TEST_F(IndexSpecCollationValidateTest, FillsInFullCollationSpec) {
                                              BSON("key" << BSON("field" << 1) << "name"
                                                         << "indexName"
                                                         << "v" << 2 << "collation"
-                                                        << BSON("locale"
-                                                                << "mock_reverse_string")),
+                                                        << BSON("locale" << "mock_reverse_string")),
                                              defaultCollator);
     ASSERT_OK(result.getStatus());
 
@@ -511,8 +493,7 @@ TEST_F(IndexSpecCollationValidateTest, RemovesCollationFieldIfSimple) {
                                              BSON("key" << BSON("field" << 1) << "name"
                                                         << "indexName"
                                                         << "v" << 2 << "collation"
-                                                        << BSON("locale"
-                                                                << "simple")),
+                                                        << BSON("locale" << "simple")),
                                              defaultCollator);
     ASSERT_OK(result.getStatus());
 

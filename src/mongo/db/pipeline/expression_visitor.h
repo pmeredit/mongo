@@ -55,7 +55,6 @@ class ExpressionObjectToArray;
 class ExpressionArrayToObject;
 class ExpressionBsonSize;
 class ExpressionCeil;
-class ExpressionCoerceToBool;
 class ExpressionCompare;
 class ExpressionConcat;
 class ExpressionConcatArrays;
@@ -175,6 +174,10 @@ class ExpressionBitAnd;
 class ExpressionBitOr;
 class ExpressionBitXor;
 class ExpressionInternalKeyStringValue;
+class ExpressionUUID;
+class ExpressionEncStrStartsWith;
+class ExpressionEncStrEndsWith;
+class ExpressionEncStrContains;
 
 class AccumulatorAvg;
 class AccumulatorFirstN;
@@ -240,7 +243,6 @@ public:
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionArrayToObject>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionBsonSize>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionCeil>) = 0;
-    virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionCoerceToBool>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionCompare>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionConcat>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionConcatArrays>) = 0;
@@ -268,6 +270,9 @@ public:
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionLog10>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionInternalFLEBetween>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionInternalFLEEqual>) = 0;
+    virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionEncStrStartsWith>) = 0;
+    virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionEncStrEndsWith>) = 0;
+    virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionEncStrContains>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionInternalRawSortKey>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionMap>) = 0;
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionMeta>) = 0;
@@ -399,6 +404,7 @@ public:
     virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionInternalIndexKey>) = 0;
     virtual void visit(
         expression_walker::MaybeConstPtr<IsConst, ExpressionInternalKeyStringValue>) = 0;
+    virtual void visit(expression_walker::MaybeConstPtr<IsConst, ExpressionUUID>) = 0;
 };
 
 using ExpressionMutableVisitor = ExpressionVisitor<false>;
@@ -438,7 +444,6 @@ struct SelectiveConstExpressionVisitorBase : public ExpressionConstVisitor {
     void visit(const ExpressionArrayToObject*) override {}
     void visit(const ExpressionBsonSize*) override {}
     void visit(const ExpressionCeil*) override {}
-    void visit(const ExpressionCoerceToBool*) override {}
     void visit(const ExpressionCompare*) override {}
     void visit(const ExpressionConcat*) override {}
     void visit(const ExpressionConcatArrays*) override {}
@@ -466,6 +471,9 @@ struct SelectiveConstExpressionVisitorBase : public ExpressionConstVisitor {
     void visit(const ExpressionLog10*) override {}
     void visit(const ExpressionInternalFLEBetween*) override {}
     void visit(const ExpressionInternalFLEEqual*) override {}
+    void visit(const ExpressionEncStrStartsWith*) override {}
+    void visit(const ExpressionEncStrEndsWith*) override {}
+    void visit(const ExpressionEncStrContains*) override {}
     void visit(const ExpressionInternalRawSortKey*) override {}
     void visit(const ExpressionMap*) override {}
     void visit(const ExpressionMeta*) override {}
@@ -571,5 +579,6 @@ struct SelectiveConstExpressionVisitorBase : public ExpressionConstVisitor {
     void visit(const ExpressionInternalOwningShard*) override {}
     void visit(const ExpressionInternalIndexKey*) override {}
     void visit(const ExpressionInternalKeyStringValue*) override {}
+    void visit(const ExpressionUUID*) override {}
 };
 }  // namespace mongo

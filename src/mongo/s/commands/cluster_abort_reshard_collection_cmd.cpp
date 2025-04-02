@@ -43,7 +43,6 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/client/shard_registry.h"
@@ -79,7 +78,8 @@ public:
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) ||
                 resharding::gFeatureFlagUnshardCollection.isEnabled(
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                configsvrAbortReshardCollection.setProvenance(ProvenanceEnum::kReshardCollection);
+                configsvrAbortReshardCollection.setProvenance(
+                    ReshardingProvenanceEnum::kReshardCollection);
             }
 
             auto configShard = Grid::get(opCtx)->shardRegistry()->getConfigShard();

@@ -50,11 +50,12 @@
 #include "mongo/db/collection_crud/collection_write_path.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/exec/matcher/match_details.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/internal_transactions_feature_flag_gen.h"
 #include "mongo/db/matcher/expression.h"
-#include "mongo/db/matcher/match_details.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/plan_executor.h"
@@ -73,7 +74,6 @@
 #include "mongo/db/update/update_oplog_entry_serialization.h"
 #include "mongo/db/update/update_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/s/shard_version.h"
@@ -219,7 +219,8 @@ BSONObj UpdateStage::transformAndUpdate(const Snapshotted<BSONObj>& oldObj,
         matchDetails.requestElemMatchKey();
 
         dassert(cq);
-        MONGO_verify(cq->getPrimaryMatchExpression()->matchesBSON(oldObjValue, &matchDetails));
+        MONGO_verify(exec::matcher::matchesBSON(
+            cq->getPrimaryMatchExpression(), oldObjValue, &matchDetails));
 
         std::string matchedField;
         if (matchDetails.hasElemMatchKey())
@@ -734,6 +735,7 @@ void ShardingChecksForUpdate::_checkRestrictionsOnUpdatingShardKeyAreNotViolated
         // wouldChangeOwningShard error thrown below. If this node is a replica set secondary node,
         // we can skip validation.
         if (!feature_flags::gFeatureFlagUpdateDocumentShardKeyUsingTransactionApi.isEnabled(
+                VersionContext::getDecoration(opCtx),
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
 
             uassert(ErrorCodes::IllegalOperation,
@@ -758,6 +760,7 @@ void ShardingChecksForUpdate::_checkRestrictionsOnUpdatingShardKeyAreNotViolated
         // wouldChangeOwningShard error thrown below. If this node is a replica set secondary node,
         // we can skip validation.
         if (!feature_flags::gFeatureFlagUpdateDocumentShardKeyUsingTransactionApi.isEnabled(
+                VersionContext::getDecoration(opCtx),
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             uassert(ErrorCodes::IllegalOperation,
                     "Must run update to shard key field in a multi-statement transaction or with "
@@ -814,8 +817,8 @@ void ShardingChecksForUpdate::checkUpdateChangesShardKeyFields(
     const auto& newObj = newObjCopy ? *newObjCopy : newDoc.getObject();
     // It is possible that both the existing and new shard keys are being updated, so we do not want
     // to short-circuit checking whether either is being modified.
-    ShardingWriteRouter shardingWriteRouter(opCtx, _collAcq.getCollectionPtr()->ns());
     checkUpdateChangesExistingShardKey(opCtx, newDoc, newObj, oldObj);
+    ShardingWriteRouter shardingWriteRouter(opCtx, _collAcq.getCollectionPtr()->ns());
     checkUpdateChangesReshardingKey(opCtx, shardingWriteRouter, newObj, oldObj);
 }
 

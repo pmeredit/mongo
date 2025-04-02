@@ -32,6 +32,8 @@
 #include <absl/container/node_hash_map.h>
 #include <algorithm>
 #include <boost/none.hpp>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <iterator>
 
 #include <boost/move/utility_core.hpp>
@@ -94,7 +96,7 @@ ShardsvrReshardCollection makeMoveCollectionOrUnshardCollectionRequest(
     const DatabaseName& dbName,
     const NamespaceString& nss,
     const boost::optional<ShardId>& destinationShard,
-    ProvenanceEnum provenance,
+    ReshardingProvenanceEnum provenance,
     const boost::optional<bool>& performVerification,
     const boost::optional<std::int64_t>& oplogBatchApplierTaskCount) {
     ShardsvrReshardCollection shardsvrReshardCollection(nss);
@@ -125,7 +127,7 @@ ShardsvrReshardCollection makeMoveCollectionRequest(
     const DatabaseName& dbName,
     const NamespaceString& nss,
     const ShardId& destinationShard,
-    ProvenanceEnum provenance,
+    ReshardingProvenanceEnum provenance,
     const boost::optional<bool>& performVerification,
     const boost::optional<std::int64_t>& oplogBatchApplierTaskCount) {
     return makeMoveCollectionOrUnshardCollectionRequest(
@@ -138,30 +140,21 @@ ShardsvrReshardCollection makeUnshardCollectionRequest(
     const boost::optional<ShardId>& destinationShard,
     const boost::optional<bool>& performVerification,
     const boost::optional<std::int64_t>& oplogBatchApplierTaskCount) {
-    return makeMoveCollectionOrUnshardCollectionRequest(dbName,
-                                                        nss,
-                                                        destinationShard,
-                                                        ProvenanceEnum::kUnshardCollection,
-                                                        performVerification,
-                                                        oplogBatchApplierTaskCount);
+    return makeMoveCollectionOrUnshardCollectionRequest(
+        dbName,
+        nss,
+        destinationShard,
+        ReshardingProvenanceEnum::kUnshardCollection,
+        performVerification,
+        oplogBatchApplierTaskCount);
 }
 }  // namespace cluster::unsplittable
-
-void appendWriteConcernErrorDetailToCmdResponse(const ShardId& shardId,
-                                                WriteConcernErrorDetail wcError,
-                                                BSONObjBuilder& responseBuilder) {
-    auto status = wcError.toStatus();
-    wcError.setStatus(
-        status.withReason(str::stream() << status.reason() << " at " << shardId.toString()));
-
-    responseBuilder.append("writeConcernError", wcError.toBSON());
-}
 
 void appendWriteConcernErrorToCmdResponse(const ShardId& shardId,
                                           const BSONElement& wcErrorElem,
                                           BSONObjBuilder& responseBuilder) {
-    WriteConcernErrorDetail wcError = getWriteConcernErrorDetail(wcErrorElem);
-    appendWriteConcernErrorDetailToCmdResponse(shardId, wcError, responseBuilder);
+    WriteConcernErrorDetail wcErrorDetail = getWriteConcernErrorDetail(wcErrorElem);
+    appendWriteConcernErrorDetailToCommandResponse(shardId, wcErrorDetail, responseBuilder);
 }
 
 boost::intrusive_ptr<ExpressionContext> makeExpressionContextWithDefaultsForTargeter(
@@ -183,8 +176,8 @@ boost::intrusive_ptr<ExpressionContext> makeExpressionContextWithDefaultsForTarg
         }
     }();
 
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces.emplace(nss.coll(), ResolvedNamespace(nss, std::vector<BSONObj>{}));
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces.emplace(nss, ResolvedNamespace(nss, std::vector<BSONObj>{}));
 
     auto expCtx = ExpressionContextBuilder{}
                       .opCtx(opCtx)
@@ -200,28 +193,23 @@ boost::intrusive_ptr<ExpressionContext> makeExpressionContextWithDefaultsForTarg
                       .build();
 
     // Ignore the collator if the collection is untracked and the user did not specify a collator.
-    if (!cri.cm.hasRoutingTable() && noCollationSpecified) {
+    if (!cri.hasRoutingTable() && noCollationSpecified) {
         expCtx->setIgnoreCollator();
     }
     return expCtx;
 }
 
-std::vector<AsyncRequestsSender::Request> buildVersionedRequests(
+namespace {
+
+std::vector<AsyncRequestsSender::Request> buildShardVersionedRequests(
     boost::intrusive_ptr<ExpressionContext> expCtx,
     const NamespaceString& nss,
     const CollectionRoutingInfo& cri,
     const std::set<ShardId>& shardIds,
     const BSONObj& cmdObj,
     bool eligibleForSampling) {
-    const auto& cm = cri.cm;
-    auto cmdObjWithDbVersion = cmdObj;
-    bool needShardVersion = cm.hasRoutingTable();
-    if (!needShardVersion) {
-        cmdObjWithDbVersion = !cm.dbVersion().isFixed()
-            ? appendShardVersion(cmdObjWithDbVersion, ShardVersion::UNSHARDED())
-            : cmdObjWithDbVersion;
-        cmdObjWithDbVersion = appendDbVersionIfPresent(cmdObjWithDbVersion, cm.dbVersion());
-    }
+    tassert(10162100, "Expected to find a routing table", cri.hasRoutingTable());
+    const auto& cm = cri.getChunkManager();
 
     std::vector<AsyncRequestsSender::Request> requests;
     requests.reserve(shardIds.size());
@@ -233,17 +221,103 @@ std::vector<AsyncRequestsSender::Request> buildVersionedRequests(
                                                          shardIds)
         : boost::none;
 
-    for (const ShardId& shardId : shardIds) {
-        auto shardCmdObj = needShardVersion
-            ? appendShardVersion(cmdObjWithDbVersion, cri.getShardVersion(shardId))
-            : cmdObjWithDbVersion;
-        if (targetedSampleId && targetedSampleId->isFor(shardId)) {
-            shardCmdObj = analyze_shard_key::appendSampleId(shardCmdObj, targetedSampleId->getId());
+    auto appendSampleId = [&](const BSONObj& command, const ShardId& shardId) -> BSONObj {
+        if (!targetedSampleId || !targetedSampleId->isFor(shardId)) {
+            return command;
         }
-        requests.emplace_back(shardId, std::move(shardCmdObj));
+        return analyze_shard_key::appendSampleId(command, targetedSampleId->getId());
+    };
+
+    if (cm.hasRoutingTable()) {
+        for (const auto& shardId : shardIds) {
+            BSONObj versionedCmd = appendShardVersion(cmdObj, cri.getShardVersion(shardId));
+            versionedCmd = appendSampleId(versionedCmd, shardId);
+            requests.emplace_back(shardId, std::move(versionedCmd));
+        }
     }
 
     return requests;
+}
+
+AsyncRequestsSender::Request buildDatabaseVersionedRequest(
+    boost::intrusive_ptr<ExpressionContext> expCtx,
+    const NamespaceString& nss,
+    const CollectionRoutingInfo& cri,
+    const ShardId& shardId,
+    const BSONObj& cmdObj,
+    bool eligibleForSampling) {
+    tassert(10162101, "Expected to not find a routing table", !cri.hasRoutingTable());
+
+    if (cri.getDbVersion().isFixed()) {
+        // In case the database is fixed (e.g. 'admin' or 'config'), ignore the routing information
+        // and create a request to the given targetted shard.
+        return {shardId, cmdObj};
+    }
+
+    if (shardId != cri.getDbPrimaryShardId()) {
+        // TODO (SERVER-101687): There are several places that call this API with a database version
+        // that does not match the targeted shard. This is an abuse of the database version
+        // protocol, and we should inspect each case and either use the correct routing information
+        // or not version the command.
+        return {shardId, cmdObj};
+    }
+
+    tassert(
+        10162102,
+        fmt::format("Expected exactly one shard matching the database primary shard when no shard "
+                    "version is required. Found shard: {}, expected: {}, for namespace: {}.",
+                    shardId.toString(),
+                    cri.getDbPrimaryShardId().toString(),
+                    nss.toStringForErrorMsg()),
+        shardId == cri.getDbPrimaryShardId());
+
+    BSONObj versionedCmd = appendShardVersion(cmdObj, ShardVersion::UNSHARDED());
+    versionedCmd = appendDbVersionIfPresent(versionedCmd, cri.getDbVersion());
+
+    const auto targetedSampleId = eligibleForSampling
+        ? analyze_shard_key::tryGenerateTargetedSampleId(expCtx->getOperationContext(),
+                                                         nss,
+                                                         cmdObj.firstElementFieldNameStringData(),
+                                                         {shardId})
+        : boost::none;
+
+    if (targetedSampleId && targetedSampleId->isFor(shardId)) {
+        versionedCmd = analyze_shard_key::appendSampleId(versionedCmd, targetedSampleId->getId());
+    }
+
+    return {shardId, std::move(versionedCmd)};
+}
+}  // namespace
+
+std::vector<AsyncRequestsSender::Request> buildVersionedRequests(
+    boost::intrusive_ptr<ExpressionContext> expCtx,
+    const NamespaceString& nss,
+    const CollectionRoutingInfo& cri,
+    const std::set<ShardId>& shardIds,
+    const BSONObj& cmdObj,
+    bool eligibleForSampling) {
+    if (cri.hasRoutingTable()) {
+        return buildShardVersionedRequests(expCtx, nss, cri, shardIds, cmdObj, eligibleForSampling);
+    }
+    tassert(
+        10162103,
+        [&]() {
+            std::vector<std::string> shardsStr;
+            std::transform(shardIds.begin(),
+                           shardIds.end(),
+                           std::back_inserter(shardsStr),
+                           [](const auto& shard) { return shard.toString(); });
+
+            return fmt::format(
+                "Expected exactly one shard. Found shardIds: [{}] for namespace: {}.",
+                fmt::join(shardsStr, ", "),
+                nss.toStringForErrorMsg());
+        }(),
+        shardIds.size() == 1);
+
+    auto request = buildDatabaseVersionedRequest(
+        expCtx, nss, cri, *shardIds.begin(), cmdObj, eligibleForSampling);
+    return {std::move(request)};
 }
 
 namespace {
@@ -264,24 +338,15 @@ std::vector<AsyncRequestsSender::Request> buildVersionedRequestsForTargetedShard
     const BSONObj& query,
     const BSONObj& collation,
     bool eligibleForSampling = false) {
-    auto opCtx = expCtx->getOperationContext();
-
-    const auto& cm = cri.cm;
     std::set<ShardId> shardIds;
-    if (!cm.hasRoutingTable()) {
+    if (!cri.hasRoutingTable()) {
         // The collection does not have a routing table. Target only the primary shard for the
         // database.
-        shardIds.emplace(cm.dbPrimary());
+        shardIds.emplace(cri.getDbPrimaryShardId());
     } else {
         // The collection has a routing table. Target all shards that own chunks that match the
         // query.
-        std::unique_ptr<CollatorInterface> collator;
-        if (!collation.isEmpty()) {
-            collator = uassertStatusOK(
-                CollatorFactoryInterface::get(opCtx->getServiceContext())->makeFromBSON(collation));
-        }
-
-        getShardIdsForQuery(expCtx, query, collation, cm, &shardIds);
+        getShardIdsForQuery(expCtx, query, collation, cri.getChunkManager(), &shardIds);
     }
     for (const auto& shardToSkip : shardsToSkip) {
         shardIds.erase(shardToSkip);
@@ -628,8 +693,9 @@ AsyncRequestsSender::Response executeCommandAgainstShardWithMinKeyChunk(
                                                                boost::none /*letParameters*/,
                                                                boost::none /*runtimeConstants*/);
 
-    const auto query =
-        cri.cm.isSharded() ? cri.cm.getShardKeyPattern().getKeyPattern().globalMin() : BSONObj();
+    const auto query = cri.isSharded()
+        ? cri.getChunkManager().getShardKeyPattern().getKeyPattern().globalMin()
+        : BSONObj();
 
     auto responses = gatherResponses(
         opCtx,
@@ -700,8 +766,8 @@ RawResponsesResult appendRawResponses(
             continue;
         }
 
-        if (!firstWriteConcernErrorReceived && resObj["writeConcernError"]) {
-            firstWriteConcernErrorReceived.emplace(shardId, resObj["writeConcernError"]);
+        if (!firstWriteConcernErrorReceived && resObj[kWriteConcernErrorFieldName]) {
+            firstWriteConcernErrorReceived.emplace(shardId, resObj[kWriteConcernErrorFieldName]);
         }
 
         successResponsesReceived.emplace_back(shardId, resObj);
@@ -809,24 +875,26 @@ bool appendEmptyResultSet(OperationContext* opCtx,
 }
 
 std::set<ShardId> getTargetedShardsForQuery(boost::intrusive_ptr<ExpressionContext> expCtx,
-                                            const ChunkManager& cm,
+                                            const CollectionRoutingInfo& cri,
                                             const BSONObj& query,
                                             const BSONObj& collation) {
-    if (cm.hasRoutingTable()) {
+    if (cri.hasRoutingTable()) {
         // The collection has a routing table. Use it to decide which shards to target based on the
         // query and collation.
         std::set<ShardId> shardIds;
-        getShardIdsForQuery(expCtx, query, collation, cm, &shardIds);
+        getShardIdsForQuery(expCtx, query, collation, cri.getChunkManager(), &shardIds);
         return shardIds;
     }
 
     // The collection does not have a routing table. Target only the primary shard for the database.
-    return {cm.dbPrimary()};
+    return {cri.getDbPrimaryShardId()};
 }
 
 std::set<ShardId> getTargetedShardsForCanonicalQuery(const CanonicalQuery& query,
-                                                     const ChunkManager& cm) {
-    if (cm.hasRoutingTable()) {
+                                                     const CollectionRoutingInfo& cri) {
+    if (cri.hasRoutingTable()) {
+        const auto& cm = cri.getChunkManager();
+
         // The collection has a routing table. Use it to decide which shards to target based on the
         // query and collation.
 
@@ -838,7 +906,7 @@ std::set<ShardId> getTargetedShardsForCanonicalQuery(const CanonicalQuery& query
             QueryPlannerCommon::hasNode(query.getPrimaryMatchExpression(),
                                         MatchExpression::GEO_NEAR)) {
             return getTargetedShardsForQuery(
-                query.getExpCtx(), cm, findCommand.getFilter(), findCommand.getCollation());
+                query.getExpCtx(), cri, findCommand.getFilter(), findCommand.getCollation());
         }
 
         query.getExpCtx()->setUUID(cm.getUUID());
@@ -857,8 +925,14 @@ std::set<ShardId> getTargetedShardsForCanonicalQuery(const CanonicalQuery& query
         return shardIds;
     }
 
+    // In the event of an untracked collection, we will discover the collection default collation on
+    // the primary shard. As such, we don't forward the simple collation.
+    if (query.getFindCommandRequest().getCollation().isEmpty()) {
+        query.getExpCtx()->setIgnoreCollator();
+    }
+
     // The collection does not have a routing table. Target only the primary shard for the database.
-    return {cm.dbPrimary()};
+    return {cri.getDbPrimaryShardId()};
 }
 
 std::vector<AsyncRequestsSender::Request> getVersionedRequestsForTargetedShards(
@@ -926,7 +1000,7 @@ CollectionRoutingInfo getRefreshedCollectionRoutingInfoAssertSharded_DEPRECATED(
     uassert(ErrorCodes::NamespaceNotSharded,
             str::stream() << "Command not supported on unsharded collection "
                           << nss.toStringForErrorMsg(),
-            cri.cm.isSharded());
+            cri.isSharded());
     return cri;
 };
 
@@ -959,7 +1033,6 @@ BSONObj forceReadConcernLocal(OperationContext* opCtx, BSONObj& cmd) {
 StatusWith<Shard::QueryResponse> loadIndexesFromAuthoritativeShard(
     OperationContext* opCtx, const NamespaceString& nss, const CollectionRoutingInfo& cri) {
     auto [indexShard, listIndexesCmd] = [&]() -> std::pair<std::shared_ptr<Shard>, BSONObj> {
-        const auto& [cm, sii] = cri;
         ListIndexes listIndexesCmd(nss);
         setReadWriteConcern(opCtx, listIndexesCmd, true, false);
         auto cmdNoVersion = listIndexesCmd.toBSON();
@@ -967,10 +1040,11 @@ StatusWith<Shard::QueryResponse> loadIndexesFromAuthoritativeShard(
         // force the read concern level to "local" as other values are not supported for listIndexes
         cmdNoVersion = forceReadConcernLocal(opCtx, cmdNoVersion);
 
-        if (cm.hasRoutingTable()) {
+        if (cri.hasRoutingTable()) {
             // For a collection that has a routing table, we must load indexes from a shard with
             // chunks. For consistency with cluster listIndexes, load from the shard that owns
             // the minKey chunk.
+            const auto& cm = cri.getChunkManager();
             const auto minKeyShardId = cm.getMinKeyShardIdWithSimpleCollation();
             return {
                 uassertStatusOK(Grid::get(opCtx)->shardRegistry()->getShard(opCtx, minKeyShardId)),
@@ -978,12 +1052,12 @@ StatusWith<Shard::QueryResponse> loadIndexesFromAuthoritativeShard(
         } else {
             // For a collection without routing table, the primary shard will have correct indexes.
             // Attach dbVersion + shardVersion: UNSHARDED.
-            const auto cmdObjWithShardVersion = !cm.dbVersion().isFixed()
+            const auto cmdObjWithShardVersion = !cri.getDbVersion().isFixed()
                 ? appendShardVersion(cmdNoVersion, ShardVersion::UNSHARDED())
                 : cmdNoVersion;
-            return {
-                uassertStatusOK(Grid::get(opCtx)->shardRegistry()->getShard(opCtx, cm.dbPrimary())),
-                appendDbVersionIfPresent(cmdObjWithShardVersion, cm.dbVersion())};
+            return {uassertStatusOK(Grid::get(opCtx)->shardRegistry()->getShard(
+                        opCtx, cri.getDbPrimaryShardId())),
+                    appendDbVersionIfPresent(cmdObjWithShardVersion, cri.getDbVersion())};
         }
     }();
 

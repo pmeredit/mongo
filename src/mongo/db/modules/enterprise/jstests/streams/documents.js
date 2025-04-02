@@ -1,6 +1,7 @@
 /**
  * @tags: [
  *  featureFlagStreams,
+ *  featureFlagUUIDExpression
  * ]
  */
 import {
@@ -45,26 +46,16 @@ function lateDataExample() {
             }
         ])),
         [
-            {
-                _id: null,
-                count: 2,
-                _stream_meta: {
-                    source: {type: "generated"},
-                    window: {
-                        start: ISODate("2024-03-01T02:00:00Z"),
-                        end: ISODate("2024-03-01T02:00:10Z")
-                    }
-                }
-            },
+            {_id: null, count: 2},
             {
                 _dlqMessage: {
-                    "_stream_meta": {"source": {"type": "generated"}},
+                    "_stream_meta":
+                        {"source": {"type": "generated", "ts": ISODate("2024-03-01T02:00:02Z")}},
                     "errInfo": {"reason": "Input document arrived late."},
                     "operatorName": "GroupOperator",
                     "doc": {
                         "a": 1,
                         "ts": ISODate("2024-03-01T02:00:02Z"),
-                        "_ts": ISODate("2024-03-01T02:00:02Z")
                     },
                     "missedWindowStartTimes": [ISODate("2024-03-01T02:00:00.000Z")],
                 }
@@ -74,4 +65,26 @@ function lateDataExample() {
         ));
 }
 
+// TODO(STREAMS-1620): Remove this if/when we change the $uuid expression name everywhere, we'll
+// just change the existing tests in uuid.js
+function uuidExample() {
+    const results = sp.process([
+        {
+            $source: {
+                documents: [
+                    {a: 1},
+                    {a: 1},
+                ],
+            }
+        },
+        {$addFields: {uuid: {$createUUID: {}}}},
+        {$addFields: {uuidStrField: {$toString: "$uuid"}}}
+    ]);
+    assert.eq(2, results.length);
+    for (const result of results) {
+        assert.eq(`UUID("${result.uuidStrField}")`, result.uuid.toString());
+    }
+}
+
 lateDataExample();
+uuidExample();

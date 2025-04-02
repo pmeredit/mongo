@@ -68,8 +68,6 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
@@ -83,7 +81,6 @@
 
 
 namespace mongo::auth {
-using namespace fmt::literals;
 
 using ResolvedRoleData = AuthorizationBackendInterface::ResolvedRoleData;
 using ResolveRoleOption = AuthorizationBackendInterface::ResolveRoleOption;
@@ -284,26 +281,17 @@ Status AuthorizationBackendLocal::makeRoleNotFoundStatus(
     return {ErrorCodes::RoleNotFound, sb.str()};
 }
 
-AuthorizationBackendLocal::RolesLocks::RolesLocks(OperationContext* opCtx,
-                                                  const boost::optional<TenantId>& tenant) {
-    if (!storageGlobalParams.disableLockFreeReads) {
-        _readLockFree = std::make_unique<AutoReadLockFree>(opCtx);
-    } else {
-        _adminLock = std::make_unique<Lock::DBLock>(opCtx, DatabaseName::kAdmin, LockMode::MODE_IS);
-        _rolesLock =
-            std::make_unique<Lock::CollectionLock>(opCtx, rolesNSS(tenant), LockMode::MODE_S);
-    }
+AuthorizationBackendLocal::RolesSnapshot::RolesSnapshot(OperationContext* opCtx) {
+    _readLockFree = std::make_unique<AutoReadLockFree>(opCtx);
 }
 
-AuthorizationBackendLocal::RolesLocks::~RolesLocks() {
+AuthorizationBackendLocal::RolesSnapshot::~RolesSnapshot() {
     _readLockFree.reset(nullptr);
-    _rolesLock.reset(nullptr);
-    _adminLock.reset(nullptr);
 }
 
-AuthorizationBackendLocal::RolesLocks AuthorizationBackendLocal::_lockRoles(
-    OperationContext* opCtx, const boost::optional<TenantId>& tenant) {
-    return AuthorizationBackendLocal::RolesLocks(opCtx, tenant);
+AuthorizationBackendLocal::RolesSnapshot AuthorizationBackendLocal::_snapshotRoles(
+    OperationContext* opCtx) {
+    return AuthorizationBackendLocal::RolesSnapshot(opCtx);
 }
 
 Status AuthorizationBackendLocal::rolesExist(OperationContext* opCtx,
@@ -397,8 +385,8 @@ StatusWith<ResolvedRoleData> AuthorizationBackendLocal::resolveRoles(
                 for (const auto& privElem : elem.Obj()) {
                     if (privElem.type() != Object) {
                         return {ErrorCodes::UnsupportedFormat,
-                                "Expected privilege document as object, got {}"_format(
-                                    typeName(privElem.type()))};
+                                fmt::format("Expected privilege document as object, got {}",
+                                            typeName(privElem.type()))};
                     }
                     auto pp = auth::ParsedPrivilege::parse(idlctx, privElem.Obj());
                     Privilege::addPrivilegeToPrivilegeVector(
@@ -473,7 +461,7 @@ StatusWith<User> AuthorizationBackendLocal::getUserObject(
     const UserRequest* request = user.getUserRequest();
     const UserName& userName = request->getUserName();
 
-    auto rolesLock = _lockRoles(opCtx, userName.tenantId());
+    auto RolesSnapshot = _snapshotRoles(opCtx);
 
     // Set ResolveRoleOption to mine all information from role tree.
     auto options = ResolveRoleOption::kAllInfo();
@@ -545,7 +533,7 @@ Status AuthorizationBackendLocal::getUserDescription(
     std::vector<RoleName> directRoles;
     BSONObjBuilder resultBuilder;
 
-    auto rolesLock = _lockRoles(opCtx, userName.tenantId());
+    auto RolesSnapshot = _snapshotRoles(opCtx);
 
     auto options = ResolveRoleOption::kAllInfo();
     bool hasExternalRoles = userReq.getRoles().has_value();
@@ -800,13 +788,13 @@ std::vector<BSONObj> AuthorizationBackendLocal::performNoPrivilegeNoRestrictions
     pipeline.push_back(BSON("$sort" << BSON("user" << 1 << "db" << 1)));
 
     // Rewrite the credentials object into an array of its fieldnames.
-    pipeline.push_back(BSON(
-        "$addFields" << BSON("mechanisms" << BSON("$map" << BSON("input" << BSON("$objectToArray"
-                                                                                 << "$credentials")
-                                                                         << "as"
-                                                                         << "cred"
-                                                                         << "in"
-                                                                         << "$$cred.k")))));
+    pipeline.push_back(
+        BSON("$addFields" << BSON(
+                 "mechanisms" << BSON(
+                     "$map" << BSON("input" << BSON("$objectToArray" << "$credentials") << "as"
+                                            << "cred"
+                                            << "in"
+                                            << "$$cred.k")))));
 
     // Authentication restrictions are only rendered in the single user case.
     BSONArrayBuilder fieldsToRemoveBuilder;

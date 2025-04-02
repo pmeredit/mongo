@@ -38,10 +38,8 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/tick_source_mock.h"
 #include "mongo/util/tracing_support.h"
@@ -157,9 +155,8 @@ BSONObj beginEvent(StringData name, int64_t time) {
 }
 
 BSONObj endEvent(int64_t time) {
-    return BSON("ph"
-                << "E"
-                << "ts" << time << "pid" << 1 << "tid" << 1);
+    return BSON("ph" << "E"
+                     << "ts" << time << "pid" << 1 << "tid" << 1);
 }
 
 TEST(TracingSupportTest, BasicEventUsage) {

@@ -7,6 +7,7 @@
 import {
     removeProjections,
     TestHelper,
+    validateLastCheckpointStat,
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
 import {
     listStreamProcessors,
@@ -16,8 +17,11 @@ import {
     waitForCount,
     waitForDoc,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
-
 import {} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+
+const lastCheckpointFieldName = "lastCheckpoint";
+const sourceStateFieldName = "sourceState";
+const commitTimeFieldName = "commitTime";
 
 function generateInput(size, msPerDocument = 1) {
     let input = [];
@@ -33,6 +37,10 @@ function generateInput(size, msPerDocument = 1) {
     return input;
 }
 
+export function checkForNoLastCheckpointField(verboseStats) {
+    assert(!(lastCheckpointFieldName in verboseStats));
+}
+
 function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
     function smokeTestCorrectness() {
         const input = generateInput(2000);
@@ -45,6 +53,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
 
         // Run the streamProcessor for the first time.
         test.run();
+        let verboseStats = test.stats(true);
+        checkForNoLastCheckpointField(verboseStats);
         // Wait until the last doc in the input appears in the output collection.
         waitForDoc(test.outputColl, (doc) => doc.idx == input.length - 1, /* maxWaitSeconds */ 60);
         test.stop();
@@ -68,6 +78,9 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             test.outputColl.deleteMany({});
             // Run the streamProcessor.
             test.run();
+
+            verboseStats = test.stats(true);
+            validateLastCheckpointStat("kafka", verboseStats);
             // Get the starting offset from the checkpoint.
             const startingOffset = test.getStartOffsetFromCheckpoint(id);
             const expectedOutputCount = input.length - startingOffset;
@@ -190,7 +203,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                         min: "$minIdx",
                         max: "$maxIdx",
                         sum: "$sum",
-                    }
+                    },
+                    _stream_meta: {$meta: "stream"}
                 }
             }
         ];
@@ -320,6 +334,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                                   useNewCheckpointing,
                                   useRestoredExecutionPlan);
         test.run();
+        let verboseStats = test.stats(true);
+        checkForNoLastCheckpointField(verboseStats);
         // Wait for all the messages to be read.
         assert.soon(() => { return test.stats()["inputMessageCount"] == input.length; });
         assert.eq(0, test.getResults().length, "expected no output");
@@ -330,6 +346,10 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         assert.gt(ids.length, 0, `expected some checkpoints`);
         // Run the streamProcessor, expecting to resume from a checkpoint.
         test.run(false /* firstStart */);
+
+        verboseStats = test.stats(true);
+        validateLastCheckpointStat("changestream", verboseStats);
+
         // Insert an event that will close the window.
         assert.commandWorked(test.inputColl.insert({ts: new Date(endTs.getTime() + 1)}));
         assert.soon(() => { return test.getResults().length == expectedOutputDocs.length; });
@@ -393,8 +413,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             const output = getResults();
             assert.eq(expectedOutput.length, output.length);
             for (let i = 0; i < output.length; i++) {
-                verifyDocsEqual(
-                    expectedOutput[i], output[i], ["_id", "_ts", "_stream_meta"] /*ignoreFields*/);
+                verifyDocsEqual(expectedOutput[i], output[i], ["_id"] /*ignoreFields*/);
             }
         };
 
@@ -451,8 +470,10 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         let statsAfterCheckpoint = test.stats();
 
         // Verify expected state size (if any).
-        assert.soon(
-            () => { return statsAfterCheckpoint["stateSize"] >= minimumExpectedStateSize; });
+        assert.soon(() => {
+            const stateSize = statsAfterCheckpoint["stateSize"];
+            return stateSize >= (0.8 * minimumExpectedStateSize);
+        });
 
         // Wait for all the output.
         assert.neq(expectedOutput, null);
@@ -509,6 +530,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                     ]
                 }
             },
+            {$addFields: {_stream_meta: {$meta: "stream"}}},
             {$project: {_id: 0, results: 1, _stream_meta: 1}}
         ];
         const docTs = ISODate("2023-12-01T01:00:00.000Z");
@@ -661,15 +683,7 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
             inputBeforeStop: input,
             inputAfterStop: closeWindowInput,
             expectedOutput: [
-                {
-                    _stream_meta: {
-                        "sourceType": "atlas",
-                        "windowStartTimestamp": ISODate("2023-12-01T01:00:00Z"),
-                        "windowEndTimestamp": ISODate("2023-12-01T02:00:00Z")
-                    },
-                    count: 1,
-                    id: id
-                },
+                {count: 1, id: id},
             ],
             minimumExpectedStateSize: state,
             shouldHeapProfile: true,
@@ -703,7 +717,16 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
                         }]
                     }
                 },
-                {$project: {customerId: "$_id", max: 1, min: 1, sum: 1, _id: 0}}
+                {
+                    $project: {
+                        customerId: "$_id",
+                        max: 1,
+                        min: 1,
+                        sum: 1,
+                        _id: 0,
+                        _stream_meta: {$meta: "stream"}
+                    }
+                }
             ],
             inputBeforeStop: [
                 {ts: ISODate("2023-12-01T01:00:00.000Z"), customerId: 0, a: 1},
@@ -1112,6 +1135,52 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         assert.gte(new Set(resumeTokens).size, 2);
     }
 
+    // Test resume token handling in the middle of a batch of data from the change
+    // stream cursor
+    function changestreamMiddleOfBatch() {
+        assert.commandWorked(db.adminCommand(
+            {'configureFailPoint': 'changestreamSourceSleepAfterReadSingle', 'mode': 'alwaysOn'}));
+
+        try {
+            // Create a test helper.
+            let test = new TestHelper(
+                [{a: 1}, {a: 2}],
+                [],
+                undefined /* interval */,
+                "changestream" /* sourceType */,
+                true, /* useNewCheckpointing */
+                useRestoredExecutionPlan,
+                null /* writeDir */,
+                null /* restoreDir */,
+                db /* dbForTest */,
+                null /* targetSourceMergeDb */,
+                false, /* useTimeField */
+            );
+
+            // This starts the stream processor and inserts the "inputBeforeStop" into the input
+            // collection.
+            test.run();
+            // Wait for 1 message to be read (but not the second message).
+            assert.soon(() => { return test.stats()["inputMessageCount"] == 1; });
+            test.stop();
+
+            // start from the last checkpoint
+            test.run(false /* firstStart */);
+            assert.soon(() => { return test.stats()["inputMessageCount"] == 2; });
+            assert.soon(() => { return test.stats()["outputMessageCount"] == 2; });
+            // validate the stats don't change after 5 seocnds
+            sleep(5000);
+            assert.eq(2, test.stats()["inputMessageCount"]);
+            assert.eq(2, test.stats()["outputMessageCount"]);
+
+            // Stop the stream processor.
+            test.stop();
+        } finally {
+            assert.commandWorked(db.adminCommand(
+                {'configureFailPoint': 'changestreamSourceSleepAfterReadSingle', 'mode': 'off'}));
+        }
+    }
+
     // TODO(SERVER-92447): Remove this.
     // Validate that trying to restore from a checkpoint with operators that don't match the
     // supplied pipeline will fail.
@@ -1175,6 +1244,8 @@ function testBoth(useNewCheckpointing, useRestoredExecutionPlan) {
         runTest(smokeTestStatsInCheckpoint);
         runTest(smokeTestEmptyChangestream);
         runTest(emptyChangestreamResumeTokenAdvances);
+
+        runTest(changestreamMiddleOfBatch);
 
         const buildInfo = db.runCommand("buildInfo");
         assert(buildInfo.hasOwnProperty("allocator"));

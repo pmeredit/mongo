@@ -71,14 +71,10 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/stdx/future.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/log_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/net/hostandport.h"
@@ -112,13 +108,12 @@ TEST_F(ReplCoordTest, NodeReturnsNotYetInitializedWhenReconfigReceivedPriorToIni
 TEST_F(ReplCoordTest, NodeReturnsNotWritablePrimaryWhenReconfigReceivedWhileSecondary) {
     // start up, become secondary, receive reconfig
     init();
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
 
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
@@ -137,14 +132,13 @@ TEST_F(ReplCoordTest, NodeReturnsNotWritablePrimaryWhenReconfigReceivedWhileSeco
 TEST_F(ReplCoordTest, NodeReturnsNotWritablePrimaryWhenRunningSafeReconfigWhileInDrainMode) {
     init();
 
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 1 << "members"
-                            << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                     << "test1:1234")
-                                          << BSON("_id" << 1 << "host"
-                                                        << "test2:1234"))
-                            << "protocolVersion" << 1),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 1 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                           << "test1:1234")
+                                                << BSON("_id" << 1 << "host"
+                                                              << "test2:1234"))
+                                  << "protocolVersion" << 1),
                        HostAndPort("test1", 1234));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
                                                         Date_t() + Seconds(100));
@@ -170,14 +164,13 @@ TEST_F(ReplCoordTest, NodeReturnsNotWritablePrimaryWhenRunningSafeReconfigWhileI
 TEST_F(ReplCoordTest, NodeReturnsNotPrimaryErrorWhenReconfigCmdReceivedWhileInDrainMode) {
     init();
 
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 1 << "members"
-                            << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                     << "test1:1234")
-                                          << BSON("_id" << 1 << "host"
-                                                        << "test2:1234"))
-                            << "protocolVersion" << 1),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 1 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                           << "test1:1234")
+                                                << BSON("_id" << 1 << "host"
+                                                              << "test2:1234"))
+                                  << "protocolVersion" << 1),
                        HostAndPort("test1", 1234));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
                                                         Date_t() + Seconds(100));
@@ -201,14 +194,13 @@ TEST_F(ReplCoordTest,
        NodeReturnsPrimarySteppedDownErrorWhenHigherTermConfigInstalledWaitingForCommitment) {
     init();
 
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 1 << "members"
-                            << BSON_ARRAY(BSON("_id" << 0 << "host"
-                                                     << "test1:1234")
-                                          << BSON("_id" << 1 << "host"
-                                                        << "test2:1234"))
-                            << "protocolVersion" << 1),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 1 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 0 << "host"
+                                                           << "test1:1234")
+                                                << BSON("_id" << 1 << "host"
+                                                              << "test2:1234"))
+                                  << "protocolVersion" << 1),
                        HostAndPort("test1", 1234));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
                                                         Date_t() + Seconds(100));
@@ -232,13 +224,12 @@ TEST_F(ReplCoordTest,
 TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWithInvalidConfig) {
     // start up, become primary, receive uninitializable config
     RAIIServerParameterControllerForTest controller{"allowMultipleArbiters", true};
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -248,16 +239,15 @@ TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWith
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 2 << "protocolVersion" << 1 << "invalidlyNamedField"
-                             << 3 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345"
-                                                      << "arbiterOnly" << true)
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345"
-                                                         << "arbiterOnly" << true)));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 2 << "protocolVersion" << 1
+                                   << "invalidlyNamedField" << 3 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345"
+                                                            << "arbiterOnly" << true)
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345"
+                                                               << "arbiterOnly" << true)));
     const auto opCtx = makeOperationContext();
     // ErrorCodes::BadValue should be propagated from ReplSetConfig::initialize()
     ASSERT_EQUALS(ErrorCodes::InvalidReplicaSetConfig,
@@ -267,13 +257,12 @@ TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWith
 
 TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWithIncorrectSetName) {
     // start up, become primary, receive config with incorrect replset name
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -283,13 +272,12 @@ TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWith
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "notMySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")));
+    args.newConfigObj = BSON("_id" << "notMySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")));
 
     const auto opCtx = makeOperationContext();
     ASSERT_EQUALS(ErrorCodes::InvalidReplicaSetConfig,
@@ -299,14 +287,13 @@ TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWith
 
 TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWithIncorrectSetId) {
     // start up, become primary, receive config with incorrect replset name
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))
-                            << "settings" << BSON("replicaSetId" << OID::gen())),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))
+                                  << "settings" << BSON("replicaSetId" << OID::gen())),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -316,14 +303,13 @@ TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWith
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345"))
-                             << "settings" << BSON("replicaSetId" << OID::gen()));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345"))
+                                   << "settings" << BSON("replicaSetId" << OID::gen()));
 
     const auto opCtx = makeOperationContext();
     ASSERT_EQUALS(ErrorCodes::NewReplicaSetConfigurationIncompatible,
@@ -334,13 +320,12 @@ TEST_F(ReplCoordTest, NodeReturnsInvalidReplicaSetConfigWhenReconfigReceivedWith
 TEST_F(ReplCoordTest,
        NodeReturnsNewReplicaSetConfigurationIncompatibleWhenANewConfigFailsToValidate) {
     // start up, become primary, validate fails
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -351,13 +336,12 @@ TEST_F(ReplCoordTest,
     ReplSetReconfigArgs args;
     args.force = false;
     // new config fails to validate because one node is localhost and another is not.
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "localhost:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "localhost:12345")));
 
     const auto opCtx = makeOperationContext();
     ASSERT_EQUALS(ErrorCodes::NewReplicaSetConfigurationIncompatible,
@@ -368,15 +352,14 @@ TEST_F(ReplCoordTest,
 void doReplSetInitiate(ReplicationCoordinatorImpl* replCoord, Status* status) {
     // Client::setCurrent(getGlobalServiceContext()->getService()->makeClient("replSetInitiate"));
     BSONObjBuilder garbage;
-    *status =
-        replCoord->runReplSetInitiate_forTest(BSON("_id"
-                                                   << "mySet"
-                                                   << "version" << 1 << "members"
-                                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                                            << "node1:12345")
-                                                                 << BSON("_id" << 2 << "host"
-                                                                               << "node2:12345"))),
-                                              &garbage);
+    *status = replCoord->runReplSetInitiate_forTest(
+        BSON("_id" << "mySet"
+                   << "version" << 1 << "members"
+                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                            << "node1:12345")
+                                 << BSON("_id" << 2 << "host"
+                                               << "node2:12345"))),
+        &garbage);
 }
 
 void doReplSetReconfig(ReplicationCoordinatorImpl* replCoord,
@@ -388,15 +371,14 @@ void doReplSetReconfig(ReplicationCoordinatorImpl* replCoord,
     ReplSetReconfigArgs args;
     args.force = force;
     // Replica set id will be copied from existing configuration.
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "term" << term << "protocolVersion" << 1
-                             << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345"
-                                                         << "priority" << 3)));
+    args.newConfigObj =
+        BSON("_id" << "mySet"
+                   << "version" << 3 << "term" << term << "protocolVersion" << 1 << "members"
+                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                            << "node1:12345")
+                                 << BSON("_id" << 2 << "host"
+                                               << "node2:12345"
+                                               << "priority" << 3)));
     *status = replCoord->processReplSetReconfig(opCtx, args, &garbage);
 }
 
@@ -487,13 +469,12 @@ TEST_F(ReplCoordTest, QuorumCheckSucceedsWhenOtherNodesHaveLowerTerm) {
 
 TEST_F(ReplCoordTest, NodeReturnsOutOfDiskSpaceWhenSavingANewConfigFailsDuringReconfig) {
     // start up, become primary, saving the config fails
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -522,13 +503,12 @@ TEST_F(ReplCoordTest, NodeReturnsOutOfDiskSpaceWhenSavingANewConfigFailsDuringRe
 TEST_F(ReplCoordTest,
        NodeReturnsConfigurationInProgressWhenReceivingAReconfigWhileInTheMidstOfAnotherReconfig) {
     // start up, become primary, reconfig, then before that reconfig concludes, reconfig again
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -547,13 +527,12 @@ TEST_F(ReplCoordTest,
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")));
     ASSERT_EQUALS(ErrorCodes::ConfigurationInProgress,
                   getReplCoord()->processReplSetReconfig(opCtx.get(), args, &result));
     ASSERT_TRUE(result.obj().isEmpty());
@@ -585,13 +564,12 @@ TEST_F(ReplCoordTest, NodeReturnsConfigurationInProgressWhenReceivingAReconfigWh
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")));
 
     const auto opCtx = makeOperationContext();
     ASSERT_EQUALS(ErrorCodes::ConfigurationInProgress,
@@ -603,14 +581,13 @@ TEST_F(ReplCoordTest, NodeReturnsConfigurationInProgressWhenReceivingAReconfigWh
 
 TEST_F(ReplCoordTest, PrimaryNodeAcceptsNewConfigWhenReceivingAReconfigWithACompatibleConfig) {
     // start up, become primary, reconfig successfully
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))
-                            << "settings" << BSON("replicaSetId" << OID::gen())),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))
+                                  << "settings" << BSON("replicaSetId" << OID::gen())),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -661,14 +638,13 @@ TEST_F(ReplCoordTest, PrimaryNodeAcceptsNewConfigWhenReceivingAReconfigWithAComp
 
 TEST_F(ReplCoordTest, OverrideReconfigBsonTermSoReconfigSucceeds) {
     // start up, become primary, reconfig successfully
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))
-                            << "settings" << BSON("replicaSetId" << OID::gen())),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))
+                                  << "settings" << BSON("replicaSetId" << OID::gen())),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -725,13 +701,12 @@ TEST_F(
     NodeReturnsConfigurationInProgressWhenReceivingAReconfigWhileInTheMidstOfAHeartbeatReconfig) {
     // start up, become primary, receive reconfig via heartbeat, then a second one
     // from reconfig
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -745,13 +720,13 @@ TEST_F(
     NetworkInterfaceMock* net = getNet();
     net->enterNetwork();
     ReplSetHeartbeatResponse hbResp2;
-    auto config = ReplSetConfig::parse(BSON("_id"
-                                            << "mySet"
-                                            << "version" << 3 << "protocolVersion" << 1 << "members"
-                                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                                     << "node1:12345")
-                                                          << BSON("_id" << 2 << "host"
-                                                                        << "node2:12345"))));
+    auto config =
+        ReplSetConfig::parse(BSON("_id" << "mySet"
+                                        << "version" << 3 << "protocolVersion" << 1 << "members"
+                                        << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                                 << "node1:12345")
+                                                      << BSON("_id" << 2 << "host"
+                                                                    << "node2:12345"))));
     hbResp2.setConfig(config);
     hbResp2.setConfigVersion(3);
     hbResp2.setSetName("mySet");
@@ -782,13 +757,12 @@ TEST_F(
 
 TEST_F(ReplCoordTest, NodeDoesNotAcceptHeartbeatReconfigWhileInTheMidstOfReconfig) {
     // start up, become primary, reconfig, while reconfigging receive reconfig via heartbeat
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -811,13 +785,12 @@ TEST_F(ReplCoordTest, NodeDoesNotAcceptHeartbeatReconfigWhileInTheMidstOfReconfi
     net->runUntil(net->now() + Seconds(10));  // run until we've sent a heartbeat request
     const NetworkInterfaceMock::NetworkOperationIterator noi = net->getNextReadyRequest();
     ReplSetHeartbeatResponse hbResp;
-    auto config = ReplSetConfig::parse(BSON("_id"
-                                            << "mySet"
-                                            << "version" << 4 << "members"
-                                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                                     << "node1:12345")
-                                                          << BSON("_id" << 2 << "host"
-                                                                        << "node2:12345"))));
+    auto config = ReplSetConfig::parse(BSON("_id" << "mySet"
+                                                  << "version" << 4 << "members"
+                                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                                           << "node1:12345")
+                                                                << BSON("_id" << 2 << "host"
+                                                                              << "node2:12345"))));
     hbResp.setConfig(config);
     hbResp.setConfigVersion(4);
     hbResp.setSetName("mySet");
@@ -849,13 +822,12 @@ TEST_F(ReplCoordTest, NodeDoesNotAcceptHeartbeatReconfigWhileInTheMidstOfReconfi
 TEST_F(ReplCoordTest, NodeAcceptsConfigFromAReconfigWithForceTrueWhileNotPrimary) {
     // start up, become a secondary, receive a forced reconfig
     init();
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -865,13 +837,12 @@ TEST_F(ReplCoordTest, NodeAcceptsConfigFromAReconfigWithForceTrueWhileNotPrimary
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")));
     const auto opCtx = makeOperationContext();
     ASSERT_EQUALS(ErrorCodes::NotWritablePrimary,
                   getReplCoord()->processReplSetReconfig(opCtx.get(), args, &result));
@@ -886,13 +857,12 @@ TEST_F(ReplCoordTest, NodeAcceptsConfigFromAReconfigWithForceTrueWhileNotPrimary
 }
 
 TEST_F(ReplCoordTest, ReconfigThatChangesIDWCFromWMajToW1WithoutCWWCSetFails) {
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -904,16 +874,15 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCFromWMajToW1WithoutCWWCSetFails) {
     ReplSetReconfigArgs args;
     args.force = false;
     // Adding an arbiter would change the default write concern from {w: majority} to {w: 1}.
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")
-                                           << BSON("_id" << 3 << "host"
-                                                         << "node3:12345"
-                                                         << "arbiterOnly" << true)));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")
+                                                 << BSON("_id" << 3 << "host"
+                                                               << "node3:12345"
+                                                               << "arbiterOnly" << true)));
 
     const auto opCtx = makeOperationContext();
     ASSERT_EQUALS(ErrorCodes::NewReplicaSetConfigurationIncompatible,
@@ -921,16 +890,15 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCFromWMajToW1WithoutCWWCSetFails) {
 }
 
 TEST_F(ReplCoordTest, ReconfigThatChangesIDWCFromW1toWMajWithoutCWWCSetFails) {
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345")
-                                          << BSON("_id" << 3 << "host"
-                                                        << "node3:12345"
-                                                        << "arbiterOnly" << true))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345")
+                                                << BSON("_id" << 3 << "host"
+                                                              << "node3:12345"
+                                                              << "arbiterOnly" << true))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -942,13 +910,12 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCFromW1toWMajWithoutCWWCSetFails) {
     ReplSetReconfigArgs args;
     args.force = false;
     // Removing an arbiter would change the default write concern from {w: 1} to {w: majority}.
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")));
 
     const auto opCtx = makeOperationContext();
     ASSERT_EQUALS(ErrorCodes::NewReplicaSetConfigurationIncompatible,
@@ -963,13 +930,12 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCWMajToW1WithCWWCSetPasses) {
     newDefaults.setDefaultWriteConcern(wc);
     lookupMock.setLookupCallReturnValue(std::move(newDefaults));
 
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -986,17 +952,16 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCWMajToW1WithCWWCSetPasses) {
         BSONObjBuilder result;
         ReplSetReconfigArgs args;
         args.force = false;
-        args.newConfigObj = BSON("_id"
-                                 << "mySet"
-                                 << "version" << 3 << "term" << 1 << "protocolVersion" << 1
-                                 << "members"
-                                 << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                          << "node1:12345")
-                                               << BSON("_id" << 2 << "host"
-                                                             << "node2:12345")
-                                               << BSON("_id" << 3 << "host"
-                                                             << "node3:12345"
-                                                             << "arbiterOnly" << true)));
+        args.newConfigObj =
+            BSON("_id" << "mySet"
+                       << "version" << 3 << "term" << 1 << "protocolVersion" << 1 << "members"
+                       << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                << "node1:12345")
+                                     << BSON("_id" << 2 << "host"
+                                                   << "node2:12345")
+                                     << BSON("_id" << 3 << "host"
+                                                   << "node3:12345"
+                                                   << "arbiterOnly" << true)));
         status = getReplCoord()->processReplSetReconfig(opCtx.get(), args, &result);
     });
     ReplSetHeartbeatArgsV1 hbArgs;
@@ -1024,16 +989,15 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCW1ToWMajWithCWWCSetPasses) {
     newDefaults.setDefaultWriteConcern(wc);
     lookupMock.setLookupCallReturnValue(std::move(newDefaults));
 
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345")
-                                          << BSON("_id" << 3 << "host"
-                                                        << "node3:12345"
-                                                        << "arbiterOnly" << true))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345")
+                                                << BSON("_id" << 3 << "host"
+                                                              << "node3:12345"
+                                                              << "arbiterOnly" << true))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -1050,14 +1014,13 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCW1ToWMajWithCWWCSetPasses) {
         BSONObjBuilder result;
         ReplSetReconfigArgs args;
         args.force = false;
-        args.newConfigObj = BSON("_id"
-                                 << "mySet"
-                                 << "version" << 3 << "term" << 1 << "protocolVersion" << 1
-                                 << "members"
-                                 << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                          << "node1:12345")
-                                               << BSON("_id" << 2 << "host"
-                                                             << "node2:12345")));
+        args.newConfigObj =
+            BSON("_id" << "mySet"
+                       << "version" << 3 << "term" << 1 << "protocolVersion" << 1 << "members"
+                       << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                << "node1:12345")
+                                     << BSON("_id" << 2 << "host"
+                                                   << "node2:12345")));
         status = getReplCoord()->processReplSetReconfig(opCtx.get(), args, &result);
     });
     ReplSetHeartbeatArgsV1 hbArgs;
@@ -1080,16 +1043,15 @@ TEST_F(ReplCoordTest, ReconfigThatChangesIDWCW1ToWMajWithCWWCSetPasses) {
 
 TEST_F(ReplCoordTest, ReconfigThatKeepsIDWCAtW1WithoutCWWCSetPasses) {
     RAIIServerParameterControllerForTest controller{"allowMultipleArbiters", true};
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345")
-                                          << BSON("_id" << 3 << "host"
-                                                        << "node3:12345"
-                                                        << "arbiterOnly" << true))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345")
+                                                << BSON("_id" << 3 << "host"
+                                                              << "node3:12345"
+                                                              << "arbiterOnly" << true))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -1107,20 +1069,19 @@ TEST_F(ReplCoordTest, ReconfigThatKeepsIDWCAtW1WithoutCWWCSetPasses) {
         ReplSetReconfigArgs args;
         args.force = false;
         // Adding another arbiter would keep the default write concern at {w: 1}.
-        args.newConfigObj = BSON("_id"
-                                 << "mySet"
-                                 << "version" << 3 << "term" << 1 << "protocolVersion" << 1
-                                 << "members"
-                                 << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                          << "node1:12345")
-                                               << BSON("_id" << 2 << "host"
-                                                             << "node2:12345")
-                                               << BSON("_id" << 3 << "host"
-                                                             << "node3:12345"
-                                                             << "arbiterOnly" << true)
-                                               << BSON("_id" << 4 << "host"
-                                                             << "node4:12345"
-                                                             << "arbiterOnly" << true)));
+        args.newConfigObj =
+            BSON("_id" << "mySet"
+                       << "version" << 3 << "term" << 1 << "protocolVersion" << 1 << "members"
+                       << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                << "node1:12345")
+                                     << BSON("_id" << 2 << "host"
+                                                   << "node2:12345")
+                                     << BSON("_id" << 3 << "host"
+                                                   << "node3:12345"
+                                                   << "arbiterOnly" << true)
+                                     << BSON("_id" << 4 << "host"
+                                                   << "node4:12345"
+                                                   << "arbiterOnly" << true)));
         status = getReplCoord()->processReplSetReconfig(opCtx.get(), args, &result);
     });
     ReplSetHeartbeatArgsV1 hbArgs;
@@ -1145,13 +1106,12 @@ TEST_F(ReplCoordTest, ReconfigThatKeepsIDWCAtW1WithoutCWWCSetPasses) {
 }
 
 TEST_F(ReplCoordTest, ReconfigThatKeepsIDWCAtWMajWithoutCWWCSetPasses) {
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
@@ -1169,16 +1129,15 @@ TEST_F(ReplCoordTest, ReconfigThatKeepsIDWCAtWMajWithoutCWWCSetPasses) {
         ReplSetReconfigArgs args;
         args.force = false;
         // Adding another data-bearing node would keep the default write concern at {w: majority}.
-        args.newConfigObj = BSON("_id"
-                                 << "mySet"
-                                 << "version" << 3 << "term" << 1 << "protocolVersion" << 1
-                                 << "members"
-                                 << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                          << "node1:12345")
-                                               << BSON("_id" << 2 << "host"
-                                                             << "node2:12345")
-                                               << BSON("_id" << 3 << "host"
-                                                             << "node3:12345")));
+        args.newConfigObj =
+            BSON("_id" << "mySet"
+                       << "version" << 3 << "term" << 1 << "protocolVersion" << 1 << "members"
+                       << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                << "node1:12345")
+                                     << BSON("_id" << 2 << "host"
+                                                   << "node2:12345")
+                                     << BSON("_id" << 3 << "host"
+                                                   << "node3:12345")));
         status = getReplCoord()->processReplSetReconfig(opCtx.get(), args, &result);
     });
     ReplSetHeartbeatArgsV1 hbArgs;
@@ -1366,27 +1325,25 @@ TEST_F(ReplCoordReconfigTest, MustFindSelfAndBeElectableInNewConfig) {
     init();
 
     // We only check for ourselves if the config contents actually change.
-    auto oldConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 1 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "h1:1")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "h2:1")
-                                           << BSON("_id" << 3 << "host"
-                                                         << "h3:1"))
-                             << "settings" << BSON("heartbeatIntervalMillis" << 1000));
-    auto newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 2 << "protocolVersion" << 1 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "newhost:1")  // bypass quickfind
-                                           << BSON("_id" << 2 << "host"
-                                                         << "h2:1")
-                                           << BSON("_id" << 3 << "host"
-                                                         << "h3:1"
-                                                         << "priority" << 0))
-                             << "settings" << BSON("heartbeatIntervalMillis" << 2000));
+    auto oldConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 1 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "h1:1")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "h2:1")
+                                                 << BSON("_id" << 3 << "host"
+                                                               << "h3:1"))
+                                   << "settings" << BSON("heartbeatIntervalMillis" << 1000));
+    auto newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 2 << "protocolVersion" << 1 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "newhost:1")  // bypass quickfind
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "h2:1")
+                                                 << BSON("_id" << 3 << "host"
+                                                               << "h3:1"
+                                                               << "priority" << 0))
+                                   << "settings" << BSON("heartbeatIntervalMillis" << 2000));
 
     assertStartSuccess(oldConfigObj, HostAndPort("h1", 1));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
@@ -2448,13 +2405,12 @@ TEST_F(ReplCoordReconfigTest, MultipleArbitersShouldSucceedWithServerParameter) 
 TEST_F(ReplCoordTest, StepUpReconfigConcurrentWithHeartbeatReconfig) {
     auto severityGuard = unittest::MinimumLoggedSeverityGuard{logv2::LogComponent::kReplication,
                                                               logv2::LogSeverity::Debug(2)};
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "term" << 0 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "term" << 0 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     ASSERT_EQUALS(getReplCoord()->getTerm(), 0);
@@ -2504,13 +2460,12 @@ TEST_F(ReplCoordTest, StepUpReconfigConcurrentWithHeartbeatReconfig) {
 
     // Schedule a response with a newer config.
     auto newerConfigVersion = 3;
-    auto newerConfig = BSON("_id"
-                            << "mySet"
-                            << "version" << newerConfigVersion << "term" << 0 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345")));
+    auto newerConfig = BSON("_id" << "mySet"
+                                  << "version" << newerConfigVersion << "term" << 0 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345")));
     auto net = getNet();
     net->enterNetwork();
     auto noi = net->getNextReadyRequest();
@@ -2551,13 +2506,12 @@ TEST_F(ReplCoordTest, StepUpReconfigConcurrentWithHeartbeatReconfig) {
 TEST_F(ReplCoordTest, StepUpReconfigConcurrentWithForceHeartbeatReconfig) {
     auto severityGuard = unittest::MinimumLoggedSeverityGuard{logv2::LogComponent::kReplication,
                                                               logv2::LogSeverity::Debug(2)};
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "term" << 0 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "term" << 0 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     ASSERT_OK(getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY));
     ASSERT_EQUALS(getReplCoord()->getTerm(), 0);
@@ -2585,14 +2539,13 @@ TEST_F(ReplCoordTest, StepUpReconfigConcurrentWithForceHeartbeatReconfig) {
 
     // Schedule a response with a newer config.
     auto newerConfigVersion = 3;
-    auto newerConfig =
-        BSON("_id"
-             << "mySet"
-             << "version" << newerConfigVersion << "term" << OpTime::kUninitializedTerm << "members"
-             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                      << "node1:12345")
-                           << BSON("_id" << 2 << "host"
-                                         << "node2:12345")));
+    auto newerConfig = BSON("_id" << "mySet"
+                                  << "version" << newerConfigVersion << "term"
+                                  << OpTime::kUninitializedTerm << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345")));
     auto net = getNet();
     net->enterNetwork();
     auto noi = net->getNextReadyRequest();
@@ -2648,13 +2601,12 @@ TEST_F(ReplCoordTest, StepUpReconfigConcurrentWithForceHeartbeatReconfig) {
 }
 
 TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuick) {
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
                                                         Date_t() + Seconds(100));
@@ -2665,15 +2617,14 @@ TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuick) {
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345")
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")
-                                           << BSON("_id" << 3 << "host"
-                                                         << "node3:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345")
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")
+                                                 << BSON("_id" << 3 << "host"
+                                                               << "node3:12345")));
 
     startCapturingLogMessages();
 
@@ -2701,13 +2652,12 @@ TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuick) {
 }
 
 TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuickUnelectableError) {
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
                                                         Date_t() + Seconds(100));
@@ -2718,16 +2668,15 @@ TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuickUnelectableError
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = false;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345"
-                                                      << "priority" << 0)
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")
-                                           << BSON("_id" << 3 << "host"
-                                                         << "node3:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345"
+                                                            << "priority" << 0)
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")
+                                                 << BSON("_id" << 3 << "host"
+                                                               << "node3:12345")));
 
     const auto opCtx = makeOperationContext();
     auto status = getReplCoord()->processReplSetReconfig(opCtx.get(), args, &result);
@@ -2735,13 +2684,12 @@ TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuickUnelectableError
 }
 
 TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuickUnelectableButForceTrue) {
-    assertStartSuccess(BSON("_id"
-                            << "mySet"
-                            << "version" << 2 << "members"
-                            << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                     << "node1:12345")
-                                          << BSON("_id" << 2 << "host"
-                                                        << "node2:12345"))),
+    assertStartSuccess(BSON("_id" << "mySet"
+                                  << "version" << 2 << "members"
+                                  << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                           << "node1:12345")
+                                                << BSON("_id" << 2 << "host"
+                                                              << "node2:12345"))),
                        HostAndPort("node1", 12345));
     replCoordSetMyLastWrittenAndAppliedAndDurableOpTime(OpTime(Timestamp(100, 1), 0),
                                                         Date_t() + Seconds(100));
@@ -2752,16 +2700,15 @@ TEST_F(ReplCoordReconfigTest, FindOwnHostForCommandReconfigQuickUnelectableButFo
     BSONObjBuilder result;
     ReplSetReconfigArgs args;
     args.force = true;
-    args.newConfigObj = BSON("_id"
-                             << "mySet"
-                             << "version" << 3 << "members"
-                             << BSON_ARRAY(BSON("_id" << 1 << "host"
-                                                      << "node1:12345"
-                                                      << "priority" << 0)
-                                           << BSON("_id" << 2 << "host"
-                                                         << "node2:12345")
-                                           << BSON("_id" << 3 << "host"
-                                                         << "node3:12345")));
+    args.newConfigObj = BSON("_id" << "mySet"
+                                   << "version" << 3 << "members"
+                                   << BSON_ARRAY(BSON("_id" << 1 << "host"
+                                                            << "node1:12345"
+                                                            << "priority" << 0)
+                                                 << BSON("_id" << 2 << "host"
+                                                               << "node2:12345")
+                                                 << BSON("_id" << 3 << "host"
+                                                               << "node3:12345")));
 
     startCapturingLogMessages();
 

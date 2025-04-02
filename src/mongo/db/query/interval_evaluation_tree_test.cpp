@@ -47,8 +47,7 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/query/index_bounds_builder.h"
 #include "mongo/db/query/interval_evaluation_tree.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -189,7 +188,7 @@ public:
     static IndexEntry buildSimpleIndexEntry(const BSONObj& kp) {
         return {kp,
                 IndexNames::nameToType(IndexNames::findPluginName(kp)),
-                IndexDescriptor::kLatestIndexVersion,
+                IndexConfig::kLatestIndexVersion,
                 false,
                 {},
                 {},
@@ -222,16 +221,10 @@ TEST_F(IntervalEvaluationTreeTest, TranslateToEval) {
         {BSON("$elemMatch" << BSON("$lt" << 10 << "$gt" << 1)),
          "(intersect (eval $lt #0) (eval $gt #1))"},
         {BSON("$in" << BSON_ARRAY(5 << 10 << 15)), "(eval $in #0)"},
-        {BSON("$regex"
-              << "aaa"),
-         "(eval $regex #0)"},
+        {BSON("$regex" << "aaa"), "(eval $regex #0)"},
         // TODO SERVER-64776: fix the $type test cases below
-        {BSON("$type"
-              << "int"),
-         "(const [nan.0, inf.0])"},
-        {BSON("$type" << BSON_ARRAY("string"
-                                    << "double")),
-         "(const [nan.0, inf.0] [\"\", {}))"},
+        {BSON("$type" << "int"), "(const [nan.0, inf.0])"},
+        {BSON("$type" << BSON_ARRAY("string" << "double")), "(const [nan.0, inf.0] [\"\", {}))"},
     };
 
     assertMany(testCases);
@@ -250,12 +243,8 @@ TEST_F(IntervalEvaluationTreeTest, TranslateToConst) {
         {fromjson("{$in: [/alpha/i, 101]}"), "(const [101, 101] [\"\", {}) [/alpha/i, /alpha/i])"},
         {BSON("$eq" << BSONNULL), "(const [null, null])"},
         {fromjson("{$not: {$in: [null, []]}}"), "(const [MinKey, null) (null, []) ([], MaxKey])"},
-        {BSON("$type"
-              << "array"),
-         "(const [MinKey, MaxKey])"},
-        {BSON("$type" << BSON_ARRAY("int"
-                                    << "array")),
-         "(const [MinKey, MaxKey])"},
+        {BSON("$type" << "array"), "(const [MinKey, MaxKey])"},
+        {BSON("$type" << BSON_ARRAY("int" << "array")), "(const [MinKey, MaxKey])"},
         {BSON("$gt" << BSONNULL), "(const)"},
         {BSON("$_internalExprEq" << 4), "(const [4, 4])"},
         {BSON("$_internalExprGt" << 4), "(const (4, MaxKey])"},

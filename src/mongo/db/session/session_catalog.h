@@ -51,7 +51,7 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/functional.h"
 #include "mongo/util/hierarchical_acquisition.h"
@@ -159,7 +159,8 @@ public:
      * Shortcut to invoke 'kill' on the specified session under the SessionCatalog mutex. Throws a
      * NoSuchSession exception if the session doesn't exist.
      */
-    KillToken killSession(const LogicalSessionId& lsid);
+    KillToken killSession(const LogicalSessionId& lsid,
+                          ErrorCodes::Error reason = ErrorCodes::Interrupted);
 
     /**
      * Returns the total number of entries currently cached on the session catalog.

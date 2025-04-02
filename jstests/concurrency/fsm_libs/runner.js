@@ -318,7 +318,7 @@ export const runner = (function() {
 
         // Indents a multiline string with the specified number of spaces.
         function indent(str, size) {
-            var prefix = new Array(size + 1).join(' ');
+            const prefix = ' '.repeat(size);
             return prefix + str.split('\n').join('\n' + prefix);
         }
 
@@ -492,6 +492,11 @@ export const runner = (function() {
         prepareCollections(workloads, context, cluster, clusterOptions, executionOptions);
 
         try {
+            // Overrides for main thread's execution of fsm_workload setup functions
+            if (typeof TestData.fsmPreOverridesLoadedCallback !== 'undefined') {
+                new Function(`${TestData.fsmPreOverridesLoadedCallback}`)();
+            }
+
             // Set up the thread manager for this set of foreground workloads.
             startTime = Date.now();
             threadMgr.init(workloads, context, maxAllowedThreads);

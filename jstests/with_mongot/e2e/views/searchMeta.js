@@ -5,8 +5,10 @@
  * (which performs view transforms for other mongot operators).
  * @tags: [ featureFlagMongotIndexedViews, requires_fcv_81 ]
  */
+// TODO SERVER-100355 remove import
+import {FixtureHelpers} from "jstests/libs/fixture_helpers.js";
 import {createSearchIndex, dropSearchIndex} from "jstests/libs/search.js";
-import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e/lib/explain_utils.js";
+import {assertViewAppliedCorrectly} from "jstests/with_mongot/e2e_lib/explain_utils.js";
 
 const testDb = db.getSiblingDB(jsTestName());
 const coll = testDb.hotelAccounting;
@@ -44,8 +46,23 @@ const facetQuery = [{
 
 // Verify that the explain output doesn't contain the view pipeline.
 let explain = totalPriceView.explain().aggregate(facetQuery);
-assert(explain.stages.length == 1);
-assert(Object.keys(explain.stages[0])[0], "$searchMeta");
+if (FixtureHelpers.isMongos(db)) {
+    for (const [_, shardExplain] of Object.entries(explain.shards)) {
+        assert(Object.keys(shardExplain.stages[0])[0], "$searchMeta");
+
+        if (FixtureHelpers.isSharded(coll)) {
+            // Sharded clusters require a $project stage for guaranteeing only the metadata, and not
+            // actual documents, are returned to mongos.
+            assert.eq(shardExplain.stages.length, 2);
+            assert(Object.keys(shardExplain.stages[0])[0], "$project");
+        } else {
+            assert.eq(shardExplain.stages.length, 1);
+        }
+    }
+} else {
+    assert(explain.stages.length == 1);
+    assert(Object.keys(explain.stages[0])[0], "$searchMeta");
+}
 
 let expectedResults = [{
     count: {lowerBound: NumberLong(5)},
@@ -63,6 +80,8 @@ let expectedResults = [{
 let results = totalPriceView.aggregate(facetQuery).toArray();
 assert.eq(results, expectedResults);
 
+// TODO SERVER-100355 Re-enable the below aggregations once we support mongot queries in
+// subpipelines.
 // $lookup.$searchMeta for good measure!
 const collBase = testDb.base;
 collBase.drop();
@@ -75,16 +94,16 @@ assert.commandWorked(collBase.insert({_id: 1}));
  * isn't any chance that the $lookup subpipeline will include the view pipeline in the explain
  * output. Instead, we just verify that the top-level agg doesn't contain the view transforms.
  */
-explain = collBase.explain().aggregate(
-    [{$lookup: {from: "totalPrice", pipeline: facetQuery, as: "meta_facet"}}]);
+// explain = collBase.explain().aggregate(
+// [{$lookup: {from: "totalPrice", pipeline: facetQuery, as: "meta_facet"}}]);
 /**
  * The first stage is a $cursor, which represents the intermediate results of the outer coll
  * that will be streamed through the rest of the pipeline. But we don't need it to validate how
  * the view was applied.
  */
-explain.stages.shift();
-assert(explain.stages.length == 1);
-assert(Object.keys(explain.stages[0])[0], "$lookup");
+// explain.stages.shift();
+// assert(explain.stages.length == 1);
+// assert(Object.keys(explain.stages[0])[0], "$lookup");
 
 expectedResults = [
     {
@@ -119,9 +138,16 @@ expectedResults = [
     }
 ];
 
-results =
-    collBase.aggregate([{$lookup: {from: "totalPrice", pipeline: facetQuery, as: "meta_facet"}}])
-        .toArray();
-assert.eq(expectedResults, results);
+assert.commandFailedWithCode(collBase.runCommand("aggregate", {
+    pipeline: [{$lookup: {from: "totalPrice", pipeline: facetQuery, as: "meta_facet"}}],
+    cursor: {}
+}),
+                             ErrorCodes.QueryFeatureNotAllowed);
+
+// results =
+//     collBase
+//         .aggregate([{$lookup: {from: "totalPrice", pipeline: facetQuery, as: "meta_facet"}}])
+//         .toArray();
+// assert.eq(expectedResults, results);
 
 dropSearchIndex(totalPriceView, {name: "totalPriceIndex"});

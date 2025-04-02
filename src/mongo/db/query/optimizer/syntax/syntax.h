@@ -29,11 +29,8 @@
 
 #pragma once
 
-#include <string>
-
 #include "mongo/db/query/optimizer/algebra/operator.h"
 #include "mongo/db/query/optimizer/algebra/polyvalue.h"
-#include "mongo/db/query/optimizer/comparison_op.h"
 #include "mongo/db/query/optimizer/defs.h"
 #include "mongo/db/query/optimizer/syntax/syntax_fwd_declare.h"
 #include "mongo/util/assert_util.h"
@@ -53,12 +50,15 @@ using ABT = algebra::PolyValue<Blackhole,
                                Variable,
                                UnaryOp,
                                BinaryOp,
+                               NaryOp,
                                If,
                                Let,
+                               MultiLet,
                                LambdaAbstraction,
                                LambdaApplication,
                                FunctionCall,
                                Source,
+                               Switch,
                                References,  // utilities
                                ExpressionBinder>;
 

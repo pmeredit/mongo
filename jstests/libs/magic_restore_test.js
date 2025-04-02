@@ -49,13 +49,25 @@ export class MagicRestoreTest {
      * with the shape:
      * {
      *     "db0": {
-     *         "coll0": <hash>,
-     *         "coll1": <hash>,
+     *         "coll0": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
+     *         "coll1": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
      *         ...
      *     },
      *     "db1": {
-     *         "coll0": <hash>,
-     *         "coll1": <hash>,
+     *         "coll0": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
+     *         "coll1": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
      *         ...
      *     }
      *     ...
@@ -328,13 +340,25 @@ export class MagicRestoreTest {
      * Produces an object with the shape:
      * {
      *     "db0": {
-     *         "coll0": <hash>,
-     *         "coll1": <hash>,
+     *         "coll0": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
+     *         "coll1": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
      *         ...
      *     },
      *     "db1": {
-     *         "coll0": <hash>,
-     *         "coll1": <hash>,
+     *         "coll0": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
+     *         "coll1": {
+     *             "hash": <hash>,
+     *             "content": <object>,
+     *         },
      *         ...
      *     }
      *     ...
@@ -348,7 +372,13 @@ export class MagicRestoreTest {
         for (let db of listDbs["databases"]) {
             const dbName = db["name"];
             const dbHashRes = node.getDB(dbName).runCommand({dbHash: 1});
-            dbHashes[dbName] = dbHashRes.collections;
+            dbHashes[dbName] = {};
+            for (let collName in dbHashRes.collections) {
+                const content = node.getDB(dbName).getCollection(collName).find().toArray();
+                dbHashes[dbName][collName] = {};
+                dbHashes[dbName][collName].hash = dbHashRes.collections[collName];
+                dbHashes[dbName][collName].content = content;
+            }
         }
         return dbHashes;
     }
@@ -357,6 +387,9 @@ export class MagicRestoreTest {
      * Calculates and stores pre-restore collection hashes.
      */
     storePreRestoreDbHashes() {
+        // On multi-node replica sets, the backup source is a secondary. Ensure the secondary is
+        // caught up to the primary before we store pre-restore hashes.
+        this.rst.awaitReplication();
         this.preRestoreDbHashes = this._getDbHashes(this.backupSource);
     }
 
@@ -366,6 +399,7 @@ export class MagicRestoreTest {
      */
     checkPostRestoreDbHashes(excludedCollections) {
         this.rst.nodes.forEach((node) => {
+            jsTestLog(`Checking dbhashes for node ${node.port}`);
             const pre = this.preRestoreDbHashes;
             const post = this._getDbHashes(node);
             // Check that all databases and collections hashed before the restore are the same on
@@ -385,10 +419,12 @@ export class MagicRestoreTest {
                            `Restored node is missing dbhash for ${dbName}.${
                                collName} ns in post-restore hashes`);
                     assert.eq(
-                        preDb[collName],
-                        postDb[collName],
-                        `Dbhash values are not equal for ${dbName}.${collName}. pre-restore hash: ${
-                            preDb[collName]}, post-restore hash: ${postDb[collName]}`);
+                        preDb[collName].hash,
+                        postDb[collName].hash,
+                        () =>
+                            `Dbhash values are not equal for ${dbName}.${collName}. pre-restore: ${
+                                tojson(preDb[collName].content)}, post-restore: ${
+                                tojson(postDb[collName].content)}`);
                 }
             }
 
@@ -477,6 +513,7 @@ export class MagicRestoreTest {
      * entries exists. Optionally takes an op type to filter.
      */
     assertOplogCountForNamespace(node, findObj, expectedNumEntries) {
+        this.rst.awaitReplication();
         const entries =
             node.getDB("local").getCollection('oplog.rs').find(findObj).sort({ts: -1}).toArray();
         assert.eq(entries.length,

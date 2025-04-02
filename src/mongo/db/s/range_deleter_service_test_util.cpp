@@ -57,7 +57,7 @@
 #include "mongo/db/s/range_deletion_task_gen.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/s/catalog/type_chunk.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future.h"
 #include "mongo/util/future_impl.h"
@@ -91,7 +91,8 @@ RangeDeletionTask createRangeDeletionTask(const UUID& collectionUUID,
                                           const BSONObj& max,
                                           CleanWhenEnum whenToClean,
                                           bool pending,
-                                          boost::optional<KeyPattern> keyPattern) {
+                                          boost::optional<KeyPattern> keyPattern,
+                                          const ChunkVersion& shardVersion) {
     RangeDeletionTask rdt;
     rdt.setId(UUID::gen());
     rdt.setNss(RangeDeleterServiceTest::nssWithUuid[collectionUUID]);
@@ -101,6 +102,7 @@ RangeDeletionTask createRangeDeletionTask(const UUID& collectionUUID,
     rdt.setWhenToClean(whenToClean);
     rdt.setPending(pending);
     rdt.setKeyPattern(keyPattern);
+    rdt.setPreMigrationShardVersion(shardVersion);
 
     return rdt;
 }
@@ -111,9 +113,10 @@ std::shared_ptr<RangeDeletionWithOngoingQueries> createRangeDeletionTaskWithOngo
     const BSONObj& max,
     CleanWhenEnum whenToClean,
     bool pending,
-    boost::optional<KeyPattern> keyPattern) {
-    return std::make_shared<RangeDeletionWithOngoingQueries>(
-        createRangeDeletionTask(collectionUUID, min, max, whenToClean, pending, keyPattern));
+    boost::optional<KeyPattern> keyPattern,
+    const ChunkVersion& collectionVersion) {
+    return std::make_shared<RangeDeletionWithOngoingQueries>(createRangeDeletionTask(
+        collectionUUID, min, max, whenToClean, pending, keyPattern, collectionVersion));
 }
 
 SharedSemiFuture<void> registerAndCreatePersistentTask(
@@ -219,6 +222,36 @@ void verifyRangeDeletionTasks(OperationContext* opCtx,
         auto chunkRange = ChunkRange::fromBSON(chunkRanges[i].Obj());
         ASSERT(chunkRange == expectedChunkRanges[i])
             << "Expected " << chunkRange.toBSON() << " == " << expectedChunkRanges[i].toBSON();
+    }
+}
+
+void verifyProcessingFlag(OperationContext* opCtx,
+                          UUID uuidColl,
+                          const ChunkRange& range,
+                          bool processingExpected) {
+    DBDirectClient client(opCtx);
+
+    const auto query = BSON(
+        RangeDeletionTask::kCollectionUuidFieldName
+        << uuidColl << RangeDeletionTask::kRangeFieldName + "." + ChunkRange::kMinFieldName
+        << range.getMin() << RangeDeletionTask::kRangeFieldName + "." + ChunkRange::kMaxFieldName
+        << range.getMax());
+
+    FindCommandRequest findRequest{NamespaceString::kRangeDeletionNamespace};
+    findRequest.setFilter(query);
+    auto doc = client.findOne(std::move(findRequest));
+
+    ASSERT(!doc.isEmpty()) << "Chunk '" << query << "' not found";
+
+    if (processingExpected) {
+        ASSERT_EQ(true, doc.getField(RangeDeletionTask::kProcessingFieldName).booleanSafe())
+            << "The `processing` field was expected to be true for that chunk. Chunk doc found: "
+            << doc;
+    } else {
+        ASSERT(!doc.hasField(RangeDeletionTask::kProcessingFieldName))
+            << "The `processing` field was not expected to be present for that chunk. Chunk doc "
+               "found: "
+            << doc;
     }
 }
 

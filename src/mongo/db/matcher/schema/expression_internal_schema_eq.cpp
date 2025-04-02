@@ -32,7 +32,6 @@
 #include <boost/move/utility_core.hpp>
 #include <boost/optional/optional.hpp>
 
-#include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/util/builder.h"
@@ -55,11 +54,6 @@ InternalSchemaEqMatchExpression::InternalSchemaEqMatchExpression(
     invariant(_rhsElem);
 }
 
-bool InternalSchemaEqMatchExpression::matchesSingleElement(const BSONElement& elem,
-                                                           MatchDetails* details) const {
-    return _eltCmp.evaluate(_rhsElem == elem);
-}
-
 void InternalSchemaEqMatchExpression::debugString(StringBuilder& debug,
                                                   int indentationLevel) const {
     _debugAddSpace(debug, indentationLevel);
@@ -69,7 +63,7 @@ void InternalSchemaEqMatchExpression::debugString(StringBuilder& debug,
 
 void InternalSchemaEqMatchExpression::appendSerializedRightHandSide(
     BSONObjBuilder* bob, const SerializationOptions& opts, bool includePath) const {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kUnchanged && _rhsElem.isABSONObj()) {
+    if (!opts.isKeepingLiteralsUnchanged() && _rhsElem.isABSONObj()) {
         BSONObjBuilder exprSpec(bob->subobjStart(kName));
         opts.addHmacedObjToBuilder(&exprSpec, _rhsElem.Obj());
         exprSpec.doneFast();

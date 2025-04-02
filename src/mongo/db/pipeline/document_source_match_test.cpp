@@ -54,11 +54,8 @@
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -258,7 +255,7 @@ TEST_F(DocumentSourceMatchTest, ShouldNotAddPotentialArrayIndexToDependencies) {
 
 TEST_F(DocumentSourceMatchTest, TextSearchShouldRequireWholeDocumentAndTextScore) {
     auto match = DocumentSourceMatch::create(fromjson("{$text: {$search: 'hello'} }"), getExpCtx());
-    DepsTracker dependencies(DepsTracker::kAllMetadata & ~DepsTracker::kOnlyTextScore);
+    DepsTracker dependencies(DepsTracker::kOnlyTextScore);
     ASSERT_EQUALS(DepsTracker::State::EXHAUSTIVE_FIELDS, match->getDependencies(&dependencies));
     ASSERT_EQUALS(true, dependencies.needWholeDocument);
     ASSERT_EQUALS(true, dependencies.getNeedsMetadata(DocumentMetadataFields::kTextScore));
@@ -293,7 +290,7 @@ TEST_F(DocumentSourceMatchTest,
         "       b: {$_internalSchemaObjectMatch: {"
         "           $or: [{c: {$type: 'string'}}, {c: {$gt: 0}}]"
         "       }}}"
-        "    }}}");
+        "    }}");
     auto match = DocumentSourceMatch::create(query, getExpCtx());
     DepsTracker dependencies;
     ASSERT_EQUALS(DepsTracker::State::SEE_NEXT, match->getDependencies(&dependencies));
@@ -440,7 +437,7 @@ TEST_F(DocumentSourceMatchTest, ShouldAddOuterFieldToDependenciesIfElemMatchCont
 }
 
 TEST_F(DocumentSourceMatchTest, ShouldAddNotClausesFieldAsDependency) {
-    auto match = DocumentSourceMatch::create(fromjson("{b: {$not: {$gte: 4}}}}"), getExpCtx());
+    auto match = DocumentSourceMatch::create(fromjson("{b: {$not: {$gte: 4}}}"), getExpCtx());
     DepsTracker dependencies;
     ASSERT_EQUALS(DepsTracker::State::SEE_NEXT, match->getDependencies(&dependencies));
     ASSERT_EQUALS(1U, dependencies.fields.count("b"));
@@ -498,12 +495,12 @@ TEST_F(DocumentSourceMatchTest, MultipleMatchStagesShouldCombineIntoOne) {
     match1->optimizeAt(container.begin(), &container);
 
     ASSERT_EQUALS(container.size(), 1U);
-    ASSERT_BSONOBJ_EQ(match1->getQuery(), fromjson("{'$and': [{a:1}, {b:1}]}"));
+    ASSERT_BSONOBJ_EQ(match1->getQuery(), fromjson("{'$and': [{a: 1}, {b: 1}]}"));
 
     container.push_back(match3);
     match1->optimizeAt(container.begin(), &container);
     ASSERT_EQUALS(container.size(), 1U);
-    ASSERT_BSONOBJ_EQ(match1->getQuery(), fromjson("{'$and': [{a:1}, {b:1}, {c:1}]}"));
+    ASSERT_BSONOBJ_EQ(match1->getQuery(), fromjson("{'$and': [{a: 1}, {b: 1}, {c: 1}]}"));
 }
 
 TEST_F(DocumentSourceMatchTest, DoesNotPushProjectBeforeSelf) {
@@ -552,7 +549,7 @@ TEST_F(DocumentSourceMatchTest, ShouldCorrectlyJoinWithSubsequentMatch) {
     const auto match = DocumentSourceMatch::create(BSON("a" << 1), getExpCtx());
     const auto secondMatch = DocumentSourceMatch::create(BSON("b" << 1), getExpCtx());
 
-    match->joinMatchWith(secondMatch, "$and"_sd);
+    match->joinMatchWith(secondMatch, MatchExpression::MatchType::AND);
 
     const auto mock = DocumentSourceMock::createForTest({Document{{"a", 1}, {"b", 1}},
                                                          Document{{"a", 2}, {"b", 1}},

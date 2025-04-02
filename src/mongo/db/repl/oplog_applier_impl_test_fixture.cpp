@@ -73,8 +73,7 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/vector_clock_mutable.h"
 #include "mongo/idl/idl_parser.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/str.h"
@@ -231,9 +230,12 @@ void OplogApplierImplTest::setUp() {
 
     HealthLogInterface::set(serviceContext, std::make_unique<HealthLog>());
     HealthLogInterface::get(serviceContext)->startup();
+
+    _disableChecks.emplace(_opCtx.get());
 }
 
 void OplogApplierImplTest::tearDown() {
+    _disableChecks.reset();
     HealthLogInterface::get(serviceContext)->shutdown();
     _opCtx.reset();
     _consistencyMarkers = {};

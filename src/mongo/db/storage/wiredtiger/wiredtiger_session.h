@@ -35,14 +35,18 @@
 #include <wiredtiger.h>
 
 #include "mongo/db/storage/wiredtiger/wiredtiger_compiled_configuration.h"
-#include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_set.h"
+#include "mongo/util/scopeguard.h"
+#include "mongo/util/system_tick_source.h"
+#include "mongo/util/tick_source.h"
 #include "mongo/util/time_support.h"
+#include "mongo/util/timer.h"
 
 namespace mongo {
 
 class StatsCollectionPermit;
 class WiredTigerConnection;
+class OperationContext;
 
 /**
  * This is a structure that caches 1 cursor for each uri.
@@ -51,6 +55,12 @@ class WiredTigerConnection;
  */
 class WiredTigerSession {
 public:
+    struct GetLastError {
+        int err = 0;
+        int sub_level_err = WT_NONE;
+        const char* err_msg = "";
+    };
+
     /**
      * Creates a new WT session on the specified connection. This session will not be cached.
      *
@@ -89,24 +99,21 @@ public:
 
     ~WiredTigerSession();
 
-    // TODO(SERVER-98126): Remove these 3 ways of directly-accessing the session.
-
-    WT_SESSION* getSession() const {
-        return _session;
+    WiredTigerConnection& getConnection() {
+        return *_connection;
     }
 
     // Safe accessor for the internal session
     template <typename Functor>
     auto with(Functor functor) {
-        stdx::lock_guard<stdx::mutex> lock(_sessionGuard);
         return functor(_session);
     }
 
-#define WRAPPED_WT_SESSION_METHOD(name)                               \
-    template <typename... Args>                                       \
-    auto name(Args&&... args) {                                       \
-        stdx::lock_guard<stdx::mutex> lock(_sessionGuard);            \
-        return _session->name(_session, std::forward<Args>(args)...); \
+#define WRAPPED_WT_SESSION_METHOD(name)                                         \
+    decltype(auto) name(auto&&... args) {                                       \
+        Timer timer(_tickSource);                                               \
+        ON_BLOCK_EXIT([&] { _storageExecutionTime += timer.elapsed(); });       \
+        return _session->name(_session, std::forward<decltype(args)>(args)...); \
     }
 
     WRAPPED_WT_SESSION_METHOD(alter)
@@ -117,11 +124,17 @@ public:
     WRAPPED_WT_SESSION_METHOD(create)
     WRAPPED_WT_SESSION_METHOD(drop)
     WRAPPED_WT_SESSION_METHOD(get_last_error)
-    WRAPPED_WT_SESSION_METHOD(get_rollback_reason)
+    WRAPPED_WT_SESSION_METHOD(log_flush)
     WRAPPED_WT_SESSION_METHOD(open_cursor)
     WRAPPED_WT_SESSION_METHOD(prepare_transaction)
+    WRAPPED_WT_SESSION_METHOD(query_timestamp)
+    WRAPPED_WT_SESSION_METHOD(reset)
     WRAPPED_WT_SESSION_METHOD(reconfigure)
+    WRAPPED_WT_SESSION_METHOD(rollback_transaction)
     WRAPPED_WT_SESSION_METHOD(salvage)
+    WRAPPED_WT_SESSION_METHOD(timestamp_transaction_uint)
+    WRAPPED_WT_SESSION_METHOD(transaction_pinned_range)
+    WRAPPED_WT_SESSION_METHOD(truncate)
     WRAPPED_WT_SESSION_METHOD(verify)
 #undef WRAPPED_WT_SESSION_METHOD
 
@@ -132,7 +145,6 @@ public:
      * into the cache by calling releaseCursor().
      */
     WT_CURSOR* getCachedCursor(uint64_t id, const std::string& config);
-
 
     /**
      * Create a new cursor and ignore the cache.
@@ -210,12 +222,42 @@ public:
         return _undoConfigStrings;
     }
 
-    // Drops this session immediately (without calling close()). This may be necessary during
-    // shutdown to avoid racing against the connection's close. Only call this method if you're
-    // about to delete the session.
+    /**
+     * Drops this session immediately (without calling close()). This may be necessary during
+     * shutdown to avoid racing against the connection's close. Only call this method if you're
+     * about to delete the session.
+     */
     void dropSessionBeforeDeleting() {
         invariant(_session);
         _session = nullptr;
+    }
+
+    /**
+     * Attach an recovery that acts as an interrupt source and contains other relevant
+     * state. WT will periodically use callbacks to check whether specific WT operations should be
+     * interrupted.
+     */
+    void attachOperationContext(OperationContext& opCtx);
+
+    /**
+     * Remove the recovery unit.
+     */
+    void detachOperationContext();
+
+    Microseconds getStorageExecutionTime() const {
+        return _storageExecutionTime;
+    }
+
+    /**
+     * Helper for WT_SESSION::get_last_error.
+     */
+    GetLastError getLastError();
+
+    /**
+     * Setter used for testing to allow tick source to be mocked.
+     */
+    void setTickSource_forTest(TickSource* tickSource) {
+        _tickSource = tickSource;
     }
 
 private:
@@ -231,6 +273,7 @@ private:
     };
 
     friend class WiredTigerConnection;
+    friend class WiredTigerManagedSession;
 
     // The cursor cache is a list of pairs that contain an ID and cursor
     typedef std::list<CachedCursor> CursorCache;
@@ -242,9 +285,6 @@ private:
 
     const uint64_t _epoch;
 
-    // This protects against concurrent calls into the WiredTiger API through this session (i.e. it
-    // must be locked for uses of the session, or any cursor created from it).
-    stdx::mutex _sessionGuard;
     WT_SESSION* _session;  // owned
     CursorCache _cursors;  // owned
     uint64_t _cursorGen;
@@ -254,10 +294,15 @@ private:
 
     Date_t _idleExpireTime;
 
+    // Tracks the duration of the last WT_SESSION API call.
+    Microseconds _storageExecutionTime;
+
     // A set that contains the undo config strings for any reconfigurations we might have performed
     // on a session during the lifetime of this recovery unit. We use these to reset the session to
     // its default configuration before returning it to the session cache.
     stdx::unordered_set<std::string> _undoConfigStrings;
+
+    TickSource* _tickSource = globalSystemTickSource();
 };
 
 }  // namespace mongo

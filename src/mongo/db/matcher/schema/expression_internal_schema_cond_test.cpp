@@ -41,8 +41,7 @@
 #include "mongo/db/matcher/schema/expression_internal_schema_object_match.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -70,72 +69,6 @@ std::unique_ptr<InternalSchemaCondMatchExpression> createCondMatchExpression(BSO
     return cond;
 }
 
-TEST(InternalSchemaCondMatchExpressionTest, AcceptsObjectsThatMatch) {
-    auto conditionQuery = BSON("age" << BSON("$lt" << 18));
-    auto thenQuery = BSON("job"
-                          << "student");
-    auto elseQuery = BSON("job"
-                          << "engineer");
-    auto cond = createCondMatchExpression(conditionQuery, thenQuery, elseQuery);
-
-    ASSERT_TRUE(cond->matchesBSON(fromjson("{age: 15, job: 'student'}")));
-    ASSERT_TRUE(cond->matchesBSON(fromjson("{age: 18, job: 'engineer'}")));
-    ASSERT_TRUE(cond->matchesBSON(fromjson("{age: [10, 20, 30], job: 'student'}")));
-}
-
-TEST(InternalSchemaCondMatchExpressionTest, RejectsObjectsThatDontMatch) {
-    auto conditionQuery = BSON("age" << BSON("$lt" << 18));
-    auto thenQuery = BSON("job"
-                          << "student");
-    auto elseQuery = BSON("job"
-                          << "engineer");
-    auto cond = createCondMatchExpression(conditionQuery, thenQuery, elseQuery);
-
-    ASSERT_FALSE(cond->matchesBSON(fromjson("{age: 21, job: 'student'}")));
-    ASSERT_FALSE(cond->matchesBSON(fromjson("{age: 5, job: 'engineer'}")));
-    ASSERT_FALSE(cond->matchesBSON(fromjson("{age: 19}")));
-    ASSERT_FALSE(cond->matchesBSON(fromjson("{age: 'blah'}")));
-}
-
-TEST(InternalSchemaCondMatchExpressionTest, EmptyMatchAlwaysUsesThenBranch) {
-    auto conditionQuery = BSONObj();
-    auto thenQuery = BSON("value" << BSON("$gte" << 0));
-    auto elseQuery = BSON("value" << BSON("$lt" << 0));
-    auto cond = createCondMatchExpression(conditionQuery, thenQuery, elseQuery);
-
-    ASSERT_TRUE(cond->matchesBSON(BSON("value" << 0)));
-    ASSERT_TRUE(cond->matchesBSON(BSON("value" << 2)));
-
-    BSONObj match = BSON("value" << 10);
-    ASSERT_TRUE(cond->matchesSingleElement(match.firstElement()));
-}
-
-TEST(InternalSchemaCondMatchExpressionTest, AppliesToSubobjectsViaObjectMatch) {
-    auto conditionQuery = fromjson("{team: {$in: ['server', 'engineering']}}");
-    auto thenQuery = BSON("subteam"
-                          << "query");
-    auto elseQuery = BSON("interests"
-                          << "query optimization");
-
-    InternalSchemaObjectMatchExpression objMatch(
-        "job"_sd, createCondMatchExpression(conditionQuery, thenQuery, elseQuery));
-
-    ASSERT_TRUE(objMatch.matchesBSON(
-        fromjson("{name: 'anne', job: {team: 'engineering', subteam: 'query'}}")));
-    ASSERT_TRUE(objMatch.matchesBSON(
-        fromjson("{name: 'natalia', job: {team: 'server', subteam: 'query'}}")));
-    ASSERT_TRUE(objMatch.matchesBSON(
-        fromjson("{name: 'nicholas', job: {interests: ['query optimization', 'c++']}}")));
-
-    ASSERT_FALSE(
-        objMatch.matchesBSON(fromjson("{name: 'dave', team: 'server', subteam: 'query'}")));
-    ASSERT_FALSE(objMatch.matchesBSON(fromjson("{name: 'mateo', interests: ['perl', 'python']}}")));
-    ASSERT_FALSE(objMatch.matchesBSON(
-        fromjson("{name: 'lucas', job: {team: 'competitor', subteam: 'query'}}")));
-    ASSERT_FALSE(
-        objMatch.matchesBSON(fromjson("{name: 'marcos', job: {team: 'server', subteam: 'repl'}}")));
-}
-
 TEST(InternalSchemaCondMatchExpressionTest, EquivalentReturnsCorrectResults) {
     auto conditionQuery1 = BSON("foo" << 1);
     auto thenQuery1 = BSON("bar" << 2);
@@ -160,11 +93,9 @@ TEST(InternalSchemaCondMatchExpressionTest, EquivalentReturnsCorrectResults) {
 }
 
 TEST(InternalSchemaCondMatchExpressionTest, EquivalentToClone) {
-    auto conditionQuery = BSON("likes"
-                               << "cats");
+    auto conditionQuery = BSON("likes" << "cats");
     auto thenQuery = BSON("pets" << BSON("$lte" << 1));
-    auto elseQuery = BSON("interests"
-                          << "dogs");
+    auto elseQuery = BSON("interests" << "dogs");
     auto cond = createCondMatchExpression(conditionQuery, thenQuery, elseQuery);
     auto clone = cond->clone();
     ASSERT_TRUE(cond->equivalent(clone.get()));

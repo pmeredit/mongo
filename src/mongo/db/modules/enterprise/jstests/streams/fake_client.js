@@ -7,7 +7,10 @@ import {Thread} from "jstests/libs/parallelTester.js";
 import {
     flushUntilStopped
 } from "src/mongo/db/modules/enterprise/jstests/streams/checkpoint_helper.js";
-import {TEST_TENANT_ID} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
+import {
+    TEST_PROJECT_ID,
+    TEST_TENANT_ID
+} from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 // StreamProcessor and Streams classes are used to make the
 // client javascript look like the syntax spec.
@@ -20,6 +23,7 @@ export class StreamProcessor {
                 dbForTest,
                 isRunningOnAtlasStreamProcessor = false) {
         this._tenantId = tenantId;
+        this._projectId = tenantId;
         this._name = name;
         this._pipeline = pipeline;
         this._connectionRegistry = connectionRegistry;
@@ -39,6 +43,7 @@ export class StreamProcessor {
         return {
             streams_startStreamProcessor: '',
             tenantId: this._tenantId,
+            projectId: this._projectId,
             name: this._processorId,
             processorId: this._name,
             pipeline: this._pipeline,
@@ -50,7 +55,17 @@ export class StreamProcessor {
     }
 
     // Start the streamProcessor.
-    start(options, assertWorked = true, pipelineVersion = undefined) {
+    start(options, assertWorked = true, pipelineVersion = undefined, ephemeral) {
+        if (this._isUsingAtlas) {
+            const result = this._db.runCommand({
+                "startStreamProcessor": this._name,
+            });
+            if (assertWorked) {
+                assert.commandWorked(result);
+            }
+            return result;
+        }
+
         this._startOptions = options;
         this._pipelineVersion = pipelineVersion;
         if (this._startOptions === undefined) {
@@ -58,6 +73,9 @@ export class StreamProcessor {
         }
         if (this._startOptions.featureFlags === undefined) {
             this._startOptions.featureFlags = {};
+        }
+        if (ephemeral) {
+            this._startOptions.ephemeral = ephemeral;
         }
         this._startOptions.featureFlags.enableSessionWindow = true;
         const cmd = this.makeStartCmd(this._startOptions);
@@ -186,7 +204,7 @@ export class StreamProcessor {
         };
         let result = this._db.runCommand(cmd);
         assert.commandWorked(result);
-        return result;
+        return result["id"];
     }
 
     getNextSample(cursorId) {
@@ -277,7 +295,7 @@ export class Streams {
         return res;
     }
 
-    process(pipeline, maxLoops = 3, featureFlags = {}) {
+    process(pipeline, maxLoops = 3, featureFlags = {}, waitForCount = 1) {
         let name = UUID().toString();
         this[name] =
             new StreamProcessor(this._tenantId, name, pipeline, this._connectionRegistry, this._db);
@@ -288,9 +306,14 @@ export class Streams {
         let startResult = this[name].start(startOptions);
         assert.commandWorked(startResult);
         let cursorId = startResult.sampleCursorId;
-        let sampleResults = this[name].getMoreSample(db, cursorId, maxLoops);
+        let results = [];
+        assert.soon(() => {
+            let sampleResults = this[name].getMoreSample(db, cursorId, maxLoops);
+            results.push(...sampleResults);
+            return results.length >= waitForCount;
+        });
         assert.commandWorked(this[name].stop());
-        return sampleResults;
+        return results;
     }
 
     metrics() {
@@ -305,14 +328,19 @@ export let sp = new Streams(TEST_TENANT_ID, []);
 export const test = {
     atlasConnection: "StreamsAtlasConnection",
     kafkaConnection: "StreamsKafkaConnection",
+    awsIAMLambdaConnection: "StreamsAWSIAMLambdaConnection",
+    awsIAMS3Connection: "StreamsAWSIAMS3Connection",
     dbName: "test",
     inputCollName: "testin",
     outputCollName: "testout",
     dlqCollName: "testdlq"
 };
 
-export function getDefaultSp() {
-    const uri = 'mongodb://' + db.getMongo().host;
+export function getDefaultSp(atlasTargetUri) {
+    let uri = 'mongodb://' + db.getMongo().host;
+    if (atlasTargetUri && atlasTargetUri !== null && atlasTargetUri !== "") {
+        uri = atlasTargetUri;
+    }
     return new Streams(TEST_TENANT_ID, [
         {
             name: test.atlasConnection,
@@ -323,6 +351,27 @@ export function getDefaultSp() {
             name: test.kafkaConnection,
             type: 'kafka',
             options: {bootstrapServers: 'localhost:9092', isTestKafka: true},
+        },
+        {
+            name: test.awsIAMLambdaConnection,
+            type: 'aws_iam_lambda',
+            options: {
+                accessKey: "myAccessKey",
+                accessSecret: "myAccessSecret",
+                sessionToken: "mySessionToken",
+                expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+            }
+        },
+        {
+            name: test.awsIAMS3Connection,
+            type: 'aws_iam_s3',
+            options: {
+                accessKey: "myAccessKey",
+                accessSecret: "myAccessSecret",
+                sessionToken:
+                    "",  // Local Minio doesn't take temporary access keys with session tokens
+                expirationDate: new Date(Date.now() + (1000 * 600))  // 10 minutes from now
+            }
         },
     ]);
 }
@@ -336,11 +385,13 @@ export function commonTestSetup() {
     return [sp, inputColl, outputColl];
 }
 
-export function getAtlasStreamProcessorHandle(uri) {
+export function getAtlasStreamProcessingInstance(uri) {
     const m = new Mongo(uri);
     const dbForTest = m.getDB("admin");
-    return new Streams(
-        [] /*connectionRegistry*/, dbForTest, /*isRunningOnAtlasStreamProcessor*/ true);
+    return new Streams(TEST_TENANT_ID,
+                       [] /*connectionRegistry*/,
+                       dbForTest,
+                       /*isRunningOnAtlasStreamProcessor*/ true);
 }
 
 export function kafkaExample(

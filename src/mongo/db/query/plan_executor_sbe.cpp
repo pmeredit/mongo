@@ -61,7 +61,6 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/decimal128.h"
 #include "mongo/s/resharding/resharding_feature_flag_gen.h"
@@ -90,7 +89,8 @@ PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
                                  boost::optional<size_t> cachedPlanHash,
                                  std::unique_ptr<RemoteCursorMap> remoteCursors,
                                  std::unique_ptr<RemoteExplainVector> remoteExplains,
-                                 std::unique_ptr<MultiPlanStage> classicRuntimePlannerStage)
+                                 std::unique_ptr<MultiPlanStage> classicRuntimePlannerStage,
+                                 const MultipleCollectionAccessor& mca)
     : _state{isOpen ? State::kOpened : State::kClosed},
       _opCtx(opCtx),
       _nss(std::move(nss)),
@@ -105,7 +105,9 @@ PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
       _remoteExplains(std::move(remoteExplains)) {
     invariant(!_nss.isEmpty());
     invariant(_root);
-
+    if (mca.isAcquisition()) {
+        _root->attachCollectionAcquisition(mca);
+    }
     auto& env = _rootData.env;
     if (auto slot = _rootData.staticData->resultSlot) {
         _result = _root->getAccessor(env.ctx, *slot);
@@ -157,15 +159,18 @@ PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
         _secondaryNssVector = _solution->getAllSecondaryNamespaces(_nss);
     }
 
-    _planExplainer = plan_explainer_factory::make(_root.get(),
-                                                  &_rootData,
-                                                  _solution.get(),
-                                                  isMultiPlan,
-                                                  isCachedCandidate,
-                                                  cachedPlanHash,
-                                                  _rootData.debugInfo,
-                                                  std::move(classicRuntimePlannerStage),
-                                                  _remoteExplains.get());
+    _planExplainer =
+        plan_explainer_factory::make(_root.get(),
+                                     &_rootData,
+                                     // '_solution' can be a nullptr here. The following ternary is
+                                     // needed to silence a Coverity check.
+                                     _solution ? _solution.get() : nullptr,
+                                     isMultiPlan,
+                                     isCachedCandidate,
+                                     cachedPlanHash,
+                                     _rootData.debugInfo,
+                                     std::move(classicRuntimePlannerStage),
+                                     _remoteExplains.get());
     _cursorType = _rootData.staticData->cursorType;
 
     if (_remoteCursors) {
@@ -471,13 +476,10 @@ BSONObj PlanExecutorSBE::getPostBatchResumeToken() const {
                     tag == sbe::value::TypeTags::RecordId);
             BSONObjBuilder builder;
             sbe::value::getRecordIdView(val)->serializeToken("$recordId", &builder);
-            if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                auto initialSyncId =
-                    repl::ReplicationCoordinator::get(_opCtx)->getInitialSyncId(_opCtx);
-                if (initialSyncId) {
-                    initialSyncId.value().appendToBuilder(&builder, "$initialSyncId");
-                }
+            auto initialSyncId =
+                repl::ReplicationCoordinator::get(_opCtx)->getInitialSyncId(_opCtx);
+            if (initialSyncId) {
+                initialSyncId.value().appendToBuilder(&builder, "$initialSyncId");
             }
             return builder.obj();
         }

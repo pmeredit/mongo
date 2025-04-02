@@ -35,7 +35,6 @@
 
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/query/interval.h"
 #include "mongo/db/storage/index_entry_comparison.h"
 
@@ -119,13 +118,6 @@ struct OrderedIntervalList {
      * Returns true is this OIL overlaps the type bracket containing objects.
      */
     bool boundsOverlapObjectTypeBracket() const;
-
-    template <typename H>
-    friend H AbslHashValue(H state, const OrderedIntervalList& c) {
-        state = absl::HashState::combine_contiguous(
-            std::move(state), c.intervals.data(), c.intervals.size());
-        return H::combine(std::move(state), c.name);
-    }
 };
 
 /**
@@ -217,12 +209,6 @@ struct IndexBounds {
      * Returns whether these index bounds represent being unbounded.
      */
     bool isUnbounded() const;
-
-    template <typename H>
-    friend H AbslHashValue(H state, const IndexBounds& c) {
-        return absl::HashState::combine_contiguous(
-            std::move(state), c.fields.data(), c.fields.size());
-    }
 
     // TODO: we use this for max/min scan.  Consider migrating that.
     bool isSimpleRange;

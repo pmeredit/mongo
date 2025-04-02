@@ -38,8 +38,6 @@
 
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/golden_test.h"
 #include "mongo/util/shell_exec.h"
@@ -47,8 +45,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
 namespace mongo::unittest {
-
-using namespace fmt::literals;
 
 void GoldenTestContext::printTestHeader(HeaderFormat format) {
     switch (format) {

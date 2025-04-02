@@ -95,8 +95,6 @@
 #include "mongo/db/timeseries/timeseries_commands_conversion_helper.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/util/assert_util.h"
@@ -117,7 +115,6 @@ MONGO_FAIL_POINT_DEFINE(createIndexesWriteConflict);
 // collection is created.
 MONGO_FAIL_POINT_DEFINE(hangBeforeCreateIndexesCollectionCreate);
 MONGO_FAIL_POINT_DEFINE(hangBeforeIndexBuildAbortOnInterrupt);
-MONGO_FAIL_POINT_DEFINE(hangAfterIndexBuildAbort);
 
 // This failpoint hangs between logging the index build UUID and starting the index build
 // through the IndexBuildsCoordinator.
@@ -319,8 +316,9 @@ bool indexesAlreadyExist(OperationContext* opCtx,
 
 void assertNoMovePrimaryInProgress(OperationContext* opCtx, const NamespaceString& nss) {
     try {
-        const auto scopedDss =
-            DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, nss.dbName());
+        bool isMovePrimaryInProgress =
+            DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, nss.dbName())
+                ->isMovePrimaryInProgress();
 
         auto scopedCss = CollectionShardingState::assertCollectionLockedAndAcquire(opCtx, nss);
 
@@ -328,7 +326,7 @@ void assertNoMovePrimaryInProgress(OperationContext* opCtx, const NamespaceStrin
         // All the unsharded, untracked collections owned by the primary are affected by the
         // movePrimary.
         if (!collDesc.hasRoutingTable()) {
-            if (scopedDss->isMovePrimaryInProgress()) {
+            if (isMovePrimaryInProgress) {
                 LOGV2(4909200, "assertNoMovePrimaryInProgress", logAttrs(nss));
 
                 uasserted(ErrorCodes::MovePrimaryInProgress,
@@ -803,7 +801,6 @@ public:
                 try {
                     return runCreateIndexesWithCoordinator(opCtx, *cmd);
                 } catch (const DBException& ex) {
-                    hangAfterIndexBuildAbort.pauseWhileSet();
                     // We can only wait for an existing index build to finish if we are able to
                     // release our locks, in order to allow the existing index build to proceed. We
                     // cannot release locks in transactions, so we bypass the below logic in

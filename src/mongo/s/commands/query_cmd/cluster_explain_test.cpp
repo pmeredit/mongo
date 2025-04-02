@@ -31,9 +31,7 @@
 #include "mongo/db/query/explain_verbosity_gen.h"
 #include "mongo/idl/command_generic_argument.h"
 #include "mongo/s/commands/query_cmd/cluster_explain.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -65,10 +63,9 @@ TEST(ClusterExplainTest, PruneWriteConcern) {
 }
 
 TEST(ClusterExplainTest, PruneLsid) {
-    auto internalCmd = BSON("find"
-                            << "test"
-                            << "filter" << BSON("a" << 1) << "lsid"
-                            << BSON("id" << mongo::UUID::gen()));
+    auto internalCmd =
+        BSON("find" << "test"
+                    << "filter" << BSON("a" << 1) << "lsid" << BSON("id" << mongo::UUID::gen()));
     auto verbosity = explain::VerbosityEnum::kQueryPlanner;
     auto expected =
         fromjson("{explain: {find: 'test', filter: {a: 1}}, verbosity: 'queryPlanner'}");
@@ -81,11 +78,10 @@ TEST(ClusterExplainTest, PruneReadPreference) {
 }
 
 TEST(ClusterExplainTest, PruneClusterTime) {
-    auto internalCmd = BSON("find"
-                            << "test"
-                            << "filter" << BSON("a" << 1) << "$clusterTime"
-                            << BSON("clusterTime" << Timestamp(2, 2)) << "$configTime"
-                            << Timestamp(2, 2) << "$topologyTime" << Timestamp(2, 2));
+    auto internalCmd = BSON("find" << "test"
+                                   << "filter" << BSON("a" << 1) << "$clusterTime"
+                                   << BSON("clusterTime" << Timestamp(2, 2)) << "$configTime"
+                                   << Timestamp(2, 2) << "$topologyTime" << Timestamp(2, 2));
     auto verbosity = explain::VerbosityEnum::kQueryPlanner;
     auto expected =
         fromjson("{explain: {find: 'test', filter: {a: 1}}, verbosity: 'queryPlanner'}");

@@ -200,7 +200,15 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    boost::optional<bool> getTimeseriesBucketsMayHaveMixedSchemaData() const override {
+    bool isTimeseriesCollection() const override {
+        MONGO_UNREACHABLE;
+    }
+
+    bool isNewTimeseriesWithoutView() const override {
+        MONGO_UNREACHABLE;
+    }
+
+    timeseries::MixedSchemaBucketsState getTimeseriesMixedSchemaBucketsState() const override {
         MONGO_UNREACHABLE;
     }
 
@@ -215,6 +223,10 @@ public:
 
     void setTimeseriesBucketingParametersChanged(OperationContext* opCtx,
                                                  boost::optional<bool> value) override {
+        MONGO_UNREACHABLE;
+    }
+
+    void removeLegacyTimeseriesBucketingParametersHaveChanged(OperationContext* opCtx) final {
         MONGO_UNREACHABLE;
     }
 
@@ -313,6 +325,10 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    int64_t sizeOnDisk(OperationContext* opCtx, const StorageEngine& storageEngine) const override {
+        MONGO_UNREACHABLE;
+    }
+
     bool isEmpty(OperationContext* opCtx) const override {
         MONGO_UNREACHABLE;
     }
@@ -339,8 +355,8 @@ public:
         // no-op, called by unittests
     }
 
-    boost::optional<TimeseriesOptions> getTimeseriesOptions() const override {
-        return boost::none;
+    const boost::optional<TimeseriesOptions>& getTimeseriesOptions() const override {
+        return _options.timeseries;
     }
 
     void setTimeseriesOptions(OperationContext* opCtx,
@@ -401,7 +417,8 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx) override {
+    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx,
+                                                       bool removeDeprecatedFields) override {
         MONGO_UNREACHABLE;
     }
 

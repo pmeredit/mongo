@@ -41,15 +41,12 @@
 #include "mongo/base/string_data.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/transport/named_pipe/io_error_message.h"
 #include "mongo/transport/named_pipe/named_pipe.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
-using namespace fmt::literals;
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -85,8 +82,8 @@ NamedPipeOutput::NamedPipeOutput(const std::string& pipeDir,
     if (!persistPipe) {
         removeNamedPipe(true /*ignoreNoEntError*/, _pipeAbsolutePath.c_str());
         uassert(7005005,
-                "Failed to create a named pipe, error: {}"_format(
-                    getLastSystemErrorMessageFormatted("mkfifo", _pipeAbsolutePath)),
+                fmt::format("Failed to create a named pipe, error: {}",
+                            getLastSystemErrorMessageFormatted("mkfifo", _pipeAbsolutePath)),
                 hasSucceeded(mkfifo(_pipeAbsolutePath.c_str(), 0664)));
     }
 }
@@ -113,8 +110,8 @@ int NamedPipeOutput::write(const char* data, int size) {
     _ofs.write(data, size);
     if (_ofs.fail()) {
         uasserted(7239300,
-                  "Failed to write to a named pipe, error: {}"_format(
-                      getLastSystemErrorMessageFormatted("write", _pipeAbsolutePath)));
+                  fmt::format("Failed to write to a named pipe, error: {}",
+                              getLastSystemErrorMessageFormatted("write", _pipeAbsolutePath)));
         return -1;
     }
     return size;
@@ -134,7 +131,7 @@ NamedPipeInput::NamedPipeInput(const std::string& pipeRelativePath)
                         pipeRelativePath),
       _ifs() {
     uassert(7001100,
-            "Pipe path must not include '..' but {} does"_format(_pipeAbsolutePath),
+            fmt::format("Pipe path must not include '..' but {} does", _pipeAbsolutePath),
             _pipeAbsolutePath.find("..") == std::string::npos);
 }
 
@@ -160,10 +157,10 @@ void NamedPipeInput::doOpen() {
         _ifs.open(_pipeAbsolutePath.c_str(), std::ios::binary | std::ios::in);
         opened = _ifs.is_open();
         if (!opened) {
-            uassert(
-                ErrorCodes::FileNotOpen,
-                "error = {}"_format(getLastSystemErrorMessageFormatted("open", _pipeAbsolutePath)),
-                errno == ENOENT);
+            uassert(ErrorCodes::FileNotOpen,
+                    fmt::format("error = {}",
+                                getLastSystemErrorMessageFormatted("open", _pipeAbsolutePath)),
+                    errno == ENOENT);
             stdx::this_thread::sleep_for(stdx::chrono::milliseconds(sleepMs));
             ++retries;
             if (retries % 1000 == 0) {

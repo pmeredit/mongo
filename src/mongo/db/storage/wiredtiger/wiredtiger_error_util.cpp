@@ -39,6 +39,8 @@
 namespace mongo {
 
 namespace {
+static constexpr auto kTransactionTooLargeForCache =
+    "transaction is too large and will not fit in the storage engine cache"_sd;
 /**
  * Configured WT cache is deemed insufficient for a transaction when its dirty bytes in cache
  * exceed a certain threshold on the proportion of total cache which is used by transaction.
@@ -91,14 +93,8 @@ bool txnExceededCacheThreshold(int64_t txnDirtyBytes, int64_t cacheDirtyBytes, d
     return txnBytesDirtyOverCacheBytesDirty > threshold;
 }
 
-bool rollbackReasonWasCachePressure(const char* reason) {
-    return reason &&
-        (strncmp(WT_TXN_ROLLBACK_REASON_OLDEST_FOR_EVICTION,
-                 reason,
-                 sizeof(WT_TXN_ROLLBACK_REASON_OLDEST_FOR_EVICTION)) == 0 ||
-         strncmp(WT_TXN_ROLLBACK_REASON_CACHE_OVERFLOW,
-                 reason,
-                 sizeof(WT_TXN_ROLLBACK_REASON_CACHE_OVERFLOW)) == 0);
+bool rollbackReasonWasCachePressure(int sub_level_err) {
+    return sub_level_err == WT_CACHE_OVERFLOW || sub_level_err == WT_OLDEST_FOR_EVICTION;
 }
 
 void throwCachePressureExceptionIfAppropriate(bool txnTooLargeEnabled,
@@ -109,7 +105,7 @@ void throwCachePressureExceptionIfAppropriate(bool txnTooLargeEnabled,
                                               int retCode) {
     if (txnTooLargeEnabled && cacheIsInsufficientForTransaction) {
         throwTransactionTooLargeForCache(
-            generateContextStrStream(prefix, WT_TXN_ROLLBACK_REASON_TOO_LARGE_FOR_CACHE, retCode)
+            generateContextStrStream(prefix, kTransactionTooLargeForCache, retCode)
             << " (" << reason << ")");
     }
 
@@ -122,11 +118,21 @@ void throwAppropriateException(bool txnTooLargeEnabled,
                                bool temporarilyUnavailableEnabled,
                                WT_SESSION* session,
                                double cacheThreshold,
-                               const char* reason,
                                StringData prefix,
                                int retCode) {
+
+    // These values are initialized by WT_SESSION::get_last_error and should only be accessed if the
+    // session is not null.
+    int err = 0;
+    int sub_level_err = WT_NONE;
+    const char* reason = "";
+
+    if (session) {
+        session->get_last_error(session, &err, &sub_level_err, &reason);
+    }
+
     if ((txnTooLargeEnabled || temporarilyUnavailableEnabled) &&
-        rollbackReasonWasCachePressure(reason)) {
+        rollbackReasonWasCachePressure(sub_level_err)) {
         throwCachePressureExceptionIfAppropriate(
             txnTooLargeEnabled,
             temporarilyUnavailableEnabled,
@@ -143,44 +149,15 @@ Status wtRCToStatus_slow(int retCode, WT_SESSION* session, StringData prefix) {
     if (retCode == 0)
         return Status::OK();
 
-    // Handle WT-sublevel-error to server error code. Sub level errors are only defined as the
-    // session level, and since connection level calls use wtRCToStatus as well, these connection
-    // level calls may pass in a nullptr for the session.
-    if (session) {
-        int err, sub_level_err;
-        const char* err_msg;
-        session->get_last_error(session, &err, &sub_level_err, &err_msg);
-
-        auto subLevelStatus = [&]() -> Status {
-            if (sub_level_err == WT_NONE) {
-                return Status::OK();
-            }
-
-            auto s = generateContextStrStream(prefix, err_msg, err);
-
-            if (sub_level_err == WT_BACKGROUND_COMPACT_ALREADY_RUNNING) {
-                return Status(ErrorCodes::AlreadyInitialized, s);
-            }
-
-            // Return OK when we have an unhandled sublevel error code.
-            return Status::OK();
-        }();
-        if (!subLevelStatus.isOK()) {
-            return subLevelStatus;
-        }
-    }
-
     if (retCode == WT_ROLLBACK) {
         double cacheThreshold = gTransactionTooLargeForCacheThreshold.load();
         bool txnTooLargeEnabled = cacheThreshold < 1.0;
         bool temporarilyUnavailableEnabled = gEnableTemporarilyUnavailableExceptions.load();
-        const char* reason = session ? session->get_rollback_reason(session) : "";
 
         throwAppropriateException(txnTooLargeEnabled,
                                   temporarilyUnavailableEnabled,
                                   session,
                                   cacheThreshold,
-                                  reason,
                                   prefix,
                                   retCode);
     }
@@ -208,7 +185,7 @@ Status wtRCToStatus_slow(int retCode, WT_SESSION* session, StringData prefix) {
 
 Status wtRCToStatus_slow(int retCode, WiredTigerSession& session, StringData prefix) {
     return session.with(
-        [&](WT_SESSION* s) { return wtRCToStatus_slow(retCode, session.getSession(), prefix); });
+        [retCode, prefix](WT_SESSION* s) { return wtRCToStatus_slow(retCode, s, prefix); });
 }
 
 }  // namespace mongo

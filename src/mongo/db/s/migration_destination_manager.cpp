@@ -107,10 +107,6 @@
 #include "mongo/db/write_concern.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
@@ -335,14 +331,21 @@ bool migrationRecipientRecoveryDocumentExists(OperationContext* opCtx,
                             << sessionId.toString())) > 0;
 }
 
+bool isFirstMigration(OperationContext* opCtx, const NamespaceString& nss) {
+    const auto scopedCsr = CollectionShardingRuntime::acquireShared(opCtx, nss);
+    if (auto optMetadata = scopedCsr->getCurrentMetadataIfKnown()) {
+        const auto& metadata = *optMetadata;
+        return metadata.isSharded() && !metadata.currentShardHasAnyChunks();
+    }
+    return false;
+}
+
 void replaceShardingIndexCatalogInShardIfNeeded(OperationContext* opCtx,
                                                 const NamespaceString& nss,
                                                 const UUID& uuid) {
     auto currentShardHasAnyChunks = [&]() -> bool {
-        AutoGetCollection autoColl(opCtx, nss, MODE_IS);
-        const auto scsr =
-            CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
-        const auto optMetadata = scsr->getCurrentMetadataIfKnown();
+        const auto csr = CollectionShardingRuntime::acquireShared(opCtx, nss);
+        const auto optMetadata = csr->getCurrentMetadataIfKnown();
         return optMetadata && optMetadata->currentShardHasAnyChunks();
     }();
 
@@ -351,20 +354,7 @@ void replaceShardingIndexCatalogInShardIfNeeded(OperationContext* opCtx,
         return;
     }
 
-    auto optSii = uassertStatusOK(
-        Grid::get(opCtx)->catalogCache()->getCollectionIndexInfoWithRefresh(opCtx, nss));
-
-    if (optSii) {
-        std::vector<IndexCatalogType> indexes;
-        optSii->forEachIndex([&](const auto& index) {
-            indexes.push_back(index);
-            return true;
-        });
-        replaceCollectionShardingIndexCatalog(
-            opCtx, nss, uuid, optSii->getCollectionIndexes().indexVersion(), indexes);
-    } else {
-        clearCollectionShardingIndexCatalog(opCtx, nss, uuid);
-    }
+    clearCollectionShardingIndexCatalog(opCtx, nss, uuid);
 }
 
 // Throws if this configShard is currently draining.
@@ -1045,60 +1035,56 @@ MigrationDestinationManager::getCollectionOptions(OperationContext* opCtx,
     return {fromOptions, UUID::fromCDR(fromUUID)};
 }
 
-void MigrationDestinationManager::_dropLocalIndexesIfNecessary(
-    OperationContext* opCtx,
-    const NamespaceString& nss,
-    const CollectionOptionsAndIndexes& collectionOptionsAndIndexes) {
-    bool dropNonDonorIndexes = [&]() -> bool {
-        AutoGetCollection autoColl(opCtx, nss, MODE_IS);
-        const auto scopedCsr =
-            CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
-        // Only attempt to drop a collection's indexes if we have valid metadata and the collection
-        // is sharded
-        if (auto optMetadata = scopedCsr->getCurrentMetadataIfKnown()) {
-            const auto& metadata = *optMetadata;
-            if (metadata.isSharded()) {
-                return !metadata.currentShardHasAnyChunks();
+namespace {
+/**
+ * Drops any index in the collection not included in the given index list.
+ */
+void _dropLocalIndexes(OperationContext* opCtx,
+                       const NamespaceString& nss,
+                       const std::vector<BSONObj>& indexSpecs) {
+    // Determine which indexes exist on the local collection that don't exist on the donor's
+    // collection.
+    DBDirectClient client(opCtx);
+    const bool includeBuildUUIDs = false;
+    const int options = 0;
+    auto indexes = client.getIndexSpecs(nss, includeBuildUUIDs, options);
+    for (auto&& recipientIndex : indexes) {
+        bool dropIndex = true;
+        for (auto&& donorIndex : indexSpecs) {
+            if (recipientIndex.woCompare(donorIndex) == 0) {
+                dropIndex = false;
+                break;
             }
         }
-        return false;
-    }();
-
-    if (dropNonDonorIndexes) {
-        // Determine which indexes exist on the local collection that don't exist on the donor's
-        // collection.
-        DBDirectClient client(opCtx);
-        const bool includeBuildUUIDs = false;
-        const int options = 0;
-        auto indexes = client.getIndexSpecs(nss, includeBuildUUIDs, options);
-        for (auto&& recipientIndex : indexes) {
-            bool dropIndex = true;
-            for (auto&& donorIndex : collectionOptionsAndIndexes.indexSpecs) {
-                if (recipientIndex.woCompare(donorIndex) == 0) {
-                    dropIndex = false;
-                    break;
-                }
-            }
-            // If the local index doesn't exist on the donor and isn't the _id index, drop it.
-            auto indexNameElem = recipientIndex[IndexDescriptor::kIndexNameFieldName];
-            if (indexNameElem.type() == BSONType::String && dropIndex &&
-                !IndexDescriptor::isIdIndexPattern(
-                    recipientIndex[IndexDescriptor::kKeyPatternFieldName].Obj())) {
-                BSONObj info;
-                if (!client.runCommand(
-                        nss.dbName(),
-                        BSON("dropIndexes" << nss.coll() << "index" << indexNameElem),
-                        info))
-                    uassertStatusOK(getStatusFromCommandResult(info));
-            }
+        // If the local index doesn't exist on the donor and isn't the _id index, drop it.
+        auto indexNameElem = recipientIndex[IndexDescriptor::kIndexNameFieldName];
+        if (indexNameElem.type() == BSONType::String && dropIndex &&
+            !IndexDescriptor::isIdIndexPattern(
+                recipientIndex[IndexDescriptor::kKeyPatternFieldName].Obj())) {
+            BSONObj info;
+            if (!client.runCommand(nss.dbName(),
+                                   BSON("dropIndexes" << nss.coll() << "index" << indexNameElem),
+                                   info))
+                uassertStatusOK(getStatusFromCommandResult(info));
         }
     }
 }
 
-void MigrationDestinationManager::cloneCollectionIndexesAndOptions(
+/**
+ * Creates the collection on the shard and clones the indexes and options.
+ *
+ * `strictIndexSync` determines how indexes are managed in case the collection already exists:
+ * - If true, the resulting collection's indexes will be made to exactly match the specified specs.
+ *   This involves dropping any indexes from the existing collection not in the specified specs,
+ *   as well as waiting for in-progress index builds to ensure that they complete successfully.
+ * - If false, indexes from the existing collection not in the specified specs are preserved,
+ *   and in-progress index builds are not waited for, and handled as if they were already ready.
+ */
+void _cloneCollectionIndexesAndOptions(
     OperationContext* opCtx,
     const NamespaceString& nss,
-    const CollectionOptionsAndIndexes& collectionOptionsAndIndexes) {
+    const CollectionOptionsAndIndexes& collectionOptionsAndIndexes,
+    bool strictIndexSync) {
     {
         // 1. Create the collection (if it doesn't already exist) and create any indexes we are
         // missing (auto-heal indexes).
@@ -1122,22 +1108,16 @@ void MigrationDestinationManager::cloneCollectionIndexesAndOptions(
                     collection->uuid() == collectionOptionsAndIndexes.uuid);
         };
 
-        bool isFirstMigration = [&] {
-            AutoGetCollection collection(opCtx, nss, MODE_IS);
-            const auto scopedCsr =
-                CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
-            if (auto optMetadata = scopedCsr->getCurrentMetadataIfKnown()) {
-                const auto& metadata = *optMetadata;
-                return metadata.isSharded() && !metadata.currentShardHasAnyChunks();
-            }
-            return false;
-        }();
+        // If synchronizing indexes strictly, drop any indexes not in the specified index specs.
+        if (strictIndexSync) {
+            _dropLocalIndexes(opCtx, nss, collectionOptionsAndIndexes.indexSpecs);
+        }
 
         // Check if there are missing indexes on the recipient shard from the donor.
-        // If it is the first migration, do not consider in-progress index builds. Otherwise,
+        // For strict index synchronization, do not consider in-progress index builds. Otherwise,
         // consider in-progress index builds as ready. Then, if there are missing indexes and the
         // collection is not empty, fail the migration. On the other hand, if the collection is
-        // empty, wait for index builds to finish if it is the first migration.
+        // empty, wait for index builds to finish if synchronizing indexes strictly.
         bool waitForInProgressIndexBuildCompletion = false;
 
         auto checkEmptyOrGetMissingIndexesFromDonor = [&](const CollectionPtr& collection) {
@@ -1145,7 +1125,7 @@ void MigrationDestinationManager::cloneCollectionIndexesAndOptions(
             // We force the index comparison to only use the fields allowed by listIndexes and to
             // repair our index. Otherwise we might unnecessary fail the chunk migration due to
             // having some invalid/unused fields in the index spec.
-            IndexCatalog::RemoveExistingIndexesFlags opts{!isFirstMigration,
+            IndexCatalog::RemoveExistingIndexesFlags opts{!strictIndexSync,
                                                           &kAllowedListIndexesFieldNames};
             auto indexSpecs = indexCatalog->removeExistingIndexesNoChecks(
                 opCtx, collection, collectionOptionsAndIndexes.indexSpecs, opts);
@@ -1158,9 +1138,9 @@ void MigrationDestinationManager::cloneCollectionIndexesAndOptions(
                             << "index creation should be scheduled manually",
                         collection->isEmpty(opCtx));
 
-                // If it is the first migration, mark waitForInProgressIndexBuildCompletion as true
-                // to wait for index builds to be finished after releasing the locks.
-                waitForInProgressIndexBuildCompletion = isFirstMigration;
+                // If synchronizing indexes strictly, mark waitForInProgressIndexBuildCompletion as
+                // true to wait for index builds to be finished after releasing the locks.
+                waitForInProgressIndexBuildCompletion = strictIndexSync;
             }
             return indexSpecs;
         };
@@ -1179,7 +1159,7 @@ void MigrationDestinationManager::cloneCollectionIndexesAndOptions(
         }
 
         // Before acquiring the exclusive collection lock for cloning the remaining indexes, wait
-        // for index builds to finish if it is the first migration.
+        // for index builds to finish if synchronizing indexes strictly.
         if (waitForInProgressIndexBuildCompletion) {
             if (MONGO_unlikely(
                     hangMigrationRecipientBeforeWaitingNoIndexBuildInProgress.shouldFail())) {
@@ -1238,6 +1218,15 @@ void MigrationDestinationManager::cloneCollectionIndexesAndOptions(
             wunit.commit();
         }
     }
+}
+}  // namespace
+
+void MigrationDestinationManager::cloneCollectionIndexesAndOptions(
+    OperationContext* opCtx,
+    const NamespaceString& nss,
+    const CollectionOptionsAndIndexes& collectionOptionsAndIndexes) {
+    _cloneCollectionIndexesAndOptions(
+        opCtx, nss, collectionOptionsAndIndexes, /* strictIndexSync = */ true);
 }
 
 void MigrationDestinationManager::_migrateThread(CancellationToken cancellationToken,
@@ -1466,12 +1455,16 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* outerOpCtx,
             // even when user writes are blocked.
             WriteBlockBypass::get(altOpCtx.get()).set(true);
 
-            _dropLocalIndexesIfNecessary(altOpCtx.get(), _nss, donorCollectionOptionsAndIndexes);
-            cloneCollectionIndexesAndOptions(
-                altOpCtx.get(), _nss, donorCollectionOptionsAndIndexes);
+            // The first migration must ensure that indexes match the provided specs exactly,
+            // including dropping stale indexes remaining from previous versions of the collection.
+            // Further migrations only do a best-effort attempt to auto-heal missing indexes.
+            bool strictIndexSync = isFirstMigration(altOpCtx.get(), _nss);
+            _cloneCollectionIndexesAndOptions(
+                altOpCtx.get(), _nss, donorCollectionOptionsAndIndexes, strictIndexSync);
 
             // Get the global indexes and install them.
             if (feature_flags::gGlobalIndexesShardingCatalog.isEnabled(
+                    VersionContext::getDecoration(altOpCtx.get()),
                     serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
                 replaceShardingIndexCatalogInShardIfNeeded(
                     altOpCtx.get(), _nss, donorCollectionOptionsAndIndexes.uuid);
@@ -1493,6 +1486,10 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* outerOpCtx,
             const auto currentTime = VectorClock::get(outerOpCtx)->getTime();
             recipientDeletionTask.setTimestamp(currentTime.clusterTime().asTimestamp());
             recipientDeletionTask.setKeyPattern(KeyPattern(_shardKeyPattern));
+
+            // Installing an IGNORED collection version since, if this range deletion task prevails,
+            // it will mean that the migration has been aborted.
+            recipientDeletionTask.setPreMigrationShardVersion(ChunkVersion::IGNORED());
 
             // It is illegal to wait for write concern with a session checked out, so persist the
             // range deletion task with an immediately satsifiable write concern and then wait for
@@ -1761,11 +1758,16 @@ void MigrationDestinationManager::_migrateDriver(OperationContext* outerOpCtx,
         const auto critSecReason = criticalSectionReason(*_sessionId);
 
         runWithoutSession(outerOpCtx, [&] {
-            // Persist the migration recipient recovery document so that in case of failover, the
-            // new primary will resume the MigrationDestinationManager and retake the critical
-            // section.
-            migrationutil::persistMigrationRecipientRecoveryDocument(
-                opCtx, {*_migrationId, _nss, *_sessionId, range, _fromShard, _lsid, _txnNumber});
+            MigrationRecipientRecoveryDocument recoveryDoc;
+            {
+                stdx::lock_guard<stdx::mutex> lg(_mutex);
+                recoveryDoc = {
+                    *_migrationId, _nss, *_sessionId, range, _fromShard, _lsid, _txnNumber};
+            }
+            // Persist the migration recipient recovery document so that in case of failover,
+            // the new primary will resume the MigrationDestinationManager and retake the
+            // critical section.
+            migrationutil::persistMigrationRecipientRecoveryDocument(opCtx, recoveryDoc);
 
             LOGV2_DEBUG(5899113,
                         2,

@@ -52,13 +52,12 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/rewrite_state_change_errors_server_parameter_gen.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/pcre.h"
 #include "mongo/util/static_immortal.h"
+#include "write_concern_error_detail.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kNetwork
 
@@ -101,7 +100,7 @@ boost::optional<std::string> scrubErrmsg(StringData val) {
         StringData sep;
         auto out = std::back_inserter(pat);
         for (const auto& scrub : *scrubs) {
-            out = format_to(out, FMT_STRING("{}({})"), sep, scrub.pat.pattern());
+            out = fmt::format_to(out, "{}({})", sep, scrub.pat.pattern());
             sep = "|"_sd;
         }
         return pcre::Regex(pat);
@@ -203,9 +202,9 @@ boost::optional<BSONObj> rewriteDocument(const BSONObj& doc, OperationContext* o
     }
 
     // `writeConcernError` is a single error-bearing node.
-    if (const auto& wce = doc["writeConcernError"]; wce.type() == Object) {
+    if (const auto& wce = doc[kWriteConcernErrorFieldName]; wce.type() == Object) {
         if ((oldCode = needsRewrite(sc, wce.Obj())))
-            editErrorNode(lazyMutableRoot()["writeConcernError"]);
+            editErrorNode(lazyMutableRoot()[kWriteConcernErrorFieldName]);
     }
 
     if (mutableDoc) {

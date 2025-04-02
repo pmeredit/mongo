@@ -42,8 +42,7 @@
 #include "mongo/db/matcher/schema/json_schema_parser.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -341,8 +340,7 @@ TEST(JSONSchemaParserScalarTest, PatternTranslatesCorrectlyWithString) {
         BSON("$or" << BSON_ARRAY(
                  BSON("foo" << BSON("$not" << BSON("$exists" << true)))
                  << BSON("$and" << BSON_ARRAY(
-                             BSON("foo" << BSON("$regex"
-                                                << "abc"))
+                             BSON("foo" << BSON("$regex" << "abc"))
                              << BSON("foo" << BSON("$_internalSchemaType" << BSON_ARRAY(2)))))));
     ASSERT_SERIALIZES_TO(optimizedResult, expected);
 }

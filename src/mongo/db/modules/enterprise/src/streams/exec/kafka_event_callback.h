@@ -4,12 +4,13 @@
 
 #pragma once
 
-#include "mongo/stdx/mutex.h"
-#include "streams/util/exception.h"
-
+#include <boost/optional.hpp>
 #include <deque>
 #include <rdkafka.h>
 #include <rdkafkacpp.h>
+
+#include "mongo/stdx/mutex.h"
+#include "streams/util/exception.h"
 
 namespace streams {
 
@@ -18,8 +19,8 @@ struct Context;
 // KafkaEventCallback is used to interpret and log messages from librdkafka.
 class KafkaEventCallback : public RdKafka::EventCb {
 public:
-    KafkaEventCallback(Context* context, std::string operatorName)
-        : _context(context), _operatorName(std::move(operatorName)) {}
+    KafkaEventCallback(Context* context, std::string operatorName, bool isVPCPeered)
+        : _context(context), _operatorName(std::move(operatorName)), _peeringMsg(isVPCPeered) {}
 
     // Called by librdkafka.
     void event_cb(RdKafka::Event& event) override;
@@ -42,6 +43,8 @@ private:
     std::deque<std::string> _errorBuffer;
     // Set to true when a librdkafka indicates we should error out.
     bool _hasError{false};
+    // Used to track if peering message has already been attached to errorBuffer.
+    boost::optional<bool> _peeringMsg;
 };
 
 

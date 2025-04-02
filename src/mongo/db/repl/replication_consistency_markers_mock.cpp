@@ -33,7 +33,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "mongo/db/repl/replication_consistency_markers_mock.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
 namespace mongo {
@@ -92,7 +92,7 @@ bool ReplicationConsistencyMarkersMock::isOplogTruncateAfterPointBeingUsedForPri
 }
 
 void ReplicationConsistencyMarkersMock::setOplogTruncateAfterPointToTopOfOplog(
-    OperationContext* opCtx){};
+    OperationContext* opCtx) {};
 
 boost::optional<OpTimeAndWallTime>
 ReplicationConsistencyMarkersMock::refreshOplogTruncateAfterPointIfPrimary(

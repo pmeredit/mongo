@@ -42,8 +42,6 @@
 #include "mongo/db/process_health/deadline_future.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future_impl.h"
 
@@ -57,7 +55,7 @@ HealthObserverBase::HealthObserverBase(ServiceContext* svcCtx)
     : _svcCtx(svcCtx), _rand(PseudoRandom(SecureRandom().nextInt64())) {}
 
 SharedSemiFuture<HealthCheckStatus> HealthObserverBase::periodicCheck(
-    std::shared_ptr<executor::TaskExecutor> taskExecutor, CancellationToken token) noexcept {
+    std::shared_ptr<executor::TaskExecutor> taskExecutor, CancellationToken token) {
     // If we have reached here, the intensity of this health observer must not be off
     {
 

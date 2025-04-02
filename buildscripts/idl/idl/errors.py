@@ -136,9 +136,14 @@ ERROR_ID_QUERY_SHAPE_PROPERTIES_MUTUALLY_EXCLUSIVE = "ID0097"
 ERROR_ID_QUERY_SHAPE_PROPERTY_CANNOT_BE_FALSE = "ID0098"
 ERROR_ID_STRICT_AND_DISABLE_CHECK_NOT_ALLOWED = "ID0099"
 ERROR_ID_INHERITANCE_AND_DISABLE_CHECK_NOT_ALLOWED = "ID0100"
-ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_VERSION = "ID0101"
+ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_UNSUPPORTED_OPTION = "ID0101"
 ERROR_ID_QUERY_SHAPE_INVALID_VALUE = "ID0102"
 ERROR_ID_BAD_CPP_NAMESPACE = "ID0103"
+ERROR_ID_INCREMENTAL_ROLLOUT_PHASE_INVALID_VALUE = "ID0104"
+ERROR_ID_ILLEGALLY_FCV_GATED_FEATURE_FLAG = "ID0105"
+ERROR_ID_INCREMENTAL_FEATURE_FLAG_DEFAULT_VALUE = "ID0106"
+ERROR_ID_FEATURE_FLAG_WITHOUT_DEFAULT_VALUE = "ID0107"
+ERROR_ID_IFR_FLAG_WITH_VERSION = "ID108"
 
 
 class IDLError(Exception):
@@ -559,7 +564,7 @@ class ParserContext(object):
             % (name),
         )
 
-    def add_not_custom_scalar_serialization_not_supported_error(  # pylint: disable=invalid-name
+    def add_not_custom_scalar_serialization_not_supported_error(
         self, location, ast_type, ast_parent, bson_type_name
     ):
         # type: (common.SourceLocation, str, str, str) -> None
@@ -859,7 +864,7 @@ class ParserContext(object):
             ("Command '%s' cannot have the same name as a field.") % (command_name),
         )
 
-    def add_bad_field_non_const_getter_in_immutable_struct_error(  # pylint: disable=invalid-name
+    def add_bad_field_non_const_getter_in_immutable_struct_error(
         self, location, struct_name, field_name
     ):
         # type: (common.SourceLocation, str, str) -> None
@@ -1112,14 +1117,82 @@ class ParserContext(object):
             ("The 'version' attribute is not allowed for feature flag that defaults to false"),
         )
 
-    def add_feature_flag_fcv_gated_false_has_version(self, location):
+    def add_feature_flag_fcv_gated_false_has_unsupported_option(self, location, option_name):
         # type: (common.SourceLocation) -> None
-        """Add an error about a feature flag that should not be FCV gated but has a version."""
+        """Add an error about a feature flag that should not be FCV gated but has an option for FCV gated feature flags."""
         self._add_error(
             location,
-            ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_VERSION,
+            ERROR_ID_FEATURE_FLAG_SHOULD_BE_FCV_GATED_FALSE_HAS_UNSUPPORTED_OPTION,
             (
-                "The 'version' attribute is not allowed for feature flag that should not be FCV gated"
+                "The '%s' attribute is not allowed for feature flag that should not be FCV gated"
+                % (option_name)
+            ),
+        )
+
+    def add_invalid_incremental_rollout_phase_value(
+        self, location, incremental_rollout_phase_value
+    ):
+        """
+        Add an error for a failure to parse a feature flag's 'incremental_rollout_phase' property.
+        """
+        self._add_error(
+            location,
+            ERROR_ID_INCREMENTAL_ROLLOUT_PHASE_INVALID_VALUE,
+            (
+                f"'{incremental_rollout_phase_value}' is not a valid value for the "
+                "'incremental_rollout_phase' property."
+            ),
+        )
+
+    def add_illegally_fcv_gated_feature_flag(self, location):
+        """
+        Add an error resulting from a feature flag both sets and incremental rollout phase and
+        enables FCV gating.
+        """
+        self._add_error(
+            location,
+            ERROR_ID_ILLEGALLY_FCV_GATED_FEATURE_FLAG,
+            (
+                "A feature flag in any phase other than the default ('not_for_incremental_rollout') "
+                "must not also set 'shouldBeFCVGated' to true."
+            ),
+        )
+
+    def add_invalid_feature_flag_default_value(self, location, flag_kind, desired_value):
+        # type: (common.SourceLocation, str, bool) -> None
+        """
+        Add an error about an incremental rollout feature flag with an incompatible 'default'
+        setting.
+        """
+        self._add_error(
+            location,
+            ERROR_ID_INCREMENTAL_FEATURE_FLAG_DEFAULT_VALUE,
+            f"A feature_flag in phase '{flag_kind}' must have its 'default' set to {desired_value}",
+        )
+
+    def add_feature_flag_without_default_value(self, location):
+        """Add an error for a feature flag that needs a default value but does not have one."""
+        self._add_error(
+            location,
+            ERROR_ID_FEATURE_FLAG_WITHOUT_DEFAULT_VALUE,
+            (
+                "The 'default' property is required for feature flags that do not specify an "
+                "'incremental_rollout_phase' other than the default 'not_for_incremental_rollout' "
+                "option"
+            ),
+        )
+
+    def add_ifr_flag_with_version(self, location):
+        """
+        Add an error resulting from a feature flag both sets and incremental rollout phase and a
+        version.
+        """
+        self._add_error(
+            location,
+            ERROR_ID_IFR_FLAG_WITH_VERSION,
+            (
+                "A feature flag in any phase other than the default ('not_for_incremental_rollout') "
+                "must not also set a 'version' value."
             ),
         )
 

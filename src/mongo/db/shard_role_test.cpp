@@ -64,6 +64,7 @@
 #include "mongo/db/s/database_sharding_state.h"
 #include "mongo/db/s/operation_sharding_state.h"
 #include "mongo/db/s/shard_server_test_fixture.h"
+#include "mongo/db/s/sharding_runtime_d_params_gen.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/shard_id.h"
@@ -72,6 +73,7 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/db/transaction_resources.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/chunk_version.h"
@@ -81,9 +83,8 @@
 #include "mongo/s/shard_version.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/stale_exception.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future.h"
 
@@ -155,6 +156,26 @@ protected:
         AcquisitionPrerequisites::OperationType operationType);
     void testRestoreFailsIfCollectionIsNowAView(
         AcquisitionPrerequisites::OperationType operationType);
+
+    // A replication rollback causes the collection catalog to close and re-open on a new snapshot.
+    void simulateReplicationRollbackEvent(OperationContext* opCtx) {
+        auto* storageEngine = opCtx->getServiceContext()->getStorageEngine();
+        const auto stableTimestamp =
+            repl::ReplicationCoordinator::get(opCtx)->getMyLastAppliedOpTime().getTimestamp();
+        storageEngine->setStableTimestamp(stableTimestamp);
+
+        auto newClient = opCtx->getServiceContext()->getService()->makeClient("AlternativeClient");
+        AlternativeClientRegion acr(newClient);
+        auto newOpCtx = acr->makeOperationContext();
+
+        Lock::GlobalLock globalLk(newOpCtx.get(), MODE_X);
+        auto catalogState = catalog::closeCatalog(newOpCtx.get());
+        catalog::openCatalog(newOpCtx.get(), catalogState, stableTimestamp);
+    }
+
+    void testRestoreFailsWhenMetadataInvalidated(bool terminateSecondaryReadsUponRangeDeletion,
+                                                 bool terminateSecondaryReadsOnOrphan,
+                                                 bool mustFail);
 };
 
 void ShardRoleTest::setUp() {
@@ -183,6 +204,7 @@ void ShardRoleTest::setUp() {
 
     // Setup nssView
     createTestView(operationContext(), nssView, nssUnshardedCollection1, viewPipeline);
+    installUnshardedCollectionMetadata(operationContext(), nssView);
 }
 
 void ShardRoleTest::installDatabaseMetadata(OperationContext* opCtx,
@@ -195,9 +217,13 @@ void ShardRoleTest::installDatabaseMetadata(OperationContext* opCtx,
 
 void ShardRoleTest::installUnshardedCollectionMetadata(OperationContext* opCtx,
                                                        const NamespaceString& nss) {
-    AutoGetCollection coll(opCtx, nss, MODE_IX);
+    AutoGetCollection coll(
+        opCtx,
+        nss,
+        MODE_IX,
+        AutoGetCollection::Options{}.viewMode(auto_get_collection::ViewMode::kViewsPermitted));
     CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, nss)
-        ->setFilteringMetadata(opCtx, CollectionMetadata());
+        ->setFilteringMetadata(opCtx, CollectionMetadata::UNTRACKED());
 }
 
 void ShardRoleTest::installShardedCollectionMetadata(OperationContext* opCtx,
@@ -234,8 +260,8 @@ void ShardRoleTest::installShardedCollectionMetadata(OperationContext* opCtx,
         RoutingTableHistoryValueHandle(std::make_shared<RoutingTableHistory>(std::move(rt)),
                                        ComparableChunkVersion::makeComparableChunkVersion(version));
 
-    const auto collectionMetadata = CollectionMetadata(
-        ChunkManager(kMyShardName, dbVersion, rtHandle, boost::none), kMyShardName);
+    const auto collectionMetadata =
+        CollectionMetadata(ChunkManager(rtHandle, boost::none), kMyShardName);
 
     AutoGetCollection coll(opCtx, nss, MODE_IX);
     CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, nss)
@@ -438,7 +464,7 @@ TEST_F(ShardRoleTest, AcquireUnshardedCollWhenShardDoesNotKnowThePlacementVersio
         AutoGetDb autoDb(operationContext(), dbNameTestDb, MODE_X, {}, {});
         auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(
             operationContext(), dbNameTestDb);
-        scopedDss->clearDbInfo(operationContext());
+        scopedDss->clearDbInfo_DEPRECATED(operationContext());
     }
 
     auto validateException = [&](const DBException& ex) {
@@ -946,21 +972,7 @@ TEST_F(ShardRoleTest, NoExceptionIsThrownWhenShardVersionUnshardedButStashedIsEq
     // Re-open the local catalog at its latest version, simulating a rollback event that has no
     // effects on the metadata of the unsharded collection (although it does force the creation of a
     // new instance for the "most recent collection snapshot" held by the catalog).
-    {
-        auto* storageEngine = getServiceContext()->getStorageEngine();
-        const auto stableTimestamp = repl::ReplicationCoordinator::get(operationContext())
-                                         ->getMyLastAppliedOpTime()
-                                         .getTimestamp();
-        storageEngine->setStableTimestamp(stableTimestamp);
-
-        auto newClient = getServiceContext()->getService()->makeClient("AlternativeClient");
-        AlternativeClientRegion acr(newClient);
-        auto newOpCtx = cc().makeOperationContext();
-
-        Lock::GlobalLock globalLk(newOpCtx.get(), MODE_X);
-        auto catalogState = catalog::closeCatalog(newOpCtx.get());
-        catalog::openCatalog(newOpCtx.get(), catalogState, stableTimestamp);
-    }
+    simulateReplicationRollbackEvent(operationContext());
 
     // The acquisition of the unsharded collection is expected to succeed, even though the stashed
     // snapshot points to a different object than the one kept by the catalog.
@@ -1496,6 +1508,109 @@ TEST_F(ShardRoleTest, YieldAndRestoreAcquisitionWithoutLocks) {
                     ->isDbLockedForMode(nss.dbName(), MODE_NONE));
 }
 
+TEST_F(ShardRoleTest, YieldAndRestoreViewAcquisitionWithLocks) {
+    const auto opCtx = operationContext();
+    const auto nss = nssView;
+
+    PlacementConcern placementConcern{dbVersionTestDb, ShardVersion::UNSHARDED()};
+    const auto acquisition = acquireCollectionOrView(opCtx,
+                                                     {
+                                                         nss,
+                                                         placementConcern,
+                                                         repl::ReadConcernArgs(),
+                                                         AcquisitionPrerequisites::kRead,
+                                                     },
+                                                     MODE_IS);
+
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isDbLockedForMode(nss.dbName(), MODE_IS));
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(nss, MODE_IS));
+
+    // Yield the resources
+    auto yieldedTransactionResources = yieldTransactionResourcesFromOperationContext(opCtx);
+    shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
+
+    ASSERT_FALSE(shard_role_details::getLocker(opCtx)->isDbLockedForMode(nss.dbName(), MODE_IS));
+    ASSERT_FALSE(shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(nss, MODE_IS));
+
+    // Restore the resources
+    restoreTransactionResourcesToOperationContext(opCtx, std::move(yieldedTransactionResources));
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isDbLockedForMode(nss.dbName(), MODE_IS));
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(nss, MODE_IS));
+
+    // Yield the resources
+    yieldedTransactionResources = yieldTransactionResourcesFromOperationContext(opCtx);
+    shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
+
+    // Change the view definition
+    {
+        DBDirectClient client(opCtx);
+        client.dropCollection(nss);
+        createTestView(opCtx,
+                       nssView,
+                       nssUnshardedCollection1,
+                       {BSON("$match" << BSON("somethingDifferent" << 1))});
+    }
+
+    // Attempt to restore. It must fail.
+    ASSERT_THROWS_CODE(restoreTransactionResourcesToOperationContext(
+                           opCtx, std::move(yieldedTransactionResources)),
+                       DBException,
+                       ErrorCodes::QueryPlanKilled);
+}
+
+TEST_F(ShardRoleTest, YieldAndRestoreViewAcquisitionWithoutLocks) {
+    const auto opCtx = operationContext();
+    const auto nss = nssView;
+
+    PlacementConcern placementConcern{dbVersionTestDb, ShardVersion::UNSHARDED()};
+    const auto acquisition =
+        acquireCollectionOrViewMaybeLockFree(opCtx,
+                                             {
+                                                 nss,
+                                                 placementConcern,
+                                                 repl::ReadConcernArgs(),
+                                                 AcquisitionPrerequisites::kRead,
+                                             });
+
+    ASSERT_TRUE(acquisition.isView());
+
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isLockHeldForMode(resourceIdGlobal, MODE_IS));
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isDbLockedForMode(nss.dbName(), MODE_NONE));
+
+    // Yield the resources
+    auto yieldedTransactionResources = yieldTransactionResourcesFromOperationContext(opCtx);
+    shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
+
+    ASSERT_FALSE(
+        shard_role_details::getLocker(opCtx)->isLockHeldForMode(resourceIdGlobal, MODE_IS));
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isDbLockedForMode(nss.dbName(), MODE_NONE));
+
+    // Restore the resources
+    restoreTransactionResourcesToOperationContext(opCtx, std::move(yieldedTransactionResources));
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isLockHeldForMode(resourceIdGlobal, MODE_IS));
+    ASSERT_TRUE(shard_role_details::getLocker(opCtx)->isDbLockedForMode(nss.dbName(), MODE_NONE));
+
+    // Yield the resources
+    yieldedTransactionResources = yieldTransactionResourcesFromOperationContext(opCtx);
+    shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
+
+    // Change the view definition
+    {
+        DBDirectClient client(opCtx);
+        client.dropCollection(nss);
+        createTestView(opCtx,
+                       nssView,
+                       nssUnshardedCollection1,
+                       {BSON("$match" << BSON("somethingDifferent" << 1))});
+    }
+
+    // Attempt to restore. It must fail.
+    ASSERT_THROWS_CODE(restoreTransactionResourcesToOperationContext(
+                           opCtx, std::move(yieldedTransactionResources)),
+                       DBException,
+                       ErrorCodes::QueryPlanKilled);
+}
+
 TEST_F(ShardRoleTest,
        RestoreForWriteInvalidatesAcquisitionIfPlacementConcernShardVersionNoLongerMet) {
     const auto nss = nssShardedCollection1;
@@ -1707,7 +1822,7 @@ void ShardRoleTest::testRestoreFailsIfCollectionBecomesCreated(
     ASSERT_THROWS_CODE(restoreTransactionResourcesToOperationContext(
                            operationContext(), std::move(yieldedTransactionResources)),
                        DBException,
-                       743870);
+                       ErrorCodes::QueryPlanKilled);
 }
 TEST_F(ShardRoleTest, RestoreForReadFailsIfCollectionBecomesCreated) {
     testRestoreFailsIfCollectionBecomesCreated(AcquisitionPrerequisites::kRead);
@@ -1767,7 +1882,11 @@ void ShardRoleTest::testRestoreFailsIfCollectionRenamed(
 
     // Rename the collection.
     {
-        DBDirectClient client(operationContext());
+        auto newClient = getService()->makeClient("AlternativeClient");
+        AlternativeClientRegion acr(newClient);
+        auto newOpCtxHolder = acr->makeOperationContext();
+
+        DBDirectClient client(newOpCtxHolder.get());
         BSONObj info;
         ASSERT_TRUE(client.runCommand(
             DatabaseName::kAdmin,
@@ -1887,17 +2006,6 @@ TEST_F(ShardRoleTest, RestoreForReadSucceedsEvenIfPlacementHasChanged) {
 
     // Acquisition released. Now the range is no longer in use.
     ASSERT_TRUE(ongoingQueriesCompletionFuture.isReady());
-}
-
-DEATH_TEST_REGEX_F(ShardRoleTest, YieldingViewAcquisitionIsForbidden, "Tripwire assertion") {
-    const auto acquisition =
-        acquireCollectionOrView(operationContext(),
-                                CollectionOrViewAcquisitionRequest::fromOpCtx(
-                                    operationContext(), nssView, AcquisitionPrerequisites::kWrite),
-                                MODE_IX);
-
-    ASSERT_THROWS_CODE(
-        yieldTransactionResourcesFromOperationContext(operationContext()), DBException, 7300502);
 }
 
 void ShardRoleTest::testRestoreFailsIfCollectionIsNowAView(
@@ -2554,6 +2662,108 @@ TEST_F(ShardRoleTest,
 
     testFn(true);   // with locks
     testFn(false);  // lock-free
+}
+
+TEST_F(ShardRoleTest, restoreKillsTransactionOnCatalogEpochChange) {
+    PlacementConcern placementConcern{{}, shardVersionShardedCollection1};
+
+    for (int i = 0; i < 2; i++) {
+        auto opCtx = operationContext();
+        // Test multiple acquisition type
+        const auto acquisition = [&]() {
+            switch (i) {
+                case 0: {
+                    return acquireCollection(opCtx,
+                                             {nssShardedCollection1,
+                                              placementConcern,
+                                              repl::ReadConcernArgs(),
+                                              AcquisitionPrerequisites::kWrite},
+                                             MODE_IX);
+                }
+                case 1: {
+                    return acquireCollectionMaybeLockFree(opCtx,
+                                                          {nssShardedCollection1,
+                                                           placementConcern,
+                                                           repl::ReadConcernArgs(),
+                                                           AcquisitionPrerequisites::kRead});
+                }
+                default:
+                    MONGO_UNREACHABLE;
+            }
+        }();
+
+        // 1. Yield and restore the resources works as expected
+        auto yieldedTransactionResources = yieldTransactionResourcesFromOperationContext(opCtx);
+
+        ASSERT_DOES_NOT_THROW(restoreTransactionResourcesToOperationContext(
+            opCtx, std::move(yieldedTransactionResources)));
+
+        // 2. A replication rollback event happening in between a yield and a restore will cause the
+        // query to terminate.
+        auto yieldedTransactionResources2 = yieldTransactionResourcesFromOperationContext(opCtx);
+        shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
+
+        // Simulate a replication rollback event (which causes the collection catalog to close and
+        // re-open and the epoch to change)
+        simulateReplicationRollbackEvent(opCtx);
+
+        // Try to restore the resources should fail because the catalog epoch changed.
+        ASSERT_THROWS_CODE(restoreTransactionResourcesToOperationContext(
+                               opCtx, std::move(yieldedTransactionResources2)),
+                           DBException,
+                           ErrorCodes::QueryPlanKilled);
+    }
+}
+
+TEST_F(ShardRoleTest, RestoreFailsWhenMetadataInvalidated) {
+    testRestoreFailsWhenMetadataInvalidated(true, true, true);
+    testRestoreFailsWhenMetadataInvalidated(false, true, false);
+    testRestoreFailsWhenMetadataInvalidated(true, false, false);
+}
+
+void ShardRoleTest::testRestoreFailsWhenMetadataInvalidated(
+    bool terminateSecondaryReadsUponRangeDeletion,
+    bool terminateSecondaryReadsOnOrphan,
+    bool mustFail) {
+    RAIIServerParameterControllerForTest featureFlagController{
+        "featureFlagTerminateSecondaryReadsUponRangeDeletion",
+        terminateSecondaryReadsUponRangeDeletion};
+
+    terminateSecondaryReadsOnOrphanCleanup.store(terminateSecondaryReadsOnOrphan);
+
+    const auto nss = nssShardedCollection1;
+
+    PlacementConcern placementConcern{{}, shardVersionShardedCollection1};
+
+    const auto acquisition = acquireCollection(
+        operationContext(),
+        {nss, placementConcern, repl::ReadConcernArgs(), AcquisitionPrerequisites::kRead},
+        MODE_IX);
+
+    ASSERT_TRUE(acquisition.getShardingFilter().has_value());
+    ASSERT_TRUE(acquisition.getShardingFilter()->keyBelongsToMe(BSON("skey" << 0)));
+
+    // Yield the resources
+    auto yieldedTransactionResources =
+        yieldTransactionResourcesFromOperationContext(operationContext());
+    shard_role_details::getRecoveryUnit(operationContext())->abandonSnapshot();
+
+    {
+        const auto& csr = CollectionShardingRuntime::acquireExclusive(operationContext(), nss);
+        csr->invalidateRangePreserversOlderThanShardVersion(
+            operationContext(), shardVersionShardedCollection1.placementVersion());
+    }
+
+    if (mustFail) {
+        // Attempt to restore. It must fail as collection metadata trackers are invalidated.
+        ASSERT_THROWS_CODE(restoreTransactionResourcesToOperationContext(
+                               operationContext(), std::move(yieldedTransactionResources)),
+                           DBException,
+                           ErrorCodes::QueryPlanKilled);
+    } else {
+        restoreTransactionResourcesToOperationContext(operationContext(),
+                                                      std::move(yieldedTransactionResources));
+    }
 }
 
 }  // namespace

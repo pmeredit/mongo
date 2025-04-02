@@ -31,6 +31,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/rpc/object_check.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/processinfo.h"
@@ -40,24 +41,6 @@
 
 
 namespace mongo::audit {
-
-ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
-    if (auto as = AuthorizationSession::get(client)) {
-        auto userName = as->getImpersonatedUserName();
-        auto roleNamesIt = as->getImpersonatedRoleNames();
-        if (!userName) {
-            userName = as->getAuthenticatedUserName();
-            roleNamesIt = as->getAuthenticatedRoleNames();
-        }
-        if (userName) {
-            this->userName = std::move(userName.value());
-        }
-        for (; roleNamesIt.more(); roleNamesIt.next()) {
-            this->roleNames.emplace_back(roleNamesIt.get());
-        }
-    }
-};
-
 namespace {
 namespace fs = boost::filesystem;
 namespace moe = mongo::optionenvironment;

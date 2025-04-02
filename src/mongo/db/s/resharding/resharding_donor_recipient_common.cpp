@@ -62,9 +62,6 @@
 #include "mongo/db/vector_clock_mutable.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/chunk_version.h"
@@ -93,8 +90,6 @@ using RecipientStateMachine = ReshardingRecipientService::RecipientStateMachine;
 
 namespace {
 MONGO_FAIL_POINT_DEFINE(reshardingInterruptAfterInsertStateMachineDocument);
-
-using namespace fmt::literals;
 
 const Backoff kExponentialBackoff(Seconds(1), Milliseconds::max());
 
@@ -365,9 +360,6 @@ ReshardingRecipientDocument constructRecipientDocumentFromReshardingFields(
                                                    metadata.getShardKeyPattern().toBSON());
     commonMetadata.setStartTime(reshardingFields.getStartTime());
     commonMetadata.setProvenance(reshardingFields.getProvenance());
-    resharding::validateImplicitlyCreateIndex(reshardingFields.getImplicitlyCreateIndex(),
-                                              metadata.getKeyPattern());
-    commonMetadata.setImplicitlyCreateIndex(reshardingFields.getImplicitlyCreateIndex());
     resharding::validatePerformVerification(reshardingFields.getPerformVerification());
     commonMetadata.setPerformVerification(reshardingFields.getPerformVerification());
 
@@ -377,15 +369,16 @@ ReshardingRecipientDocument constructRecipientDocumentFromReshardingFields(
     recipientDoc.setMetrics(std::move(metrics));
 
     recipientDoc.setCommonReshardingMetadata(std::move(commonMetadata));
-    const bool skipCloningAndApplying =
-        resharding::gFeatureFlagReshardingSkipCloningAndApplyingIfApplicable.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
-        !metadata.currentShardHasAnyChunks();
-    recipientDoc.setSkipCloningAndApplying(skipCloningAndApplying);
 
-    recipientDoc.setStoreOplogFetcherProgress(
-        resharding::gFeatureFlagReshardingStoreOplogFetcherProgress.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+    if (resharding::gFeatureFlagReshardingSkipCloningAndApplyingIfApplicable.isEnabled(
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
+        !metadata.currentShardHasAnyChunks()) {
+        recipientDoc.setSkipCloningAndApplying(true);
+    }
+    if (resharding::gFeatureFlagReshardingStoreOplogFetcherProgress.isEnabled(
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        recipientDoc.setStoreOplogFetcherProgress(true);
+    }
 
     recipientDoc.setOplogBatchTaskCount(recipientFields->getOplogBatchTaskCount());
 
@@ -452,7 +445,6 @@ void clearFilteringMetadata(OperationContext* opCtx,
             // new donor shard primaries will refresh from the config server and see the chunk
             // distribution for the ongoing resharding operation.
             catalogCache->invalidateCollectionEntry_LINEARIZABLE(nss);
-            catalogCache->invalidateIndexEntry_LINEARIZABLE(nss);
         }
 
         AutoGetCollection autoColl(opCtx, nss, MODE_IX);

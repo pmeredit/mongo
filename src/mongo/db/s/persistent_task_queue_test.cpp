@@ -45,9 +45,8 @@
 #include "mongo/db/service_context.h"
 #include "mongo/stdx/future.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -101,7 +100,7 @@ class PersistentTaskQueueTest : public ShardServerTestFixture {
         Lock::CollectionLock collLock(operationContext(), kNss, MODE_IX);
         CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(operationContext(),
                                                                              kNss)
-            ->setFilteringMetadata(operationContext(), CollectionMetadata());
+            ->setFilteringMetadata(operationContext(), CollectionMetadata::UNTRACKED());
     }
 };
 

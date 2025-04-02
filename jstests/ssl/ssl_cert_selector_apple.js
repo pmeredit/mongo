@@ -11,6 +11,10 @@
 
 import {requireSSLProvider} from "jstests/ssl/libs/ssl_helpers.js";
 
+// Due to a race condition in shutdown-during-startup, this test sometimes produces core dumps.
+// TODO SERVER-99909 Remove this once shutdown-during-startup issues are fixed.
+TestData.cleanUpCoreDumpsFromExpectedCrash = true;
+
 requireSSLProvider('apple', function() {
     const CLIENT =
         'CN=Trusted Kernel Test Client,OU=Kernel,O=MongoDB,L=New York City,ST=New York,C=US';
@@ -52,16 +56,12 @@ requireSSLProvider('apple', function() {
     // not been installed in MacOS machines yet.
     if (expected_server_thumbprint !== trusted_server_thumbprint ||
         expected_client_thumbprint !== trusted_client_thumbprint) {
-        print("****************");
-        print("****************");
-        print(
+        jsTest.log.error(
             "macOS host has an unexpected version of the trusted server certificate (jstests/libs/trusted-server.pem) or trusted client certificate (jstests/libs/trusted-client.pem) installed.");
-        print("Expecting server thumbprint: " + expected_server_thumbprint +
-              ", got: " + trusted_server_thumbprint);
-        print("Expecting client thumbprint: " + expected_client_thumbprint +
-              ", got: " + trusted_client_thumbprint);
-        print("****************");
-        print("****************");
+        jsTest.log.error("Expecting server thumbprint: " + expected_server_thumbprint +
+                         ", got: " + trusted_server_thumbprint);
+        jsTest.log.error("Expecting client thumbprint: " + expected_client_thumbprint +
+                         ", got: " + trusted_client_thumbprint);
     }
 
     const testCases = [
@@ -74,6 +74,9 @@ requireSSLProvider('apple', function() {
     ];
 
     function test(cert, cluster) {
+        jsTest.log.info(`Testing with:`);
+        jsTest.log.info(`  Cert Name: ${cert.name}, Selector: ${cert.selector}`);
+        jsTest.log.info(`  Cluster Name: ${cluster.name}, Selector: ${cluster.selector}`);
         const opts = {
             tlsMode: 'requireTLS',
             tlsCertificateSelector: cert.selector,

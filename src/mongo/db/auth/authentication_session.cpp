@@ -46,9 +46,6 @@
 #include "mongo/db/connection_health_metrics_parameter_gen.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/scopeguard.h"
@@ -62,7 +59,7 @@ constexpr auto kDiagnosticLogLevel = 3;
 
 Status crossVerifyUserNames(const UserName& oldUser,
                             const UserName& newUser,
-                            const bool isMechX509) noexcept {
+                            const bool isMechX509) {
     if (oldUser.empty()) {
         return Status::OK();
     }

@@ -56,13 +56,10 @@
 #include "mongo/executor/task_executor_test_common.h"
 #include "mongo/executor/task_executor_test_fixture.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/cancellation.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/clock_source_mock.h"
@@ -220,12 +217,11 @@ auto makeSetStatusOnRemoteExhaustCommandCompletionClosure(
     };
 }
 
-static inline const RemoteCommandRequest kDummyRequest{HostAndPort("localhost", 27017),
-                                                       DatabaseName::createDatabaseName_forTest(
-                                                           boost::none, "mydb"),
-                                                       BSON("whatsUp"
-                                                            << "doc"),
-                                                       nullptr};
+static inline const RemoteCommandRequest kDummyRequest{
+    HostAndPort("localhost", 27017),
+    DatabaseName::createDatabaseName_forTest(boost::none, "mydb"),
+    BSON("whatsUp" << "doc"),
+    nullptr};
 
 COMMON_EXECUTOR_TEST(RunOne) {
     TaskExecutor& executor = getExecutor();

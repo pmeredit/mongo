@@ -2,6 +2,7 @@
  *  Copyright (C) 2016-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include <absl/strings/str_split.h>
 #include <fmt/format.h>
 #include <memory>
 
@@ -307,16 +308,14 @@ int ldapToolMain(int argc, char** argv) {
         Report::FailType::kNonFatalFailure));
 
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
-                                std::move(globalLDAPParams->bindPassword),
                                 globalLDAPParams->bindMethod,
                                 globalLDAPParams->bindSASLMechanisms,
                                 globalLDAPParams->useOSDefaults);
     LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
                                             globalLDAPParams->serverHosts);
     auto factory = std::make_unique<LDAPConnectionFactory>(connectionOptions.timeout);
-    std::unique_ptr<LDAPRunner> runner =
-        std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions, std::move(factory));
-
+    std::unique_ptr<LDAPRunner> runner = std::make_unique<LDAPRunnerImpl>(
+        bindOptions, globalLDAPParams->bindPasswords, connectionOptions, std::move(factory));
 
     auto swRootDSEQuery =
         LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");
@@ -453,8 +452,8 @@ int ldapToolMain(int argc, char** argv) {
     if (globalLDAPParams->bindMethod == LDAPBindType::kSasl) {
         report.openSection("Checking that SASL mechanisms are supported by server...");
 
-        StringSplitter splitter(globalLDAPParams->bindSASLMechanisms.c_str(), ",");
-        std::vector<std::string> requestedSASLMechanisms = splitter.split();
+        std::vector<std::string> requestedSASLMechanisms =
+            absl::StrSplit(globalLDAPParams->bindSASLMechanisms, ",", absl::SkipEmpty());
 
         LDAPAttributeKeyValuesMap::iterator supportedSASLMechanisms;
         std::vector<std::string> remoteMechanismVector;

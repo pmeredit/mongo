@@ -94,11 +94,9 @@
 #include "mongo/logv2/log_severity.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/log_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/fail_point.h"
@@ -1176,10 +1174,9 @@ TEST_F(ReplicationRecoveryTest, CommitTransactionOplogEntryCorrectlyUpdatesConfi
     sessionInfo.setSessionId(sessionId);
     sessionInfo.setTxnNumber(3);
 
-    const auto txnOperations = BSON_ARRAY(BSON("op"
-                                               << "i"
-                                               << "ns" << testNs.toString_forTest() << "o"
-                                               << BSON("_id" << 1)));
+    const auto txnOperations =
+        BSON_ARRAY(BSON("op" << "i"
+                             << "ns" << testNs.toString_forTest() << "o" << BSON("_id" << 1)));
     const auto prepareDate = Date_t::now();
     const auto prepareOp =
         _makeTransactionOplogEntry({Timestamp(2, 0), 1},
@@ -1251,10 +1248,9 @@ TEST_F(ReplicationRecoveryTest,
     sessionInfo.setSessionId(sessionId);
     sessionInfo.setTxnNumber(3);
 
-    const auto txnOperations = BSON_ARRAY(BSON("op"
-                                               << "i"
-                                               << "ns" << testNs.toString_forTest() << "o"
-                                               << BSON("_id" << 1)));
+    const auto txnOperations =
+        BSON_ARRAY(BSON("op" << "i"
+                             << "ns" << testNs.toString_forTest() << "o" << BSON("_id" << 1)));
     const auto prepareDate = Date_t::now();
     const auto prepareOp =
         _makeTransactionOplogEntry({Timestamp(2, 0), 1},

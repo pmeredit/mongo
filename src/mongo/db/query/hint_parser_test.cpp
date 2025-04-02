@@ -33,9 +33,7 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/query/hint_parser.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -48,11 +46,8 @@ TEST(CommandParsers, ParseKeyPatternHint) {
 }
 
 TEST(CommandParsers, ParseIndexNameHint) {
-    auto hint = BSON("hint"
-                     << "x_1");
-    ASSERT_BSONOBJ_EQ(parseHint(hint.firstElement()),
-                      BSON("$hint"
-                           << "x_1"));
+    auto hint = BSON("hint" << "x_1");
+    ASSERT_BSONOBJ_EQ(parseHint(hint.firstElement()), BSON("$hint" << "x_1"));
 }
 
 TEST(CommandParsers, BadHintType) {
@@ -62,8 +57,7 @@ TEST(CommandParsers, BadHintType) {
 }
 
 TEST(AggregationRequestTest, ShouldRejectHintAsArray) {
-    BSONObj arrayHint = BSON("hint" << BSON_ARRAY("invalid"
-                                                  << "hint"));
+    BSONObj arrayHint = BSON("hint" << BSON_ARRAY("invalid" << "hint"));
     ASSERT_THROWS_CODE(
         parseHint(arrayHint.firstElement()), AssertionException, ErrorCodes::FailedToParse);
 }

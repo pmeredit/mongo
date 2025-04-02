@@ -49,9 +49,7 @@
 #include "mongo/db/matcher/schema/json_schema_parser.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/string_map.h"
 
@@ -96,10 +94,9 @@ TEST(JSONSchemaObjectKeywordTest, FailsToParseIfParticularPropertyIsNotAnObject)
 }
 
 TEST(JSONSchemaObjectKeywordTest, FailsToParseIfKeywordIsDuplicated) {
-    BSONObj schema = BSON("type"
-                          << "object"
-                          << "type"
-                          << "object");
+    BSONObj schema = BSON("type" << "object"
+                                 << "type"
+                                 << "object");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_EQ(result.getStatus(), ErrorCodes::FailedToParse);
 }
@@ -462,25 +459,25 @@ TEST(JSONSchemaObjectKeywordTest, FailsToParseIfBsonTypeArrayContainsUnknownAlia
 }
 
 TEST(JSONSchemaObjectKeywordTest, CanTranslateTopLevelTypeArrayWithoutObject) {
-    BSONObj schema = fromjson("{type: ['number', 'string']}}}");
+    BSONObj schema = fromjson("{type: ['number', 'string']}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_SERIALIZES_TO(result.getValue(), BSON(AlwaysFalseMatchExpression::kName << 1));
 }
 
 TEST(JSONSchemaObjectKeywordTest, CanTranslateTopLevelBsonTypeArrayWithoutObject) {
-    BSONObj schema = fromjson("{bsonType: ['number', 'string']}}}");
+    BSONObj schema = fromjson("{bsonType: ['number', 'string']}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_SERIALIZES_TO(result.getValue(), BSON(AlwaysFalseMatchExpression::kName << 1));
 }
 
 TEST(JSONSchemaObjectKeywordTest, CanTranslateTopLevelTypeArrayWithObject) {
-    BSONObj schema = fromjson("{type: ['number', 'object']}}}");
+    BSONObj schema = fromjson("{type: ['number', 'object']}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_SERIALIZES_TO(result.getValue(), fromjson("{}"));
 }
 
 TEST(JSONSchemaObjectKeywordTest, CanTranslateTopLevelBsonTypeArrayWithObject) {
-    BSONObj schema = fromjson("{bsonType: ['number', 'object']}}}");
+    BSONObj schema = fromjson("{bsonType: ['number', 'object']}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_SERIALIZES_TO(result.getValue(), fromjson("{}"));
 }
@@ -658,8 +655,7 @@ TEST(JSONSchemaObjectKeywordTest, UnsupportedKeywordsFailNicely) {
                            "$jsonSchema keyword 'id' is not currently supported");
 
     result = JSONSchemaParser::parse(new ExpressionContextForTest(),
-                                     BSON("$ref"
-                                          << "#/definitions/positiveInt"));
+                                     BSON("$ref" << "#/definitions/positiveInt"));
     ASSERT_STRING_CONTAINS(result.getStatus().reason(),
                            "$jsonSchema keyword '$ref' is not currently supported");
 
@@ -776,7 +772,7 @@ TEST(JSONSchemaObjectKeywordTest, TopLevelPatternPropertiesTranslatesCorrectly) 
 }
 
 TEST(JSONSchemaObjectKeywordTest, TopLevelAdditionalPropertiesFalseTranslatesCorrectly) {
-    BSONObj schema = fromjson("{additionalProperties: false}}");
+    BSONObj schema = fromjson("{additionalProperties: false}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_OK(result.getStatus());
     auto optimizedResult = MatchExpression::optimize(std::move(result.getValue()));
@@ -791,7 +787,7 @@ TEST(JSONSchemaObjectKeywordTest, TopLevelAdditionalPropertiesFalseTranslatesCor
 }
 
 TEST(JSONSchemaObjectKeywordTest, TopLevelAdditionalPropertiesTrueTranslatesCorrectly) {
-    BSONObj schema = fromjson("{additionalProperties: true}}");
+    BSONObj schema = fromjson("{additionalProperties: true}");
     auto result = JSONSchemaParser::parse(new ExpressionContextForTest(), schema);
     ASSERT_OK(result.getStatus());
     auto optimizedResult = MatchExpression::optimize(std::move(result.getValue()));
@@ -939,8 +935,7 @@ TEST(JSONSchemaObjectKeywordTest, FailsToParseUnsupportedKeywordsWhenIgnoreUnkno
                            "$jsonSchema keyword 'id' is not currently supported");
 
     result = JSONSchemaParser::parse(new ExpressionContextForTest(),
-                                     BSON("$ref"
-                                          << "#/definitions/positiveInt"),
+                                     BSON("$ref" << "#/definitions/positiveInt"),
                                      allowedFeatures,
                                      ignoreUnknownKeywords);
     ASSERT_STRING_CONTAINS(result.getStatus().reason(),

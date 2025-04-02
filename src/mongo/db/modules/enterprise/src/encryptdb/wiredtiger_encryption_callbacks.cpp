@@ -259,7 +259,7 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) noexcept {
  * This function adds a single AES encryptor. The API is flexible enough to
  * support multiple different encryptors but at the moment we are using a single one.
  */
-int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection) noexcept {
+int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection, WT_CONFIG_ARG*) noexcept {
     if (!mongo::encryptionGlobalParams.enableEncryption) {
         LOGV2_FATAL_CONTINUE(24255, "Encrypted data files detected, please enable encryption");
         return EINVAL;
@@ -285,8 +285,9 @@ int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection) noexcept {
                                      nullptr);
 }
 
-extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection) {
-    return mongo_addWiredTigerEncryptors_impl(connection);
+extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection,
+                                                                       WT_CONFIG_ARG* config) {
+    return mongo_addWiredTigerEncryptors_impl(connection, config);
 }
 }  // namespace
 }  // namespace mongo

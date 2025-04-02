@@ -30,7 +30,6 @@
 #include <boost/move/utility_core.hpp>
 #include <memory>
 #include <string>
-#include <vector>
 #include <wiredtiger.h>
 
 #include "mongo/base/init.h"  // IWYU pragma: keep
@@ -41,9 +40,6 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/db/catalog/collection_mock.h"
-#include "mongo/db/index/index_constants.h"
-#include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/storage/key_format.h"
 #include "mongo/db/storage/recovery_unit.h"
@@ -53,9 +49,9 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/temp_dir.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/system_clock_source.h"
 #include "mongo/util/uuid.h"
@@ -82,14 +78,19 @@ public:
     std::unique_ptr<SortedDataInterface> newIdIndexSortedDataInterface(
         OperationContext* opCtx) final {
         std::string ns = "test.wt";
+        std::string indexName = "_id";
         NamespaceString nss = NamespaceString::createNamespaceString_forTest(ns);
-        BSONObj spec = BSON("key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName
-                                  << "v" << static_cast<int>(IndexDescriptor::kLatestIndexVersion)
-                                  << "unique" << true);
+        BSONObj spec =
+            BSON("key" << BSON("_id" << 1) << "name" << indexName << "v"
+                       << static_cast<int>(IndexConfig::kLatestIndexVersion) << "unique" << true);
 
-        auto collection = std::make_unique<CollectionMock>(nss);
-        IndexDescriptor desc("", spec);
-        invariant(desc.isIdIndex());
+        auto ordering = Ordering::allAscending();
+        IndexConfig config{true /* isIdIndex */,
+                           true /* unique */,
+                           IndexConfig::kLatestIndexVersion,
+                           spec,
+                           indexName,
+                           ordering};
 
         const bool isLogged = false;
         StatusWith<std::string> result =
@@ -97,7 +98,7 @@ public:
                                                   "",
                                                   "",
                                                   NamespaceStringUtil::serializeForCatalog(nss),
-                                                  desc,
+                                                  config,
                                                   isLogged);
         ASSERT_OK(result.getStatus());
 
@@ -109,7 +110,7 @@ public:
                       result.getValue()));
 
         return std::make_unique<WiredTigerIdIndex>(
-            opCtx, uri, UUID::gen(), "" /* ident */, &desc, isLogged);
+            opCtx, uri, UUID::gen(), "" /* ident */, config, isLogged);
     }
 
     std::unique_ptr<SortedDataInterface> newSortedDataInterface(OperationContext* opCtx,
@@ -118,29 +119,29 @@ public:
                                                                 KeyFormat keyFormat) final {
         std::string ns = "test.wt";
         NamespaceString nss = NamespaceString::createNamespaceString_forTest(ns);
-
-        BSONObj spec = BSON("key" << BSON("a" << 1) << "name"
-                                  << "testIndex"
-                                  << "v" << static_cast<int>(IndexDescriptor::kLatestIndexVersion)
-                                  << "unique" << unique);
+        std::string indexName = "textIndex";
+        BSONObj spec =
+            BSON("key" << BSON("a" << 1) << "name" << indexName << "v"
+                       << static_cast<int>(IndexConfig::kLatestIndexVersion) << "unique" << unique);
 
         if (partial) {
-            auto partialBSON =
-                BSON(IndexDescriptor::kPartialFilterExprFieldName.toString() << BSON(""
-                                                                                     << ""));
+            auto partialBSON = BSON("partialFilterExpression" << BSON("" << ""));
             spec = spec.addField(partialBSON.firstElement());
         }
 
-        auto collection = std::make_unique<CollectionMock>(nss);
-
-        IndexDescriptor& desc = _descriptors.emplace_back("", spec);
-
+        auto ordering = Ordering::allAscending();
+        IndexConfig config{false /* isIdIndex */,
+                           unique,
+                           IndexConfig::kLatestIndexVersion,
+                           spec,
+                           indexName,
+                           ordering};
         StatusWith<std::string> result =
             WiredTigerIndex::generateCreateString(std::string{kWiredTigerEngineName},
                                                   "",
                                                   "",
                                                   NamespaceStringUtil::serializeForCatalog(nss),
-                                                  desc,
+                                                  config,
                                                   WiredTigerUtil::useTableLogging(nss));
         ASSERT_OK(result.getStatus());
 
@@ -157,7 +158,7 @@ public:
                                                            UUID::gen(),
                                                            "" /* ident */,
                                                            keyFormat,
-                                                           &desc,
+                                                           config,
                                                            WiredTigerUtil::useTableLogging(nss));
         }
         return std::make_unique<WiredTigerIndexStandard>(opCtx,
@@ -165,7 +166,7 @@ public:
                                                          UUID::gen(),
                                                          "" /* ident */,
                                                          keyFormat,
-                                                         &desc,
+                                                         config,
                                                          WiredTigerUtil::useTableLogging(nss));
     }
 
@@ -176,7 +177,6 @@ public:
 private:
     unittest::TempDir _dbpath;
     std::unique_ptr<ClockSource> _fastClockSource;
-    std::vector<IndexDescriptor> _descriptors;
     WT_CONNECTION* _conn;
     std::unique_ptr<WiredTigerConnection> _connection;
 };

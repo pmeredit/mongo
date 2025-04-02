@@ -49,9 +49,8 @@
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/sorted_data_interface.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/str.h"
 
@@ -85,7 +84,7 @@ public:
         const NamespaceString& nss,
         const CollectionOptions& collOptions,
         StringData ident,
-        const IndexDescriptor* desc) override {
+        const IndexConfig& config) override {
         return nullptr;
     }
 
@@ -111,7 +110,7 @@ public:
                                      const NamespaceString& nss,
                                      const CollectionOptions& collOptions,
                                      StringData ident,
-                                     const IndexDescriptor* desc) override {
+                                     const IndexConfig& config) override {
         return Status::OK();
     }
     Status dropSortedDataInterface(RecoveryUnit&, StringData ident) override {
@@ -146,6 +145,19 @@ public:
         return boost::none;
     }
 
+    Timestamp getBackupCheckpointTimestamp() override {
+        return Timestamp(0, 0);
+    }
+
+    StatusWith<Timestamp> pinOldestTimestamp(RecoveryUnit&,
+                                             const std::string& requestingServiceName,
+                                             Timestamp requestedTimestamp,
+                                             bool roundUpIfTooOld) override {
+        return Timestamp(0, 0);
+    }
+
+    void unpinOldestTimestamp(const std::string& requestingServiceName) override {}
+
     Timestamp getOldestTimestamp() const override {
         return Timestamp();
     }
@@ -174,6 +186,10 @@ public:
     bool waitUntilUnjournaledWritesDurable(OperationContext* opCtx,
                                            bool stableCheckpoint) override {
         return true;
+    }
+
+    bool underCachePressure() override {
+        return false;
     }
 
     void dump() const override {}

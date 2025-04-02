@@ -96,6 +96,14 @@ public:
         return _remoteAddr;
     }
 
+    const SockAddr& getProxiedSrcRemoteAddr() const {
+        if (_proxiedSrcRemoteAddr) {
+            return *_proxiedSrcRemoteAddr;
+        }
+
+        return _remoteAddr;
+    }
+
     const SockAddr& localAddr() const {
         return _localAddr;
     }
@@ -107,18 +115,17 @@ public:
 
     void end() override;
 
-    StatusWith<Message> sourceMessage() noexcept override;
+    StatusWith<Message> sourceMessage() override;
 
-    Future<Message> asyncSourceMessage(const BatonHandle& baton = nullptr) noexcept override;
+    Future<Message> asyncSourceMessage(const BatonHandle& baton = nullptr) override;
 
-    Status waitForData() noexcept override;
+    Status waitForData() override;
 
-    Future<void> asyncWaitForData() noexcept override;
+    Future<void> asyncWaitForData() override;
 
-    Status sinkMessage(Message message) noexcept override;
+    Status sinkMessage(Message message) override;
 
-    Future<void> asyncSinkMessage(Message message,
-                                  const BatonHandle& baton = nullptr) noexcept override;
+    Future<void> asyncSinkMessage(Message message, const BatonHandle& baton = nullptr) override;
 
     void cancelAsyncOperations(const BatonHandle& baton = nullptr) override;
 
@@ -126,10 +133,14 @@ public:
 
     bool isConnected() override;
 
-    bool isFromLoadBalancer() const override;
+    bool isConnectedToLoadBalancerPort() const override;
+
+    bool isLoadBalancerPeer() const override;
+
+    void setisLoadBalancerPeer(bool helloHasLoadBalancedOption) override;
 
     bool bindsToOperationState() const override {
-        return isFromLoadBalancer();
+        return isLoadBalancerPeer();
     }
 
     bool isFromRouterPort() const override {
@@ -262,13 +273,6 @@ protected:
     template <typename Buffer>
     bool checkForHTTPRequest(const Buffer& buffers);
 
-    /**
-     * Called from read() to send an HTTP response back to a client that's trying to use HTTP
-     * over a native MongoDB port. This returns a Future<Message> to match its only caller, but it
-     * always contains an error, so it could really return Future<Anything>
-     */
-    Future<Message> sendHTTPResponse(const BatonHandle& baton = nullptr);
-
     bool shouldOverrideMaxConns(
         const std::vector<std::variant<CIDR, std::string>>& exemptions) const override;
 
@@ -309,9 +313,20 @@ protected:
 
     AsioTransportLayer* const _tl;
     bool _isIngressSession;
-    bool _isFromLoadBalancer = false;
+
+    /**
+     * We have a distinction here. A load balancer port can accept connections that are
+     * either attempting to connect to a load balancer or as a normal targeted connection.
+     * The bools below describe if 1/ the connection is connecting to the load balancer port,
+     * and 2/ the connection is a load balancer type connection. We only find out if the
+     * connection is a LoadBalancerConnection if the hello command parses {loadBalancer: 1}.
+     */
+    bool _isConnectedToLoadBalancerPort = false;
+    bool _isLoadBalancerPeer = false;
     boost::optional<HostAndPort> _proxiedSrcEndpoint;
     boost::optional<HostAndPort> _proxiedDstEndpoint;
+
+    boost::optional<SockAddr> _proxiedSrcRemoteAddr;
 
     AsyncOperationState _asyncOpState;
 

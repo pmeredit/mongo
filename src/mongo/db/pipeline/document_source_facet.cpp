@@ -148,7 +148,7 @@ std::string getStageNameNotAllowedInFacet(const DocumentSource& source,
 }  // namespace
 
 std::unique_ptr<DocumentSourceFacet::LiteParsed> DocumentSourceFacet::LiteParsed::parse(
-    const NamespaceString& nss, const BSONElement& spec) {
+    const NamespaceString& nss, const BSONElement& spec, const LiteParserOptions& options) {
     std::vector<LiteParsedPipeline> liteParsedPipelines;
 
     for (auto&& rawPipeline : extractRawPipelines(spec)) {
@@ -228,8 +228,8 @@ Value DocumentSourceFacet::serialize(const SerializationOptions& opts) const {
     MutableDocument serialized;
     for (auto&& facet : _facets) {
         serialized[opts.serializeFieldPathFromString(facet.name)] =
-            Value(opts.verbosity ? facet.pipeline->writeExplainOps(opts)
-                                 : facet.pipeline->serialize(opts));
+            Value(opts.isSerializingForExplain() ? facet.pipeline->writeExplainOps(opts)
+                                                 : facet.pipeline->serialize(opts));
     }
     return Value(Document{{"$facet", serialized.freezeToValue()}});
 }
@@ -338,24 +338,11 @@ bool DocumentSourceFacet::usedDisk() {
 
 DepsTracker::State DocumentSourceFacet::getDependencies(DepsTracker* deps) const {
     for (auto&& facet : _facets) {
-        auto subDepsTracker = facet.pipeline->getDependencies(deps->getUnavailableMetadata());
+        auto subDepsTracker = facet.pipeline->getDependencies(deps->getAvailableMetadata());
 
         deps->fields.insert(subDepsTracker.fields.begin(), subDepsTracker.fields.end());
-
         deps->needWholeDocument = deps->needWholeDocument || subDepsTracker.needWholeDocument;
-
-        // The text score and search sequence token are the only type of metadata that could be
-        // needed by $facet.
-        // TODO SERVER-99596 Try to handle this generically rather than specifying individual fields
-        deps->setNeedsMetadata(
-            DocumentMetadataFields::kTextScore,
-            deps->getNeedsMetadata(DocumentMetadataFields::kTextScore) ||
-                subDepsTracker.getNeedsMetadata(DocumentMetadataFields::kTextScore));
-
-        deps->setNeedsMetadata(
-            DocumentMetadataFields::kSearchSequenceToken,
-            deps->getNeedsMetadata(DocumentMetadataFields::kSearchSequenceToken) ||
-                subDepsTracker.getNeedsMetadata(DocumentMetadataFields::kSearchSequenceToken));
+        deps->setNeedsMetadata(subDepsTracker.metadataDeps());
 
         if (deps->needWholeDocument && deps->getNeedsMetadata(DocumentMetadataFields::kTextScore)) {
             break;

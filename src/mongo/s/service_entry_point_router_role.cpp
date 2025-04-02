@@ -61,9 +61,6 @@
 #include "mongo/db/session/session_catalog.h"
 #include "mongo/db/stats/top.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/rpc/message.h"
 #include "mongo/s/commands/strategy.h"
 #include "mongo/s/grid.h"
@@ -118,23 +115,21 @@ struct HandleRequest {
 };
 
 void HandleRequest::setupEnvironment() {
-    using namespace fmt::literals;
     auto opCtx = rec.getOpCtx();
 
     // This exception will not be returned to the caller, but will be logged and will close the
     // connection
     uassert(ErrorCodes::IllegalOperation,
-            "Message type {} is not supported."_format(op),
+            fmt::format("Message type {} is not supported.", fmt::underlying(op)),
             isSupportedRequestNetworkOp(op) &&
                 op != dbCompressed);  // Decompression should be handled above us.
 
     // Start a new NotPrimaryErrorTracker session. Any exceptions thrown from here onwards will be
     // returned to the caller (if the type of the message permits it).
     auto client = opCtx->getClient();
+    CurOp::get(opCtx)->ensureStarted();
     NotPrimaryErrorTracker::get(client).startRequest();
     AuthorizationSession::get(client)->startRequest(opCtx);
-
-    CurOp::get(opCtx)->ensureStarted();
 }
 
 DbResponse HandleRequest::handleRequest() {
@@ -207,7 +202,7 @@ Future<DbResponse> ServiceEntryPointRouterRole::handleRequestImpl(OperationConte
 }
 
 Future<DbResponse> ServiceEntryPointRouterRole::handleRequest(OperationContext* opCtx,
-                                                              const Message& message) noexcept {
+                                                              const Message& message) {
     tassert(9391502,
             "Invalid ClusterRole in ServiceEntryPointRouterRole",
             opCtx->getService()->role().hasExclusively(ClusterRole::RouterServer));

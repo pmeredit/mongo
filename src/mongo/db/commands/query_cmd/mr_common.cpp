@@ -91,7 +91,6 @@ namespace {
 using namespace std::string_literals;
 
 Status interpretTranslationError(DBException* ex, const MapReduceCommandRequest& parsedMr) {
-    using namespace fmt::literals;
 
     auto status = ex->toStatus();
     auto outOptions = parsedMr.getOutOptions();
@@ -105,8 +104,8 @@ Status interpretTranslationError(DBException* ex, const MapReduceCommandRequest&
     std::string error;
     switch (static_cast<int>(ex->code())) {
         case ErrorCodes::InvalidNamespace:
-            error =
-                "Invalid output namespace {} for MapReduce"_format(outNss.toStringForErrorMsg());
+            error = fmt::format("Invalid output namespace {} for MapReduce",
+                                outNss.toStringForErrorMsg());
             break;
         case 15976:
             error = "The mapReduce sort option must have at least one sort key";
@@ -121,12 +120,13 @@ Status interpretTranslationError(DBException* ex, const MapReduceCommandRequest&
             break;
         case 17385:
         case 31319:
-            error = "Can't output mapReduce results to special collection {}"_format(outNss.coll());
+            error = fmt::format("Can't output mapReduce results to special collection {}",
+                                outNss.coll());
             break;
         case 31320:
         case 31321:
-            error = "Can't output mapReduce results to internal DB {}"_format(
-                outNss.dbName().toStringForErrorMsg());
+            error = fmt::format("Can't output mapReduce results to internal DB {}",
+                                outNss.dbName().toStringForErrorMsg());
             break;
         default:
             // Prepend MapReduce context in the event of an unknown exception.
@@ -231,9 +231,8 @@ auto translateOutReduce(boost::intrusive_ptr<ExpressionContext> expCtx,
     // at the moment so we reparse here. Note that the reduce function signature expects 2
     // arguments, the first being the key and the second being the array of values to reduce.
     auto reduceObj =
-        BSON("args" << BSON_ARRAY("$_id" << BSON_ARRAY("$value"
-                                                       << "$$new.value"))
-                    << "body" << reduceCode << "lang" << ExpressionFunction::kJavaScript);
+        BSON("args" << BSON_ARRAY("$_id" << BSON_ARRAY("$value" << "$$new.value")) << "body"
+                    << reduceCode << "lang" << ExpressionFunction::kJavaScript);
 
     auto reduceSpec = BSON(DocumentSourceProject::kStageName << BSON(
                                "value" << BSON(ExpressionFunction::kExpressionName << reduceObj)));
@@ -241,9 +240,8 @@ auto translateOutReduce(boost::intrusive_ptr<ExpressionContext> expCtx,
 
     // Build finalize $project stage if given.
     if (finalizeCode && finalizeCode->hasCode()) {
-        auto finalizeObj = BSON("args" << BSON_ARRAY("$_id"
-                                                     << "$value")
-                                       << "body" << finalizeCode->getCode().value() << "lang"
+        auto finalizeObj = BSON("args" << BSON_ARRAY("$_id" << "$value") << "body"
+                                       << finalizeCode->getCode().value() << "lang"
                                        << ExpressionFunction::kJavaScript);
         auto finalizeSpec =
             BSON(DocumentSourceProject::kStageName

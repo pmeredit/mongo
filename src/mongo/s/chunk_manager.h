@@ -501,6 +501,14 @@ public:
         return _allowMigrations;
     }
 
+    bool isTimeseriesCollection() const {
+        return getTimeseriesFields().has_value();
+    }
+
+    bool isNewTimeseriesWithoutView() const {
+        return isTimeseriesCollection() && !nss().isTimeseriesBucketsCollection();
+    }
+
 private:
     friend class ChunkManager;
 
@@ -690,14 +698,8 @@ struct EndpointComp {
  */
 class ChunkManager {
 public:
-    ChunkManager(ShardId dbPrimary,
-                 DatabaseVersion dbVersion,
-                 RoutingTableHistoryValueHandle rt,
-                 boost::optional<Timestamp> clusterTime)
-        : _dbPrimary(std::move(dbPrimary)),
-          _dbVersion(std::move(dbVersion)),
-          _rt(std::move(rt)),
-          _clusterTime(std::move(clusterTime)) {}
+    ChunkManager(RoutingTableHistoryValueHandle rt, boost::optional<Timestamp> clusterTime)
+        : _rt(std::move(rt)), _clusterTime(std::move(clusterTime)) {}
 
     // Methods supported on both sharded and unsharded collections
 
@@ -738,14 +740,6 @@ public:
      * to provide a stable view of its constituent shards.
      */
     bool allowMigrations() const;
-
-    const ShardId& dbPrimary() const {
-        return _dbPrimary;
-    }
-
-    const DatabaseVersion& dbVersion() const {
-        return _dbVersion;
-    }
 
     int numChunks() const {
         return _rt->optRt ? _rt->optRt->numChunks() : 1;
@@ -1000,10 +994,17 @@ public:
         return *_rt->optRt;
     }
 
-private:
-    ShardId _dbPrimary;
-    DatabaseVersion _dbVersion;
+    bool isTimeseriesCollection() const {
+        tassert(9949200, "Expected routing table to be initialized", _rt->optRt);
+        return _rt->optRt->isTimeseriesCollection();
+    }
 
+    bool isNewTimeseriesWithoutView() const {
+        tassert(9949201, "Expected routing table to be initialized", _rt->optRt);
+        return _rt->optRt->isNewTimeseriesWithoutView();
+    }
+
+private:
     RoutingTableHistoryValueHandle _rt;
 
     boost::optional<Timestamp> _clusterTime;

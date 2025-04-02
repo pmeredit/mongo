@@ -2,7 +2,7 @@
  * Tests dbCheck fails on write concern error.
  *
  * @tags: [
- *   requires_fcv_81
+ *   requires_fcv_80
  * ]
  */
 import {configureFailPoint} from "jstests/libs/fail_point_util.js";
@@ -98,15 +98,13 @@ function runTest(validateMode, writeConcern) {
     rst.stopSet();
 }
 
-["dataConsistencyAndMissingIndexKeysCheck",
- "extraIndexKeysCheck"]
-    .forEach((failpointName) => {
-        runTest(failpointName, {
-            w: 'majority',
-            wtimeout: 100,
-        });
-        runTest(failpointName, {
-            w: 3,
-            wtimeout: 100,
-        });
+["dataConsistencyAndMissingIndexKeysCheck", "extraIndexKeysCheck"].forEach((failpointName) => {
+    runTest(failpointName, {
+        w: 'majority',
+        wtimeout: 100,
     });
+    runTest(failpointName, {
+        w: 3,
+        wtimeout: 100,
+    });
+});

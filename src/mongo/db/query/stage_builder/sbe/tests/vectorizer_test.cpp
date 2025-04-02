@@ -32,15 +32,15 @@
 #include <absl/container/node_hash_map.h>
 
 #include "mongo/base/string_data.h"
-#include "mongo/db/exec/sbe/abt/abt_unit_test_utils.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/query/optimizer/algebra/operator.h"
 #include "mongo/db/query/optimizer/algebra/polyvalue.h"
 #include "mongo/db/query/optimizer/comparison_op.h"
 #include "mongo/db/query/stage_builder/sbe/sbexpr.h"
+#include "mongo/db/query/stage_builder/sbe/tests/abt_unit_test_utils.h"
 #include "mongo/db/query/stage_builder/sbe/vectorizer.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/idl/server_parameter_test_util.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::stage_builder {
 namespace {
@@ -606,11 +606,229 @@ TEST(VectorizerTest, ConvertBooleanAndOnCell) {
         *processed.expr);
 }
 
+TEST(VectorizerTest, ConvertBooleanNaryAndOnCell) {
+    auto tree1 = make<NaryOp>(
+        Operations::And,
+        makeSeq(make<BinaryOp>(Operations::Lte, make<Variable>("inputVar"), Constant::int32(59)),
+                make<BinaryOp>(Operations::Gt, make<Variable>("inputVar"), Constant::int32(9))));
+
+    sbe::value::FrameIdGenerator generator;
+    Vectorizer::VariableTypes bindings;
+    bindings.emplace("inputVar"_sd,
+                     std::make_pair(TypeSignature::kCellType.include(TypeSignature::kAnyScalarType),
+                                    boost::none));
+
+    auto processed =
+        Vectorizer{&generator, Vectorizer::Purpose::Filter}.vectorize(tree1, bindings, boost::none);
+
+    ASSERT_TRUE(processed.expr.has_value());
+    ASSERT_EXPLAIN_BSON_AUTO(
+        "{\n"
+        "    nodeType: \"Let\", \n"
+        "    variable: \"__l1_0\", \n"
+        "    bind: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"cellFoldValues_F\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"FunctionCall\", \n"
+        "                name: \"valueBlockLteScalar\", \n"
+        "                arguments: [\n"
+        "                    {\n"
+        "                        nodeType: \"FunctionCall\", \n"
+        "                        name: \"cellBlockGetFlatValuesBlock\", \n"
+        "                        arguments: [\n"
+        "                            {\n"
+        "                                nodeType: \"Variable\", \n"
+        "                                name: \"inputVar\"\n"
+        "                            }\n"
+        "                        ]\n"
+        "                    }, \n"
+        "                    {\n"
+        "                        nodeType: \"Const\", \n"
+        "                        tag: \"NumberInt32\", \n"
+        "                        value: 59\n"
+        "                    }\n"
+        "                ]\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"inputVar\"\n"
+        "            }\n"
+        "        ]\n"
+        "    }, \n"
+        "    expression: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"valueBlockLogicalAnd\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"__l1_0\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"FunctionCall\", \n"
+        "                name: \"cellFoldValues_F\", \n"
+        "                arguments: [\n"
+        "                    {\n"
+        "                        nodeType: \"FunctionCall\", \n"
+        "                        name: \"valueBlockGtScalar\", \n"
+        "                        arguments: [\n"
+        "                            {\n"
+        "                                nodeType: \"FunctionCall\", \n"
+        "                                name: \"cellBlockGetFlatValuesBlock\", \n"
+        "                                arguments: [\n"
+        "                                    {\n"
+        "                                        nodeType: \"Variable\", \n"
+        "                                        name: \"inputVar\"\n"
+        "                                    }\n"
+        "                                ]\n"
+        "                            }, \n"
+        "                            {\n"
+        "                                nodeType: \"Const\", \n"
+        "                                tag: \"NumberInt32\", \n"
+        "                                value: 9\n"
+        "                            }\n"
+        "                        ]\n"
+        "                    }, \n"
+        "                    {\n"
+        "                        nodeType: \"Variable\", \n"
+        "                        name: \"inputVar\"\n"
+        "                    }\n"
+        "                ]\n"
+        "            }\n"
+        "        ]\n"
+        "    }\n"
+        "}\n",
+        *processed.expr);
+}
+
 TEST(VectorizerTest, ConvertBooleanOrOnCell) {
     auto tree1 = make<BinaryOp>(
         Operations::Or,
         make<BinaryOp>(Operations::Lte, make<Variable>("inputVar"), Constant::int32(59)),
         make<BinaryOp>(Operations::Gt, make<Variable>("inputVar"), Constant::int32(9)));
+
+    sbe::value::FrameIdGenerator generator;
+    Vectorizer::VariableTypes bindings;
+    bindings.emplace("inputVar"_sd,
+                     std::make_pair(TypeSignature::kCellType.include(TypeSignature::kAnyScalarType),
+                                    boost::none));
+
+    auto processed =
+        Vectorizer{&generator, Vectorizer::Purpose::Filter}.vectorize(tree1, bindings, boost::none);
+
+    ASSERT_TRUE(processed.expr.has_value());
+
+    ASSERT_EXPLAIN_BSON_AUTO(
+        "{\n"
+        "    nodeType: \"Let\", \n"
+        "    variable: \"__l1_0\", \n"
+        "    bind: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"cellFoldValues_F\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"FunctionCall\", \n"
+        "                name: \"valueBlockLteScalar\", \n"
+        "                arguments: [\n"
+        "                    {\n"
+        "                        nodeType: \"FunctionCall\", \n"
+        "                        name: \"cellBlockGetFlatValuesBlock\", \n"
+        "                        arguments: [\n"
+        "                            {\n"
+        "                                nodeType: \"Variable\", \n"
+        "                                name: \"inputVar\"\n"
+        "                            }\n"
+        "                        ]\n"
+        "                    }, \n"
+        "                    {\n"
+        "                        nodeType: \"Const\", \n"
+        "                        tag: \"NumberInt32\", \n"
+        "                        value: 59\n"
+        "                    }\n"
+        "                ]\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"inputVar\"\n"
+        "            }\n"
+        "        ]\n"
+        "    }, \n"
+        "    expression: {\n"
+        "        nodeType: \"Let\", \n"
+        "        variable: \"__l2_0\", \n"
+        "        bind: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"valueBlockLogicalNot\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"FunctionCall\", \n"
+        "                    name: \"valueBlockFillEmpty\", \n"
+        "                    arguments: [\n"
+        "                        {\n"
+        "                            nodeType: \"Variable\", \n"
+        "                            name: \"__l1_0\"\n"
+        "                        }, \n"
+        "                        {\n"
+        "                            nodeType: \"Const\", \n"
+        "                            tag: \"Boolean\", \n"
+        "                            value: false\n"
+        "                        }\n"
+        "                    ]\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        expression: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"valueBlockLogicalOr\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"__l1_0\"\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"FunctionCall\", \n"
+        "                    name: \"cellFoldValues_F\", \n"
+        "                    arguments: [\n"
+        "                        {\n"
+        "                            nodeType: \"FunctionCall\", \n"
+        "                            name: \"valueBlockGtScalar\", \n"
+        "                            arguments: [\n"
+        "                                {\n"
+        "                                    nodeType: \"FunctionCall\", \n"
+        "                                    name: \"cellBlockGetFlatValuesBlock\", \n"
+        "                                    arguments: [\n"
+        "                                        {\n"
+        "                                            nodeType: \"Variable\", \n"
+        "                                            name: \"inputVar\"\n"
+        "                                        }\n"
+        "                                    ]\n"
+        "                                }, \n"
+        "                                {\n"
+        "                                    nodeType: \"Const\", \n"
+        "                                    tag: \"NumberInt32\", \n"
+        "                                    value: 9\n"
+        "                                }\n"
+        "                            ]\n"
+        "                        }, \n"
+        "                        {\n"
+        "                            nodeType: \"Variable\", \n"
+        "                            name: \"inputVar\"\n"
+        "                        }\n"
+        "                    ]\n"
+        "                }\n"
+        "            ]\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        *processed.expr);
+}
+
+TEST(VectorizerTest, ConvertBooleanNaryOrOnCell) {
+    auto tree1 = make<NaryOp>(
+        Operations::Or,
+        makeSeq(make<BinaryOp>(Operations::Lte, make<Variable>("inputVar"), Constant::int32(59)),
+                make<BinaryOp>(Operations::Gt, make<Variable>("inputVar"), Constant::int32(9))));
 
     sbe::value::FrameIdGenerator generator;
     Vectorizer::VariableTypes bindings;
@@ -3403,6 +3621,337 @@ void assertArithmeticOperationScalarScalar(const std::string& opStr,
         *processed.expr);
 }
 
+void assertArithmeticOperationBlockBlockBlock(const std::string& fnStr,
+                                              const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"FunctionCall\", \n"
+        "    name: \"" +
+            fnStr +
+            "\", \n"
+            "    arguments: [\n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"Nothing\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"Variable\", \n"
+            "            name: \"var1\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"FunctionCall\", \n"
+            "            name: \"" +
+            fnStr +
+            "\", \n"
+            "            arguments: [\n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"Nothing\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var2\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var3\"\n"
+            "                }\n"
+            "            ]\n"
+            "        }\n"
+            "    ]\n"
+            "}\n",
+        *processed.expr);
+}
+
+void assertArithmeticOperationBlockScalarScalar(const std::string& fnStr,
+                                                const std::string& opStr,
+                                                const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"FunctionCall\", \n"
+        "    name: \"" +
+            fnStr +
+            "\", \n"
+            "    arguments: [\n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"Nothing\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"Variable\", \n"
+            "            name: \"var\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"BinaryOp\", \n"
+            "            op: \"" +
+            opStr +
+            "\", \n"
+            "            left: {\n"
+            "                nodeType: \"Const\", \n"
+            "                tag: \"NumberInt32\", \n"
+            "                value: 9\n"
+            "            }, \n"
+            "            right: {\n"
+            "                nodeType: \"Const\", \n"
+            "                tag: \"NumberInt32\", \n"
+            "                value: 20\n"
+            "            }\n"
+            "        }\n"
+            "    ]\n"
+            "}\n",
+        *processed.expr);
+}
+
+void assertArithmeticOperationScalarBlockScalar(const std::string& fnStr,
+                                                const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"FunctionCall\", \n"
+        "    name: \"" +
+            fnStr +
+            "\", \n"
+            "    arguments: [\n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"Nothing\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"NumberInt32\", \n"
+            "            value: 9\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"FunctionCall\", \n"
+            "            name: \"" +
+            fnStr +
+            "\", \n"
+            "            arguments: [\n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"Nothing\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"NumberInt32\", \n"
+            "                    value: 20\n"
+            "                }\n"
+            "            ]\n"
+            "        }\n"
+            "    ]\n"
+            "}\n",
+        *processed.expr);
+}
+
+void assertArithmeticOperationScalarScalarBlock(const std::string& fnStr,
+                                                const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"FunctionCall\", \n"
+        "    name: \"" +
+            fnStr +
+            "\", \n"
+            "    arguments: [\n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"Nothing\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"NumberInt32\", \n"
+            "            value: 9\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"FunctionCall\", \n"
+            "            name: \"" +
+            fnStr +
+            "\", \n"
+            "            arguments: [\n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"Nothing\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"NumberInt32\", \n"
+            "                    value: 20\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var\"\n"
+            "                }\n"
+            "            ]\n"
+            "        }\n"
+            "    ]\n"
+            "}\n",
+        *processed.expr);
+}
+
+void assertArithmeticOperationBlockBlockScalar(const std::string& fnStr,
+                                               const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"FunctionCall\", \n"
+        "    name: \"" +
+            fnStr +
+            "\", \n"
+            "    arguments: [\n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"Nothing\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"Variable\", \n"
+            "            name: \"var1\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"FunctionCall\", \n"
+            "            name: \"" +
+            fnStr +
+            "\", \n"
+            "            arguments: [\n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"Nothing\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var2\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"NumberInt32\", \n"
+            "                    value: 9\n"
+            "                }\n"
+            "            ]\n"
+            "        }\n"
+            "    ]\n"
+            "}\n",
+        *processed.expr);
+}
+
+void assertArithmeticOperationBlockScalarBlock(const std::string& fnStr,
+                                               const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"FunctionCall\", \n"
+        "    name: \"" +
+            fnStr +
+            "\", \n"
+            "    arguments: [\n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"Nothing\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"Variable\", \n"
+            "            name: \"var1\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"FunctionCall\", \n"
+            "            name: \"" +
+            fnStr +
+            "\", \n"
+            "            arguments: [\n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"Nothing\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"NumberInt32\", \n"
+            "                    value: 9\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var2\"\n"
+            "                }\n"
+            "            ]\n"
+            "        }\n"
+            "    ]\n"
+            "}\n",
+        *processed.expr);
+}
+
+void assertArithmeticOperationScalarBlockBlock(const std::string& fnStr,
+                                               const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"FunctionCall\", \n"
+        "    name: \"" +
+            fnStr +
+            "\", \n"
+            "    arguments: [\n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"Nothing\"\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"NumberInt32\", \n"
+            "            value: 9\n"
+            "        }, \n"
+            "        {\n"
+            "            nodeType: \"FunctionCall\", \n"
+            "            name: \"" +
+            fnStr +
+            "\", \n"
+            "            arguments: [\n"
+            "                {\n"
+            "                    nodeType: \"Const\", \n"
+            "                    tag: \"Nothing\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var1\"\n"
+            "                }, \n"
+            "                {\n"
+            "                    nodeType: \"Variable\", \n"
+            "                    name: \"var2\"\n"
+            "                }\n"
+            "            ]\n"
+            "        }\n"
+            "    ]\n"
+            "}\n",
+        *processed.expr);
+}
+
+void assertArithmeticOperationScalarScalarScalar(const std::string& opStr,
+                                                 const Vectorizer::Tree& processed) {
+    ASSERT_EXPLAIN_BSON(
+        "{\n"
+        "    nodeType: \"BinaryOp\", \n"
+        "    op: \"" +
+            opStr +
+            "\", \n"
+            "    left: {\n"
+            "        nodeType: \"Const\", \n"
+            "        tag: \"NumberInt32\", \n"
+            "        value: 9\n"
+            "    }, \n"
+            "    right: {\n"
+            "        nodeType: \"BinaryOp\", \n"
+            "        op: \"" +
+            opStr +
+            "\", \n"
+            "        left: {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"NumberInt32\", \n"
+            "            value: 20\n"
+            "        }, \n"
+            "        right: {\n"
+            "            nodeType: \"Const\", \n"
+            "            tag: \"NumberInt32\", \n"
+            "            value: 100\n"
+            "        }\n"
+            "    }\n"
+            "}\n",
+        *processed.expr);
+}
+
 TEST(VectorizerTest, ConvertAdd) {
     std::string fnStr{"valueBlockAdd"};
     std::string opStr{"Add"};
@@ -3475,6 +4024,166 @@ TEST(VectorizerTest, ConvertAdd) {
 
         ASSERT_TRUE(processed.expr.has_value());
         assertArithmeticOperationScalarScalar(opStr, processed);
+    }
+
+    {
+        auto treeBlocks = make<NaryOp>(
+            op, ABTVector{make<Variable>("var1"), make<Variable>("var2"), make<Variable>("var3")});
+
+        Vectorizer::VariableTypes bindings;
+        bindings.emplace(
+            "var1"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+        bindings.emplace(
+            "var2"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+        bindings.emplace(
+            "var3"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeBlocks, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationBlockBlockBlock(fnStr, processed);
+    }
+
+    {
+        auto treeBlockScalarScalar = make<NaryOp>(
+            op, ABTVector{make<Variable>("var"), Constant::int32(9), Constant::int32(20)});
+
+        Vectorizer::VariableTypes bindings;
+        bindings.emplace(
+            "var"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeBlockScalarScalar, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationBlockScalarScalar(fnStr, opStr, processed);
+    }
+
+    {
+        auto treeScalarBlockScalar = make<NaryOp>(
+            op, ABTVector{Constant::int32(9), make<Variable>("var"), Constant::int32(20)});
+
+        Vectorizer::VariableTypes bindings;
+        bindings.emplace(
+            "var"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeScalarBlockScalar, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationScalarBlockScalar(fnStr, processed);
+    }
+
+    {
+        auto treeScalarScalarBlock = make<NaryOp>(
+            op, ABTVector{Constant::int32(9), Constant::int32(20), make<Variable>("var")});
+
+        Vectorizer::VariableTypes bindings;
+        bindings.emplace(
+            "var"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeScalarScalarBlock, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationScalarScalarBlock(fnStr, processed);
+    }
+
+    {
+        auto treeScalarScalarScalar = make<NaryOp>(
+            op, ABTVector{Constant::int32(9), Constant::int32(20), Constant::int32(100)});
+
+        Vectorizer::VariableTypes bindings;
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeScalarScalarScalar, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationScalarScalarScalar(opStr, processed);
+    }
+
+    {
+        auto treeBlockBlockScalar = make<NaryOp>(
+            op, ABTVector{make<Variable>("var1"), make<Variable>("var2"), Constant::int32(9)});
+
+        Vectorizer::VariableTypes bindings;
+        bindings.emplace(
+            "var"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+        bindings.emplace(
+            "var2"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeBlockBlockScalar, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationBlockBlockScalar(fnStr, processed);
+    }
+
+    {
+        auto treeScalarBlockBlock = make<NaryOp>(
+            op, ABTVector{Constant::int32(9), make<Variable>("var1"), make<Variable>("var2")});
+
+        Vectorizer::VariableTypes bindings;
+        bindings.emplace(
+            "var"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+        bindings.emplace(
+            "var2"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeScalarBlockBlock, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationScalarBlockBlock(fnStr, processed);
+    }
+
+    {
+        auto treeBlockScalarBlock = make<NaryOp>(
+            op, ABTVector{make<Variable>("var1"), Constant::int32(9), make<Variable>("var2")});
+
+        Vectorizer::VariableTypes bindings;
+        bindings.emplace(
+            "var"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+        bindings.emplace(
+            "var2"_sd,
+            std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                           boost::none));
+
+        sbe::value::FrameIdGenerator generator;
+        auto processed = Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(
+            treeBlockScalarBlock, bindings, boost::none);
+
+        ASSERT_TRUE(processed.expr.has_value());
+        assertArithmeticOperationBlockScalarBlock(fnStr, processed);
     }
 }
 
@@ -4102,5 +4811,316 @@ TEST(VectorizerTest, ConvertDateAdd) {
         "}\n",
         *processed.expr);
 }
+
+TEST(VectorizerTest, ConvertSwitch) {
+    auto tree = make<Switch>(
+        ABTVector{make<FunctionCall>("isNumber", makeSeq(make<Variable>("inputVar"))),
+                  make<BinaryOp>(Operations::Mult, Constant::int32(9), make<Variable>("inputVar")),
+                  make<FunctionCall>("isDate", makeSeq(make<Variable>("inputVar"))),
+                  make<FunctionCall>("dateAdd",
+                                     makeSeq(make<Variable>("timezoneVar"),
+                                             make<Variable>("inputVar"),
+                                             Constant::str("hour"_sd),
+                                             Constant::int32(8),
+                                             Constant::str("UTC"_sd))),
+                  Constant::null()});
+
+    sbe::value::FrameIdGenerator generator;
+    Vectorizer::VariableTypes bindings;
+    bindings.emplace("inputVar"_sd,
+                     std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kDateTimeType),
+                                    boost::none));
+
+    auto processed =
+        Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(tree, bindings, boost::none);
+
+    ASSERT_TRUE(processed.expr.has_value());
+    ASSERT_EXPLAIN_BSON_AUTO(
+        "{\n"
+        "    nodeType: \"Let\", \n"
+        "    variable: \"__l1_0\", \n"
+        "    bind: {\n"
+        "        nodeType: \"Const\", \n"
+        "        tag: \"Nothing\"\n"
+        "    }, \n"
+        "    expression: {\n"
+        "        nodeType: \"Let\", \n"
+        "        variable: \"__l2_0\", \n"
+        "        bind: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"valueBlockTypeMatch\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"inputVar\"\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"Const\", \n"
+        "                    tag: \"NumberInt32\", \n"
+        "                    value: 851970\n"
+        "                }\n"
+        "            ]\n"
+        "        }, \n"
+        "        expression: {\n"
+        "            nodeType: \"FunctionCall\", \n"
+        "            name: \"valueBlockCombine\", \n"
+        "            arguments: [\n"
+        "                {\n"
+        "                    nodeType: \"FunctionCall\", \n"
+        "                    name: \"valueBlockMult\", \n"
+        "                    arguments: [\n"
+        "                        {\n"
+        "                            nodeType: \"Variable\", \n"
+        "                            name: \"__l2_0\"\n"
+        "                        }, \n"
+        "                        {\n"
+        "                            nodeType: \"Const\", \n"
+        "                            tag: \"NumberInt32\", \n"
+        "                            value: 9\n"
+        "                        }, \n"
+        "                        {\n"
+        "                            nodeType: \"Variable\", \n"
+        "                            name: \"inputVar\"\n"
+        "                        }\n"
+        "                    ]\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"Let\", \n"
+        "                    variable: \"__l3_0\", \n"
+        "                    bind: {\n"
+        "                        nodeType: \"FunctionCall\", \n"
+        "                        name: \"valueBlockLogicalNot\", \n"
+        "                        arguments: [\n"
+        "                            {\n"
+        "                                nodeType: \"Variable\", \n"
+        "                                name: \"__l2_0\"\n"
+        "                            }\n"
+        "                        ]\n"
+        "                    }, \n"
+        "                    expression: {\n"
+        "                        nodeType: \"Let\", \n"
+        "                        variable: \"__l4_0\", \n"
+        "                        bind: {\n"
+        "                            nodeType: \"Variable\", \n"
+        "                            name: \"__l3_0\"\n"
+        "                        }, \n"
+        "                        expression: {\n"
+        "                            nodeType: \"Let\", \n"
+        "                            variable: \"__l5_0\", \n"
+        "                            bind: {\n"
+        "                                nodeType: \"FunctionCall\", \n"
+        "                                name: \"valueBlockTypeMatch\", \n"
+        "                                arguments: [\n"
+        "                                    {\n"
+        "                                        nodeType: \"Variable\", \n"
+        "                                        name: \"inputVar\"\n"
+        "                                    }, \n"
+        "                                    {\n"
+        "                                        nodeType: \"Const\", \n"
+        "                                        tag: \"NumberInt32\", \n"
+        "                                        value: 512\n"
+        "                                    }\n"
+        "                                ]\n"
+        "                            }, \n"
+        "                            expression: {\n"
+        "                                nodeType: \"FunctionCall\", \n"
+        "                                name: \"valueBlockCombine\", \n"
+        "                                arguments: [\n"
+        "                                    {\n"
+        "                                        nodeType: \"FunctionCall\", \n"
+        "                                        name: \"valueBlockDateAdd\", \n"
+        "                                        arguments: [\n"
+        "                                            {\n"
+        "                                                nodeType: \"FunctionCall\", \n"
+        "                                                name: \"valueBlockLogicalAnd\", \n"
+        "                                                arguments: [\n"
+        "                                                    {\n"
+        "                                                        nodeType: \"Variable\", \n"
+        "                                                        name: \"__l3_0\"\n"
+        "                                                    }, \n"
+        "                                                    {\n"
+        "                                                        nodeType: \"Variable\", \n"
+        "                                                        name: \"__l5_0\"\n"
+        "                                                    }\n"
+        "                                                ]\n"
+        "                                            }, \n"
+        "                                            {\n"
+        "                                                nodeType: \"Variable\", \n"
+        "                                                name: \"inputVar\"\n"
+        "                                            }, \n"
+        "                                            {\n"
+        "                                                nodeType: \"Variable\", \n"
+        "                                                name: \"timezoneVar\"\n"
+        "                                            }, \n"
+        "                                            {\n"
+        "                                                nodeType: \"Const\", \n"
+        "                                                tag: \"StringSmall\", \n"
+        "                                                value: \"hour\"\n"
+        "                                            }, \n"
+        "                                            {\n"
+        "                                                nodeType: \"Const\", \n"
+        "                                                tag: \"NumberInt32\", \n"
+        "                                                value: 8\n"
+        "                                            }, \n"
+        "                                            {\n"
+        "                                                nodeType: \"Const\", \n"
+        "                                                tag: \"StringSmall\", \n"
+        "                                                value: \"UTC\"\n"
+        "                                            }\n"
+        "                                        ]\n"
+        "                                    }, \n"
+        "                                    {\n"
+        "                                        nodeType: \"Let\", \n"
+        "                                        variable: \"__l6_0\", \n"
+        "                                        bind: {\n"
+        "                                            nodeType: \"FunctionCall\", \n"
+        "                                            name: \"valueBlockLogicalNot\", \n"
+        "                                            arguments: [\n"
+        "                                                {\n"
+        "                                                    nodeType: \"Variable\", \n"
+        "                                                    name: \"__l5_0\"\n"
+        "                                                }\n"
+        "                                            ]\n"
+        "                                        }, \n"
+        "                                        expression: {\n"
+        "                                            nodeType: \"FunctionCall\", \n"
+        "                                            name: \"valueBlockNewFill\", \n"
+        "                                            arguments: [\n"
+        "                                                {\n"
+        "                                                    nodeType: \"Const\", \n"
+        "                                                    tag: \"Null\", \n"
+        "                                                    value: null\n"
+        "                                                }, \n"
+        "                                                {\n"
+        "                                                    nodeType: \"FunctionCall\", \n"
+        "                                                    name: \"valueBlockSize\", \n"
+        "                                                    arguments: [\n"
+        "                                                        {\n"
+        "                                                            nodeType: \"Variable\", \n"
+        "                                                            name: \"__l6_0\"\n"
+        "                                                        }\n"
+        "                                                    ]\n"
+        "                                                }\n"
+        "                                            ]\n"
+        "                                        }\n"
+        "                                    }, \n"
+        "                                    {\n"
+        "                                        nodeType: \"Variable\", \n"
+        "                                        name: \"__l5_0\"\n"
+        "                                    }\n"
+        "                                ]\n"
+        "                            }\n"
+        "                        }\n"
+        "                    }\n"
+        "                }, \n"
+        "                {\n"
+        "                    nodeType: \"Variable\", \n"
+        "                    name: \"__l2_0\"\n"
+        "                }\n"
+        "            ]\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        *processed.expr);
+}
+
+TEST(VectorizerTest, ConvertMultiLet) {
+    // TODO SERVER-100579 Remove this when feature flag is removed
+    RAIIServerParameterControllerForTest sbeUpgradeBinaryTreesFeatureFlag{
+        "featureFlagSbeUpgradeBinaryTrees", true};
+
+    auto tree = make<MultiLet>(
+        std::vector<std::pair<ProjectionName, ABT>>{
+            {"var1", make<BinaryOp>(Operations::Add, make<Variable>("s1"), make<Variable>("s2"))},
+            {"var2", make<BinaryOp>(Operations::Add, make<Variable>("s3"), make<Variable>("s4"))}},
+        make<BinaryOp>(Operations::Add, make<Variable>("var1"), make<Variable>("var2")));
+
+    Vectorizer::VariableTypes bindings;
+    bindings.emplace(
+        "s1"_sd,
+        std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                       boost::none));
+    bindings.emplace(
+        "s2"_sd,
+        std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                       boost::none));
+
+    bindings.emplace(
+        "s3"_sd,
+        std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                       boost::none));
+    bindings.emplace(
+        "s4"_sd,
+        std::make_pair(TypeSignature::kBlockType.include(TypeSignature::kAnyScalarType),
+                       boost::none));
+
+    sbe::value::FrameIdGenerator generator;
+    auto processed =
+        Vectorizer{&generator, Vectorizer::Purpose::Project}.vectorize(tree, bindings, boost::none);
+
+    ASSERT_TRUE(processed.expr.has_value());
+    ASSERT_EXPLAIN_BSON_AUTO(
+        "{\n"
+        "    nodeType: \"MultiLet\", \n"
+        "    variable0: \"var1\", \n"
+        "    variable1: \"var2\", \n"
+        "    bind0: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"valueBlockAdd\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"Nothing\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"s1\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"s2\"\n"
+        "            }\n"
+        "        ]\n"
+        "    }, \n"
+        "    bind1: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"valueBlockAdd\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"Nothing\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"s3\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"s4\"\n"
+        "            }\n"
+        "        ]\n"
+        "    }, \n"
+        "    expression: {\n"
+        "        nodeType: \"FunctionCall\", \n"
+        "        name: \"valueBlockAdd\", \n"
+        "        arguments: [\n"
+        "            {\n"
+        "                nodeType: \"Const\", \n"
+        "                tag: \"Nothing\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"var1\"\n"
+        "            }, \n"
+        "            {\n"
+        "                nodeType: \"Variable\", \n"
+        "                name: \"var2\"\n"
+        "            }\n"
+        "        ]\n"
+        "    }\n"
+        "}\n",
+        *processed.expr);
+}
+
 }  // namespace
 }  // namespace mongo::stage_builder

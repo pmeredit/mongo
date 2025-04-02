@@ -170,6 +170,7 @@ void TimeseriesUpsertStage::_performInsert(BSONObj newMeasurement) {
                 // mongos will be able to start an internal transaction to handle the
                 // wouldChangeOwningShard error thrown below.
                 if (!feature_flags::gFeatureFlagUpdateDocumentShardKeyUsingTransactionApi.isEnabled(
+                        VersionContext::getDecoration(opCtx()),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
                     uassert(ErrorCodes::IllegalOperation,
                             "The upsert document could not be inserted onto the shard targeted "
@@ -198,8 +199,6 @@ void TimeseriesUpsertStage::_performInsert(BSONObj newMeasurement) {
                                                  _params.fromMigrate,
                                                  _params.stmtId,
                                                  &_insertedBucketIds,
-                                                 /*compressAndWriteBucketFunc=*/
-                                                 nullptr,
                                                  /*currentMinTime=*/
                                                  boost::none);
     });
@@ -211,7 +210,6 @@ BSONObj TimeseriesUpsertStage::_produceNewDocumentForInsert() {
     _getImmutablePaths();
 
     mutablebson::Document doc;
-    using namespace fmt::literals;
 
     if (_request.shouldUpsertSuppliedDocument()) {
         update::generateNewDocumentFromSuppliedDoc(opCtx(), _immutablePaths, &_request, doc);
@@ -233,7 +231,7 @@ BSONObj TimeseriesUpsertStage::_produceNewDocumentForInsert() {
     auto newDocument = doc.getObject();
     if (!DocumentValidationSettings::get(opCtx()).isInternalValidationDisabled()) {
         uassert(7655103,
-                "Document to upsert is larger than {}"_format(BSONObjMaxUserSize),
+                fmt::format("Document to upsert is larger than {}", BSONObjMaxUserSize),
                 newDocument.objsize() <= BSONObjMaxUserSize);
     }
 

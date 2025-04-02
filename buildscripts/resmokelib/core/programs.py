@@ -48,7 +48,6 @@ def get_path_env_var(env_vars):
 def get_binary_version(executable):
     """Return the string for the binary version of the given executable."""
 
-    # pylint: disable=wrong-import-position
     from buildscripts.resmokelib.multiversionconstants import LATEST_FCV
 
     split_executable = os.path.basename(executable).split("-")
@@ -134,9 +133,6 @@ def mongod_program(
         suite_set_parameters, "defaultConfigCommandTimeoutMS", bin_version, "7.3.0"
     )
 
-    if "grpcPort" not in mongod_options and suite_set_parameters.get("featureFlagGRPC"):
-        mongod_options["grpcPort"] = network.PortAllocator.next_fixture_port(job_num)
-
     remove_set_parameter_if_before_version(
         suite_set_parameters, "internalQueryStatsRateLimit", bin_version, "7.3.0"
     )
@@ -168,12 +164,19 @@ def mongod_program(
     return make_process(logger, args, **process_kwargs), final_mongod_options
 
 
-def mongos_program(logger, job_num, executable=None, process_kwargs=None, mongos_options=None):
+def mongos_program(
+    logger: logging.Logger,
+    job_num: int,
+    executable: Optional[str] = None,
+    process_kwargs: Optional[dict] = None,
+    mongos_options: dict = None,
+) -> Tuple[process.Process, dict]:
     """Return a Process instance that starts a mongos with arguments constructed from 'kwargs'."""
     bin_version = get_binary_version(executable)
     args = [executable]
 
     mongos_options = mongos_options.copy()
+    mongos_options.setdefault("set_parameters", {})
 
     if config.NOOP_MONGO_D_S_PROCESSES:
         args[0] = os.path.basename(args[0])
@@ -201,9 +204,6 @@ def mongos_program(logger, job_num, executable=None, process_kwargs=None, mongos
     remove_set_parameter_if_before_version(
         suite_set_parameters, "defaultConfigCommandTimeoutMS", bin_version, "7.3.0"
     )
-
-    if "grpcPort" not in mongos_options and suite_set_parameters.get("featureFlagGRPC"):
-        mongos_options["grpcPort"] = network.PortAllocator.next_fixture_port(job_num)
 
     remove_set_parameter_if_before_version(
         suite_set_parameters, "internalQueryStatsRateLimit", bin_version, "7.3.0"
@@ -305,6 +305,13 @@ def mongo_shell_program(
 
             test_data[opt_name] = config.CONFIG_FUZZER_ENCRYPTION_OPTS[opt_name]
 
+    if config.LOG_FORMAT:
+        test_data["logFormat"] = config.LOG_FORMAT
+
+    level_names_to_numbers = {"ERROR": 1, "WARNING": 2, "INFO": 3, "DEBUG": 4}
+    # Convert Log Level from string to numbered values. Defaults to using "INFO".
+    test_data["logLevel"] = level_names_to_numbers.get(config.LOG_LEVEL, 3)
+
     if config.SHELL_TLS_ENABLED:
         test_data["shellTlsEnabled"] = True
 
@@ -342,6 +349,7 @@ def mongo_shell_program(
     mongod_set_parameters = test_data.get("setParameters", {}).copy()
     mongos_set_parameters = test_data.get("setParametersMongos", {}).copy()
     mongocryptd_set_parameters = test_data.get("setParametersMongocryptd", {}).copy()
+    mongo_set_parameters = test_data.get("setParametersMongo", {}).copy()
 
     feature_flag_dict = {}
     if config.ENABLED_FEATURE_FLAGS is not None:
@@ -365,6 +373,9 @@ def mongo_shell_program(
         mongocryptd_set_parameters.update(utils.load_yaml(config.MONGOCRYPTD_SET_PARAMETERS))
         mongocryptd_set_parameters.update(feature_flag_dict)
 
+    if config.MONGO_SET_PARAMETERS is not None:
+        mongo_set_parameters.update(utils.load_yaml(config.MONGO_SET_PARAMETERS))
+
     fixturelib = FixtureLib()
     mongod_launcher = standalone.MongodLauncher(fixturelib)
 
@@ -384,6 +395,7 @@ def mongo_shell_program(
     test_data["setParameters"] = mongod_set_parameters
     test_data["setParametersMongos"] = mongos_set_parameters
     test_data["setParametersMongocryptd"] = mongocryptd_set_parameters
+    test_data["setShellParameters"] = mongo_set_parameters
 
     if "configShard" not in test_data and config.CONFIG_SHARD is not None:
         test_data["configShard"] = True
@@ -479,7 +491,9 @@ def mongo_shell_program(
         if config.SHELL_TLS_CERTIFICATE_KEY_FILE:
             kwargs["tlsCertificateKeyFile"] = config.SHELL_TLS_CERTIFICATE_KEY_FILE
 
-    if config.SHELL_GRPC:
+    # mongotmock testing with gRPC requires that the shell establish a connection with mongotmock
+    # over gRPC.
+    if config.SHELL_GRPC or mongod_set_parameters.get("useGrpcForSearch"):
         args.append("--gRPC")
 
     if connection_string is not None:
@@ -492,8 +506,12 @@ def mongo_shell_program(
         if "host" in kwargs:
             kwargs.pop("host")
 
+    for key in mongo_set_parameters:
+        val = str(mongo_set_parameters[key])
+        args.append("--setShellParameter=" + key + "=" + val)
+
     # if featureFlagQETextSearchPreview is enabled in setParameter, enable it in the shell also
-    # TODO: SERVER-94394 remove once FF is enabled by default
+    # TODO: SERVER-65769 remove once FF is enabled by default
     if mongod_set_parameters.get("featureFlagQETextSearchPreview"):
         args.append("--setShellParameter=featureFlagQETextSearchPreview=true")
 

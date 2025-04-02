@@ -1280,7 +1280,7 @@ class TestGenerator(testcase.IDLTestcase):
             ],
         )
 
-    def test_feature_flag_binary_compatible_disabled_by_default(self) -> None:
+    def test_binary_compatible_feature_flag_disabled_by_default(self) -> None:
         """Test generation of a disabled by default binary-compatible feature flag"""
         header, source = self.assert_generate_with_basic_types(
             dedent(
@@ -1296,17 +1296,17 @@ class TestGenerator(testcase.IDLTestcase):
         )
         self.assertStringsInFile(
             header,
-            ["mongo::FeatureFlagBinaryCompatible gToaster;"],
+            ["mongo::BinaryCompatibleFeatureFlag gToaster;"],
         )
         self.assertStringsInFile(
             source,
             [
-                "mongo::FeatureFlagBinaryCompatible gToaster{false};",
-                '<FeatureFlagServerParameter>("featureFlagToaster", gToaster);',
+                "mongo::BinaryCompatibleFeatureFlag gToaster{false};",
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
             ],
         )
 
-    def test_feature_flag_binary_compatible_enabled_by_default(self) -> None:
+    def test_binary_compatible_feature_flag_enabled_by_default(self) -> None:
         """Test generation of an enabled by default binary-compatible feature flag"""
         header, source = self.assert_generate_with_basic_types(
             dedent(
@@ -1322,17 +1322,17 @@ class TestGenerator(testcase.IDLTestcase):
         )
         self.assertStringsInFile(
             header,
-            ["mongo::FeatureFlagBinaryCompatible gToaster;"],
+            ["mongo::BinaryCompatibleFeatureFlag gToaster;"],
         )
         self.assertStringsInFile(
             source,
             [
-                "mongo::FeatureFlagBinaryCompatible gToaster{true};",
-                '<FeatureFlagServerParameter>("featureFlagToaster", gToaster);',
+                "mongo::BinaryCompatibleFeatureFlag gToaster{true};",
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
             ],
         )
 
-    def test_feature_flag_fcv_gated_disabled_on_all_versions_by_default(self) -> None:
+    def test_fcv_gated_feature_flag_disabled_on_all_versions_by_default(self) -> None:
         """Test generation of an FCV-gated feature flag disabled by default for all versions"""
         header, source = self.assert_generate_with_basic_types(
             dedent(
@@ -1348,17 +1348,17 @@ class TestGenerator(testcase.IDLTestcase):
         )
         self.assertStringsInFile(
             header,
-            ["mongo::FeatureFlagFCVGated gToaster;"],
+            ["mongo::FCVGatedFeatureFlag gToaster;"],
         )
         self.assertStringsInFile(
             source,
             [
-                'mongo::FeatureFlagFCVGated gToaster{false, ""_sd};',
-                '<FeatureFlagServerParameter>("featureFlagToaster", gToaster);',
+                'mongo::FCVGatedFeatureFlag gToaster{false, ""_sd};',
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
             ],
         )
 
-    def test_feature_flag_fcv_gated_enabled_since_version(self) -> None:
+    def test_fcv_gated_feature_flag_enabled_since_version(self) -> None:
         """Test generation of an FCV-gated feature flag enabled since a specified version"""
         header, source = self.assert_generate_with_basic_types(
             dedent(
@@ -1375,13 +1375,182 @@ class TestGenerator(testcase.IDLTestcase):
         )
         self.assertStringsInFile(
             header,
-            ["mongo::FeatureFlagFCVGated gToaster;"],
+            ["mongo::FCVGatedFeatureFlag gToaster;"],
         )
         self.assertStringsInFile(
             source,
             [
-                'mongo::FeatureFlagFCVGated gToaster{true, "123"_sd};',
-                '<FeatureFlagServerParameter>("featureFlagToaster", gToaster);',
+                'mongo::FCVGatedFeatureFlag gToaster{true, "123"_sd};',
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
+            ],
+        )
+
+    def test_fcv_gated_feature_flag_disabled_on_all_versions_by_default_with_enable_on_transitional_fcv(
+        self,
+    ) -> None:
+        """Test generation of an FCV-gated feature flag that specifies to transition on kUpgrading"""
+        header, source = self.assert_generate_with_basic_types(
+            dedent(
+                """
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    default: true
+                    version: 123
+                    shouldBeFCVGated: true
+                    enable_on_transitional_fcv: true
+            """
+            )
+        )
+        self.assertStringsInFile(
+            header,
+            ["mongo::FCVGatedFeatureFlag gToaster;"],
+        )
+        self.assertStringsInFile(
+            source,
+            [
+                'mongo::FCVGatedFeatureFlag gToaster{true, "123"_sd, true};',
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
+            ],
+        )
+
+    def test_fcv_gated_feature_flag_disabled_on_all_versions_by_default_with_enable_on_transitional_fcv_false(
+        self,
+    ) -> None:
+        """Test that the generation of an FCV-gated feature flag that specifies enable_on_transitional_fcv: false is equivalent to the default"""
+        header, source = self.assert_generate_with_basic_types(
+            dedent(
+                """
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    default: true
+                    version: 123
+                    shouldBeFCVGated: true
+                    enable_on_transitional_fcv: false
+            """
+            )
+        )
+        self.assertStringsInFile(
+            header,
+            ["mongo::FCVGatedFeatureFlag gToaster;"],
+        )
+        self.assertStringsInFile(
+            source,
+            [
+                'mongo::FCVGatedFeatureFlag gToaster{true, "123"_sd};',
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
+            ],
+        )
+
+    def test_legacy_context_unaware_fcv_gated_feature_flag(self) -> None:
+        """Test generation of an FCV-gated feature flag that uses the legacy feature flag API"""
+        header, source = self.assert_generate_with_basic_types(
+            dedent(
+                """
+            feature_flags:
+                featureFlagLegacyAPIToaster:
+                    description: "Make toast"
+                    cpp_varname: gLegacyAPIToaster
+                    default: true
+                    version: 123
+                    shouldBeFCVGated: true
+                    fcv_context_unaware: true
+            """
+            )
+        )
+        self.assertStringsInFile(
+            header,
+            ["mongo::LegacyContextUnawareFCVGatedFeatureFlag gLegacyAPIToaster;"],
+        )
+        self.assertStringsInFile(
+            source,
+            [
+                'mongo::LegacyContextUnawareFCVGatedFeatureFlag gLegacyAPIToaster{true, "123"_sd};',
+                '<FeatureFlagServerParameter>("featureFlagLegacyAPIToaster", &gLegacyAPIToaster);',
+            ],
+        )
+
+    def test_in_development_incremental_feature_rollout_flag(self) -> None:
+        """Test generation of an Incremental Feature Rollout (IFR) feature flag"""
+        header, source = self.assert_generate_with_basic_types(
+            dedent(
+                """
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: in_development
+                    shouldBeFCVGated: false
+            """
+            )
+        )
+        self.assertStringsInFile(
+            header,
+            ["mongo::IncrementalRolloutFeatureFlag gToaster;"],
+        )
+        self.assertStringsInFile(
+            source,
+            [
+                "mongo::IncrementalRolloutFeatureFlag gToaster{"
+                + '"featureFlagToaster"_sd, RolloutPhase::inDevelopment, false};',
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
+            ],
+        )
+
+    def test_rollout_incremental_feature_rollout_flag(self) -> None:
+        """Test generation of an Incremental Feature Rollout (IFR) feature flag"""
+        header, source = self.assert_generate_with_basic_types(
+            dedent(
+                """
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: rollout
+                    shouldBeFCVGated: false
+            """
+            )
+        )
+        self.assertStringsInFile(
+            header,
+            ["mongo::IncrementalRolloutFeatureFlag gToaster;"],
+        )
+        self.assertStringsInFile(
+            source,
+            [
+                "mongo::IncrementalRolloutFeatureFlag gToaster{"
+                + '"featureFlagToaster"_sd, RolloutPhase::rollout, true};',
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
+            ],
+        )
+
+    def test_released_incremental_feature_rollout_flag(self) -> None:
+        """Test generation of an Incremental Feature Rollout (IFR) feature flag"""
+        header, source = self.assert_generate_with_basic_types(
+            dedent(
+                """
+            feature_flags:
+                featureFlagToaster:
+                    description: "Make toast"
+                    cpp_varname: gToaster
+                    incremental_rollout_phase: released
+                    shouldBeFCVGated: false
+            """
+            )
+        )
+        self.assertStringsInFile(
+            header,
+            ["mongo::IncrementalRolloutFeatureFlag gToaster;"],
+        )
+        self.assertStringsInFile(
+            source,
+            [
+                "mongo::IncrementalRolloutFeatureFlag gToaster{"
+                + '"featureFlagToaster"_sd, RolloutPhase::released, true};',
+                '<FeatureFlagServerParameter>("featureFlagToaster", &gToaster);',
             ],
         )
 

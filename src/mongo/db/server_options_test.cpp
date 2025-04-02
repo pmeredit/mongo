@@ -68,10 +68,8 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/logv2/log_component.h"
 #include "mongo/logv2/log_severity.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/log_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/errno_util.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/options_parser/option_section.h"
@@ -97,7 +95,6 @@ using mongo::unittest::getMinimumLogSeverity;
 using mongo::unittest::hasMinimumLogSeverity;
 
 namespace moe = mongo::optionenvironment;
-using namespace fmt::literals;
 
 MONGO_INITIALIZER(ServerLogRedirection)(mongo::InitializerContext*) {
     // ssl_options_server.cpp has an initializer which depends on logging.
@@ -196,18 +193,18 @@ public:
     }
 
     std::string toString() const {
-        std::string str = "argv=[{}],"_format(boost::algorithm::join(binaryArgs(), ", "));
+        std::string str = fmt::format("argv=[{}],", boost::algorithm::join(binaryArgs(), ", "));
         if (hasConfigFile()) {
-            str += "confFile=[\n{}],"_format(configFileContents());
+            str += fmt::format("confFile=[\n{}],", configFileContents());
         }
         if (hasEnvVars()) {
             std::vector<std::string> envs;
             for (auto&& [k, v] : envVars_) {
-                envs.push_back("{}={}"_format(k, v));
+                envs.push_back(fmt::format("{}={}", k, v));
             }
-            str += "env=[{}],"_format(boost::algorithm::join(envs, ", "));
+            str += fmt::format("env=[{}],", boost::algorithm::join(envs, ", "));
         }
-        return "SetupOptionsTestConfig({})"_format(str);
+        return fmt::format("SetupOptionsTestConfig({})", str);
     }
 
 private:
@@ -817,7 +814,7 @@ TEST(SetupOptions, NonNumericSampleRateYAMLConfigOptionFailsToParse) {
     ASSERT_NOT_OK(parser.run(options, argv, &environment));
 }
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
 class ForkTestSpec {
 public:
     enum Value {
@@ -888,7 +885,8 @@ public:
     }
 
     std::string toString() const {
-        return "SetupOptionsTestConfig(specName={}, config={})"_format(name_, config_.toString());
+        return fmt::format(
+            "SetupOptionsTestConfig(specName={}, config={})", name_, config_.toString());
     }
 
 private:

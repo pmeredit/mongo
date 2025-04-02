@@ -24,7 +24,6 @@ from structlog.stdlib import LoggerFactory
 if __name__ == "__main__" and __package__ is None:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# pylint: disable=wrong-import-position
 import buildscripts.resmokelib.parser
 from buildscripts.ciconfig.evergreen import (
     EvergreenProjectConfig,
@@ -40,8 +39,6 @@ from buildscripts.patch_builds.change_data import (
 from buildscripts.resmokelib.suitesconfig import create_test_membership_map, get_suite, get_suites
 from buildscripts.resmokelib.utils import default_if_none, globstar
 
-# pylint: enable=wrong-import-position
-
 structlog.configure(logger_factory=LoggerFactory())
 LOGGER = structlog.getLogger(__name__)
 EXTERNAL_LOGGERS = {
@@ -50,7 +47,7 @@ EXTERNAL_LOGGERS = {
     "urllib3",
 }
 
-DEFAULT_VARIANT = "enterprise-amazon-linux2-arm64-all-feature-flags"
+DEFAULT_VARIANT = "enterprise-amazon-linux2023-arm64-all-feature-flags"
 ENTERPRISE_MODULE_PATH = "src/mongo/db/modules/enterprise"
 DEFAULT_REPO_LOCATIONS = ["."]
 REPEAT_SUITES = 2
@@ -799,10 +796,12 @@ def run(
     """
     _configure_logging(verbose)
 
-    repeat_config = RepeatConfig(repeat_tests_secs=repeat_tests_secs,
-                                 repeat_tests_min=repeat_tests_min,
-                                 repeat_tests_max=repeat_tests_max,
-                                 repeat_tests_num=repeat_tests_num)  # yapf: disable
+    repeat_config = RepeatConfig(
+        repeat_tests_secs=repeat_tests_secs,
+        repeat_tests_min=repeat_tests_min,
+        repeat_tests_max=repeat_tests_max,
+        repeat_tests_num=repeat_tests_num,
+    )
 
     repos = [Repo(x) for x in DEFAULT_REPO_LOCATIONS if os.path.isdir(x)]
     evg_conf = parse_evergreen_file(evg_project_file)

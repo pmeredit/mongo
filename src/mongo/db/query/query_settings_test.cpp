@@ -42,8 +42,7 @@
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index_names.h"
 #include "mongo/db/query/index_entry.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 using mongo::AllowedIndicesFilter;
 using mongo::BSONObj;
@@ -58,7 +57,7 @@ TEST(QuerySettingsTest, AllowedIndicesFilterAllowsIndexesByName) {
     auto keyPat = fromjson("{a:1, b:1}");
     IndexEntry a_idx(keyPat,
                      mongo::IndexNames::nameToType(mongo::IndexNames::findPluginName(keyPat)),
-                     mongo::IndexDescriptor::kLatestIndexVersion,
+                     mongo::IndexConfig::kLatestIndexVersion,
                      false,
                      {},
                      {},
@@ -71,7 +70,7 @@ TEST(QuerySettingsTest, AllowedIndicesFilterAllowsIndexesByName) {
                      nullptr);
     IndexEntry ab_idx(keyPat,
                       mongo::IndexNames::nameToType(mongo::IndexNames::findPluginName(keyPat)),
-                      mongo::IndexDescriptor::kLatestIndexVersion,
+                      mongo::IndexConfig::kLatestIndexVersion,
                       false,
                       {},
                       {},
@@ -93,7 +92,7 @@ TEST(QuerySettingsTest, AllowedIndicesFilterAllowsIndexesByKeyPattern) {
     auto keyPat_a = fromjson("{a:1}");
     IndexEntry a_idx(keyPat_a,
                      mongo::IndexNames::nameToType(mongo::IndexNames::findPluginName(keyPat_a)),
-                     mongo::IndexDescriptor::kLatestIndexVersion,
+                     mongo::IndexConfig::kLatestIndexVersion,
                      false,
                      {},
                      {},
@@ -107,7 +106,7 @@ TEST(QuerySettingsTest, AllowedIndicesFilterAllowsIndexesByKeyPattern) {
     auto keyPat_ab = fromjson("{a:1, b:1}");
     IndexEntry ab_idx(keyPat_ab,
                       mongo::IndexNames::nameToType(mongo::IndexNames::findPluginName(keyPat_ab)),
-                      mongo::IndexDescriptor::kLatestIndexVersion,
+                      mongo::IndexConfig::kLatestIndexVersion,
                       false,
                       {},
                       {},

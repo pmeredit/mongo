@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/document_timestamp_extractor.h"
+
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"

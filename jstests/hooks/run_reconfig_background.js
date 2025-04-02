@@ -6,6 +6,7 @@
  * This hook will run concurrently with tests.
  */
 import {DiscoverTopology, Topology} from "jstests/libs/discover_topology.js";
+import newMongoWithRetry from "jstests/libs/retryable_mongo.js";
 
 /**
  * Returns true if the error code is transient.
@@ -25,7 +26,8 @@ function isShutdownError(error) {
     // propagates the error code.
     return error.code === ErrorCodes.ShutdownInProgress ||
         error.code === ErrorCodes.InterruptedAtShutdown ||
-        error.message.includes("The server is in quiesce mode and will shut down");
+        error.message.includes("The server is in quiesce mode and will shut down") ||
+        error.message.includes("interrupted at shutdown");
 }
 
 /**
@@ -71,7 +73,7 @@ function reconfigBackground(primary, numNodes) {
     // could lead to generating an overwhelming amount of log messages.
     let conn;
     quietly(() => {
-        conn = new Mongo(primary);
+        conn = newMongoWithRetry(primary);
     });
     assert.neq(null, conn, `Failed to connect to primary '${primary}' for background reconfigs`);
 

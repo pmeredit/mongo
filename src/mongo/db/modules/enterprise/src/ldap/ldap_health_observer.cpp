@@ -72,7 +72,6 @@ LdapHealthObserver::CheckResult LdapHealthObserver::checkImpl(
         std::shuffle(std::begin(*resolvedHosts), std::end(*resolvedHosts), rng);
 
         LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
-                                    globalLDAPParams->bindPassword,
                                     globalLDAPParams->bindMethod,
                                     globalLDAPParams->bindSASLMechanisms,
                                     globalLDAPParams->useOSDefaults);

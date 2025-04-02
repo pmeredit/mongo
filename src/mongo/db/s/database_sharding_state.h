@@ -31,6 +31,7 @@
 
 #include <boost/move/utility_core.hpp>
 #include <boost/optional/optional.hpp>
+#include <shared_mutex>
 #include <utility>
 #include <vector>
 
@@ -53,8 +54,8 @@ namespace mongo {
  * CollectionShardingState) and contains sharding-related information about the database, such as
  * its database version.
  *
- * SYNCHRONISATION: Requires some combination of the DB lock and the DSS lock, but different methods
- * have different requirements though, so be sure to check the function-level comments for details.
+ * SYNCHRONIZATION: Some methods might require holding a database level lock, so be sure to check
+ * the function-level comments for details.
  */
 class DatabaseShardingState {
 public:
@@ -65,8 +66,8 @@ public:
     DatabaseShardingState& operator=(const DatabaseShardingState&) = delete;
 
     /**
-     * Obtains the sharding state for the specified database along with a resource lock in exclusive
-     * mode, which will be held until the object goes out of scope.
+     * Obtains the sharding state for the specified database along with a lock in exclusive mode,
+     * which will be held until the object goes out of scope.
      */
     class ScopedExclusiveDatabaseShardingState {
     public:
@@ -81,17 +82,19 @@ public:
     private:
         friend class DatabaseShardingState;
 
-        ScopedExclusiveDatabaseShardingState(Lock::ResourceLock lock, DatabaseShardingState* dss);
+        ScopedExclusiveDatabaseShardingState(std::unique_lock<std::shared_mutex> lock,  // NOLINT
+                                             DatabaseShardingState* dss);
 
-        Lock::ResourceLock _lock;
+        // This used to be a ResourceMutex, we use a shared_mutex instead to keep similar semantics.
+        std::unique_lock<std::shared_mutex> _lock;  // NOLINT
         DatabaseShardingState* _dss;
     };
 
     /**
-     * Obtains the sharding state for the specified database along with a resource lock in shared
-     * mode, which will be held until the object goes out of scope.
+     * Obtains the sharding state for the specified database along with a lock in shared mode, which
+     * will be held until the object goes out of scope.
      */
-    class ScopedSharedDatabaseShardingState : public ScopedExclusiveDatabaseShardingState {
+    class ScopedSharedDatabaseShardingState {
     public:
         const DatabaseShardingState* operator->() const {
             return _dss;
@@ -104,7 +107,11 @@ public:
     private:
         friend class DatabaseShardingState;
 
-        ScopedSharedDatabaseShardingState(Lock::ResourceLock lock, DatabaseShardingState* dss);
+        ScopedSharedDatabaseShardingState(std::shared_lock<std::shared_mutex> lock,  // NOLINT
+                                          DatabaseShardingState* dss);
+        // This used to be a ResourceMutex, we use a shared_mutex instead to keep similar semantics.
+        std::shared_lock<std::shared_mutex> _lock;  // NOLINT
+        DatabaseShardingState* _dss;
     };
 
     static ScopedExclusiveDatabaseShardingState acquireExclusive(OperationContext* opCtx,
@@ -150,22 +157,39 @@ public:
     }
 
     /**
-     * Sets this node's cached database info.
+     * Sets this node's cached database info in a non-authoritative way.
      *
      * The caller must hold the database lock in MODE_IX.
      */
     void setDbInfo(OperationContext* opCtx, const DatabaseType& dbInfo);
 
     /**
-     * Resets this node's cached database info.
+     * Sets this node's cached database info.
+     *
+     * The caller must hold the database lock in MODE_IX.
+     */
+    void setAuthoritativeDbInfo(OperationContext* opCtx, const DatabaseType& dbInfo);
+
+    /**
+     * Resets this node's cached database info in a non-authoritative way.
      *
      * NOTE: Only the thread that refreshes the database metadata (which calls the function
      * `onDbVersionMismatch`) actually needs to change the default initialization of
      * `cancelOngoingRefresh`. This parameter must be ignored in any other case.
      *
      * The caller must hold the database lock in MODE_IX.
+     *
+     * NOTE: This method is deprecated and should not be used. In the authoritative model, database
+     * refreshes are not required, and there is no need to lock the database. The method is retained
+     * for backward compatibility, but its usage is discouraged in favor of the updated approach.
      */
-    void clearDbInfo(OperationContext* opCtx, bool cancelOngoingRefresh = true);
+    void clearDbInfo_DEPRECATED(OperationContext* opCtx, bool cancelOngoingRefresh = true);
+
+    /**
+     * Resets this node's cached database info.
+     */
+    void clearDbInfo(OperationContext* opCtx);
+
 
     /**
      * Returns this node's cached  database version if the database info is cached, otherwise
@@ -234,7 +258,7 @@ public:
 private:
     struct DbMetadataRefresh {
         DbMetadataRefresh(SharedSemiFuture<void> future, CancellationSource cancellationSource)
-            : future(std::move(future)), cancellationSource(std::move(cancellationSource)){};
+            : future(std::move(future)), cancellationSource(std::move(cancellationSource)) {};
 
         // Tracks the ongoing database metadata refresh.
         SharedSemiFuture<void> future;
@@ -253,9 +277,7 @@ private:
     // This node's cached database info.
     boost::optional<DatabaseType> _dbInfo;
 
-    // Modifying the state below requires holding the DBLock in X mode; holding the DBLock in any
-    // mode is acceptable for reading it. (Note: accessing this class at all requires holding the
-    // DBLock in some mode).
+    // Modifying the state below requires holding the DBLock.
 
     // Tracks the movePrimary critical section state for this collection.
     ShardingMigrationCriticalSection _critSec;

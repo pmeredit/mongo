@@ -31,7 +31,7 @@ _NAMED_SUITES = None
 
 def get_named_suites() -> List[SuiteName]:
     """Return a list of the suites names."""
-    global _NAMED_SUITES  # pylint: disable=global-statement
+    global _NAMED_SUITES
 
     if _NAMED_SUITES is None:
         # Skip "with_*server" and "no_server" because they do not define any test files to run.
@@ -88,7 +88,7 @@ def create_test_membership_map(fail_on_missing_selector=False, test_kind=None):
             # We ignore errors from missing files referenced in the test suite's "selector"
             # section. Certain test suites (e.g. unittests.yml) have a dedicated text file to
             # capture the list of tests they run; the text file may not be available if the
-            # associated SCons target hasn't been built yet.
+            # associated bazel target hasn't been built yet.
             if err.filename in _config.EXTERNAL_SUITE_SELECTORS:
                 if not fail_on_missing_selector:
                     continue
@@ -136,7 +136,7 @@ def get_suites(suite_names_or_paths: list[str], test_files: list[str]) -> List[_
             if using_nested_test_suites:
                 flattened_tests = list(itertools.chain.from_iterable(override_suite.tests))
             else:
-                flattened_tests = override_suite.tests
+                flattened_tests = copy.deepcopy(override_suite.tests)
             for test in flattened_tests:
                 if test in suite.excluded:
                     if _config.FORCE_EXCLUDED_TESTS:

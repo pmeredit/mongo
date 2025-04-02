@@ -64,6 +64,14 @@ public:
      */
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final;
 
+    DepsTracker::State getDependencies(DepsTracker* deps) const final {
+        // We must override DocumentSourceInternalSearchMongotRemote::getDependencies() since this
+        // stage does not populate any metadata fields.
+
+        // TODO SERVER-101100 Implement logic for dependency analysis.
+        return DepsTracker::State::NOT_SUPPORTED;
+    }
+
     boost::intrusive_ptr<DocumentSource> clone(
         const boost::intrusive_ptr<ExpressionContext>& newExpCtx) const override {
         auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
@@ -74,7 +82,8 @@ public:
         if (_mergingPipeline) {
             spec.setMergingPipeline(_mergingPipeline->serializeToBson());
         }
-        return make_intrusive<DocumentSourceSearchMeta>(std::move(spec), expCtx, executor);
+
+        return make_intrusive<DocumentSourceSearchMeta>(std::move(spec), expCtx, executor, _view);
     }
 
     size_t getRemoteCursorId() {

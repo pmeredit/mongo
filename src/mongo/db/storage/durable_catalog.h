@@ -43,7 +43,6 @@
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/collection_options.h"
-#include "mongo/db/catalog/import_options.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index/multikey_paths.h"
 #include "mongo/db/namespace_string.h"
@@ -55,14 +54,14 @@
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/string_map.h"
 #include "mongo/util/uuid.h"
 
 namespace mongo {
 
-class StorageEngineInterface;
+class KVEngine;
 
 /**
  * An interface to modify the on-disk catalog metadata.
@@ -76,15 +75,6 @@ class DurableCatalog final {
 public:
     /**
      * `Entry` ties together the common identifiers of a single `_mdb_catalog` document.
-     *
-     * Idents can come in 4 forms depending on server parameters:
-     * wtdfi    = --wiredTigerDirectoryForIndexes
-     * dirperdb = --directoryperdb
-     *
-     * default:          <collection|index>-<counter>-<random number>
-     * dirperdb:         <db>/<collection|index>-<counter>-<random number>
-     * wtdfi:            <collection|index>/<counter>-<random number>
-     * dirperdb & wtdfi: <db>/<collection|index>/<counter>-<random number>
      */
     struct EntryIdentifier {
         EntryIdentifier() {}
@@ -98,12 +88,12 @@ public:
     DurableCatalog(RecordStore* rs,
                    bool directoryPerDb,
                    bool directoryForIndexes,
-                   StorageEngineInterface* engine);
+                   KVEngine* engine);
     DurableCatalog() = delete;
 
 
     static DurableCatalog* get(OperationContext* opCtx) {
-        return opCtx->getServiceContext()->getStorageEngine()->getCatalog();
+        return opCtx->getServiceContext()->getStorageEngine()->getDurableCatalog();
     }
 
     void init(OperationContext* opCtx);
@@ -183,32 +173,6 @@ public:
                                              std::string ident,
                                              const CollectionOptions& optionsWithUUID);
 
-    std::string getFilesystemPathForDb(const DatabaseName& dbName) const;
-
-    /**
-     * Generate an internal ident name.
-     */
-    std::string newInternalIdent() {
-        return _newInternalIdent("");
-    }
-
-    /**
-     * Generates a new unique identifier for a new "thing".
-     * @param nss - the containing namespace
-     * @param kind - what this "thing" is, likely collection or index
-     *
-     * Warning: It's only unique as far as we know without checking every file on disk, but it is
-     * possible that this ident collides with an existing one.
-     */
-    std::string generateUniqueIdent(NamespaceString nss, const char* kind);
-
-    /**
-     * Generate an internal resumable index build ident name.
-     */
-    std::string newInternalResumableIndexBuildIdent() {
-        return _newInternalIdent(ident::getResumableIndexBuildIdentStem());
-    }
-
     /**
      * On success, returns the RecordId which identifies the new record store in the durable catalog
      * in addition to ownership of the new RecordStore.
@@ -216,8 +180,8 @@ public:
     StatusWith<std::pair<RecordId, std::unique_ptr<RecordStore>>> createCollection(
         OperationContext* opCtx,
         const NamespaceString& nss,
-        const CollectionOptions& options,
-        bool allocateDefaultSpace);
+        const std::string& ident,
+        const CollectionOptions& options);
 
     Status createIndex(OperationContext* opCtx,
                        const RecordId& catalogId,
@@ -252,7 +216,9 @@ public:
                                               const NamespaceString& nss,
                                               const BSONObj& metadata,
                                               const BSONObj& storageMetadata,
-                                              const ImportOptions& importOptions);
+                                              bool generateNewUUID,
+                                              bool panicOnCorruptWtMetadata = true,
+                                              bool repair = false);
 
     Status renameCollection(OperationContext* opCtx,
                             const RecordId& catalogId,
@@ -298,16 +264,6 @@ public:
                          StringData indexName,
                          MultikeyPaths* multikeyPaths) const;
 
-    void setRand_forTest(const std::string& rand) {
-        stdx::lock_guard<stdx::mutex> lk(_randLock);
-        _rand = rand;
-    }
-
-    std::string getRand_forTest() const {
-        stdx::lock_guard<stdx::mutex> lk(_randLock);
-        return _rand;
-    }
-
 private:
     class AddIdentChange;
 
@@ -322,6 +278,7 @@ private:
     BSONObj _findEntry(SeekableRecordCursor& cursor, const RecordId& catalogId) const;
     StatusWith<EntryIdentifier> _addEntry(OperationContext* opCtx,
                                           NamespaceString nss,
+                                          const std::string& ident,
                                           const CollectionOptions& options);
     StatusWith<EntryIdentifier> _importEntry(OperationContext* opCtx,
                                              NamespaceString nss,
@@ -331,28 +288,13 @@ private:
     std::shared_ptr<BSONCollectionCatalogEntry::MetaData> _parseMetaData(
         const BSONElement& mdElement) const;
 
-
-    std::string _newInternalIdent(StringData identStem);
-
-    std::string _newRand();
-
-    /**
-     * The '_randLock' must be passed in.
-     */
-    bool _hasEntryCollidingWithRand(WithLock) const;
-
     RecordStore* _rs;  // not owned
     const bool _directoryPerDb;
     const bool _directoryForIndexes;
 
-    // Protects '_rand' and '_next'.
-    mutable stdx::mutex _randLock;
-    std::string _rand;
-    unsigned long long _next;
-
     absl::flat_hash_map<RecordId, EntryIdentifier, RecordId::Hasher> _catalogIdToEntryMap;
     mutable stdx::mutex _catalogIdToEntryMapLock;
 
-    StorageEngineInterface* const _engine;
+    KVEngine* const _engine;
 };
 }  // namespace mongo

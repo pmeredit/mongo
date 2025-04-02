@@ -46,8 +46,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/geo/geoparser.h"
 #include "mongo/db/geo/shapes.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 // Wrap a BSON object to a BSON element.
 #define BSON_ELT(bson) BSON("" << (bson)).firstElement()
@@ -300,6 +299,32 @@ TEST(GeoParser, parseLegacyPoint) {
     ASSERT_NOT_OK(GeoParser::parseLegacyPoint(BSON_ELT(fromjson("{x: '50', y:40}")), &point));
     ASSERT_NOT_OK(GeoParser::parseLegacyPoint(BSON_ELT(fromjson("{x: 5, y:40, z:50}")), &point));
     ASSERT_NOT_OK(GeoParser::parseLegacyPoint(BSON_ELT(fromjson("{x: 5}")), &point));
+}
+
+TEST(GeoParser, parsePointWithMaxDistance) {
+    PointWithCRS point;
+    double maxDistance;
+    ASSERT_NOT_OK(GeoParser::parsePointWithMaxDistance(BSON_ELT("hi"), &point, &maxDistance));
+    ASSERT_NOT_OK(
+        GeoParser::parsePointWithMaxDistance(BSON_ELT(BSON_ARRAY(0)), &point, &maxDistance));
+    ASSERT_NOT_OK(
+        GeoParser::parsePointWithMaxDistance(BSON_ELT(BSON_ARRAY(0 << 1)), &point, &maxDistance));
+    ASSERT_OK(GeoParser::parsePointWithMaxDistance(
+        BSON_ELT(BSON_ARRAY(0 << 1 << 2)), &point, &maxDistance));
+    ASSERT_NOT_OK(GeoParser::parsePointWithMaxDistance(
+        BSON_ELT(BSON_ARRAY(0 << 1 << 2 << 3)), &point, &maxDistance));
+    ASSERT_NOT_OK(GeoParser::parsePointWithMaxDistance(
+        BSON_ELT(BSON_ARRAY(0 << "foo" << 2)), &point, &maxDistance));
+    ASSERT_NOT_OK(
+        GeoParser::parsePointWithMaxDistance(BSON_ELT(fromjson("{x: 5}")), &point, &maxDistance));
+    ASSERT_NOT_OK(GeoParser::parsePointWithMaxDistance(
+        BSON_ELT(fromjson("{x: 50, y:40}")), &point, &maxDistance));
+    ASSERT_OK(GeoParser::parsePointWithMaxDistance(
+        BSON_ELT(fromjson("{x: 5, y:40, z:50}")), &point, &maxDistance));
+    ASSERT_NOT_OK(GeoParser::parsePointWithMaxDistance(
+        BSON_ELT(fromjson("{x: 5, y:40, z:50, a: 100}")), &point, &maxDistance));
+    ASSERT_NOT_OK(GeoParser::parsePointWithMaxDistance(
+        BSON_ELT(fromjson("{x: 5, y: 'foo' , z:50}")), &point, &maxDistance));
 }
 
 TEST(GeoParser, parseLegacyPolygon) {

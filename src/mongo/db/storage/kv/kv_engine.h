@@ -37,7 +37,6 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/catalog/collection_options.h"
-#include "mongo/db/catalog/import_options.h"
 #include "mongo/db/storage/compact_options.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/sorted_data_interface.h"
@@ -45,7 +44,6 @@
 
 namespace mongo {
 
-class IndexDescriptor;
 class JournalListener;
 class OperationContext;
 class RecoveryUnit;
@@ -78,13 +76,15 @@ public:
      */
     virtual void notifyReplStartupRecoveryComplete(RecoveryUnit&) {}
 
-    virtual RecoveryUnit* newRecoveryUnit() = 0;
+    virtual RecoveryUnit* newRecoveryUnit() {
+        MONGO_UNREACHABLE;
+    }
 
     /**
      * Requesting multiple copies for the same ns/ident is a rules violation; Calling on a
      * non-created ident is invalid and may crash.
      *
-     * Trying to access this record store in the future will retreive the pointer from the
+     * Trying to access this record store in the future will retrieve the pointer from the
      * collection object, and therefore this function can only be called once per namespace.
      *
      * @param ident Will be created if it does not already exist.
@@ -109,7 +109,7 @@ public:
         const NamespaceString& nss,
         const CollectionOptions& collOptions,
         StringData ident,
-        const IndexDescriptor* desc) = 0;
+        const IndexConfig& config) = 0;
 
     /**
      * The create and drop methods on KVEngine are not transactional. Transactional semantics
@@ -137,7 +137,8 @@ public:
      */
     virtual Status importRecordStore(StringData ident,
                                      const BSONObj& storageMetadata,
-                                     const ImportOptions& importOptions) {
+                                     bool panicOnCorruptWtMetadata,
+                                     bool repair) {
         MONGO_UNREACHABLE;
     }
 
@@ -190,11 +191,13 @@ public:
     virtual bool waitUntilUnjournaledWritesDurable(OperationContext* opCtx,
                                                    bool stableCheckpoint) = 0;
 
+    virtual bool underCachePressure() = 0;
+
     virtual Status createSortedDataInterface(RecoveryUnit&,
                                              const NamespaceString& nss,
                                              const CollectionOptions& collOptions,
                                              StringData ident,
-                                             const IndexDescriptor* desc) = 0;
+                                             const IndexConfig& config) = 0;
 
     /**
      * Similar to createSortedDataInterface but this imports from an existing table with the
@@ -203,7 +206,8 @@ public:
     virtual Status importSortedDataInterface(RecoveryUnit&,
                                              StringData ident,
                                              const BSONObj& storageMetadata,
-                                             const ImportOptions& importOptions) {
+                                             bool panicOnCorruptWtMetadata,
+                                             bool repair) {
         MONGO_UNREACHABLE;
     }
 
@@ -256,7 +260,7 @@ public:
 
     virtual void alterIdentMetadata(RecoveryUnit&,
                                     StringData ident,
-                                    const IndexDescriptor* desc,
+                                    const IndexConfig& config,
                                     bool isForceUpdateMetadata) {}
 
     /**
@@ -278,6 +282,8 @@ public:
     virtual void endBackup() {
         MONGO_UNREACHABLE;
     }
+
+    virtual Timestamp getBackupCheckpointTimestamp() = 0;
 
     virtual Status disableIncrementalBackup() {
         MONGO_UNREACHABLE;
@@ -390,7 +396,7 @@ public:
      * See `StorageEngine::setOldestActiveTransactionTimestampCallback`
      */
     virtual void setOldestActiveTransactionTimestampCallback(
-        StorageEngine::OldestActiveTransactionTimestampCallback callback){};
+        StorageEngine::OldestActiveTransactionTimestampCallback callback) {};
 
     /**
      * See `StorageEngine::setOldestTimestamp`
@@ -481,13 +487,9 @@ public:
     virtual StatusWith<Timestamp> pinOldestTimestamp(RecoveryUnit&,
                                                      const std::string& requestingServiceName,
                                                      Timestamp requestedTimestamp,
-                                                     bool roundUpIfTooOld) {
-        MONGO_UNREACHABLE;
-    }
+                                                     bool roundUpIfTooOld) = 0;
 
-    virtual void unpinOldestTimestamp(const std::string& requestingServiceName) {
-        MONGO_UNREACHABLE
-    }
+    virtual void unpinOldestTimestamp(const std::string& requestingServiceName) = 0;
 
     /**
      * See `StorageEngine::setPinnedOplogTimestamp`

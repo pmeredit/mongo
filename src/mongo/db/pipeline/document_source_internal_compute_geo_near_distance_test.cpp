@@ -36,8 +36,7 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_internal_compute_geo_near_distance.h"
 #include "mongo/db/pipeline/document_source_mock.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -59,11 +58,10 @@ TEST_F(DocumentSourceInternalGeoNearDistanceTest, DistanceBetweenOverlappingPoin
     auto geoDist = DocumentSourceInternalGeoNearDistance::createFromBson(
         computeGeoSpec.firstElement(), getExpCtx());
 
-    auto mock =
-        DocumentSourceMock::createForTest(DOC("loc" << DOC("type"
-                                                           << "Point"_sd
-                                                           << "coordinates" << DOC_ARRAY(1 << 1))),
-                                          getExpCtx());
+    auto mock = DocumentSourceMock::createForTest(
+        DOC("loc" << DOC("type" << "Point"_sd
+                                << "coordinates" << DOC_ARRAY(1 << 1))),
+        getExpCtx());
 
     geoDist->setSource(mock.get());
     auto next = geoDist->getNext();
@@ -87,11 +85,10 @@ TEST_F(DocumentSourceInternalGeoNearDistanceTest, SphericalDistanceBetweenTwoPoi
     auto geoDist = DocumentSourceInternalGeoNearDistance::createFromBson(
         computeGeoSpec.firstElement(), getExpCtx());
 
-    auto mock =
-        DocumentSourceMock::createForTest(DOC("loc" << DOC("type"
-                                                           << "Point"_sd
-                                                           << "coordinates" << DOC_ARRAY(0 << 0))),
-                                          getExpCtx());
+    auto mock = DocumentSourceMock::createForTest(
+        DOC("loc" << DOC("type" << "Point"_sd
+                                << "coordinates" << DOC_ARRAY(0 << 0))),
+        getExpCtx());
 
     geoDist->setSource(mock.get());
     auto next = geoDist->getNext();

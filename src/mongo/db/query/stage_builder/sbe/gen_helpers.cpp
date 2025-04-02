@@ -45,8 +45,6 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/catalog/collection.h"
-#include "mongo/db/catalog/health_log_gen.h"
-#include "mongo/db/catalog/health_log_interface.h"
 #include "mongo/db/catalog/index_catalog.h"
 #include "mongo/db/catalog/index_catalog_entry.h"
 #include "mongo/db/exec/docval_to_sbeval.h"
@@ -54,6 +52,7 @@
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index/multikey_paths.h"
+#include "mongo/db/index/preallocated_container_pool.h"
 #include "mongo/db/matcher/matcher_type_set.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/expression_dependencies.h"
@@ -69,16 +68,12 @@
 #include "mongo/db/query/stage_builder/sbe/sbexpr_helpers.h"
 #include "mongo/db/query/tree_walker.h"
 #include "mongo/db/record_id.h"
-#include "mongo/db/storage/execution_context.h"
 #include "mongo/db/storage/record_data.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
 #include "mongo/util/debug_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/shared_buffer_fragment.h"
@@ -196,22 +191,6 @@ void indexKeyCorruptionCheckCallback(OperationContext* opCtx,
                                                     keyString->getVersion());
             auto hydratedKey = IndexKeyEntry::rehydrateKey(bsonKeyPattern, bsonKeyString);
 
-            HealthLogEntry entry;
-            entry.setNss(nss);
-            entry.setTimestamp(Date_t::now());
-            entry.setSeverity(SeverityEnum::Error);
-            entry.setScope(ScopeEnum::Index);
-            entry.setOperation("Index scan");
-            entry.setMsg("Erroneous index key found with reference to non-existent record id");
-
-            BSONObjBuilder bob;
-            bob.append("recordId", rid.toString());
-            bob.append("indexKeyData", hydratedKey);
-            bob.appendElements(getStackTrace().getBSONRepresentation());
-            entry.setData(bob.obj());
-
-            HealthLogInterface::get(opCtx)->log(entry);
-
             LOGV2_ERROR_OPTIONS(
                 5113709,
                 {logv2::UserAssertAfterLog(ErrorCodes::DataCorruptionDetected)},
@@ -294,8 +273,8 @@ bool indexKeyConsistencyCheckCallback(OperationContext* opCtx,
                                   << indexIdent,
                     iam);
 
-            auto& executionCtx = StorageExecutionContext::get(opCtx);
-            auto keys = executionCtx.keys();
+            auto& containerPool = PreallocatedContainerPool::get(opCtx);
+            auto keys = containerPool.keys();
             SharedBufferFragmentBuilder pooledBuilder(
                 key_string::HeapBuilder::kHeapAllocatorDefaultBytes);
 
@@ -475,10 +454,10 @@ SbExpr generateArrayCheckForSort(StageBuilderState& state,
         return b.makeLet(
             frameId,
             SbExpr::makeSeq(std::move(fieldExpr)),
-            b.makeBinaryOp(sbe::EPrimBinary::logicOr,
-                           b.makeFunction("isArray"_sd, SbVar{frameId, 0}),
-                           generateArrayCheckForSort(
-                               state, SbVar{frameId, 0}, fp, level + 1, frameIdGenerator)));
+            b.makeBooleanOpTree(optimizer::Operations::Or,
+                                b.makeFunction("isArray"_sd, SbVar{frameId, 0}),
+                                generateArrayCheckForSort(
+                                    state, SbVar{frameId, 0}, fp, level + 1, frameIdGenerator)));
     }();
 
     if (level == 0) {
@@ -642,9 +621,9 @@ SortKeysExprs buildSortKeys(StageBuilderState& state,
                             std::make_pair(PlanStageSlots::kField, fp.getFieldName(0)))));
                 };
 
-                return b.makeBinaryOp(sbe::EPrimBinary::logicOr,
-                                      makeIsNotArrayCheck(*sortPattern[0].fieldPath),
-                                      makeIsNotArrayCheck(*sortPattern[1].fieldPath));
+                return b.makeBooleanOpTree(optimizer::Operations::Or,
+                                           makeIsNotArrayCheck(*sortPattern[0].fieldPath),
+                                           makeIsNotArrayCheck(*sortPattern[1].fieldPath));
             } else {
                 // If the sort pattern has three or more parts, we generate an expression to
                 // perform the "parallel arrays" check that works (and scales well) for an
@@ -662,12 +641,12 @@ SortKeysExprs buildSortKeys(StageBuilderState& state,
                         b.makeBoolConstant(false));
                 };
 
-                auto numArraysExpr = makeIsArrayCheck(*sortPattern[0].fieldPath);
-                for (size_t idx = 1; idx < sortPattern.size(); ++idx) {
-                    numArraysExpr = b.makeBinaryOp(sbe::EPrimBinary::add,
-                                                   std::move(numArraysExpr),
-                                                   makeIsArrayCheck(*sortPattern[idx].fieldPath));
+                SbExpr::Vector args;
+                for (size_t idx = 0; idx < sortPattern.size(); ++idx) {
+                    args.emplace_back(makeIsArrayCheck(*sortPattern[idx].fieldPath));
                 }
+
+                auto numArraysExpr = b.makeNaryOp(optimizer::Operations::Add, std::move(args));
 
                 return b.makeBinaryOp(
                     sbe::EPrimBinary::lessEq, std::move(numArraysExpr), b.makeInt32Constant(1));

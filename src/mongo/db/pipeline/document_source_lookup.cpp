@@ -82,8 +82,6 @@
 #include "mongo/db/views/resolved_view.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/overflow_arithmetic.h"
 #include "mongo/s/database_version.h"
@@ -135,7 +133,8 @@ void lookupPipeValidator(const Pipeline& pipeline) {
 // {from: {db: "config", coll: "cache.chunks.*"}, ...} or
 // {from: {db: "local", coll: "oplog.rs"}, ...}
 NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
-                                                   const DatabaseName& defaultDb) {
+                                                   const DatabaseName& defaultDb,
+                                                   bool allowGenericForeignDbLookup) {
     // The object syntax only works for 'cache.chunks.*', 'local.oplog.rs'
     //  which are not user namespaces so object type is
     // omitted from the error message below.
@@ -169,7 +168,7 @@ NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
         str::stream() << "$lookup with syntax {from: {db:<>, coll:<>},..} is not supported for db: "
                       << nss.dbName().toStringForErrorMsg() << " and coll: " << nss.coll(),
         nss.isConfigDotCacheDotChunks() || nss == NamespaceString::kRsOplogNamespace ||
-            isConfigSvrSupportedCollection);
+            isConfigSvrSupportedCollection || allowGenericForeignDbLookup);
     return nss;
 }
 
@@ -297,9 +296,6 @@ std::vector<BSONObj> extractSourceStage(const std::vector<BSONObj>& pipeline) {
     }
     // When we first create a $lookup stage, the input 'pipeline' is unparsed, so we
     // check for the $documents stage itself.
-    //
-    // TODO SERVER-59628 This code should be updated when we enable any valid data source stage on
-    // the $lookup pipelined
     if (pipeline[0].hasField(DocumentSourceDocuments::kStageName) ||
         pipeline[0].hasField("$search"_sd) ||
         pipeline[0].hasField(DocumentSourceQueue::kStageName)) {
@@ -326,6 +322,14 @@ void DocumentSourceLookUp::resolvedPipelineHelper(
     if (_fromNsIsAView && search_helper_bson_obj::isMongotPipeline(pipeline) &&
         expCtx->isFeatureFlagMongotIndexedViewsEnabled() &&
         !search_helper_bson_obj::isMongotPipeline(_resolvedPipeline)) {
+
+        // TODO SERVER-100355 Re-enable running subpipelines on a mongot-indexed view. Running over
+        // an empty view is allowed.
+        uassert(ErrorCodes::QueryFeatureNotAllowed,
+                "$search, $searchMeta, and $vectorSearch queries on a view in a subpipeline is "
+                "not supported",
+                _resolvedPipeline.empty());
+
         // The user pipeline is a mongot pipeline but the view pipeline is not - so we assume it's a
         // mongot-indexed view. As such, we overwrite the view pipeline. This is because in the case
         // of mongot queries on mongot-indexed views, idLookup applies the view transforms as part
@@ -447,8 +451,6 @@ void validateLookupCollectionlessPipeline(const std::vector<BSONObj>& pipeline) 
             "$lookup stage without explicit collection must have a pipeline with $documents as "
             "first stage",
             pipeline.size() > 0 &&
-                // TODO SERVER-59628 We should be able to check for any valid data source here, not
-                // just $documents.
                 !pipeline[0].getField(DocumentSourceDocuments::kStageName).eoo());
 }
 
@@ -459,7 +461,7 @@ void validateLookupCollectionlessPipeline(const BSONElement& pipeline) {
 }
 
 std::unique_ptr<DocumentSourceLookUp::LiteParsed> DocumentSourceLookUp::LiteParsed::parse(
-    const NamespaceString& nss, const BSONElement& spec) {
+    const NamespaceString& nss, const BSONElement& spec, const LiteParserOptions& options) {
     uassert(ErrorCodes::FailedToParse,
             str::stream() << "the $lookup stage specification must be an object, but found "
                           << typeName(spec.type()),
@@ -473,7 +475,8 @@ std::unique_ptr<DocumentSourceLookUp::LiteParsed> DocumentSourceLookUp::LitePars
         validateLookupCollectionlessPipeline(pipelineElem);
         fromNss = NamespaceString::makeCollectionlessAggregateNSS(nss.dbName());
     } else {
-        fromNss = parseLookupFromAndResolveNamespace(fromElement, nss.dbName());
+        fromNss = parseLookupFromAndResolveNamespace(
+            fromElement, nss.dbName(), options.allowGenericForeignDbLookup);
     }
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << "invalid $lookup namespace: " << fromNss.toStringForErrorMsg(),
@@ -1051,22 +1054,35 @@ Pipeline::SourceContainer::iterator DocumentSourceLookUp::doOptimizeAt(
 
     // We cannot yet lower $LUM (combined $lookup + $unwind + $match) stages to SBE.
     _sbeCompatibility = SbeCompatibility::notCompatible;
+    bool needToOptimize = false;
     if (!_matchSrc) {
         _matchSrc = nextMatch;
     } else {
-        // We have already absorbed a $match. We need to join it with 'dependent'.
-        _matchSrc->joinMatchWith(nextMatch, "$and"_sd);
+        // We have already absorbed a $match. We need to join it with the next one.
+        _matchSrc->joinMatchWith(nextMatch, MatchExpression::MatchType::AND);
+        needToOptimize = true;
     }
 
     // Remove the original $match.
     container->erase(std::next(itr));
 
     // We have internalized a $match, but have not yet computed the descended $match that should
-    // be applied to our queries.
-    _additionalFilter = DocumentSourceMatch::descendMatchOnPath(
-                            _matchSrc->getMatchExpression(), _as.fullPath(), pExpCtx)
-                            ->getQuery()
-                            .getOwned();
+    // be applied to our queries. Note that we have to optimze the MatchExpression that we pass into
+    // 'descendMatchOnPath' because the call to 'joinMatchWith' rebuilds the new $match stage using
+    // each stage's unoptimized BSON predicate. The unoptimized BSON may contain predicates that
+    // were optimized away, so that the checks performed by 'computeWhetherMatchOnlyOnAs' may no
+    // longer be true for the combined $match's MatchExpression.
+    _additionalFilter =
+        DocumentSourceMatch::descendMatchOnPath(
+            needToOptimize ? MatchExpression::optimize(
+                                 std::move(_matchSrc->getMatchProcessor()->getExpression()),
+                                 /* enableSimplification */ false)
+                                 .get()
+                           : _matchSrc->getMatchExpression(),
+            _as.fullPath(),
+            pExpCtx)
+            ->getQuery()
+            .getOwned();
 
     // Add '_additionalFilter' to '_resolvedPipeline' if there is a pipeline. If there is no
     // pipeline, '_additionalFilter' can safely be added to the local/foreignField $match stage
@@ -1242,12 +1258,11 @@ void DocumentSourceLookUp::serializeToArray(std::vector<Value>& array,
         if (!_userPipeline) {
             return std::vector<BSONObj>{};
         }
-        if (opts.transformIdentifiers ||
-            opts.literalPolicy != LiteralSerializationPolicy::kUnchanged) {
+        if (opts.isSerializingForQueryStats()) {
             // TODO SERVER-94227 we don't need to do any validation as part of this parsing pass.
             return Pipeline::parse(*_userPipeline, _fromExpCtx)->serializeToBson(opts);
         }
-        if (opts.verbosity) {
+        if (opts.isSerializingForExplain()) {
             // TODO SERVER-81802 We should also serialize the resolved pipeline for explain.
             return *_userPipeline;
         }
@@ -1286,8 +1301,7 @@ void DocumentSourceLookUp::serializeToArray(std::vector<Value>& array,
     }();
     if (_additionalFilter) {
         auto serializedFilter = [&]() -> BSONObj {
-            if (opts.transformIdentifiers ||
-                opts.literalPolicy != LiteralSerializationPolicy::kUnchanged) {
+            if (opts.isSerializingForQueryStats()) {
                 auto filter =
                     uassertStatusOK(MatchExpressionParser::parse(*_additionalFilter, pExpCtx));
                 return filter->serialize(opts);
@@ -1307,7 +1321,7 @@ void DocumentSourceLookUp::serializeToArray(std::vector<Value>& array,
         output[getSourceName()]["pipeline"] = Value(serializedPipeline);
     }
 
-    if (opts.verbosity) {
+    if (opts.isSerializingForExplain()) {
         if (_unwindSrc) {
             const boost::optional<FieldPath> indexPath = _unwindSrc->indexPath();
             output[getSourceName()]["unwinding"] =
@@ -1338,12 +1352,7 @@ DepsTracker::State DocumentSourceLookUp::getDependencies(DepsTracker* deps) cons
         // We will use the introspection pipeline which we prebuilt during construction.
         invariant(_resolvedIntrospectionPipeline);
 
-        // We are not attempting to enforce that any referenced metadata are in fact unavailable,
-        // this is done elsewhere. We only need to know what variable dependencies exist in the
-        // subpipeline for the top-level pipeline. So without knowledge of what metadata is in fact
-        // unavailable, we "lie" and say that all metadata is available to avoid tripping any
-        // assertions.
-        DepsTracker subDeps(DepsTracker::kNoMetadata);
+        DepsTracker subDeps;
 
         // Get the subpipeline dependencies. Subpipeline stages may reference both 'let' variables
         // declared by this $lookup and variables declared externally.
@@ -1512,7 +1521,8 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceLookUp::createFromBson(
 
         if (argName == kFromField) {
             fromNs = parseLookupFromAndResolveNamespace(argument,
-                                                        pExpCtx->getNamespaceString().dbName());
+                                                        pExpCtx->getNamespaceString().dbName(),
+                                                        pExpCtx->getAllowGenericForeignDbLookup());
             continue;
         }
 

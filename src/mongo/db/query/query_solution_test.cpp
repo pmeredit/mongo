@@ -59,8 +59,7 @@
 #include "mongo/db/query/query_test_service_context.h"
 #include "mongo/db/query/wildcard_test_utils.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -114,7 +113,7 @@ using namespace mongo;
 IndexEntry buildSimpleIndexEntry(const BSONObj& kp) {
     return {kp,
             IndexNames::nameToType(IndexNames::findPluginName(kp)),
-            IndexDescriptor::kLatestIndexVersion,
+            IndexConfig::kLatestIndexVersion,
             false,
             {},
             {},
@@ -397,10 +396,9 @@ TEST(QuerySolutionTest, GetFieldsWithStringBoundsIdentifiesFieldsContainingStrin
     OrderedIntervalList oilC{};
     oilC.name = "c";
     oilC.intervals.push_back(
-        IndexBoundsBuilder::makeRangeInterval(BSON(""
-                                                   << "a"
-                                                   << ""
-                                                   << "b"),
+        IndexBoundsBuilder::makeRangeInterval(BSON("" << "a"
+                                                      << ""
+                                                      << "b"),
                                               BoundInclusion::kIncludeBothStartAndEndKeys));
     bounds.fields.push_back(oilC);
 
@@ -758,8 +756,7 @@ TEST(QuerySolutionTest, HashedIndexScanNodeDoesTruncatesSortWhenCollationDoesntM
 
     OrderedIntervalList b{};
     b.name = "b";
-    b.intervals.push_back(IndexBoundsBuilder::makePointInterval(BSON(""
-                                                                     << "p")));
+    b.intervals.push_back(IndexBoundsBuilder::makePointInterval(BSON("" << "p")));
     node.bounds.fields.push_back(b);
 
     OrderedIntervalList c{};
@@ -801,10 +798,9 @@ TEST(QuerySolutionTest,
     OrderedIntervalList b{};
     b.name = "b";
     b.intervals.push_back(
-        IndexBoundsBuilder::makeRangeInterval(BSON(""
-                                                   << "a"
-                                                   << ""
-                                                   << "b"),
+        IndexBoundsBuilder::makeRangeInterval(BSON("" << "a"
+                                                      << ""
+                                                      << "b"),
                                               BoundInclusion::kIncludeBothStartAndEndKeys));
     node.bounds.fields.push_back(b);
 
@@ -838,7 +834,7 @@ TEST(QuerySolutionTest, WildcardIndexSupportsSortWhenIndexOnlyNeedsToLookAtOnePa
     // The following setup mimics a query that queries against fields "a", "b.d", and "c". This
     // matches the bounds we generate for those fields below. However, only pass "b.d" as 'fields'
     // here, because we only want to consider the expanded index with that field plugged in.
-    stdx::unordered_set<std::string> fields{"b.d"};
+    std::set<std::string> fields{"b.d"};
     std::vector<IndexEntry> expandedIndexes{};
     mongo::wildcard_planning::expandWildcardIndexEntry(
         *wildcardIndex.indexEntry, fields, &expandedIndexes);
@@ -892,7 +888,7 @@ TEST(QuerySolutionTest, WildcardIndexDoesNotSupportSortWhenIndexNeedsToLookAtMul
     // here, because we only want to consider the expanded index with that field plugged in.
     mongo::wildcard_planning::WildcardIndexEntryMock wildcardIndex{
         BSON("a" << 1 << "b.$**" << 1 << "c" << 1), BSONObj{}, {}};
-    stdx::unordered_set<std::string> fields{"b"};
+    std::set<std::string> fields{"b"};
     std::vector<IndexEntry> expandedIndexes{};
     mongo::wildcard_planning::expandWildcardIndexEntry(
         *wildcardIndex.indexEntry, fields, &expandedIndexes);
@@ -941,7 +937,7 @@ TEST(QuerySolutionTest, WildcardIndexDoesNotSupportSortWhenCollationDoesntMatch)
     // here, because we only want to consider the expanded index with that field plugged in.
     mongo::wildcard_planning::WildcardIndexEntryMock wildcardIndex{
         BSON("a" << 1 << "b.$**" << 1 << "c" << 1), BSONObj{}, {}};
-    stdx::unordered_set<std::string> fields{"b.d"};
+    std::set<std::string> fields{"b.d"};
     std::vector<IndexEntry> expandedIndexes{};
     mongo::wildcard_planning::expandWildcardIndexEntry(
         *wildcardIndex.indexEntry, fields, &expandedIndexes);
@@ -959,8 +955,7 @@ TEST(QuerySolutionTest, WildcardIndexDoesNotSupportSortWhenCollationDoesntMatch)
 
     OrderedIntervalList b{};
     b.name = "b.d";
-    b.intervals.push_back(IndexBoundsBuilder::makePointInterval(BSON(""
-                                                                     << "p")));
+    b.intervals.push_back(IndexBoundsBuilder::makePointInterval(BSON("" << "p")));
     node.bounds.fields.push_back(b);
 
     OrderedIntervalList c{};
@@ -997,7 +992,7 @@ TEST(QuerySolutionTest, WildcardIndexDoesNotSupportSortWhenCollationDoesntMatchW
     // here, because we only want to consider the expanded index with that field plugged in.
     mongo::wildcard_planning::WildcardIndexEntryMock wildcardIndex{
         BSON("a" << 1 << "b.$**" << 1 << "c" << 1), BSONObj{}, {}};
-    stdx::unordered_set<std::string> fields{"b.d"};
+    std::set<std::string> fields{"b.d"};
     std::vector<IndexEntry> expandedIndexes{};
     mongo::wildcard_planning::expandWildcardIndexEntry(
         *wildcardIndex.indexEntry, fields, &expandedIndexes);
@@ -1016,10 +1011,9 @@ TEST(QuerySolutionTest, WildcardIndexDoesNotSupportSortWhenCollationDoesntMatchW
     OrderedIntervalList b{};
     b.name = "b.d";
     b.intervals.push_back(
-        IndexBoundsBuilder::makeRangeInterval(BSON(""
-                                                   << "a"
-                                                   << ""
-                                                   << "b"),
+        IndexBoundsBuilder::makeRangeInterval(BSON("" << "a"
+                                                      << ""
+                                                      << "b"),
                                               BoundInclusion::kIncludeBothStartAndEndKeys));
     node.bounds.fields.push_back(b);
 
@@ -1066,8 +1060,7 @@ TEST(QuerySolutionTest, CompoundIndexWithNonMatchingCollationFiltersAllSortsWith
 
     OrderedIntervalList b{};
     b.name = "b";
-    b.intervals.push_back(IndexBoundsBuilder::makePointInterval(BSON(""
-                                                                     << "p")));
+    b.intervals.push_back(IndexBoundsBuilder::makePointInterval(BSON("" << "p")));
     node.bounds.fields.push_back(b);
 
     OrderedIntervalList c{};
@@ -1152,10 +1145,9 @@ TEST(QuerySolutionTest, WithNonMatchingCollatorAndNoEqualityPrefixSortsAreNotDup
     OrderedIntervalList oilB{};
     oilB.name = "b";
     oilB.intervals.push_back(
-        IndexBoundsBuilder::makeRangeInterval(BSON(""
-                                                   << "a"
-                                                   << ""
-                                                   << "b"),
+        IndexBoundsBuilder::makeRangeInterval(BSON("" << "a"
+                                                      << ""
+                                                      << "b"),
                                               BoundInclusion::kIncludeBothStartAndEndKeys));
     node.bounds.fields.push_back(oilB);
     node.computeProperties();
@@ -1171,10 +1163,9 @@ TEST(QuerySolutionTest, IndexScanNodeHasFieldIncludesStringFieldWhenNoCollator) 
     OrderedIntervalList oilA{};
     oilA.name = "a";
     oilA.intervals.push_back(
-        IndexBoundsBuilder::makeRangeInterval(BSON(""
-                                                   << "str"
-                                                   << ""
-                                                   << "str"),
+        IndexBoundsBuilder::makeRangeInterval(BSON("" << "str"
+                                                      << ""
+                                                      << "str"),
                                               BoundInclusion::kIncludeBothStartAndEndKeys));
     node.bounds.fields.push_back(oilA);
 
@@ -1213,10 +1204,9 @@ TEST(QuerySolutionTest, IndexScanNodeHasFieldExcludesStringFieldWhenIndexHasColl
     OrderedIntervalList oilB{};
     oilB.name = "b";
     oilB.intervals.push_back(
-        IndexBoundsBuilder::makeRangeInterval(BSON(""
-                                                   << "bar"
-                                                   << ""
-                                                   << "foo"),
+        IndexBoundsBuilder::makeRangeInterval(BSON("" << "bar"
+                                                      << ""
+                                                      << "foo"),
                                               BoundInclusion::kIncludeStartKeyOnly));
     node.bounds.fields.push_back(oilB);
 

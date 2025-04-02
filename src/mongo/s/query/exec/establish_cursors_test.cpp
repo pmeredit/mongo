@@ -55,9 +55,8 @@
 #include "mongo/s/query/exec/establish_cursors.h"
 #include "mongo/s/resource_yielders.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/net/hostandport.h"
@@ -591,15 +590,12 @@ TEST_F(EstablishCursorsTest, MultipleRemotesOneRemoteRespondsWithNonretriableErr
 
 TEST_F(EstablishCursorsTest, AcceptsCustomOpKeys) {
     std::vector<UUID> providedOpKeys = {UUID::gen(), UUID::gen()};
-    auto cmdObj0 = BSON("find"
-                        << "testcoll"
-                        << "clientOperationKey" << providedOpKeys[0]);
-    auto cmdObj1 = BSON("find"
-                        << "testcoll"
-                        << "clientOperationKey" << providedOpKeys[1]);
-    auto cmdObj2 = BSON("find"
-                        << "testcoll"
-                        << "clientOperationKey" << providedOpKeys[1]);
+    auto cmdObj0 = BSON("find" << "testcoll"
+                               << "clientOperationKey" << providedOpKeys[0]);
+    auto cmdObj1 = BSON("find" << "testcoll"
+                               << "clientOperationKey" << providedOpKeys[1]);
+    auto cmdObj2 = BSON("find" << "testcoll"
+                               << "clientOperationKey" << providedOpKeys[1]);
     std::vector<AsyncRequestsSender::Request> remotes{
         {kTestShardIds[0], cmdObj0}, {kTestShardIds[1], cmdObj1}, {kTestShardIds[2], cmdObj2}};
 

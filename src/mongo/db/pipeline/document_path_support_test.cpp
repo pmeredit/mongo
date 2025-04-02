@@ -44,9 +44,7 @@
 #include "mongo/db/exec/document_value/value_comparator.h"
 #include "mongo/db/pipeline/document_path_support.h"
 #include "mongo/db/pipeline/field_path.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -360,13 +358,13 @@ TEST(ExtractElementAlongNonArrayPathTest, ReturnsValueIfPathExists) {
 }
 
 TEST(ExtractElementAlongNonArrayPathTest, FailsIfPathTerminatesAtEmptyArray) {
-    Document doc{fromjson("{a: {b: {c: {d: []}}}}}")};
+    Document doc{fromjson("{a: {b: {c: {d: []}}}}")};
     auto result = extractElementAlongNonArrayPath(doc, FieldPath{"a.b.c.d"});
     ASSERT_EQ(result.getStatus(), ErrorCodes::InternalError);
 }
 
 TEST(ExtractElementAlongNonArrayPathTest, FailsIfPathTerminatesAtNonEmptyArray) {
-    Document doc{fromjson("{a: {b: {c: {d: [1, 2, 3]}}}}}")};
+    Document doc{fromjson("{a: {b: {c: {d: [1, 2, 3]}}}}")};
     auto result = extractElementAlongNonArrayPath(doc, FieldPath{"a.b.c.d"});
     ASSERT_EQ(result.getStatus(), ErrorCodes::InternalError);
 }

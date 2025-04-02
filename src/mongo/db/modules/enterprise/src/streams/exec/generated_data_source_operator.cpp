@@ -62,7 +62,7 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
             incOperatorStats(OperatorStats{.numInputDocs = numInputDocs,
                                            .numInputBytes = numInputBytes,
                                            .numDlqDocs = numDlqDocs,
-                                           .timeSpent = dataMsg.creationTimer->elapsed()});
+                                           .timeSpent = dataMsg.creationTimer.elapsed()});
 
             if (_watermarkGenerator) {
                 _stats.watermark = _watermarkGenerator->getWatermarkMsg().watermarkTimestampMs;
@@ -85,8 +85,10 @@ int64_t GeneratedDataSourceOperator::doRunOnce() {
     if (getOptions().sendIdleMessages && emptyBatch) {
         // If _options.sendIdleMessages is set, always send a kIdle watermark when
         // there are no docs in the batch.
+        int64_t curTime = getRealOrMockedCurTimeMillis64();
         StreamControlMsg msg{.watermarkMsg =
-                                 WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle}};
+                                 WatermarkControlMsg{.watermarkStatus = WatermarkStatus::kIdle,
+                                                     .watermarkTimestampMs = curTime}};
         _lastControlMsg = msg;
         sendControlMsg(0, std::move(msg));
     }
@@ -121,14 +123,17 @@ boost::optional<StreamDocument> GeneratedDataSourceOperator::processDocument(Str
     if (!doc.streamMeta.getSource()) {
         StreamMetaSource streamMetaSource;
         doc.streamMeta.setSource(streamMetaSource);
+        if (!_context->oldStreamMetaEnabled()) {
+            doc.streamMeta.getSource()->setTs(timestamp);
+        }
     }
     doc.streamMeta.getSource()->setType(StreamMetaSourceTypeEnum::Generated);
-    if (_context->shouldUseDocumentMetadataFields) {
-        doc.streamMeta.getSource()->setTs(timestamp);
-    }
     doc.onMetaUpdate(_context);
 
-    doc.minProcessingTimeMs = curTimeMillis64();
+    doc.minProcessingTimeMs = _windowBoundary == mongo::WindowBoundaryEnum::processingTime
+        ? timestampMs
+        : curTimeMillis64Monotonic();
+    doc.sourceTimestampMs = doc.minProcessingTimeMs;
     doc.minDocTimestampMs = timestampMs;
     doc.maxDocTimestampMs = timestampMs;
 

@@ -45,7 +45,6 @@
 #include "mongo/db/exec/plan_stats.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/plan_explainer_pipeline.h"
 #include "mongo/db/query/canonical_query.h"
@@ -202,8 +201,7 @@ public:
     PlanExecutor::QueryFramework getQueryFramework() const final;
 
     bool usesCollectionAcquisitions() const final {
-        // TODO SERVER-78724: Replace this whenever aggregations use shard role acquisitions.
-        return false;
+        return true;
     }
 
 private:

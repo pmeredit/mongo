@@ -70,7 +70,7 @@ list<intrusive_ptr<DocumentSource>> DocumentSourceShardedDataDistribution::creat
                 expCtx->getNamespaceString().isCollectionlessAggregateNS());
 
     static const BSONObj kAllCollStatsObj =
-        fromjson("{$_internalAllCollectionStats: {stats: {storageStats: {}}}}}");
+        fromjson("{$_internalAllCollectionStats: {stats: {storageStats: {}}}}");
 
     // TODO (SERVER-92596): Remove `"storageStats.numOrphanDocs": 1` once the bug is fixed.
     static const BSONObj kProjectObj = fromjson(R"({
@@ -84,7 +84,12 @@ list<intrusive_ptr<DocumentSource>> DocumentSourceShardedDataDistribution::creat
              "timeseries": {$ifNull: ["$storageStats.timeseries", null]}
          }
      })");
-    // We check if the collection is a timeseries in order to use the correct fields.
+
+    // Compute the `numOrphanedDocs` and `numOwnedDocuments` fields.
+    // Note that, for timeseries collections, these fields will report the number of buckets
+    // instead of the number of documents. We've decided to keep the field names as they are to
+    // avoid the downstream impact of having to check different fields depending on the collection
+    // time.
     static const BSONObj kGroupObj = fromjson(R"({
         $group: {
             _id: "$ns",

@@ -64,9 +64,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/vector_clock_mutable.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/grid.h"
@@ -436,14 +433,14 @@ SemiFuture<void> RenameParticipantInstance::_runImpl(
                 // migration. It is not needed for the source collection because no migration can
                 // start until it first becomes sharded, which cannot happen until the DDLLock is
                 // released.
-                const auto reason = BSON("command"
-                                         << "rename"
-                                         << "from"
-                                         << NamespaceStringUtil::serialize(
-                                                fromNss, SerializationContext::stateDefault())
-                                         << "to"
-                                         << NamespaceStringUtil::serialize(
-                                                toNss, SerializationContext::stateDefault()));
+                const auto reason =
+                    BSON("command" << "rename"
+                                   << "from"
+                                   << NamespaceStringUtil::serialize(
+                                          fromNss, SerializationContext::stateDefault())
+                                   << "to"
+                                   << NamespaceStringUtil::serialize(
+                                          toNss, SerializationContext::stateDefault()));
                 auto service = ShardingRecoveryService::get(opCtx);
                 service->releaseRecoverableCriticalSection(
                     opCtx,

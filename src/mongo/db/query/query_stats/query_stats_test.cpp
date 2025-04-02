@@ -39,9 +39,8 @@
 #include "mongo/db/query/query_stats/query_stats.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQueryStats
@@ -62,6 +61,7 @@ TEST_F(QueryStatsTest, TwoRegisterRequestsWithSameOpCtxRateLimitedFirstCall) {
     auto opCtx = makeOperationContext();
     auto expCtx = ExpressionContextBuilder{}.fromRequest(opCtx.get(), *fcrCopy).build();
     auto parsedFind = uassertStatusOK(parsed_find_command::parse(expCtx, {std::move(fcrCopy)}));
+    query_shape::FindCmdShape findShape(*parsedFind, expCtx);
 
     RAIIServerParameterControllerForTest controller("featureFlagQueryStats", true);
     auto& opDebug = CurOp::get(*opCtx)->debug();
@@ -72,7 +72,10 @@ TEST_F(QueryStatsTest, TwoRegisterRequestsWithSameOpCtxRateLimitedFirstCall) {
         std::make_unique<RateLimiting>(0, Seconds{1});
     ASSERT_DOES_NOT_THROW(query_stats::registerRequest(opCtx.get(), nss, [&]() {
         return std::make_unique<query_stats::FindKey>(
-            expCtx, *parsedFind, query_shape::CollectionType::kCollection);
+            expCtx,
+            *parsedFind->findCommandRequest,
+            std::make_unique<query_shape::FindCmdShape>(findShape),
+            query_shape::CollectionType::kCollection);
     }));
 
     // Since the query was rate limited, no key should have been created.
@@ -86,7 +89,10 @@ TEST_F(QueryStatsTest, TwoRegisterRequestsWithSameOpCtxRateLimitedFirstCall) {
 
     ASSERT_DOES_NOT_THROW(query_stats::registerRequest(opCtx.get(), nss, [&]() {
         return std::make_unique<query_stats::FindKey>(
-            expCtx, *parsedFind, query_shape::CollectionType::kCollection);
+            expCtx,
+            *parsedFind->findCommandRequest,
+            std::make_unique<query_shape::FindCmdShape>(findShape),
+            query_shape::CollectionType::kCollection);
     }));
 
     // queryStatsKey should not be created for previously rate limited query.
@@ -120,9 +126,12 @@ TEST_F(QueryStatsTest, TwoRegisterRequestsWithSameOpCtxDisabledBetween) {
         auto fcrCopy = std::make_unique<FindCommandRequest>(fcr);
         auto expCtx = ExpressionContextBuilder{}.fromRequest(opCtx.get(), *fcrCopy).build();
         auto parsedFind = uassertStatusOK(parsed_find_command::parse(expCtx, {std::move(fcrCopy)}));
+        auto findShape = std::make_unique<query_shape::FindCmdShape>(*parsedFind, expCtx);
         ASSERT_DOES_NOT_THROW(query_stats::registerRequest(opCtx.get(), nss, [&]() {
-            return std::make_unique<query_stats::FindKey>(
-                expCtx, *parsedFind, query_shape::CollectionType::kCollection);
+            return std::make_unique<query_stats::FindKey>(expCtx,
+                                                          *parsedFind->findCommandRequest,
+                                                          std::move(findShape),
+                                                          query_shape::CollectionType::kCollection);
         }));
 
         ASSERT(opDebug.queryStatsInfo.key != nullptr);
@@ -145,10 +154,13 @@ TEST_F(QueryStatsTest, TwoRegisterRequestsWithSameOpCtxDisabledBetween) {
         fcrCopy->setSort(BSON("x" << 1));
         auto expCtx = ExpressionContextBuilder{}.fromRequest(opCtx.get(), *fcrCopy).build();
         auto parsedFind = uassertStatusOK(parsed_find_command::parse(expCtx, {std::move(fcrCopy)}));
+        auto findShape = std::make_unique<query_shape::FindCmdShape>(*parsedFind, expCtx);
 
         ASSERT_DOES_NOT_THROW(query_stats::registerRequest(opCtx.get(), nss, [&]() {
-            return std::make_unique<query_stats::FindKey>(
-                expCtx, *parsedFind, query_shape::CollectionType::kCollection);
+            return std::make_unique<query_stats::FindKey>(expCtx,
+                                                          *parsedFind->findCommandRequest,
+                                                          std::move(findShape),
+                                                          query_shape::CollectionType::kCollection);
         }));
 
         // queryStatsKey should not be created since we have a size budget of 0.

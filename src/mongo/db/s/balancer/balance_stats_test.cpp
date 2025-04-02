@@ -53,8 +53,7 @@
 #include "mongo/s/database_version.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
@@ -87,9 +86,7 @@ public:
                                                                 true,         // allowMigration
                                                                 chunks);
 
-        return ChunkManager(_shardPrimary,
-                            _dbVersion,
-                            RoutingTableHistoryValueHandle(std::make_shared<RoutingTableHistory>(
+        return ChunkManager(RoutingTableHistoryValueHandle(std::make_shared<RoutingTableHistory>(
                                 std::move(routingTableHistory))),
                             boost::none);
     }

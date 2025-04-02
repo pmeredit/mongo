@@ -45,8 +45,7 @@
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/storage/write_unit_of_work.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -189,7 +188,7 @@ TEST_F(MultiIndexBlockTest, InitWriteConflictException) {
 
     BSONObj spec = BSON("key" << BSON("a" << 1) << "name"
                               << "a_1"
-                              << "v" << static_cast<int>(IndexDescriptor::kLatestIndexVersion));
+                              << "v" << static_cast<int>(IndexConfig::kLatestIndexVersion));
 
     {
         WriteUnitOfWork wuow(operationContext());
@@ -222,7 +221,7 @@ TEST_F(MultiIndexBlockTest, InitMultipleSpecs) {
 
     BSONObj spec = BSON("key" << BSON("a" << 1) << "name"
                               << "a_1"
-                              << "v" << static_cast<int>(IndexDescriptor::kLatestIndexVersion));
+                              << "v" << static_cast<int>(IndexConfig::kLatestIndexVersion));
 
     // Starting multiple index builds that conflicts with each other fails, but not with
     // IndexBuildAlreadyInProgress
@@ -269,7 +268,7 @@ TEST_F(MultiIndexBlockTest, InitMultipleSpecs) {
 
     BSONObj specB = BSON("key" << BSON("b" << 1) << "name"
                                << "b_1"
-                               << "v" << static_cast<int>(IndexDescriptor::kLatestIndexVersion));
+                               << "v" << static_cast<int>(IndexConfig::kLatestIndexVersion));
 
     // If one of the requested specs are already in progress we fail with
     // IndexBuildAlreadyInProgress

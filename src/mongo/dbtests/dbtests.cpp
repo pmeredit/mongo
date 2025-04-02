@@ -72,8 +72,8 @@
 #include "mongo/scripting/engine.h"
 #include "mongo/transport/service_entry_point.h"
 #include "mongo/transport/transport_layer_manager_impl.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/duration.h"
@@ -218,6 +218,13 @@ WriteContextForTests::WriteContextForTests(OperationContext* opCtx, StringData n
     auto db = _autoDb->ensureDbExists(opCtx);
     invariant(db, _nss.toStringForErrorMsg());
     invariant(db == _clientContext->db());
+}
+
+CollectionAcquisition WriteContextForTests::getCollection() const {
+    return acquireCollection(_opCtx,
+                             CollectionAcquisitionRequest::fromOpCtx(
+                                 _opCtx, _nss, AcquisitionPrerequisites::OperationType::kWrite),
+                             MODE_IX);
 }
 
 int dbtestsMain(int argc, char** argv) {

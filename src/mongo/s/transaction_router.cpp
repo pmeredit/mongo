@@ -64,9 +64,6 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -93,8 +90,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 // TODO SERVER-39704: Remove this fail point once the router can safely retry within a transaction
 // on stale version and snapshot errors.
@@ -339,11 +334,13 @@ TransactionRouter::Router::Router(OperationContext* opCtx)
 TransactionRouter::Participant::Participant(bool inIsCoordinator,
                                             StmtId inStmtIdCreatedAt,
                                             ReadOnly inReadOnly,
-                                            SharedTransactionOptions inSharedOptions)
+                                            SharedTransactionOptions inSharedOptions,
+                                            bool isSubRouter)
     : isCoordinator(inIsCoordinator),
       readOnly(inReadOnly),
       sharedOptions(std::move(inSharedOptions)),
-      stmtIdCreatedAt(inStmtIdCreatedAt) {}
+      stmtIdCreatedAt(inStmtIdCreatedAt),
+      isSubRouter(isSubRouter) {}
 
 BSONObj TransactionRouter::Observer::reportState(OperationContext* opCtx,
                                                  bool sessionIsActive) const {
@@ -610,10 +607,11 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
     auto txnResponseMetadata =
         TxnResponseMetadata::parse(IDLParserContext{"processParticipantResponse"}, responseObj);
 
-    auto setReadOnly = [&](const ShardId& shardIdToUpdate,
-                           Participant::ReadOnly readOnlyCurrent,
-                           boost::optional<bool> readOnlyResponse,
-                           bool isAdditionalParticipant) {
+    auto determineReadOnlyValue =
+        [&](const ShardId& shardIdToUpdate,
+            Participant::ReadOnly readOnlyCurrent,
+            boost::optional<bool> readOnlyResponse,
+            bool isAdditionalParticipant) -> boost::optional<Participant::ReadOnly> {
         if (!readOnlyResponse) {
             // It's possible not to have a readOnly value for an additional participant shard yet in
             // the following cases:
@@ -652,12 +650,11 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
                                     o().txnNumberAndRetryCounter.getTxnRetryCounter(),
                                 "shardId"_attr = shardIdToUpdate);
 
-                    _setReadOnlyForParticipant(
-                        opCtx, shardIdToUpdate, Participant::ReadOnly::kReadOnly);
+                    return Participant::ReadOnly::kReadOnly;
                 }
             }
 
-            return;
+            return boost::none;
         }
 
         // The shard reported readOnly: true
@@ -672,9 +669,7 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
                                 o().txnNumberAndRetryCounter.getTxnRetryCounter(),
                             "shardId"_attr = shardIdToUpdate);
 
-                _setReadOnlyForParticipant(
-                    opCtx, shardIdToUpdate, Participant::ReadOnly::kReadOnly);
-                return;
+                return Participant::ReadOnly::kReadOnly;
             }
 
             uassert(51113,
@@ -682,21 +677,11 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
                                   << " claimed to be read-only for a transaction after previously "
                                      "claiming to have done a write for the transaction",
                     readOnlyCurrent == Participant::ReadOnly::kReadOnly);
-            return;
+            return boost::none;
         }
 
         // The shard reported readOnly: false
         if (readOnlyCurrent != Participant::ReadOnly::kNotReadOnly) {
-            LOGV2_DEBUG(22881,
-                        3,
-                        "Marking shard has having done a write",
-                        "sessionId"_attr = _sessionId(),
-                        "txnNumber"_attr = o().txnNumberAndRetryCounter.getTxnNumber(),
-                        "txnRetryCounter"_attr = o().txnNumberAndRetryCounter.getTxnRetryCounter(),
-                        "shardId"_attr = shardIdToUpdate);
-
-            _setReadOnlyForParticipant(opCtx, shardIdToUpdate, Participant::ReadOnly::kNotReadOnly);
-
             if (!p().recoveryShardId) {
                 LOGV2_DEBUG(22882,
                             3,
@@ -708,7 +693,19 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
                             "shardId"_attr = shardIdToUpdate);
                 p().recoveryShardId = shardIdToUpdate;
             }
+
+            LOGV2_DEBUG(22881,
+                        3,
+                        "Marking shard has having done a write",
+                        "sessionId"_attr = _sessionId(),
+                        "txnNumber"_attr = o().txnNumberAndRetryCounter.getTxnNumber(),
+                        "txnRetryCounter"_attr = o().txnNumberAndRetryCounter.getTxnRetryCounter(),
+                        "shardId"_attr = shardIdToUpdate);
+
+            return Participant::ReadOnly::kNotReadOnly;
         }
+
+        return boost::none;
     };
 
     auto processAdditionalParticipants = [&](bool okResponse) {
@@ -723,6 +720,7 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
             if (!existingParticipant) {
                 auto createdParticipant = _createParticipant(opCtx, participantToAdd);
                 currentReadOnly = createdParticipant.readOnly;
+
                 if (!p().isRecoveringCommit) {
                     // Don't update participant stats during recovery since the participant list
                     // isn't known.
@@ -733,14 +731,19 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
             }
 
             if (okResponse) {
-                setReadOnly(participantToAdd,
-                            currentReadOnly,
-                            participantElem.getReadOnly(),
-                            true /* isAdditionalParticipant */);
+                auto readOnlyValue = determineReadOnlyValue(participantToAdd,
+                                                            currentReadOnly,
+                                                            participantElem.getReadOnly(),
+                                                            true /* isAdditionalParticipant */);
+
+                // We only care about the isSubRouter value for participants in the top level
+                // transaction router, so we default the value to false for any additional
+                // participants.
+                _updateParticipant(opCtx, participantToAdd, readOnlyValue, false /* isSubRouter */);
             }
         }
     };
-
+    boost::optional<Participant::ReadOnly> readOnlyValue = boost::none;
     auto commandStatus = getStatusFromCommandResult(responseObj);
     // WouldChangeOwningShard errors don't abort their transaction and the responses containing them
     // include transaction metadata, so we treat them as successful responses.
@@ -748,17 +751,20 @@ void TransactionRouter::Router::processParticipantResponse(OperationContext* opC
         // We should still add any participants added to the transaction to ensure they will be
         // aborted
         processAdditionalParticipants(false /* okResponse */);
-        return;
+    } else {
+        readOnlyValue = determineReadOnlyValue(shardId,
+                                               participant->readOnly,
+                                               txnResponseMetadata.getReadOnly(),
+                                               false /* isAdditionalParticipant */);
+        // Create any participants added by the shard 'shardId'
+        processAdditionalParticipants(true /* okResponse */);
     }
 
-    // Set readOnly for this participant
-    setReadOnly(shardId,
-                participant->readOnly,
-                txnResponseMetadata.getReadOnly(),
-                false /* isAdditionalParticipant */);
+    // Set isSubRouter for this participant
+    bool shardIsSubRouter = txnResponseMetadata.getAdditionalParticipants() &&
+        txnResponseMetadata.getAdditionalParticipants()->size() > 0;
 
-    // Create any participants added by the shard 'shardId'
-    processAdditionalParticipants(true /* okResponse */);
+    _updateParticipant(opCtx, shardId, readOnlyValue, shardIsSubRouter);
 }
 
 boost::optional<LogicalTime> TransactionRouter::Router::getSelectedAtClusterTime() const {
@@ -870,11 +876,11 @@ BSONObj TransactionRouter::Router::attachTxnFieldsIfNeeded(OperationContext* opC
                                            hasTxnCreatedAnyDatabase);
 }
 
-const TransactionRouter::Participant* TransactionRouter::Router::getParticipant(
+boost::optional<TransactionRouter::Participant> TransactionRouter::Router::getParticipant(
     const ShardId& shard) {
     const auto iter = o().participants.find(shard.toString());
     if (iter == o().participants.end())
-        return nullptr;
+        return boost::none;
 
     if (auto& participantAtClusterTime =
             iter->second.sharedOptions.atClusterTimeForSnapshotReadConcern) {
@@ -885,10 +891,10 @@ const TransactionRouter::Participant* TransactionRouter::Router::getParticipant(
                   *o().placementConflictTimeForNonSnapshotReadConcern);
     }
 
-    return &iter->second;
+    return iter->second;
 }
 
-TransactionRouter::Participant& TransactionRouter::Router::_createParticipant(
+TransactionRouter::Participant TransactionRouter::Router::_createParticipant(
     OperationContext* opCtx, const ShardId& shard) {
 
     auto& os = o();
@@ -920,22 +926,34 @@ TransactionRouter::Participant& TransactionRouter::Router::_createParticipant(
     return resultPair.first->second;
 }
 
-void TransactionRouter::Router::_setReadOnlyForParticipant(OperationContext* opCtx,
-                                                           const ShardId& shard,
-                                                           const Participant::ReadOnly readOnly) {
-    invariant(readOnly != Participant::ReadOnly::kUnset);
+void TransactionRouter::Router::_updateParticipant(
+    OperationContext* opCtx,
+    const ShardId& shard,
+    const boost::optional<Participant::ReadOnly> readOnly,
+    const boost::optional<bool> isSubRouter) {
 
-    const auto iter = o().participants.find(shard.toString());
+    stdx::lock_guard<Client> lk(*opCtx->getClient());
+    const auto iter = o(lk).participants.find(shard.toString());
     invariant(iter != o().participants.end());
     const auto currentParticipant = iter->second;
+
+    auto updatedReadOnly = currentParticipant.readOnly;
+    auto updatedIsSubRouter = currentParticipant.isSubRouter;
+
+    if (readOnly) {
+        updatedReadOnly = *readOnly != Participant::ReadOnly::kUnset ? *readOnly : updatedReadOnly;
+    }
+    if (isSubRouter) {
+        updatedIsSubRouter = *isSubRouter ? *isSubRouter : updatedIsSubRouter;
+    }
 
     auto newParticipant =
         TransactionRouter::Participant(currentParticipant.isCoordinator,
                                        currentParticipant.stmtIdCreatedAt,
-                                       readOnly,
-                                       std::move(currentParticipant.sharedOptions));
+                                       updatedReadOnly,
+                                       std::move(currentParticipant.sharedOptions),
+                                       updatedIsSubRouter);
 
-    stdx::lock_guard<Client> lk(*opCtx->getClient());
     o(lk).participants.erase(iter);
     o(lk).participants.try_emplace(shard.toString(), std::move(newParticipant));
 }
@@ -1339,9 +1357,10 @@ void TransactionRouter::Router::beginOrContinueTxn(OperationContext* opCtx,
             action == TransactionActions::kContinue || action == TransactionActions::kCommit) {
             uassert(
                 ErrorCodes::APIMismatchError,
-                "API parameter mismatch: transaction-continuing command used {}, the transaction's"
-                " first command used {}"_format(apiParamsFromClient.toBSON().toString(),
-                                                o().apiParameters.toBSON().toString()),
+                fmt::format("API parameter mismatch: transaction-continuing command used {}, the "
+                            "transaction's first command used {}",
+                            apiParamsFromClient.toBSON().toString(),
+                            o().apiParameters.toBSON().toString()),
                 apiParamsFromClient == o().apiParameters);
         }
         _continueTxn(opCtx, txnNumberAndRetryCounter, action);
@@ -1672,24 +1691,41 @@ BSONObj TransactionRouter::Router::abortTransaction(OperationContext* opCtx) {
                                            Shard::RetryPolicy::kIdempotent,
                                            abortRequests);
 
+    // TODO SERVER-100938: Replace the following with appendRawResponses when that helper has been
+    // fixed to properly return WCE.
     BSONObj lastResult;
+    boost::optional<BSONObj> errorResult;
+    boost::optional<BSONObj> wceResult;
     for (const auto& response : responses) {
         uassertStatusOK(response.swResponse);
 
         lastResult = response.swResponse.getValue().data;
 
-        // If any shard returned an error, return the error immediately.
+        // If any shard returned an error, store that error to be returned. We do not return
+        // immediately so we do not accidentally hide a possible writeConcernError that a different
+        // participant could return.
         const auto commandStatus = getStatusFromCommandResult(lastResult);
-        if (!commandStatus.isOK()) {
-            return lastResult;
+        if (!commandStatus.isOK() && !errorResult) {
+            errorResult.emplace(lastResult);
         }
 
-        // If any participant had a writeConcern error, return the participant's writeConcern
-        // error immediately.
+        // If any participant had a writeConcern error, store it to be returned. If a participant
+        // had both a normal error and a writeConcern error return that immediately.
         const auto writeConcernStatus = getWriteConcernStatusFromCommandResult(lastResult);
-        if (!writeConcernStatus.isOK()) {
-            return lastResult;
+        if (!writeConcernStatus.isOK() && !wceResult) {
+            wceResult.emplace(lastResult);
+            if (!commandStatus.isOK()) {
+                return lastResult;
+            }
         }
+    }
+
+    if (errorResult) {
+        return errorResult.get();
+    }
+
+    if (wceResult) {
+        return wceResult.get();
     }
 
     // If all the responses were ok, return the last response.
@@ -1816,6 +1852,7 @@ void TransactionRouter::Router::_resetRouterState(
         o(lk).metricsTracker.emplace(opCtx->getServiceContext());
         p().terminationInitiated = false;
         p().createdDatabases.clear();
+        p().disallowSingleWriteShardCommit = false;
 
         auto tickSource = opCtx->getServiceContext()->getTickSource();
         o(lk).metricsTracker->trySetActive(tickSource, tickSource->getTicks());
@@ -2102,11 +2139,19 @@ bool TransactionRouter::Router::_errorAllowsRetryOnStaleShardOrDb(const Status& 
         status.extraInfo<ShardCannotRefreshDueToLocksHeldInfo>();
 
     // We can retry on the first operation of stale config or db routing version error if there was
-    // at most one participant in the transaction because there would only be one request sent, and
-    // at this point that request has finished so there can't be any outstanding requests that would
-    // race with a retry
+    // at most one participant in the transaction and that participant is not a subrouter.
+    // There would only be one request sent, and at this point that request has finished so there
+    // can't be any outstanding requests that would race with a retry
+
+    // We cannot retry if the only participant is a subrouter because we will not reset the
+    // participant's router state due to its participant list not being empty. Since we do not reset
+    // the state, the router's atClusterTime value will be stale with respect to the atClusterTime
+    // value set on retry, and we will trigger an assertion.
+    bool isOnlyParticipantASubRouter =
+        o().participants.size() == 1 ? o().participants.begin()->second.isSubRouter : false;
     return (staleInfo || staleDB || shardCannotRefreshDueToLocksHeldInfo) &&
-        o().participants.size() <= 1 && p().latestStmtId == p().firstStmtId;
+        o().participants.size() <= 1 && !isOnlyParticipantASubRouter &&
+        p().latestStmtId == p().firstStmtId;
 }
 
 Microseconds TransactionRouter::TimingStats::getDuration(TickSource* tickSource,

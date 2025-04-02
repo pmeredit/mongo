@@ -4,6 +4,7 @@
 
 #include "streams/exec/https_operator.h"
 
+#include <absl/strings/str_split.h>
 #include <algorithm>
 #include <bsoncxx/exception/exception.hpp>
 #include <bsoncxx/json.hpp>
@@ -18,22 +19,19 @@
 #include <string>
 
 #include "mongo/base/error_codes.h"
-#include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/document.h"
-#include "mongo/db/json.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/ctype.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/overloaded_visitor.h"
 #include "mongo/util/str.h"
-#include "mongo/util/text.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
 #include "streams/exec/feature_flag.h"
@@ -44,7 +42,6 @@
 #include "streams/exec/rate_limiter.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/util.h"
-#include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -134,7 +131,7 @@ void HttpsOperator::registerMetrics(MetricManager* metricManager) {
 HttpsOperator::HttpsOperator(Context* context, HttpsOperator::Options options)
     : Operator(context, 1, 1),
       _options(std::move(options)),
-      _rateLimitPerSec{getRateLimitPerSec(*context->featureFlags)},
+      _rateLimitPerSec{getHttpsRateLimitPerSec(*context->featureFlags)},
       _rateLimiter{_rateLimitPerSec, &_options.timer},
       _cidrDenyList{parseCidrDenyList()} {
     tassert(
@@ -201,7 +198,7 @@ void HttpsOperator::doOnDataMsg(int32_t inputIdx,
     int64_t numDlqBytes{0};
 
     // If the rate limit per second feature flag is updated, update rate limiter accordingly
-    if (auto newRateLimitPerSec = getRateLimitPerSec(*_context->featureFlags);
+    if (auto newRateLimitPerSec = getHttpsRateLimitPerSec(_context->featureFlags);
         newRateLimitPerSec != _rateLimitPerSec) {
         _rateLimitPerSec = newRateLimitPerSec;
         _rateLimiter.setTokensRefilledPerSec(newRateLimitPerSec);
@@ -240,7 +237,7 @@ void HttpsOperator::doOnDataMsg(int32_t inputIdx,
                       .numOutputBytes = numOutputBytes,
                       .numDlqDocs = numDlqDocs,
                       .numDlqBytes = numDlqBytes,
-                      .timeSpent = dataMsg.creationTimer->elapsed()});
+                      .timeSpent = dataMsg.creationTimer.elapsed()});
     sendDataMsg(/*outputIdx*/ 0, std::move(outputMsg), std::move(controlMsg));
 }
 
@@ -315,12 +312,8 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
         case HttpClient::HttpMethod::kPUT:
         case HttpClient::HttpMethod::kPATCH: {
             try {
-                rawDoc =
-                    tojson(payloadDoc.toBson(), mongo::JsonStringFormat::ExtendedRelaxedV2_0_0);
-            } catch (const DBException& e) {
-                if (e.code() != ErrorCodes::BSONObjectTooLarge) {
-                    throw;
-                }
+                rawDoc = serializeJson(payloadDoc.toBson(), JsonStringFormat::Relaxed);
+            } catch (ExceptionFor<ErrorCodes::BSONObjectTooLarge>& e) {
                 writeToDLQ(streamDoc,
                            payloadDoc,
                            fmt::format("{}: {}", e.codeString(), e.what()),
@@ -431,23 +424,12 @@ HttpsOperator::ProcessResult HttpsOperator::processStreamDoc(StreamDocument* str
             responseAsValue = Value(rawResponse.toString());
         } else if ((contentType && *contentType == kApplicationJson) || !contentType) {
             try {
-                // TODO(SERVER-98467): parse the json array directly instead of wrapping in a doc
-                if (rawResponse.front() == '[') {
-                    std::string objectWrapper = fmt::format(R"({{"data":{}}})", rawResponse.data());
-                    auto responseView =
-                        bsoncxx::stdx::string_view{objectWrapper.data(), objectWrapper.size()};
-                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-                    responseAsValue = Value(std::move(responseAsBson.firstElement()));
-                } else {
-                    auto responseView =
-                        bsoncxx::stdx::string_view{rawResponse.data(), rawResponse.size()};
-                    auto responseAsBson = fromBsoncxxDocument(bsoncxx::from_json(responseView));
-                    responseAsValue = Value(std::move(responseAsBson));
-                }
+                responseAsValue =
+                    parseAndDeserializeJsonResponse(rawResponse, _options.parseJsonStrings);
             } catch (const bsoncxx::exception& e) {
                 tryLog(9604801, [&](int logID) {
                     LOGV2_INFO(logID,
-                               "Error occured while reading response in HttpsOperator",
+                               "Error occured while parsing response in HttpsOperator",
                                "context"_attr = _context,
                                "error"_attr = e.what());
                 });
@@ -598,19 +580,24 @@ std::vector<std::string> HttpsOperator::evaluateQueryParams(const mongo::Documen
 }
 
 boost::optional<std::string> HttpsOperator::parseContentTypeFromHeaders(StringData rawHeaders) {
-    auto headerTokens = StringSplitter::split(rawHeaders.data(), "\r\n");
+    auto headerTokens = absl::StrSplit(rawHeaders.data(), "\r\n", absl::SkipEmpty());
+
+    auto convertToLower = [](std::string& s) {
+        std::transform(s.begin(), s.end(), s.begin(), [](auto c) { return ctype::toLower(c); });
+    };
+
     for (const auto& headerToken : headerTokens) {
-        auto keyAndValue = StringSplitter::split(headerToken, ": ");
+        std::vector<std::string> keyAndValue = absl::StrSplit(headerToken, ": ", absl::SkipEmpty());
         if (keyAndValue.size() != 2) {
             // There is network related data before the actual headers skip this.
             continue;
         }
-        std::transform(
-            keyAndValue[0].begin(), keyAndValue[0].end(), keyAndValue[0].begin(), ::tolower);
+        convertToLower(keyAndValue[0]);
         if (keyAndValue[0] == "content-type") {
-            auto contentType = StringSplitter::split(keyAndValue[1], ";");
-            transform(
-                contentType[0].begin(), contentType[0].end(), contentType[0].begin(), ::tolower);
+            std::vector<std::string> contentType =
+                absl::StrSplit(keyAndValue[1], ";", absl::SkipEmpty());
+            uassert(ErrorCodes::FailedToParse, "No value for content-type", !contentType.empty());
+            convertToLower(contentType[0]);
             return contentType[0];
         }
     }
@@ -693,16 +680,15 @@ void HttpsOperator::parseBaseUrl() {
 
     result = curl_url_get(handle, CURLUPART_PORT, &port, 0);
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url hostname failed",
+            "Parsing url port failed",
             result == CURLUE_OK || result == CURLUE_NO_PORT);
     if (port != nullptr) {
         out.port = std::string{port};
     }
 
     result = curl_url_get(handle, CURLUPART_PATH, &path, 0);
-    uassert(ErrorCodes::StreamProcessorInvalidOptions,
-            "Parsing url hostname failed",
-            result == CURLUE_OK);
+    uassert(
+        ErrorCodes::StreamProcessorInvalidOptions, "Parsing url path failed", result == CURLUE_OK);
     if (path != nullptr) {
         out.path = std::string{path};
     }
@@ -765,7 +751,12 @@ std::string HttpsOperator::makeUrlString(std::string additionalPath,
 
     if (!_baseUrlComponents.path.empty() || !additionalPath.empty()) {
         auto path = joinPaths(_baseUrlComponents.path, additionalPath);
-        result = curl_url_set(handle, CURLUPART_PATH, path.c_str(), CURLU_URLENCODE);
+
+        unsigned int flags = 0;
+        if (_options.urlEncodePath) {
+            flags = CURLU_URLENCODE;
+        }
+        result = curl_url_set(handle, CURLUPART_PATH, path.c_str(), flags);
         uassert(
             ErrorCodes::StreamProcessorInvalidOptions, "Failed to set path.", result == CURLUE_OK);
     }
@@ -807,9 +798,9 @@ void HttpsOperator::validateOptions() {
     bool queryOptDefined = !_options.queryParams.empty();
 
     // These validations generally prevent users from making the operator interpolate parts of
-    // an url that the base url has already defined a later part for. For example, appending path on
-    // a base url that contains query params.
-    // ie: adding "/foo/bar" path to "http://localhost:80?foo=bar".
+    // an url that the base url has already defined a later part for. For example, appending
+    // path on a base url that contains query params. ie: adding "/foo/bar" path to
+    // "http://localhost:80?foo=bar".
     uassert(ErrorCodes::StreamProcessorInvalidOptions,
             fmt::format("The url defined in {}.connection.url contains a fragment that can "
                         "conflict with a query "
@@ -882,13 +873,6 @@ std::string HttpsOperator::joinPaths(const std::string& basePath, const std::str
     out.append(cleanSlashes(path));
 
     return out;
-}
-
-int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
-    tassert(9503701, "Feature flags should be set", featureFlags);
-    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kHttpsRateLimitPerSecond).getInt();
-
-    return *val;
 }
 
 }  // namespace streams

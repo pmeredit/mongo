@@ -58,7 +58,7 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/db/views/view.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/functional.h"
 #include "mongo/util/immutable/map.h"
 #include "mongo/util/immutable/unordered_map.h"
@@ -77,7 +77,32 @@ namespace catalog {
 // namespace. This is a special class that controls opening/closing the catalog and resides in
 // catalog_control.cpp
 class CatalogControlUtils;
-};  // namespace catalog
+
+/**
+ * Must be called after DurableCatalog is loaded.
+ */
+void initializeCollectionCatalog(OperationContext* opCtx,
+                                 StorageEngine* engine,
+                                 boost::optional<Timestamp> stableTs);
+void initializeCollectionCatalog(OperationContext* opCtx, StorageEngine* engine);
+
+/**
+ * Creates a Collection object and registers it in the CollectionCatalog.
+ */
+void initCollectionObject(OperationContext* opCtx,
+                          StorageEngine* engine,
+                          RecordId catalogId,
+                          const NamespaceString& nss,
+                          bool forRepair,
+                          Timestamp minValidTs);
+
+/**
+ * Lists the databases.
+ * This function doesn't return databases whose creation has committed durably but hasn't been
+ * published yet in the CollectionCatalog.
+ */
+std::vector<DatabaseName> listDatabases(boost::optional<TenantId> tenantId = boost::none);
+}  // namespace catalog
 
 class CollectionCatalog {
     friend class iterator;
@@ -240,15 +265,16 @@ public:
      *
      * No collection level lock is required to call this function.
      */
-    const Collection* establishConsistentCollection(OperationContext* opCtx,
-                                                    const NamespaceStringOrUUID& nssOrUUID,
-                                                    boost::optional<Timestamp> readTimestamp) const;
+    ConsistentCollection establishConsistentCollection(
+        OperationContext* opCtx,
+        const NamespaceStringOrUUID& nssOrUUID,
+        boost::optional<Timestamp> readTimestamp) const;
 
     // Establish a consistent view of the database. This method will only work against the latest
     // timestamp. It is equivalent to calling establishConsistentCollection with no timestamp on all
     // collections of the database.
-    std::vector<const Collection*> establishConsistentCollections(OperationContext* opCtx,
-                                                                  const DatabaseName& dbName) const;
+    std::vector<ConsistentCollection> establishConsistentCollections(
+        OperationContext* opCtx, const DatabaseName& dbName) const;
 
     /**
      * Returns a shared_ptr to a drop pending index if it's found and not expired.

@@ -9,10 +9,36 @@ exports_files(
     ]),
 )
 
+MONGOCXX_COPTS = [
+    "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist",
+] + select({
+    "@platforms//cpu:x86_64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_x86_64",
+    ],
+    "@platforms//cpu:aarch64": [
+        "-isystemsrc/mongo/db/modules/enterprise/src/streams/third_party/mongocxx/dist/platform/linux_aarch64",
+    ],
+    "//conditions:default": [],
+})
+
 mongo_cc_unit_test(
     name = "metric_manager_test",
     srcs = [
         "metric_manager_test.cpp",
+    ],
+    copts = MONGOCXX_COPTS,
+    tags = ["mongo_unittest_first_group"],
+    deps = [
+        "//src/mongo:base",
+        "//src/mongo/db/modules/enterprise/src/streams/exec/tests:streams_test_utils",
+        "//src/mongo/db/modules/enterprise/src/streams/util:streams_util",
+    ],
+)
+
+mongo_cc_unit_test(
+    name = "metrics_test",
+    srcs = [
+        "metrics_test.cpp",
     ],
     tags = ["mongo_unittest_first_group"],
     deps = [

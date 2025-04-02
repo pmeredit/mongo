@@ -49,9 +49,7 @@
 #include "mongo/dbtests/mock/mock_remote_db_server.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/duration.h"
@@ -147,19 +145,17 @@ TEST_F(DatabaseClonerTest, ListCollections) {
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
     auto uuid2 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     ASSERT_OK(cloner->run());
@@ -180,27 +176,25 @@ TEST_F(DatabaseClonerTest, ListCollectionsAllowsExtraneousFields) {
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
     auto uuid2 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   // The "flavor" field is not really found in
-                                                   // listCollections.
-                                                   << "flavor"
-                                                   << "raspberry"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON("name"
-                                                   << "b"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj()
-                                                   << "info"
-                                                   // The "comet" field is not really found in
-                                                   // listCollections.
-                                                   << BSON("readOnly" << false << "uuid" << uuid2
-                                                                      << "comet"
-                                                                      << "2l_Borisov"))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    // The "flavor" field is not really found in
+                    // listCollections.
+                    << "flavor"
+                    << "raspberry"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj()
+                    << "info"
+                    // The "comet" field is not really found in
+                    // listCollections.
+                    << BSON("readOnly" << false << "uuid" << uuid2 << "comet"
+                                       << "2l_Borisov"))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     ASSERT_OK(cloner->run());
@@ -219,19 +213,17 @@ TEST_F(DatabaseClonerTest, ListCollectionsFailsOnDuplicateNames) {
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
     auto uuid2 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "a"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     auto status = cloner->run();
@@ -244,17 +236,15 @@ TEST_F(DatabaseClonerTest, ListCollectionsFailsOnMissingNameField) {
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
     auto uuid2 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("type" << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     auto status = cloner->run();
@@ -266,17 +256,15 @@ TEST_F(DatabaseClonerTest, ListCollectionsFailsOnMissingOptions) {
     auto cloner = makeDatabaseCloner();
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"),
-                                              BSON(
-                                                  "name"
-                                                  << "a"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid1))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"),
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     auto status = cloner->run();
@@ -288,19 +276,16 @@ TEST_F(DatabaseClonerTest, ListCollectionsFailsOnMissingUUID) {
     auto cloner = makeDatabaseCloner();
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid1))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info" << BSON("readOnly" << false)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     auto status = cloner->run();
@@ -313,20 +298,18 @@ TEST_F(DatabaseClonerTest, ListCollectionsFailsOnInvalidCollectionOptions) {
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
     auto uuid2 = UUID::gen();
-    const std::vector<BSONObj>
-        sourceInfos = {BSON("name"
-                            << "a"
-                            << "type"
-                            << "collection"
-                            << "options" << BSONObj() << "info"
-                            << BSON("readOnly" << false << "uuid" << uuid1)),
-                       BSON("name"
-                            << "b"
-                            << "type"
-                            << "collection"
-                            // "storageEngine" is not an integer collection option.
-                            << "options" << BSON("storageEngine" << 1) << "info"
-                            << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    // "storageEngine" is not an integer collection option.
+                    << "options" << BSON("storageEngine" << 1) << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     auto status = cloner->run();
@@ -339,19 +322,17 @@ TEST_F(DatabaseClonerTest, FirstCollectionListIndexesFailed) {
     auto uuid2 = UUID::gen();
     const BSONObj idIndexSpec =
         BSON("v" << 1 << "key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName);
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     // The collection cloner pre-stage makes a remote call to collStats to store in-progress
     // metrics.
     _mockServer->setCommandReply("collStats", BSON("size" << 0));
@@ -377,19 +358,17 @@ TEST_F(DatabaseClonerTest, CreateCollections) {
     auto uuid2 = UUID::gen();
     const BSONObj idIndexSpec =
         BSON("v" << 1 << "key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName);
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     // The collection cloner pre-stage makes a remote call to collStats to store in-progress
@@ -424,19 +403,17 @@ TEST_F(DatabaseClonerTest, DatabaseAndCollectionStats) {
         BSON("v" << 1 << "key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName);
     const BSONObj extraIndexSpec = BSON("v" << 1 << "key" << BSON("x" << 1) << "name"
                                             << "_extra_");
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     // The collection cloner pre-stage makes a remote call to collStats to store in-progress
@@ -563,19 +540,17 @@ TEST_F(DatabaseClonerMultitenancyTest, ListCollectionsMultitenancySupport) {
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
     auto uuid2 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     ASSERT_OK(cloner->run());
@@ -598,19 +573,17 @@ TEST_F(DatabaseClonerMultitenancyTest,
     cloner->setStopAfterStage_forTest("listCollections");
     auto uuid1 = UUID::gen();
     auto uuid2 = UUID::gen();
-    const std::vector<BSONObj> sourceInfos = {BSON("name"
-                                                   << "a"
-                                                   << "type"
-                                                   << "collection"
-                                                   << "options" << BSONObj() << "info"
-                                                   << BSON("readOnly" << false << "uuid" << uuid1)),
-                                              BSON(
-                                                  "name"
-                                                  << "b"
-                                                  << "type"
-                                                  << "collection"
-                                                  << "options" << BSONObj() << "info"
-                                                  << BSON("readOnly" << false << "uuid" << uuid2))};
+    const std::vector<BSONObj> sourceInfos = {
+        BSON("name" << "a"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid1)),
+        BSON("name" << "b"
+                    << "type"
+                    << "collection"
+                    << "options" << BSONObj() << "info"
+                    << BSON("readOnly" << false << "uuid" << uuid2))};
     _mockServer->setCommandReply("listCollections",
                                  createListCollectionsResponse({sourceInfos[0], sourceInfos[1]}));
     ASSERT_OK(cloner->run());

@@ -12,6 +12,8 @@
 //   # 'planCacheClear' command is not allowed with the security token.
 //   not_allowed_with_signed_security_token,
 //   requires_fcv_80,
+//   # Test includes SBE plan cache assertions if the SBE plan cache is used.
+//   examines_sbe_cache,
 // ]
 //
 
@@ -99,7 +101,7 @@ function testDistinctQuerySettingsApplication(collOrViewName) {
     // This query has the key that doesn't match any provided index which guarantees that there
     // would be no DISTINCT_SCAN plan and the query planner will fall back to the `find`. In case
     // multiplanner is involved it is expected that the query will end up in query plan cache.
-    setIndexes(coll, [qstests.indexA, qstests.indexB, qstests.indexAB]);
+    setIndexes(coll, qstests.allIndexes);
 
     const querySettingsDistinctQuery = qsutils.makeDistinctQueryInstance({
         key: 'c',
@@ -110,6 +112,7 @@ function testDistinctQuerySettingsApplication(collOrViewName) {
     qstests.assertQuerySettingsNaturalApplication(querySettingsDistinctQuery, ns);
     qstests.assertQuerySettingsIgnoreCursorHints(querySettingsDistinctQuery, ns);
     qstests.assertQuerySettingsFallback(querySettingsDistinctQuery, ns);
+    qstests.assertQuerySettingsFallbackNoQueryExecutionPlans(querySettingsDistinctQuery, ns);
     qstests.assertQuerySettingsCommandValidation(querySettingsDistinctQuery, ns);
 }
 

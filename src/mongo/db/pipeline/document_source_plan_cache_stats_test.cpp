@@ -38,6 +38,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -45,8 +46,7 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/query/explain_options.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -77,7 +77,9 @@ public:
         std::copy_if(_planCacheStats.begin(),
                      _planCacheStats.end(),
                      std::back_inserter(filteredStats),
-                     [&matchExpr](const BSONObj& obj) { return matchExpr->matchesBSON(obj); });
+                     [&matchExpr](const BSONObj& obj) {
+                         return exec::matcher::matchesBSON(matchExpr, obj);
+                     });
         return filteredStats;
     }
 
@@ -254,13 +256,10 @@ TEST_F(DocumentSourcePlanCacheStatsTest, ReturnsImmediateEOFWithEmptyPlanCache) 
 
 TEST_F(DocumentSourcePlanCacheStatsTest, ReturnsOnlyMatchingStatsAfterAbsorbingMatch) {
     std::vector<BSONObj> stats{BSONObj(),
-                               BSON("foo"
-                                    << "bar"),
-                               BSON("foo"
-                                    << "baz"),
-                               BSON("foo"
-                                    << "bar"
-                                    << "match" << true)};
+                               BSON("foo" << "bar"),
+                               BSON("foo" << "baz"),
+                               BSON("foo" << "bar"
+                                          << "match" << true)};
     getExpCtx()->setMongoProcessInterface(
         std::make_shared<PlanCacheStatsMongoProcessInterface>(stats));
 
@@ -271,23 +270,18 @@ TEST_F(DocumentSourcePlanCacheStatsTest, ReturnsOnlyMatchingStatsAfterAbsorbingM
     pipeline->optimizePipeline();
 
     ASSERT_BSONOBJ_EQ(pipeline->getNext()->toBson(),
-                      BSON("foo"
-                           << "bar"
-                           << "host"
-                           << "testHostName"));
+                      BSON("foo" << "bar"
+                                 << "host"
+                                 << "testHostName"));
     ASSERT_BSONOBJ_EQ(pipeline->getNext()->toBson(),
-                      BSON("foo"
-                           << "bar"
-                           << "match" << true << "host"
-                           << "testHostName"));
+                      BSON("foo" << "bar"
+                                 << "match" << true << "host"
+                                 << "testHostName"));
     ASSERT(!pipeline->getNext());
 }
 
 TEST_F(DocumentSourcePlanCacheStatsTest, ReturnsHostNameWhenNotFromMongos) {
-    std::vector<BSONObj> stats{BSON("foo"
-                                    << "bar"),
-                               BSON("foo"
-                                    << "baz")};
+    std::vector<BSONObj> stats{BSON("foo" << "bar"), BSON("foo" << "baz")};
     getExpCtx()->setMongoProcessInterface(
         std::make_shared<PlanCacheStatsMongoProcessInterface>(stats));
 
@@ -295,23 +289,18 @@ TEST_F(DocumentSourcePlanCacheStatsTest, ReturnsHostNameWhenNotFromMongos) {
         DocumentSourcePlanCacheStats::createFromBson(kEmptySpecObj.firstElement(), getExpCtx());
     auto pipeline = Pipeline::create({planCacheStats}, getExpCtx());
     ASSERT_BSONOBJ_EQ(pipeline->getNext()->toBson(),
-                      BSON("foo"
-                           << "bar"
-                           << "host"
-                           << "testHostName"));
+                      BSON("foo" << "bar"
+                                 << "host"
+                                 << "testHostName"));
     ASSERT_BSONOBJ_EQ(pipeline->getNext()->toBson(),
-                      BSON("foo"
-                           << "baz"
-                           << "host"
-                           << "testHostName"));
+                      BSON("foo" << "baz"
+                                 << "host"
+                                 << "testHostName"));
     ASSERT(!pipeline->getNext());
 }
 
 TEST_F(DocumentSourcePlanCacheStatsTest, ReturnsShardAndHostNameWhenFromMongos) {
-    std::vector<BSONObj> stats{BSON("foo"
-                                    << "bar"),
-                               BSON("foo"
-                                    << "baz")};
+    std::vector<BSONObj> stats{BSON("foo" << "bar"), BSON("foo" << "baz")};
     getExpCtx()->setMongoProcessInterface(
         std::make_shared<PlanCacheStatsMongoProcessInterface>(stats));
     getExpCtx()->setFromRouter(true);
@@ -320,19 +309,17 @@ TEST_F(DocumentSourcePlanCacheStatsTest, ReturnsShardAndHostNameWhenFromMongos) 
         DocumentSourcePlanCacheStats::createFromBson(kEmptySpecObj.firstElement(), getExpCtx());
     auto pipeline = Pipeline::create({planCacheStats}, getExpCtx());
     ASSERT_BSONOBJ_EQ(pipeline->getNext()->toBson(),
-                      BSON("foo"
-                           << "bar"
-                           << "host"
-                           << "testHostName"
-                           << "shard"
-                           << "testShardName"));
+                      BSON("foo" << "bar"
+                                 << "host"
+                                 << "testHostName"
+                                 << "shard"
+                                 << "testShardName"));
     ASSERT_BSONOBJ_EQ(pipeline->getNext()->toBson(),
-                      BSON("foo"
-                           << "baz"
-                           << "host"
-                           << "testHostName"
-                           << "shard"
-                           << "testShardName"));
+                      BSON("foo" << "baz"
+                                 << "host"
+                                 << "testHostName"
+                                 << "shard"
+                                 << "testShardName"));
     ASSERT(!pipeline->getNext());
 }
 

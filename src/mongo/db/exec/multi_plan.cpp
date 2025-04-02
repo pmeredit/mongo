@@ -46,6 +46,7 @@
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/exec/histogram_server_status_metric.h"
+#include "mongo/db/exec/multi_plan_bucket.h"
 #include "mongo/db/exec/trial_period_utils.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/collection_query_info.h"
@@ -59,8 +60,6 @@
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_proxy.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
@@ -219,8 +218,37 @@ void MultiPlanStage::tryYield(PlanYieldPolicy* yieldPolicy) {
 }
 
 Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
+    static AtomicWord<long> concurrentMultiPlansCounter = 0;
     if (bestPlanChosen()) {
         return Status::OK();
+    }
+
+    boost::optional<MultiPlanTokens> tokens{};
+
+    const size_t candidatesSize = _candidates.size();
+
+    const auto concurrentMultiPlanJobs = concurrentMultiPlansCounter.addAndFetch(candidatesSize);
+    ON_BLOCK_EXIT(
+        [candidatesSize]() { concurrentMultiPlansCounter.subtractAndFetch(candidatesSize); });
+
+    if (feature_flags::gfeatureFlagMultiPlanLimiter.isEnabled() &&
+        concurrentMultiPlanJobs > internalQueryConcurrentMultiPlanningThreshold.load()) {
+        auto planCacheKey = plan_cache_key_factory::make<PlanCacheKey>(*_query, collectionPtr());
+        auto bucket = MultiPlanBucket::get(planCacheKey, collectionPtr());
+
+        // If no token is available, the thread can wait here for some time.
+        LOGV2_DEBUG(8712801, 5, "Obtaining multiplanning rate limiter tokens");
+        tokens = bucket->getTokens(_candidates.size(), yieldPolicy, opCtx());
+        if (!tokens) {
+            LOGV2_DEBUG(8712802,
+                        1,
+                        "Not enough multiplanning rate limiter tokens were available, retrying");
+            return Status(ErrorCodes::RetryMultiPlanning,
+                          "Too many multi plans running for the same shape");
+        }
+        LOGV2_DEBUG(8712803,
+                    1,
+                    "Multiplanning rate limiter tokens are available, continue multiplanning...");
     }
 
     if (MONGO_unlikely(sleepWhileMultiplanning.shouldFail())) {
@@ -267,7 +295,7 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
 
     // After picking best plan, ranking will own plan stats from candidate solutions (winner and
     // losers).
-    auto statusWithRanking = plan_ranker::pickBestPlan(_candidates);
+    auto statusWithRanking = plan_ranker::pickBestPlan(_candidates, *_query);
     if (!statusWithRanking.isOK()) {
         return statusWithRanking.getStatus();
     }

@@ -42,8 +42,7 @@
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future.h"
 #include "mongo/util/future_impl.h"
@@ -736,6 +735,8 @@ TEST(Future, Success_onCompletionFutureImmediate) {
 TEST(Future, Success_onCompletionFutureReady) {
     FUTURE_SUCCESS_TEST([] { return 1; },
                         [](auto&& fut) {
+                            MONGO_COMPILER_DIAGNOSTIC_PUSH
+                            MONGO_COMPILER_DIAGNOSTIC_IGNORED_TRANSITIONAL("-Wuninitialized")
                             ASSERT_EQ(
                                 std::move(fut)
                                     .onCompletion([](StatusWith<int> i) FTU_LAMBDA_R(Future<int>) {
@@ -745,6 +746,7 @@ TEST(Future, Success_onCompletionFutureReady) {
                                     })
                                     .get(),
                                 3);
+                            MONGO_COMPILER_DIAGNOSTIC_POP
                         });
 }
 

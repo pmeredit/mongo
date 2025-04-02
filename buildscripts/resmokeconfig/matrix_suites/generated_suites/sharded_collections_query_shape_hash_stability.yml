@@ -52,9 +52,7 @@ selector:
     - jstests/core/**/fsync.js
     - jstests/core/**/geo_s2cursorlimitskip.js
     - jstests/core/**/geo_update_btree2.js
-    - jstests/core/**/index9.js
     - jstests/core/**/queryoptimizera.js
-    - jstests/core/**/stages*.js
     - jstests/core/**/startup_log.js
     - jstests/core/**/tailable_cursor_invalidation.js
     - jstests/core/**/tailable_getmore_batch_size.js
@@ -80,28 +78,24 @@ selector:
     - jstests/core/**/query/explain/optimized_match_explain.js
     - jstests/core/**/sort_array.js
     - jstests/core/query/distinct/distinct_semantics.js
-    - jstests/core/timeseries/query/timeseries_union_with.js
-    - jstests/core/index/express.js
-    - jstests/core/index/index_filter_commands.js
-    - jstests/core/query/query_settings/**/*.js
+    - jstests/core/index/text/text_ignore_regex.js
+    - jstests/core/index/fts/fts_spilling.js
+    - jstests/core/timeseries/query/timeseries_merge.js
+    - jstests/core/query/or_use_clustered_collection.js
     - jstests/core/administrative/current_op/**/*.js
     - jstests/core/query/collation/collation.js
-    - jstests/core/operation_latency_histogram.js
+    - jstests/core/diagnostics/operation_latency_histogram.js
     - jstests/core/query/top/top.js
-    - jstests/core/views/views_stats.js
+    - jstests/core/catalog/views/views_stats.js
     - jstests/core/txns/timestamped_reads_wait_for_prepare_oplog_visibility.js
     - jstests/core/timeseries/ddl/timeseries_sparse_index.js
     - jstests/core/administrative/getlog2.js
     - jstests/core/txns/speculative_snapshot_includes_all_writes.js
-    - jstests/core/commands_with_uuid.js
-    - jstests/core/clustered/clustered_collection_collation.js
-    - jstests/core/timeseries/write/timeseries_delete_multi.js
-    - jstests/core/timeseries/write/timeseries_simple.js
-    - jstests/core/timeseries/write/timeseries_update.js
-    - jstests/core/timeseries/write/timeseries_update_arbitrary_updates_not_enabled.js
-    - jstests/core/write/bypass_empty_ts_replacement_timeseries.js
-    - jstests/core/query/queryable_encryption/**/*.js
-    - src/mongo/db/modules/enterprise/jstests/fle2/**/*.js
+    - jstests/core/query/api/api_version_new_50_language_features.js
+    - jstests/core/query/api/api_version_new_51_language_features.js
+    - jstests/core/query/api/api_version_new_52_language_features.js
+    - jstests/core/index/express_id_eq.js
+    - jstests/core/query/query_settings/query_shape_hash_in_slow_query_logs.js
   exclude_with_any_tags:
     - assumes_standalone_mongod
     - assumes_against_mongod_not_mongos
@@ -112,13 +106,13 @@ selector:
     - cannot_create_unique_index_when_using_hashed_shard_key
     - requires_profiling
     - requires_capped
-    - assumes_standalone_mongod
     - does_not_support_repeated_reads
-    - requires_profiling
     - requires_fsync
     - known_query_shape_computation_problem
+    - directly_against_shardsvrs_incompatible
   roots:
     - jstests/core/**/*.js
+    - jstests/core_sharding/**/*.js
     - jstests/fle2/**/*.js
     - src/mongo/db/modules/*/jstests/fle2/**/*.js
 test_kind: js_test

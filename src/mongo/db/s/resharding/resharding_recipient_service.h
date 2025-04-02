@@ -47,6 +47,7 @@
 #include "mongo/db/pipeline/process_interface/mongo_process_interface.h"
 #include "mongo/db/repl/primary_only_service.h"
 #include "mongo/db/s/resharding/recipient_document_gen.h"
+#include "mongo/db/s/resharding/resharding_change_streams_monitor.h"
 #include "mongo/db/s/resharding/resharding_data_replication.h"
 #include "mongo/db/s/resharding/resharding_future_util.h"
 #include "mongo/db/s/resharding/resharding_metrics.h"
@@ -59,7 +60,7 @@
 #include "mongo/s/resharding/common_types_gen.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/cancellation.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/duration.h"
@@ -95,7 +96,8 @@ public:
     void checkIfConflictsWithOtherInstances(
         OperationContext* opCtx,
         BSONObj initialState,
-        const std::vector<const repl::PrimaryOnlyService::Instance*>& existingInstances) override{};
+        const std::vector<const repl::PrimaryOnlyService::Instance*>& existingInstances) override {
+    };
 
     std::shared_ptr<repl::PrimaryOnlyService::Instance> constructInstance(
         BSONObj initialState) override;
@@ -191,6 +193,18 @@ public:
         return _completionPromise.getFuture();
     }
 
+    /**
+     * Waits for the monitor to start. Throws an error if verification
+     * is not enabled or skipCloningAndApplying is true.
+     */
+    SharedSemiFuture<void> awaitChangeStreamsMonitorStartedForTest();
+
+    /**
+     * Waits for the monitor to complete and returns the final document delta from the applying
+     * phase. Throws an error if verification is not enabled or skipCloningAndApplying is true.
+     */
+    SharedSemiFuture<int64_t> awaitChangeStreamsMonitorCompletedForTest();
+
     inline const CommonReshardingMetadata& getMetadata() const {
         return _metadata;
     }
@@ -229,8 +243,8 @@ public:
 
     void checkIfOptionsConflict(const BSONObj& stateDoc) const final {}
 
-    boost::optional<SharedSemiFuture<void>> fullfillAllDonorsPreparedToDonate(
-        CloneDetails cloneDetails, bool noChunksToCopy = false);
+    SemiFuture<void> fulfillAllDonorsPreparedToDonate(CloneDetails cloneDetails,
+                                                      const CancellationToken& cancelToken);
 
 private:
     class CloningMetrics {
@@ -323,6 +337,9 @@ private:
                                   boost::optional<mongo::Date_t> configStartTime,
                                   const CancelableOperationContextFactory& factory);
 
+    void _updateRecipientDocument(ChangeStreamsMonitorContext newChangeStreamsCtx,
+                                  const CancelableOperationContextFactory& factory);
+
     // Removes the local recipient document from disk.
     void _removeRecipientDocument(bool aborted, const CancelableOperationContextFactory& factory);
 
@@ -331,6 +348,16 @@ private:
 
     void _ensureDataReplicationStarted(
         OperationContext* opCtx,
+        const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+        const CancellationToken& abortToken,
+        const CancelableOperationContextFactory& factory);
+
+    void _createAndStartChangeStreamsMonitor(
+        const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
+        const CancellationToken& abortToken,
+        const CancelableOperationContextFactory& factory);
+
+    ExecutorFuture<void> _awaitChangeStreamsMonitorCompleted(
         const std::shared_ptr<executor::ScopedTaskExecutor>& executor,
         const CancellationToken& abortToken,
         const CancelableOperationContextFactory& factory);
@@ -345,6 +372,8 @@ private:
         const CancellationToken& abortToken);
     void _restoreMetrics(const CancelableOperationContextFactory& factory);
 
+    void _updateContextMetrics(OperationContext* opCtx);
+
     // Initializes the _abortSource and generates a token from it to return back the caller.
     //
     // Should only be called once per lifetime.
@@ -353,12 +382,11 @@ private:
     // Get indexesToBuild and indexesBuilt from the index catalog, then save them in _metrics
     void _tryFetchBuildIndexMetrics(OperationContext* opCtx);
 
-    // Waits for majority replication of the latest opTime unless token is cancelled.
-    SemiFuture<void> _waitForMajority(const CancellationToken& token,
-                                      const CancelableOperationContextFactory& factory);
     // Return the total and per-donor number documents and bytes cloned if the numbers are available
     // in the cloner resume data documents. Otherwise, return none.
     boost::optional<CloningMetrics> _tryFetchCloningMetrics(OperationContext* opCtx);
+
+    void _fulfillPromisesOnStepup(boost::optional<mongo::ReshardingRecipientMetrics> metrics);
 
     // The primary-only service instance corresponding to the recipient instance. Not owned.
     const ReshardingRecipientService* const _recipientService;
@@ -386,6 +414,7 @@ private:
     // The in-memory representation of the mutable portion of the document in
     // config.localReshardingOperations.recipient.
     RecipientShardContext _recipientCtx;
+    boost::optional<ChangeStreamsMonitorContext> _changeStreamsMonitorCtx;
     std::vector<DonorShardFetchTimestamp> _donorShards;
     boost::optional<Timestamp> _cloneTimestamp;
 
@@ -405,10 +434,15 @@ private:
     const ReshardingDataReplicationFactory _dataReplicationFactory;
     SharedSemiFuture<void> _dataReplicationQuiesced;
 
+    SharedPromise<void> _changeStreamsMonitorStarted;
+    SharedPromise<int64_t> _changeStreamsMonitorCompleted;
+    SharedSemiFuture<void> _changeStreamsMonitorQuiesced;
+
     // Protects the state below
     stdx::mutex _mutex;
 
     std::unique_ptr<ReshardingDataReplicationInterface> _dataReplication;
+    std::shared_ptr<ReshardingChangeStreamsMonitor> _changeStreamsMonitor;
 
     // Canceled when there is an unrecoverable error or stepdown.
     boost::optional<CancellationSource> _abortSource;
@@ -431,7 +465,6 @@ private:
     SharedPromise<void> _coordinatorHasDecisionPersisted;
 
     SharedPromise<void> _completionPromise;
-    // ------------------------------------------------------------------------------------
 
     // This promise is emplaced if the recipient has majority committed the createCollection state.
     SharedPromise<void> _transitionedToCreateCollection;

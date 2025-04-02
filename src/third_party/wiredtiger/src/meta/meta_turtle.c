@@ -336,8 +336,11 @@ __wt_turtle_validate_version(WT_SESSION_IMPL *session)
 
     version = WT_NO_VERSION;
 
-    WT_WITH_TURTLE_LOCK(
-      session, ret = __wti_turtle_read(session, WT_METADATA_VERSION, &version_string));
+    if (F_ISSET(S2C(session), WT_CONN_LIVE_RESTORE_FS))
+        ret = __wt_live_restore_turtle_read(session, WT_METADATA_VERSION, &version_string);
+    else
+        WT_WITH_TURTLE_LOCK(
+          session, ret = __wt_turtle_read(session, WT_METADATA_VERSION, &version_string));
 
     if (ret != 0)
         WT_ERR_MSG(session, ret, "Unable to read version string from turtle file");
@@ -521,8 +524,12 @@ __wt_turtle_init(WT_SESSION_IMPL *session, bool verify_meta, const char *cfg[])
          * Failure to read means a bad turtle file. Remove it and create a new turtle file.
          */
         if (F_ISSET(conn, WT_CONN_SALVAGE)) {
-            WT_WITH_TURTLE_LOCK(
-              session, ret = __wti_turtle_read(session, WT_METAFILE_URI, &unused_value));
+            if (F_ISSET(conn, WT_CONN_LIVE_RESTORE_FS))
+                ret = __wt_live_restore_turtle_read(session, WT_METAFILE_URI, &unused_value);
+            else
+                WT_WITH_TURTLE_LOCK(
+                  session, ret = __wt_turtle_read(session, WT_METAFILE_URI, &unused_value));
+
             __wt_free(session, unused_value);
         }
 
@@ -577,7 +584,11 @@ __wt_turtle_init(WT_SESSION_IMPL *session, bool verify_meta, const char *cfg[])
     if (load || load_turtle) {
         /* Create the turtle file. */
         WT_ERR(__metadata_config(session, &metaconf));
-        WT_WITH_TURTLE_LOCK(session, ret = __wti_turtle_update(session, WT_METAFILE_URI, metaconf));
+        if (F_ISSET(conn, WT_CONN_LIVE_RESTORE_FS))
+            ret = __wt_live_restore_turtle_update(session, WT_METAFILE_URI, metaconf, true);
+        else
+            WT_WITH_TURTLE_LOCK(
+              session, ret = __wt_turtle_update(session, WT_METAFILE_URI, metaconf));
         __wt_free(session, metaconf);
         WT_ERR(ret);
     }
@@ -601,11 +612,11 @@ err:
 }
 
 /*
- * __wti_turtle_read --
+ * __wt_turtle_read --
  *     Read the turtle file.
  */
 int
-__wti_turtle_read(WT_SESSION_IMPL *session, const char *key, char **valuep)
+__wt_turtle_read(WT_SESSION_IMPL *session, const char *key, char **valuep)
 {
     WT_DECL_ITEM(buf);
     WT_DECL_RET;
@@ -664,10 +675,11 @@ err:
 
     /*
      * A file error or a missing key/value pair in the turtle file means something has gone horribly
-     * wrong, except for the compatibility setting which is optional. Failure to read the turtle
-     * file when salvaging means it can't be used for salvage.
+     * wrong, except for the compatibility setting or live restore metadata which are optional.
+     * Failure to read the turtle file when salvaging means it can't be used for salvage.
      */
-    if (ret == 0 || strcmp(key, WT_METADATA_COMPAT) == 0 || F_ISSET(S2C(session), WT_CONN_SALVAGE))
+    if (ret == 0 || strcmp(key, WT_METADATA_COMPAT) == 0 ||
+      strcmp(key, WT_METADATA_LIVE_RESTORE) == 0 || F_ISSET(S2C(session), WT_CONN_SALVAGE))
         return (ret);
     F_SET(S2C(session), WT_CONN_DATA_CORRUPTION);
     WT_RET_PANIC(session, WT_TRY_SALVAGE, "%s: fatal turtle file read error %d at %s",
@@ -675,17 +687,19 @@ err:
 }
 
 /*
- * __wti_turtle_update --
+ * __wt_turtle_update --
  *     Update the turtle file.
  */
 int
-__wti_turtle_update(WT_SESSION_IMPL *session, const char *key, const char *value)
+__wt_turtle_update(WT_SESSION_IMPL *session, const char *key, const char *value)
 {
     WT_CONNECTION_IMPL *conn;
     WT_DECL_RET;
     WT_FSTREAM *fs;
     int vmajor, vminor, vpatch;
     const char *version;
+
+    WT_DECL_ITEM(state_str);
 
     fs = NULL;
     conn = S2C(session);
@@ -709,6 +723,16 @@ __wti_turtle_update(WT_SESSION_IMPL *session, const char *key, const char *value
           "major=%" PRIu16 ",minor=%" PRIu16 "\n",
           WT_METADATA_COMPAT, conn->compat_version.major, conn->compat_version.minor));
 
+    if (F_ISSET(conn, WT_CONN_LIVE_RESTORE_FS)) {
+        WT_ERR(__wt_scr_alloc(session, WT_LIVE_RESTORE_STATE_STRING_MAX, &state_str));
+        WT_ERR(__wt_live_restore_get_state_string(session, state_str));
+
+        WT_ERR(__wt_fprintf(session, fs,
+          "%s\n"
+          "state=%s\n",
+          WT_METADATA_LIVE_RESTORE, (char *)state_str->data));
+    }
+
     version = wiredtiger_version(&vmajor, &vminor, &vpatch);
     WT_ERR(__wt_fprintf(session, fs,
       "%s\n%s\n%s\n"
@@ -726,6 +750,7 @@ __wti_turtle_update(WT_SESSION_IMPL *session, const char *key, const char *value
 err:
     WT_TRET(__wt_fclose(session, &fs));
     WT_TRET(__wt_remove_if_exists(session, WT_METADATA_TURTLE_SET, false));
+    __wt_scr_free(session, &state_str);
 
     /*
      * An error updating the turtle file means something has gone horribly wrong -- we're done.

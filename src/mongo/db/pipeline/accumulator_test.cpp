@@ -55,6 +55,7 @@
 #include "mongo/db/pipeline/accumulator_for_window_functions.h"
 #include "mongo/db/pipeline/accumulator_js_reduce.h"
 #include "mongo/db/pipeline/accumulator_multi.h"
+#include "mongo/db/pipeline/accumulator_percentile.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/variables.h"
@@ -62,13 +63,9 @@
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/random.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
@@ -89,27 +86,6 @@ Value evaluateExpression(const std::string& expressionName,
     auto expression = Expression::parseExpression(&expCtx, obj, vps);
     Value result = expression->evaluate({}, &expCtx.variables);
     return result;
-}
-
-/**
- * Takes the name of an expression as its first argument and a list of pairs of arguments and
- * expected results as its second argument, and asserts that for the given expression the arguments
- * evaluate to the expected results.
- */
-void assertExpectedResults(
-    const std::string& expression,
-    std::initializer_list<std::pair<std::initializer_list<ImplicitValue>, ImplicitValue>>
-        operations) {
-    for (auto&& op : operations) {
-        try {
-            Value result = evaluateExpression(expression, op.first);
-            ASSERT_VALUE_EQ(op.second, result);
-            ASSERT_EQUALS(op.second.getType(), result.getType());
-        } catch (...) {
-            LOGV2(9949806, "failed", "argument"_attr = ImplicitValue::convertToValues(op.first));
-            throw;
-        }
-    }
 }
 
 /**
@@ -156,7 +132,10 @@ void assertArrayValueEqualityWithoutOrdering(ExpressionContext* const expCtx,
  */
 using OperationsType = std::vector<std::pair<std::vector<Value>, Value>>;
 
-void assertExpectedResults(
+/**
+ * This version accepts 3-5 arguments, the third of which is mandatory accumulator state.
+ */
+void assertExpectedResults1(
     ExpressionContext* const expCtx,
     OperationsType operations,
     std::function<boost::intrusive_ptr<AccumulatorState>(ExpressionContext* const)>
@@ -222,15 +201,17 @@ void assertExpectedResults(
 }
 
 /**
+ * This version accepts 2-4 arguments, none of which are accumulator state.
+ *
  * Takes the name of an AccumulatorState as its template argument and a list of pairs of arguments
  * and expected results as its second argument, and asserts that for the given AccumulatorState the
  * arguments evaluate to the expected results.
  */
 template <typename AccName>
-void assertExpectedResults(ExpressionContext* const expCtx,
-                           std::initializer_list<std::pair<std::vector<Value>, Value>> operations,
-                           bool skipMerging = false,
-                           boost::optional<Value> newGroupValue = boost::none) {
+void assertExpectedResults2(ExpressionContext* const expCtx,
+                            std::initializer_list<std::pair<std::vector<Value>, Value>> operations,
+                            bool skipMerging = false,
+                            boost::optional<Value> newGroupValue = boost::none) {
     auto initializeAccumulator =
         [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
         auto accum = make_intrusive<AccName>(expCtx);
@@ -239,70 +220,95 @@ void assertExpectedResults(ExpressionContext* const expCtx,
         }
         return accum;
     };
-    assertExpectedResults(expCtx, OperationsType(operations), initializeAccumulator, skipMerging);
+    assertExpectedResults1(expCtx, OperationsType(operations), initializeAccumulator, skipMerging);
+}
+
+/**
+ * This version takes exactly 2 arguments.
+ *
+ * Takes the name of an expression as its first argument and a list of pairs of arguments and
+ * expected results as its second argument, and asserts that for the given expression the arguments
+ * evaluate to the expected results.
+ */
+void assertExpectedResults3(
+    const std::string& expression,
+    std::initializer_list<std::pair<std::initializer_list<ImplicitValue>, ImplicitValue>>
+        operations) {
+    for (auto&& op : operations) {
+        try {
+            Value result = evaluateExpression(expression, op.first);
+            ASSERT_VALUE_EQ(op.second, result);
+            ASSERT_EQUALS(op.second.getType(), result.getType());
+        } catch (...) {
+            LOGV2(9949806, "failed", "argument"_attr = ImplicitValue::convertToValues(op.first));
+            throw;
+        }
+    }
 }
 
 }  // namespace
 
 TEST(Accumulators, Avg) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults<AccumulatorAvg>(
+    assertExpectedResults2<AccumulatorAvg>(
         &expCtx,
-        {
-            // No documents evaluated.
-            {{}, Value(BSONNULL)},
+        {// No documents evaluated.
+         {{}, Value(BSONNULL)},
 
-            // One int value is converted to double.
-            {{Value(3)}, Value(3.0)},
-            // One long value is converted to double.
-            {{Value(-4LL)}, Value(-4.0)},
-            // One double value.
-            {{Value(22.6)}, Value(22.6)},
+         // One int value is converted to double.
+         {{Value(3)}, Value(3.0)},
+         // One long value is converted to double.
+         {{Value(-4LL)}, Value(-4.0)},
+         // One double value.
+         {{Value(22.6)}, Value(22.6)},
 
-            // Averaging two ints.
-            {{Value(10), Value(11)}, Value(10.5)},
-            // Averaging two longs.
-            {{Value(10LL), Value(11LL)}, Value(10.5)},
-            // Averaging two doubles.
-            {{Value(10.0), Value(11.0)}, Value(10.5)},
+         // Averaging two ints.
+         {{Value(10), Value(11)}, Value(10.5)},
+         // Averaging two longs.
+         {{Value(10LL), Value(11LL)}, Value(10.5)},
+         // Averaging two doubles.
+         {{Value(10.0), Value(11.0)}, Value(10.5)},
 
-            // The average of an int and a double is a double.
-            {{Value(10), Value(11.0)}, Value(10.5)},
-            // The average of a long and a double is a double.
-            {{Value(5LL), Value(1.0)}, Value(3.0)},
-            // The average of an int and a long is a double.
-            {{Value(5), Value(3LL)}, Value(4.0)},
-            // Averaging an int, long, and double.
-            {{Value(1), Value(2LL), Value(6.0)}, Value(3.0)},
+         // The average of an int and a double is a double.
+         {{Value(10), Value(11.0)}, Value(10.5)},
+         // The average of a long and a double is a double.
+         {{Value(5LL), Value(1.0)}, Value(3.0)},
+         // The average of an int and a long is a double.
+         {{Value(5), Value(3LL)}, Value(4.0)},
+         // Averaging an int, long, and double.
+         {{Value(1), Value(2LL), Value(6.0)}, Value(3.0)},
 
-            // Unlike $sum, two ints do not overflow in the 'total' portion of the average.
-            {{Value(std::numeric_limits<int>::max()), Value(std::numeric_limits<int>::max())},
-             Value(static_cast<double>(std::numeric_limits<int>::max()))},
-            // Two longs do overflow in the 'total' portion of the average.
-            {{Value(std::numeric_limits<long long>::max()),
-              Value(std::numeric_limits<long long>::max())},
-             Value(static_cast<double>(std::numeric_limits<long long>::max()))},
+         // Unlike $sum, two ints do not overflow in the 'total' portion of the average.
+         {{Value(std::numeric_limits<int>::max()), Value(std::numeric_limits<int>::max())},
+          Value(static_cast<double>(std::numeric_limits<int>::max()))},
+         // Two longs do overflow in the 'total' portion of the average.
+         {{Value(std::numeric_limits<long long>::max()),
+           Value(std::numeric_limits<long long>::max())},
+          Value(static_cast<double>(std::numeric_limits<long long>::max()))},
 
-            // Averaging two decimals.
-            {{Value(Decimal128("-1234567890.1234567889")),
-              Value(Decimal128("-1234567890.1234567891"))},
-             Value(Decimal128("-1234567890.1234567890"))},
+         // Averaging two decimals.
+         {{Value(Decimal128("-1234567890.1234567889")),
+           Value(Decimal128("-1234567890.1234567891"))},
+          Value(Decimal128("-1234567890.1234567890"))},
 
-            // Averaging two longs and a decimal results in an accurate decimal result.
-            {{Value(1234567890123456788LL),
-              Value(1234567890123456789LL),
-              Value(Decimal128("1234567890123456790.037037036703702"))},
-             Value(Decimal128("1234567890123456789.012345678901234"))},
+         // Averaging two longs and a decimal results in an accurate decimal result.
+         {{Value(1234567890123456788LL),
+           Value(1234567890123456789LL),
+           Value(Decimal128("1234567890123456790.037037036703702"))},
+          Value(Decimal128("1234567890123456789.012345678901234"))},
 
-            // Averaging a double and a decimal
-            {{Value(1.0E22), Value(Decimal128("9999999999999999999999.9999999999"))},
-             Value(Decimal128("9999999999999999999999.99999999995"))},
-        });
+         // Averaging a double and a decimal
+         {{Value(1.0E22), Value(Decimal128("9999999999999999999999.9999999999"))},
+          Value(Decimal128("9999999999999999999999.99999999995"))},
+
+         // Averaging null and Infinity = Infinity
+         {{Value(BSONNULL), Value(std::numeric_limits<double>::infinity())},
+          Value(std::numeric_limits<double>::infinity())}});
 }
 
 TEST(Accumulators, First) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults<AccumulatorFirst>(
+    assertExpectedResults2<AccumulatorFirst>(
         &expCtx,
         {// No documents evaluated.
          {{}, Value()},
@@ -322,7 +328,7 @@ TEST(Accumulators, FirstN) {
     auto expCtx = ExpressionContextForTest{};
     auto n = Value(2);
 
-    assertExpectedResults<AccumulatorFirstN>(
+    assertExpectedResults2<AccumulatorFirstN>(
         &expCtx,
         {
             // Basic test involving no values.
@@ -356,7 +362,7 @@ TEST(Accumulators, FirstN) {
 
     // Additional test partition where N = 1.
     n = Value(1);
-    assertExpectedResults<AccumulatorFirstN>(
+    assertExpectedResults2<AccumulatorFirstN>(
         &expCtx,
         {
             // Basic test involving no values.
@@ -376,7 +382,7 @@ TEST(Accumulators, FirstN) {
 
 TEST(Accumulators, Last) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults<AccumulatorLast>(
+    assertExpectedResults2<AccumulatorLast>(
         &expCtx,
         {// No documents evaluated.
          {{}, Value()},
@@ -395,7 +401,7 @@ TEST(Accumulators, Last) {
 TEST(Accumulators, LastN) {
     auto expCtx = ExpressionContextForTest{};
     auto n = Value(2);
-    assertExpectedResults<AccumulatorLastN>(
+    assertExpectedResults2<AccumulatorLastN>(
         &expCtx,
         {
             // Basic test involving no values.
@@ -447,7 +453,7 @@ TEST(Accumulators, LastN) {
 
     // Additional test partition where N = 1.
     n = Value(1);
-    assertExpectedResults<AccumulatorLastN>(
+    assertExpectedResults2<AccumulatorLastN>(
         &expCtx,
         {
             // Basic test involving no values.
@@ -467,7 +473,7 @@ TEST(Accumulators, LastN) {
 
 TEST(Accumulators, Min) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults<AccumulatorMin>(
+    assertExpectedResults2<AccumulatorMin>(
         &expCtx,
         {// No documents evaluated.
          {{}, Value(BSONNULL)},
@@ -488,14 +494,14 @@ TEST(Accumulators, MinRespectsCollation) {
     auto collator =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kReverseString);
     expCtx.setCollator(std::move(collator));
-    assertExpectedResults<AccumulatorMin>(&expCtx,
-                                          {{{Value("abc"_sd), Value("cba"_sd)}, Value("cba"_sd)}});
+    assertExpectedResults2<AccumulatorMin>(&expCtx,
+                                           {{{Value("abc"_sd), Value("cba"_sd)}, Value("cba"_sd)}});
 }
 
 TEST(Accumulators, MinN) {
     auto expCtx = ExpressionContextForTest{};
     const auto n = Value(3);
-    assertExpectedResults<AccumulatorMinN>(
+    assertExpectedResults2<AccumulatorMinN>(
         &expCtx,
         {
             // Basic tests.
@@ -531,7 +537,7 @@ TEST(Accumulators, MinNRespectsCollation) {
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kReverseString);
     expCtx.setCollator(std::move(collator));
     const auto n = Value(2);
-    assertExpectedResults<AccumulatorMinN>(
+    assertExpectedResults2<AccumulatorMinN>(
         &expCtx,
         {{{Value("abc"_sd), Value("cba"_sd), Value("cca"_sd)},
           Value(std::vector<Value>{Value("cba"_sd), Value("cca"_sd)})}},
@@ -542,7 +548,7 @@ TEST(Accumulators, MinNRespectsCollation) {
 TEST(Accumulators, MaxN) {
     auto expCtx = ExpressionContextForTest{};
     const auto n = Value(3);
-    assertExpectedResults<AccumulatorMaxN>(
+    assertExpectedResults2<AccumulatorMaxN>(
         &expCtx,
         {
             // Basic tests.
@@ -578,7 +584,7 @@ TEST(Accumulators, MaxNRespectsCollation) {
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kReverseString);
     expCtx.setCollator(std::move(collator));
     const auto n = Value(2);
-    assertExpectedResults<AccumulatorMaxN>(
+    assertExpectedResults2<AccumulatorMaxN>(
         &expCtx,
         {{{Value("abc"_sd), Value("cba"_sd), Value("cca"_sd)},
           Value(std::vector<Value>{Value("abc"_sd), Value("cca"_sd)})}},
@@ -588,7 +594,7 @@ TEST(Accumulators, MaxNRespectsCollation) {
 
 TEST(Accumulators, Max) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults<AccumulatorMax>(
+    assertExpectedResults2<AccumulatorMax>(
         &expCtx,
         {// No documents evaluated.
          {{}, Value(BSONNULL)},
@@ -609,13 +615,13 @@ TEST(Accumulators, MaxRespectsCollation) {
     auto collator =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kReverseString);
     expCtx.setCollator(std::move(collator));
-    assertExpectedResults<AccumulatorMax>(&expCtx,
-                                          {{{Value("abc"_sd), Value("cba"_sd)}, Value("abc"_sd)}});
+    assertExpectedResults2<AccumulatorMax>(&expCtx,
+                                           {{{Value("abc"_sd), Value("cba"_sd)}, Value("abc"_sd)}});
 }
 
 TEST(Accumulators, Sum) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults<AccumulatorSum>(
+    assertExpectedResults2<AccumulatorSum>(
         &expCtx,
         {// No documents evaluated.
          {{}, Value(0)},
@@ -720,7 +726,7 @@ TEST(Accumulators, TopBottomNRespectsCollation) {
         {{mkdoc(Value("abc"_sd)), mkdoc(Value("cba"_sd)), mkdoc(Value("cca"_sd))},
          Value(std::vector<Value>{Value("cca"_sd), Value("abc"_sd)})}};
 
-    assertExpectedResults(
+    assertExpectedResults1(
         expCtx.get(),
         bottomCasesAscending,
         [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -733,7 +739,7 @@ TEST(Accumulators, TopBottomNRespectsCollation) {
     OperationsType bottomCasesDescending{
         {{mkdoc(Value("abc"_sd)), mkdoc(Value("cba"_sd)), mkdoc(Value("cca"_sd))},
          Value(std::vector<Value>{Value("cca"_sd), Value("cba"_sd)})}};
-    assertExpectedResults(
+    assertExpectedResults1(
         expCtx.get(),
         bottomCasesDescending,
         [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -746,7 +752,7 @@ TEST(Accumulators, TopBottomNRespectsCollation) {
     OperationsType topCasesAscending{
         {{mkdoc(Value("abc"_sd)), mkdoc(Value("cba"_sd)), mkdoc(Value("cca"_sd))},
          Value(std::vector<Value>{Value("cba"_sd), Value("cca"_sd)})}};
-    assertExpectedResults(
+    assertExpectedResults1(
         expCtx.get(),
         topCasesAscending,
         [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -759,7 +765,7 @@ TEST(Accumulators, TopBottomNRespectsCollation) {
     OperationsType topCasesDescending{
         {{mkdoc(Value("abc"_sd)), mkdoc(Value("cba"_sd)), mkdoc(Value("cca"_sd))},
          Value(std::vector<Value>{Value("abc"_sd), Value("cca"_sd)})}};
-    assertExpectedResults(
+    assertExpectedResults1(
         expCtx.get(),
         topCasesDescending,
         [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -855,8 +861,8 @@ TEST(Accumulators, TopNDescendingBottomNAscending) {
             acc->startNewGroup(n3);
             return acc;
         };
-        assertExpectedResults(expCtx.get(), cases, accumInit);
-        assertExpectedResults(expCtx.get(), bottomSpecificCases, accumInit);
+        assertExpectedResults1(expCtx.get(), cases, accumInit);
+        assertExpectedResults1(expCtx.get(), bottomSpecificCases, accumInit);
 
     } catch (...) {
         LOGV2(5788006, "bottom3 a: 1");
@@ -902,8 +908,8 @@ TEST(Accumulators, TopNDescendingBottomNAscending) {
             acc->startNewGroup(n3);
             return acc;
         };
-        assertExpectedResults(expCtx.get(), cases, accInit);
-        assertExpectedResults(expCtx.get(), topSpecificCases, accInit);
+        assertExpectedResults1(expCtx.get(), cases, accInit);
+        assertExpectedResults1(expCtx.get(), topSpecificCases, accInit);
     } catch (...) {
         LOGV2(5788007, "top3 a: -1");
         throw;
@@ -1003,8 +1009,8 @@ TEST(Accumulators, TopNAscendingBottomNDescending) {
             acc->startNewGroup(n3);
             return acc;
         };
-        assertExpectedResults(expCtx.get(), cases, accInit);
-        assertExpectedResults(expCtx.get(), bottomSpecificCases, accInit);
+        assertExpectedResults1(expCtx.get(), cases, accInit);
+        assertExpectedResults1(expCtx.get(), bottomSpecificCases, accInit);
     } catch (...) {
         LOGV2(5788008, "bottom3 a: -1");
         throw;
@@ -1050,8 +1056,8 @@ TEST(Accumulators, TopNAscendingBottomNDescending) {
             acc->startNewGroup(n3);
             return acc;
         };
-        assertExpectedResults(expCtx.get(), cases, accInit);
-        assertExpectedResults(expCtx.get(), topSpecifcCases, accInit);
+        assertExpectedResults1(expCtx.get(), cases, accInit);
+        assertExpectedResults1(expCtx.get(), topSpecifcCases, accInit);
     } catch (...) {
         LOGV2(5788009, "top3 a: 1");
         throw;
@@ -1104,7 +1110,7 @@ TEST(Accumulators, TopBottomNMultiSortPattern) {
             acc->startNewGroup(n);
             return acc;
         };
-        assertExpectedResults(expCtx.get(), cases, accInit);
+        assertExpectedResults1(expCtx.get(), cases, accInit);
     } catch (...) {
         LOGV2(8236800, "bottom3 a: -1, b: -1");
         throw;
@@ -1126,7 +1132,7 @@ TEST(Accumulators, TopBottomNMultiSortPattern) {
             acc->startNewGroup(n);
             return acc;
         };
-        assertExpectedResults(expCtx.get(), cases, accInit);
+        assertExpectedResults1(expCtx.get(), cases, accInit);
     } catch (...) {
         LOGV2(8236801, "top3 a: 1, b: 1");
         throw;
@@ -1146,7 +1152,7 @@ void runTopBottomAccumulatorTest(ExpressionContext* const expCtx,
             acc->startNewGroup(n);
             return acc;
         };
-        assertExpectedResults(expCtx, cases, accInit);
+        assertExpectedResults1(expCtx, cases, accInit);
     } catch (...) {
         LOGV2(8236802,
               "failed top/bottom accumulator test",
@@ -1198,7 +1204,7 @@ void testSingle(OperationsType cases, ExpressionContext* const expCtx, const BSO
     }
     try {
         // n = 1 single = true should return 1 non array value.
-        assertExpectedResults(
+        assertExpectedResults1(
             expCtx,
             cases,
             [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -1238,7 +1244,7 @@ TEST(Accumulators, TopBottomSingle) {
 
     // n = 1 single = false should return a 1 elem array.
     try {
-        assertExpectedResults(
+        assertExpectedResults1(
             expCtx.get(),
             bottomAscTopDescCases,
             [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -1254,7 +1260,7 @@ TEST(Accumulators, TopBottomSingle) {
     testSingle<TopBottomSense::kBottom>(bottomAscTopDescCases, expCtx.get(), ascSort);
 
     try {
-        assertExpectedResults(
+        assertExpectedResults1(
             expCtx.get(),
             bottomAscTopDescCases,
             [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -1281,7 +1287,7 @@ TEST(Accumulators, TopBottomSingle) {
 
     // n = 1 single = false should return a 1 elem array.
     try {
-        assertExpectedResults(
+        assertExpectedResults1(
             expCtx.get(),
             bottomDescTopAscCases,
             [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -1298,7 +1304,7 @@ TEST(Accumulators, TopBottomSingle) {
 
     // n = 1 single = false should return a 1 elem array.
     try {
-        assertExpectedResults(
+        assertExpectedResults1(
             expCtx.get(),
             bottomDescTopAscCases,
             [&](ExpressionContext* const expCtx) -> boost::intrusive_ptr<AccumulatorState> {
@@ -1748,7 +1754,7 @@ auto makeLegacyRank(ExpressionContext* const expCtx) {
 
 TEST(Accumulators, Rank) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults(
+    assertExpectedResults1(
         &expCtx,
         {
             // Document number is correct.
@@ -1772,7 +1778,7 @@ TEST(Accumulators, Rank) {
 
 TEST(Accumulators, DenseRank) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults(
+    assertExpectedResults1(
         &expCtx,
         {
             // Document number is correct.
@@ -1793,7 +1799,7 @@ TEST(Accumulators, DenseRank) {
 
 TEST(Accumulators, DocumentNumberRank) {
     auto expCtx = ExpressionContextForTest{};
-    assertExpectedResults(
+    assertExpectedResults1(
         &expCtx,
         {
             // Document number is correct.
@@ -1816,9 +1822,9 @@ TEST(Accumulators, AddToSetRespectsCollation) {
     auto collator =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kAlwaysEqual);
     expCtx.setCollator(std::move(collator));
-    assertExpectedResults<AccumulatorAddToSet>(&expCtx,
-                                               {{{Value("a"_sd), Value("b"_sd), Value("c"_sd)},
-                                                 Value(std::vector<Value>{Value("a"_sd)})}});
+    assertExpectedResults2<AccumulatorAddToSet>(&expCtx,
+                                                {{{Value("a"_sd), Value("b"_sd), Value("c"_sd)},
+                                                  Value(std::vector<Value>{Value("a"_sd)})}});
 }
 
 TEST(Accumulators, AddToSetRespectsMaxMemoryConstraint) {
@@ -1918,7 +1924,7 @@ TEST(Accumulators, CovarianceEdgeCases) {
         Value(std::vector<Value>({Value(1), Value(2)})),
     };
 
-    assertExpectedResults<AccumulatorCovariancePop>(
+    assertExpectedResults2<AccumulatorCovariancePop>(
         &expCtx,
         {
             {{}, Value(BSONNULL)},
@@ -1928,7 +1934,7 @@ TEST(Accumulators, CovarianceEdgeCases) {
         },
         true /* Covariance accumulator can't be merged */);
 
-    assertExpectedResults<AccumulatorCovarianceSamp>(
+    assertExpectedResults2<AccumulatorCovarianceSamp>(
         &expCtx,
         {
             {{}, Value(BSONNULL)},
@@ -1995,6 +2001,118 @@ TEST(Accumulators, CovarianceWithRandomVariables) {
     assertCovariance<AccumulatorCovarianceSamp>(&expCtx, randomVariables, boost::none);
 }
 
+/* ------------------------- AccumulatorExpMovingAvg -------------------------------------------- */
+
+TEST(Accumulators, AccumulatorExpMovingAvg) {
+    boost::intrusive_ptr<ExpressionContextForTest> expCtx =
+        make_intrusive<ExpressionContextForTest>();
+    AccumulatorExpMovingAvg acc{expCtx.get(), Decimal128{0.75}};  // alpha (decay factor) == 0.75
+
+    // The constructor arg does not "initialize" 'acc', it just sets its decaying avg multiplier.
+    ASSERT_EQ(jstNULL, acc.getValue(false /* toBeMerged */).getType());
+
+    // Process a non-numeric input. Still not initialized.
+    acc.processInternal(Value("string"_sd), false /* merging */);
+    ASSERT_EQ(jstNULL, acc.getValue(false /* toBeMerged */).getType());
+
+    // Process integer input 1. This will initialize the accumulator to the value of the input,
+    // but it will not be internally stored as a decimal as this is not needed to maintain the
+    // precision.
+    acc.processInternal(Value(1), false /* merging */);
+    ASSERT_EQ(0, ValueComparator().compare(acc.getValue(false /* toBeMerged */), Value(1)))
+        << " acc: " << acc.getValue(false);
+
+    // Now process decimal input 4.0. This will change the internal representation to decimal to
+    // maintain the precision and will, under the configured alpha == 0.75, give decaying average as
+    // 3.25 == 0.75 * 4.0 + 0.25 * 1.
+    acc.processInternal(Value(Decimal128{4.0}), false /* merging */);
+    ASSERT_EQ(
+        0, ValueComparator().compare(acc.getValue(false /* toBeMerged */), Value(Decimal128{3.25})))
+        << " acc: " << acc.getValue(false);
+
+    // Back to uninitialized after reset().
+    acc.reset();
+    ASSERT_EQ(jstNULL, acc.getValue(false /* toBeMerged */).getType());
+}
+
+/* ------------------------- AccumulatorPercentile ---------------------------------------------- */
+
+// Runs AccumulatorPercentile tests with the various different percentile algorithms.
+void accumulatorPercentileHelper(PercentileMethodEnum method,
+                                 const std::vector<double>& percentiles,
+                                 const std::string& mergeFalseExpected) {
+    boost::intrusive_ptr<ExpressionContextForTest> expCtx =
+        make_intrusive<ExpressionContextForTest>();
+    AccumulatorPercentile acc{expCtx.get(), percentiles, method, 1024 /* maxMemoryUsageBytes */};
+
+    // Processing a non-numeric input when not merging does not accumulate anything, so the current
+    // value should be an array of [null, null].
+    acc.processInternal(Value("string"_sd), false /* merging */);
+    ASSERT_EQ(Array, acc.getValue(false /* toBeMerged */).getType());
+    std::ostringstream oss;
+    oss << acc.getValue(false /* toBeMerged */);  // final value
+    ASSERT_EQ("[null, null]", oss.str());
+
+    // Process some numbers the percentiles of which are easy to understand.
+    for (int i = 1; i <= 10; ++i) {
+        double val = 0.1 * i;
+        acc.processInternal(Value(val), false /* merging */);
+    }
+    ASSERT_EQ(Array, acc.getValue(false /* toBeMerged */).getType());
+    oss.str("");
+    oss << acc.getValue(false /* toBeMerged */);  // final value
+    ASSERT_EQ(mergeFalseExpected, oss.str());
+    ASSERT_EQ(Array, acc.getValue(true /* toBeMerged */).getType());
+    // We cannot easily test the getValue(true) values as they differ on different platforms.
+
+    // Verify reset() clears the accumulator.
+    acc.reset();
+    ASSERT_EQ(Array, acc.getValue(false /* toBeMerged */).getType());
+    oss.str("");
+    oss << acc.getValue(false /* toBeMerged */);  // final value
+    ASSERT_EQ("[null, null]", oss.str());
+}
+
+// Tests the AccumulatorPercentile class using PercentileMethodEnum::kApproximate.
+TEST(Accumulators, AccumulatorPercentileApproximate) {
+    accumulatorPercentileHelper(
+        PercentileMethodEnum::kApproximate, std::vector<double>{0.5, 0.8}, "[0.5, 0.8]");
+}
+
+// Tests the AccumulatorPercentile class using PercentileMethodEnum::kDiscrete.
+TEST(Accumulators, AccumulatorPercentileDiscrete) {
+    accumulatorPercentileHelper(
+        PercentileMethodEnum::kDiscrete, std::vector<double>{0.5, 0.8}, "[0.5, 0.8]");
+}
+
+// Tests the AccumulatorPercentile class using PercentileMethodEnum::kContinuous.
+TEST(Accumulators, AccumulatorPercentileContinuous) {
+    accumulatorPercentileHelper(
+        PercentileMethodEnum::kContinuous, std::vector<double>{0.5, 0.8}, "[0.55, 0.82]");
+}
+
+// Tests the AccumulatorPercentile class when it runs out of memory.
+TEST(Accumulators, AccumulatorPercentileOOM) {
+    boost::intrusive_ptr<ExpressionContextForTest> expCtx =
+        make_intrusive<ExpressionContextForTest>();
+    const std::vector<double> percentiles{0.5, 0.8};
+    AccumulatorPercentile acc{
+        expCtx.get(), percentiles, PercentileMethodEnum::kApproximate, 1 /* maxMemoryUsageBytes */};
+
+    ASSERT_THROWS_CODE(
+        [&]() -> void {
+            // Process some numbers the percentiles of which are easy to understand.
+            for (int i = 1; i <= 10; ++i) {
+                double val = 0.1 * i;
+                acc.processInternal(Value(val), false /* merging */);
+            }
+        }(),
+        DBException,
+        ErrorCodes::ExceededMemoryLimit);
+}
+
+/* ------------------------- Other accumulators ------------------------------------------------- */
+
 Value parseAndSerializeAccumExpr(
     const BSONObj& obj,
     std::function<boost::intrusive_ptr<Expression>(
@@ -2032,13 +2150,9 @@ Document parseAndSerializeAccumRepresentative(
 }
 
 TEST(Accumulators, SerializeWithRedaction) {
-    auto jsReduce =
-        BSON("$accumulator" << BSON("init"
-                                    << "function() {}"
-                                    << "accumulateArgs"
-                                    << BSON_ARRAY("$a"
-                                                  << "$b")
-                                    << "accumulate"
+    auto jsReduce = BSON("$accumulator" << BSON(
+                             "init" << "function() {}"
+                                    << "accumulateArgs" << BSON_ARRAY("$a" << "$b") << "accumulate"
                                     << "function(state, str1, str2) {return str1 + str2;}"
                                     << "merge"
                                     << "function(s1, s2) {return s1 || s2;}"
@@ -2099,8 +2213,7 @@ TEST(Accumulators, SerializeWithRedaction) {
         R"({"$sum":["$HASH<a>","?number","?number",{"$sum":"?array<?number>"}]})",
         actual);
 
-    auto mergeObjs = BSON("$mergeObjects" << BSON_ARRAY("$a" << BSON("b"
-                                                                     << "null")));
+    auto mergeObjs = BSON("$mergeObjects" << BSON_ARRAY("$a" << BSON("b" << "null")));
     actual =
         parseAndSerializeAccum(mergeObjs.firstElement(),
                                &genericParseSingleExpressionAccumulator<AccumulatorMergeObjects>);
@@ -2108,17 +2221,15 @@ TEST(Accumulators, SerializeWithRedaction) {
         R"({"$mergeObjects":["$HASH<a>","?object"]})",
         actual);
 
-    auto push = BSON("$push" << BSON("$eq" << BSON_ARRAY("$str"
-                                                         << "str2")));
+    auto push = BSON("$push" << BSON("$eq" << BSON_ARRAY("$str" << "str2")));
     actual = parseAndSerializeAccum(push.firstElement(),
                                     &genericParseSingleExpressionAccumulator<AccumulatorPush>);
     ASSERT_DOCUMENT_EQ_AUTO(  // NOLINT
         R"({"$push":{"$eq":["$HASH<str>","?string"]}})",
         actual);
 
-    auto top = BSON("$top" << BSON("output"
-                                   << "$b"
-                                   << "sortBy" << BSON("sales" << 1)));
+    auto top = BSON("$top" << BSON("output" << "$b"
+                                            << "sortBy" << BSON("sales" << 1)));
     actual = parseAndSerializeAccum(
         top.firstElement(), &AccumulatorTopBottomN<TopBottomSense::kTop, true>::parseTopBottomN);
     ASSERT_DOCUMENT_EQ_AUTO(  // NOLINT
@@ -2155,11 +2266,11 @@ TEST(Accumulators, SerializeWithRedaction) {
         })",
         actual);
 
-    auto internalJsReduce = BSON(
-        "$_internalJsReduce" << BSON("data"
-                                     << "$emits"
-                                     << "eval"
-                                     << "function(key, values) {\n return Array.sum(values);\n"));
+    auto internalJsReduce =
+        BSON("$_internalJsReduce" << BSON(
+                 "data" << "$emits"
+                        << "eval"
+                        << "function(key, values) {\n return Array.sum(values);\n"));
     actual = parseAndSerializeAccum(internalJsReduce.firstElement(),
                                     &AccumulatorInternalJsReduce::parseInternalJsReduce);
     ASSERT_DOCUMENT_EQ_AUTO(  // NOLINT
@@ -2191,10 +2302,9 @@ TEST(AccumulatorsToExpression, SerializeWithRedaction) {
         R"({"$maxN":{"n":"?number","input":"?array<?number>"}})",
         actual.getDocument());
 
-    auto firstN = BSON("$firstN" << BSON("input"
-                                         << "$sales"
-                                         << "n"
-                                         << "\'string\'"));
+    auto firstN = BSON("$firstN" << BSON("input" << "$sales"
+                                                 << "n"
+                                                 << "\'string\'"));
     using FirstLastSense = AccumulatorFirstLastN::Sense;
     actual = parseAndSerializeAccumExpr(
         firstN, &AccumulatorFirstLastN::parseExpression<FirstLastSense::kFirst>);
@@ -2208,23 +2318,23 @@ TEST(AccumulatorsToExpression, SerializeWithRedaction) {
 TEST(AccumulatorMergeObjects, MergingZeroObjectsShouldReturnEmptyDocument) {
     auto expCtx = ExpressionContextForTest{};
 
-    assertExpectedResults<AccumulatorMergeObjects>(&expCtx, {{{}, {Value(Document({}))}}});
+    assertExpectedResults2<AccumulatorMergeObjects>(&expCtx, {{{}, {Value(Document({}))}}});
 }
 
 TEST(AccumulatorMergeObjects, MergingWithSingleObjectShouldLeaveUnchanged) {
     auto expCtx = ExpressionContextForTest{};
 
-    assertExpectedResults<AccumulatorMergeObjects>(&expCtx, {{{}, {Value(Document({}))}}});
+    assertExpectedResults2<AccumulatorMergeObjects>(&expCtx, {{{}, {Value(Document({}))}}});
 
     auto doc = Value(Document({{"a", 1}, {"b", 1}}));
-    assertExpectedResults<AccumulatorMergeObjects>(&expCtx, {{{doc}, doc}});
+    assertExpectedResults2<AccumulatorMergeObjects>(&expCtx, {{{doc}, doc}});
 }
 
 TEST(AccumulatorMergeObjects, MergingDisjointObjectsShouldIncludeAllFields) {
     auto expCtx = ExpressionContextForTest{};
     auto first = Value(Document({{"a", 1}, {"b", 1}}));
     auto second = Value(Document({{"c", 1}}));
-    assertExpectedResults<AccumulatorMergeObjects>(
+    assertExpectedResults2<AccumulatorMergeObjects>(
         &expCtx, {{{first, second}, Value(Document({{"a", 1}, {"b", 1}, {"c", 1}}))}});
 }
 
@@ -2232,7 +2342,7 @@ TEST(AccumulatorMergeObjects, MergingIntersectingObjectsShouldOverrideInOrderRec
     auto expCtx = ExpressionContextForTest{};
     auto first = Value(Document({{"a", "oldValue"_sd}, {"b", 0}, {"c", 1}}));
     auto second = Value(Document({{"a", "newValue"_sd}}));
-    assertExpectedResults<AccumulatorMergeObjects>(
+    assertExpectedResults2<AccumulatorMergeObjects>(
         &expCtx, {{{first, second}, Value(Document({{"a", "newValue"_sd}, {"b", 0}, {"c", 1}}))}});
 }
 
@@ -2243,7 +2353,7 @@ TEST(AccumulatorMergeObjects, MergingIntersectingEmbeddedObjectsShouldOverrideIn
     auto first = Value(Document({{"d", 1}, {"subDoc", firstSubDoc}}));
     auto second = Value(Document({{"subDoc", secondSubDoc}}));
     auto expected = Value(Document({{"d", 1}, {"subDoc", secondSubDoc}}));
-    assertExpectedResults<AccumulatorMergeObjects>(&expCtx, {{{first, second}, expected}});
+    assertExpectedResults2<AccumulatorMergeObjects>(&expCtx, {{{first, second}, expected}});
 }
 
 TEST(AccumulatorMergeObjects, MergingWithEmptyDocumentShouldIgnore) {
@@ -2251,7 +2361,7 @@ TEST(AccumulatorMergeObjects, MergingWithEmptyDocumentShouldIgnore) {
     auto first = Value(Document({{"a", 0}, {"b", 1}, {"c", 1}}));
     auto second = Value(Document({}));
     auto expected = Value(Document({{"a", 0}, {"b", 1}, {"c", 1}}));
-    assertExpectedResults<AccumulatorMergeObjects>(&expCtx, {{{first, second}, expected}});
+    assertExpectedResults2<AccumulatorMergeObjects>(&expCtx, {{{first, second}, expected}});
 }
 
 TEST(AccumulatorMergeObjects, RoundTripSerializationLiteral) {
@@ -2274,23 +2384,23 @@ TEST(AccumulatorMergeObjects, RoundTripSerializationLiteral) {
 /* ------------------------- ExpressionMergeObjects -------------------------- */
 
 TEST(ExpressionMergeObjects, MergingWithSingleObjectShouldLeaveUnchanged) {
-    assertExpectedResults("$mergeObjects", {{{}, Document({})}});
+    assertExpectedResults3("$mergeObjects", {{{}, Document({})}});
 
     auto doc = Document({{"a", 1}, {"b", 1}});
-    assertExpectedResults("$mergeObjects", {{{doc}, doc}});
+    assertExpectedResults3("$mergeObjects", {{{doc}, doc}});
 }
 
 TEST(ExpressionMergeObjects, MergingDisjointObjectsShouldIncludeAllFields) {
     auto first = Document({{"a", 1}, {"b", 1}});
     auto second = Document({{"c", 1}});
-    assertExpectedResults("$mergeObjects",
-                          {{{first, second}, Document({{"a", 1}, {"b", 1}, {"c", 1}})}});
+    assertExpectedResults3("$mergeObjects",
+                           {{{first, second}, Document({{"a", 1}, {"b", 1}, {"c", 1}})}});
 }
 
 TEST(ExpressionMergeObjects, MergingIntersectingObjectsShouldOverrideInOrderReceived) {
     auto first = Document({{"a", "oldValue"_sd}, {"b", 0}, {"c", 1}});
     auto second = Document({{"a", "newValue"_sd}});
-    assertExpectedResults(
+    assertExpectedResults3(
         "$mergeObjects", {{{first, second}, Document({{"a", "newValue"_sd}, {"b", 0}, {"c", 1}})}});
 }
 
@@ -2300,20 +2410,20 @@ TEST(ExpressionMergeObjects, MergingIntersectingEmbeddedObjectsShouldOverrideInO
     auto first = Document({{"d", 1}, {"subDoc", firstSubDoc}});
     auto second = Document({{"subDoc", secondSubDoc}});
     auto expected = Document({{"d", 1}, {"subDoc", secondSubDoc}});
-    assertExpectedResults("$mergeObjects", {{{first, second}, expected}});
+    assertExpectedResults3("$mergeObjects", {{{first, second}, expected}});
 }
 
 TEST(ExpressionMergeObjects, MergingWithEmptyDocumentShouldIgnore) {
     auto first = Document({{"a", 0}, {"b", 1}, {"c", 1}});
     auto second = Document({});
     auto expected = Document({{"a", 0}, {"b", 1}, {"c", 1}});
-    assertExpectedResults("$mergeObjects", {{{first, second}, expected}});
+    assertExpectedResults3("$mergeObjects", {{{first, second}, expected}});
 }
 
 TEST(ExpressionMergeObjects, MergingSingleArgumentArrayShouldUnwindAndMerge) {
     std::vector<Document> first = {Document({{"a", 1}}), Document({{"a", 2}})};
     auto expected = Document({{"a", 2}});
-    assertExpectedResults("$mergeObjects", {{{first}, expected}});
+    assertExpectedResults3("$mergeObjects", {{{first}, expected}});
 }
 
 TEST(ExpressionMergeObjects, MergingArrayWithDocumentShouldThrowException) {
@@ -2391,7 +2501,7 @@ TEST(AccumulatorConcatArrays, ConcatArraysBasicCases) {
                                                         Value(std::vector<Value>({Value(5)})),
                                                         Value(std::vector<Value>({}))};
 
-    assertExpectedResults<AccumulatorConcatArrays>(
+    assertExpectedResults2<AccumulatorConcatArrays>(
         &expCtx,
         {{{}, Value(std::vector<Value>({}))},
          {singleDocument, Value(singleDocumentExpect)},
@@ -2410,7 +2520,7 @@ TEST(AccumulatorConcatArrays, ConcatenatingMultipleArraysShouldPreserveOrder) {
 
     const std::vector<Value> expected = {Value(1), Value(2), Value(3), Value(4)};
 
-    assertExpectedResults<AccumulatorConcatArrays>(&expCtx, {{values, Value{expected}}});
+    assertExpectedResults2<AccumulatorConcatArrays>(&expCtx, {{values, Value{expected}}});
 }
 
 TEST(AccumulatorConcatArrays, DoubleNestedArraysShouldReturnNestedArrays) {
@@ -2430,7 +2540,7 @@ TEST(AccumulatorConcatArrays, DoubleNestedArraysShouldReturnNestedArrays) {
         Value("Only singly nested"_sd),
         Value(std::vector<Value>({Value(1), Value(2)}))};
 
-    assertExpectedResults<AccumulatorConcatArrays>(&expCtx, {{values, Value{expected}}});
+    assertExpectedResults2<AccumulatorConcatArrays>(&expCtx, {{values, Value{expected}}});
 }
 
 TEST(AccumulatorConcatArrays, AllowsDuplicates) {
@@ -2444,7 +2554,7 @@ TEST(AccumulatorConcatArrays, AllowsDuplicates) {
 
     std::vector<Value> expected = {Value(1), Value(1), Value(2), Value(3), Value(1), Value(1)};
 
-    assertExpectedResults<AccumulatorConcatArrays>(&expCtx, {{values, Value{expected}}});
+    assertExpectedResults2<AccumulatorConcatArrays>(&expCtx, {{values, Value{expected}}});
 }
 
 /* ------------------------- AccumulatorSetUnion -------------------------- */
@@ -2457,11 +2567,11 @@ static void assertSetUnionResults(
         auto accum = make_intrusive<AccumulatorSetUnion>(expCtx);
         return accum;
     };
-    assertExpectedResults(expCtx,
-                          OperationsType(operations),
-                          initializeAccumulator,
-                          false /*skipMerging*/,
-                          true /*ignoreArrayOrdering*/);
+    assertExpectedResults1(expCtx,
+                           OperationsType(operations),
+                           initializeAccumulator,
+                           false /*skipMerging*/,
+                           true /*ignoreArrayOrdering*/);
 }
 
 TEST(AccumulatorSetUnion, SetUnionRespectsMaxMemoryContraint) {
@@ -2591,13 +2701,13 @@ TEST(AccumulatorSetUnion, DoubleNestedArraysShouldReturnNestedArrays) {
 }
 
 TEST(ExpressionFromAccumulators, Avg) {
-    assertExpectedResults("$avg",
-                          {// $avg ignores non-numeric inputs.
-                           {{Value("string"_sd), Value(BSONNULL), Value(), Value(3)}, Value(3.0)},
-                           // $avg always returns a double.
-                           {{Value(10LL), Value(20LL)}, Value(15.0)},
-                           // $avg returns null when no arguments are provided.
-                           {{}, Value(BSONNULL)}});
+    assertExpectedResults3("$avg",
+                           {// $avg ignores non-numeric inputs.
+                            {{Value("string"_sd), Value(BSONNULL), Value(), Value(3)}, Value(3.0)},
+                            // $avg always returns a double.
+                            {{Value(10LL), Value(20LL)}, Value(15.0)},
+                            // $avg returns null when no arguments are provided.
+                            {{}, Value(BSONNULL)}});
 }
 
 TEST(ExpressionFromAccumulators, FirstNLastN) {
@@ -2636,26 +2746,26 @@ TEST(ExpressionFromAccumulators, FirstNLastN) {
 }
 
 TEST(ExpressionFromAccumulators, Max) {
-    assertExpectedResults("$max",
-                          {// $max treats non-numeric inputs as valid arguments.
-                           {{Value(1), Value(BSONNULL), Value(), Value("a"_sd)}, Value("a"_sd)},
-                           {{Value("a"_sd), Value("b"_sd)}, Value("b"_sd)},
-                           // $max always preserves the type of the result.
-                           {{Value(10LL), Value(0.0), Value(5)}, Value(10LL)},
-                           // $max returns null when no arguments are provided.
-                           {{}, Value(BSONNULL)}});
+    assertExpectedResults3("$max",
+                           {// $max treats non-numeric inputs as valid arguments.
+                            {{Value(1), Value(BSONNULL), Value(), Value("a"_sd)}, Value("a"_sd)},
+                            {{Value("a"_sd), Value("b"_sd)}, Value("b"_sd)},
+                            // $max always preserves the type of the result.
+                            {{Value(10LL), Value(0.0), Value(5)}, Value(10LL)},
+                            // $max returns null when no arguments are provided.
+                            {{}, Value(BSONNULL)}});
 }
 
 TEST(ExpressionFromAccumulators, Min) {
-    assertExpectedResults("$min",
-                          {// $min treats non-numeric inputs as valid arguments.
-                           {{Value("string"_sd)}, Value("string"_sd)},
-                           {{Value(1), Value(BSONNULL), Value(), Value("a"_sd)}, Value(1)},
-                           {{Value("a"_sd), Value("b"_sd)}, Value("a"_sd)},
-                           // $min always preserves the type of the result.
-                           {{Value(0LL), Value(20.0), Value(10)}, Value(0LL)},
-                           // $min returns null when no arguments are provided.
-                           {{}, Value(BSONNULL)}});
+    assertExpectedResults3("$min",
+                           {// $min treats non-numeric inputs as valid arguments.
+                            {{Value("string"_sd)}, Value("string"_sd)},
+                            {{Value(1), Value(BSONNULL), Value(), Value("a"_sd)}, Value(1)},
+                            {{Value("a"_sd), Value("b"_sd)}, Value("a"_sd)},
+                            // $min always preserves the type of the result.
+                            {{Value(0LL), Value(20.0), Value(10)}, Value(0LL)},
+                            // $min returns null when no arguments are provided.
+                            {{}, Value(BSONNULL)}});
 }
 
 TEST(ExpressionFromAccumulators, MinNMaxN) {
@@ -2691,7 +2801,7 @@ TEST(ExpressionFromAccumulators, MinNMaxN) {
 }
 
 TEST(ExpressionFromAccumulators, Sum) {
-    assertExpectedResults(
+    assertExpectedResults3(
         "$sum",
         {// $sum ignores non-numeric inputs.
          {{Value("string"_sd), Value(BSONNULL), Value(), Value(3)}, Value(3)},
@@ -2704,17 +2814,17 @@ TEST(ExpressionFromAccumulators, Sum) {
 }
 
 TEST(ExpressionFromAccumulators, StdDevPop) {
-    assertExpectedResults("$stdDevPop",
-                          {// $stdDevPop ignores non-numeric inputs.
-                           {{Value("string"_sd), Value(BSONNULL), Value(), Value(3)}, Value(0.0)},
-                           // $stdDevPop always returns a double.
-                           {{Value(1LL), Value(3LL)}, Value(1.0)},
-                           // $stdDevPop returns null when no arguments are provided.
-                           {{}, Value(BSONNULL)}});
+    assertExpectedResults3("$stdDevPop",
+                           {// $stdDevPop ignores non-numeric inputs.
+                            {{Value("string"_sd), Value(BSONNULL), Value(), Value(3)}, Value(0.0)},
+                            // $stdDevPop always returns a double.
+                            {{Value(1LL), Value(3LL)}, Value(1.0)},
+                            // $stdDevPop returns null when no arguments are provided.
+                            {{}, Value(BSONNULL)}});
 }
 
 TEST(ExpressionFromAccumulators, StdDevSamp) {
-    assertExpectedResults(
+    assertExpectedResults3(
         "$stdDevSamp",
         {// $stdDevSamp ignores non-numeric inputs.
          {{Value("string"_sd), Value(BSONNULL), Value(), Value(3)}, Value(BSONNULL)},

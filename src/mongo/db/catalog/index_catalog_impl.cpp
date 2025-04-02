@@ -53,10 +53,12 @@
 #include "mongo/db/catalog/clustered_collection_util.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/catalog/collection_catalog.h"
+#include "mongo/db/catalog/collection_catalog_helper.h"
 #include "mongo/db/catalog/index_catalog_entry_impl.h"
 #include "mongo/db/catalog/index_key_validate.h"
 #include "mongo/db/collection_index_usage_tracker.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/fts/fts_spec.h"
 #include "mongo/db/global_settings.h"
@@ -90,16 +92,11 @@
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_options.h"
-#include "mongo/db/storage/storage_util.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/ttl/ttl_collection_cache.h"
 #include "mongo/db/update/document_diff_calculator.h"
 #include "mongo/db/update_index_data.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_tag.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
@@ -128,10 +125,6 @@ using IndexVersion = IndexDescriptor::IndexVersion;
 const BSONObj IndexCatalogImpl::_idObj = BSON("_id" << 1);
 
 namespace {
-
-// Keep retrying dropping unfinished-indexes for atleast this long.
-constexpr int kDropRetryTimeoutMillis = 10000;
-
 /**
  * Similar to _isSpecOK(), checks if the indexSpec is valid, conflicts, or already exists as a
  * clustered index.
@@ -632,7 +625,7 @@ IndexCatalogEntry* IndexCatalogImpl::createIndexEntry(OperationContext* opCtx,
     }
 
     auto engine = opCtx->getServiceContext()->getStorageEngine();
-    std::string ident = engine->getCatalog()->getIndexIdent(
+    std::string ident = engine->getDurableCatalog()->getIndexIdent(
         opCtx, collection->getCatalogId(), descriptor.indexName());
 
     bool isReadyIndex = CreateIndexEntryFlags::kIsReady & flags;
@@ -650,8 +643,10 @@ IndexCatalogEntry* IndexCatalogImpl::createIndexEntry(OperationContext* opCtx,
     bool isUpdateMetadata = CreateIndexEntryFlags::kUpdateMetadata & flags;
     if (isUpdateMetadata) {
         bool isForceUpdateMetadata = CreateIndexEntryFlags::kForceUpdateMetadata & flags;
-        engine->getEngine()->alterIdentMetadata(
-            *shard_role_details::getRecoveryUnit(opCtx), ident, desc, isForceUpdateMetadata);
+        engine->getEngine()->alterIdentMetadata(*shard_role_details::getRecoveryUnit(opCtx),
+                                                ident,
+                                                desc->toIndexConfig(),
+                                                isForceUpdateMetadata);
     }
 
     if (!frozen) {
@@ -678,7 +673,6 @@ IndexCatalogEntry* IndexCatalogImpl::createIndexEntry(OperationContext* opCtx,
 StatusWith<BSONObj> IndexCatalogImpl::createIndexOnEmptyCollection(OperationContext* opCtx,
                                                                    Collection* collection,
                                                                    BSONObj spec) {
-    invariant(collection->uuid() == collection->uuid());
     CollectionCatalog::get(opCtx)->invariantHasExclusiveAccessToCollection(opCtx, collection->ns());
     invariant(collection->isEmpty(opCtx),
               str::stream() << "Collection must be empty. Collection: "
@@ -1366,37 +1360,21 @@ Status IndexCatalogImpl::resetUnfinishedIndexForRecovery(OperationContext* opCtx
     invariant(released.get() == entry);
 
     // Drop the ident if it exists. The storage engine will return OK if the ident is not found.
-    // Dropping an index may be blocked by concurrent filesystem operations. See SERVER-92181
-    // for more context.
     auto engine = opCtx->getServiceContext()->getStorageEngine();
     const std::string ident = released->getIdent();
-    size_t attempt = 0;
-    Timer timer;
-    for (;;) {
-        Status status = engine->getEngine()->dropIdent(
-            shard_role_details::getRecoveryUnit(opCtx), ident, /*identHasSizeInfo=*/false);
-        if (status.isOK()) {
-            break;
-        } else if (timer.millis() < kDropRetryTimeoutMillis) {
-            logAndBackoff(9218100,
-                          MONGO_LOGV2_DEFAULT_COMPONENT,
-                          logv2::LogSeverity::Warning(),
-                          attempt++,
-                          "Retrying unfinished index drop",
-                          "ident"_attr = ident,
-                          "status"_attr = status);
-        } else {
-            return status;
-        }
+    Status status = engine->getEngine()->dropIdent(
+        shard_role_details::getRecoveryUnit(opCtx), ident, /*identHasSizeInfo=*/false);
+    if (!status.isOK()) {
+        return status;
     }
 
     // Recreate the ident on-disk. DurableCatalog::createIndex() will lookup the ident internally
     // using the catalogId and index name.
-    Status status = DurableCatalog::get(opCtx)->createIndex(opCtx,
-                                                            collection->getCatalogId(),
-                                                            collection->ns(),
-                                                            collection->getCollectionOptions(),
-                                                            released->descriptor());
+    status = DurableCatalog::get(opCtx)->createIndex(opCtx,
+                                                     collection->getCatalogId(),
+                                                     collection->ns(),
+                                                     collection->getCollectionOptions(),
+                                                     released->descriptor());
     if (!status.isOK()) {
         return status;
     }
@@ -1673,9 +1651,6 @@ const IndexDescriptor* IndexCatalogImpl::refreshEntry(OperationContext* opCtx,
     const std::string indexName = oldDesc->indexName();
     invariant(collection->isIndexReady(indexName));
 
-    // The _id index should not be modified by a collMod.
-    tassert(9037800, "Should not be refreshing the _id index", !oldDesc->isIdIndex());
-
     // Delete the IndexCatalogEntry that owns this descriptor. After deletion, 'oldDesc' is invalid
     // and should not be dereferenced. Also, invalidate the index from the
     // CollectionIndexUsageTrackerDecoration (shared state among Collection instances).
@@ -1749,7 +1724,7 @@ Status IndexCatalogImpl::_indexRecords(OperationContext* opCtx,
 
     std::vector<BsonRecord> filteredBsonRecords;
     for (const auto& bsonRecord : bsonRecords) {
-        if (filter->matchesBSON(*(bsonRecord.docPtr)))
+        if (exec::matcher::matchesBSON(filter, *(bsonRecord.docPtr)))
             filteredBsonRecords.push_back(bsonRecord);
     }
 

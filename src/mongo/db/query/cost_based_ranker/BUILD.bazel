@@ -71,7 +71,6 @@ mongo_cc_library(
         "heuristic_estimator.h",
         "//src/mongo/db/matcher:expression.h",
         "//src/mongo/db/matcher:expression_visitor.h",
-        "//src/mongo/db/matcher:match_details.h",
         "//src/mongo/db/matcher:matchable.h",
         "//src/mongo/db/matcher:path.h",
         "//src/mongo/db/pipeline:dependencies.h",
@@ -107,7 +106,7 @@ mongo_cc_unit_test(
         "estimates_test.cpp",
         "heuristic_estimator_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_sixth_group"],
     deps = [
         ":cbr_test_utils",
     ],

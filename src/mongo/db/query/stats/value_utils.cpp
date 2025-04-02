@@ -32,15 +32,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <iosfwd>
-#include <type_traits>
+#include <fmt/format.h>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/docval_to_sbeval.h"
 #include "mongo/db/exec/sbe/values/value.h"
-#include "mongo/db/storage/key_string/key_string.h"
 #include "mongo/platform/decimal128.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
@@ -453,6 +450,18 @@ value::TypeTags deserialize(const std::string& name) {
         return value::TypeTags::Array;
     } else if ("Null" == name) {
         return value::TypeTags::Null;
+    } else if ("bsonUndefined" == name) {
+        return value::TypeTags::bsonUndefined;
+    } else if ("bsonJavascript" == name) {
+        return value::TypeTags::bsonJavascript;
+    } else if ("bsonBinData" == name) {
+        return value::TypeTags::bsonBinData;
+    } else if ("bsonRegex" == name) {
+        return value::TypeTags::bsonRegex;
+    } else if ("MinKey" == name) {
+        return value::TypeTags::MinKey;
+    } else if ("MaxKey" == name) {
+        return value::TypeTags::MaxKey;
     } else if ("Nothing" == name) {
         return value::TypeTags::Nothing;
     }
@@ -525,7 +534,7 @@ absl::flat_hash_map<sbe::value::TypeTags, sbe::value::TypeTags> nextTypeTagsMap(
 sbe::value::TypeTags getNextType(sbe::value::TypeTags tag) {
     auto it = kNextTypeTagsMap.find(tag);
     tassert(9619600,
-            fmt::format("Type {} does not have a next type", tag),
+            fmt::format("Type {} does not have a next type", fmt::underlying(tag)),
             it != kNextTypeTagsMap.end());
     return it->second;
 }

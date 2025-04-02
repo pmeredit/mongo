@@ -52,9 +52,7 @@
 #include "mongo/db/s/type_shard_collection_gen.h"
 #include "mongo/db/shard_id.h"
 #include "mongo/s/catalog/type_chunk.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/uuid.h"
@@ -186,8 +184,7 @@ struct ShardMetadataUtilTest : public ShardServerTestFixture {
 
     ChunkVersion maxCollPlacementVersion{{OID::gen(), Timestamp(1, 1)}, {0, 0}};
     const KeyPattern keyPattern{BSON("a" << 1)};
-    const BSONObj defaultCollation{BSON("locale"
-                                        << "fr_CA")};
+    const BSONObj defaultCollation{BSON("locale" << "fr_CA")};
     const UUID uuid = UUID::gen();
 };
 

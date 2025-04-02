@@ -59,8 +59,7 @@
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/platform/atomic_word.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace deferred_writer_tests {
@@ -195,7 +194,7 @@ private:
  */
 class DeferredWriterTestEmpty : public DeferredWriterTestBase {
 public:
-    ~DeferredWriterTestEmpty() override{};
+    ~DeferredWriterTestEmpty() override {};
 
     void run() override {
         {
@@ -213,7 +212,7 @@ public:
  */
 class DeferredWriterTestConcurrent : public DeferredWriterTestBase {
 public:
-    ~DeferredWriterTestConcurrent() override{};
+    ~DeferredWriterTestConcurrent() override {};
 
     void worker(DeferredWriter* writer) {
         for (int i = 0; i < kDocsPerWorker; ++i) {

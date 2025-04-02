@@ -308,14 +308,6 @@ public:
      */
     static NamespaceString makeCommandNamespace(const DatabaseName& dbName);
 
-    /**
-     * Constructs a dummy NamespaceString, "<tenantId>.config.dummy.namespace", to be used where a
-     * placeholder NamespaceString is needed. It must be acceptable for tenantId to be empty, so we
-     * use "config" as the db.
-     */
-    static NamespaceString makeDummyNamespace(const boost::optional<TenantId>& tenantId);
-
-
     boost::optional<TenantId> tenantId() const {
         if (!hasTenantId()) {
             return boost::none;
@@ -987,7 +979,7 @@ inline bool NamespaceString::validCollectionName(StringData coll) {
     return true;
 }
 
-inline std::string stringifyForAssert(const NamespaceString& nss) {
+inline std::string stringify_forTest(const NamespaceString& nss) {
     return toStringForLogging(nss);
 }
 

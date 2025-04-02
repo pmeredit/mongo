@@ -4,7 +4,7 @@
  *
  * @tags: [
  *   featureFlagBalanceUnshardedCollections,
- *   requires_fcv_80
+ *   requires_fcv_80,
  * ]
  */
 

@@ -58,9 +58,6 @@
 #include "mongo/db/timeseries/timeseries_commands_conversion_helper.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/cluster_commands_helpers.h"
 #include "mongo/s/cluster_ddl.h"
@@ -76,7 +73,6 @@ namespace mongo {
 namespace {
 
 constexpr auto kRawFieldName = "raw"_sd;
-constexpr auto kWriteConcernErrorFieldName = "writeConcernError"_sd;
 constexpr auto kTopologyVersionFieldName = "topologyVersion"_sd;
 
 class CreateIndexesCmd : public BasicCommandWithRequestParser<CreateIndexesCmd> {
@@ -162,7 +158,7 @@ public:
 
         BSONObjBuilder rawResBuilder;
         std::string errmsg;
-        bool isShardedCollection = routingInfo.cm.isSharded();
+        bool isShardedCollection = routingInfo.isSharded();
         const bool ok =
             appendRawResponses(opCtx, &errmsg, &rawResBuilder, shardResponses, isShardedCollection)
                 .responseOK;

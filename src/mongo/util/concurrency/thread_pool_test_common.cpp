@@ -39,14 +39,11 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/thread_pool_interface.h"
 #include "mongo/util/concurrency/thread_pool_test_common.h"
@@ -181,9 +178,8 @@ constexpr auto kExceptionMessage = "No good very bad exception";
 COMMON_THREAD_POOL_DEATH_TEST(DieWhenExceptionBubblesUp, kExceptionMessage) {
     auto& pool = getThreadPool();
     pool.startup();
-    pool.schedule([](auto status) {
-        uassertStatusOK(Status({ErrorCodes::BadValue, kExceptionMessage}));
-    });
+    pool.schedule(
+        [](auto status) { uassertStatusOK(Status({ErrorCodes::BadValue, kExceptionMessage})); });
     pool.shutdown();
     pool.join();
 }

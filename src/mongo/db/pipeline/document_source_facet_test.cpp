@@ -53,9 +53,8 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/tenant_id.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -76,8 +75,7 @@ using DocumentSourceFacetTest = AggregationContextFixture;
 
 TEST_F(DocumentSourceFacetTest, ShouldRejectNonObjectSpec) {
     auto ctx = getExpCtx();
-    auto spec = BSON("$facet"
-                     << "string");
+    auto spec = BSON("$facet" << "string");
     ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
                   AssertionException);
 
@@ -135,42 +133,37 @@ TEST_F(DocumentSourceFacetTest, ShouldSucceedWhenNamespaceIsCollectionless) {
 
 TEST_F(DocumentSourceFacetTest, ShouldRejectFacetsContainingAnOutStage) {
     auto ctx = getExpCtx();
-    auto spec = BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$out"
-                                                             << "out_collection"))));
+    auto spec = BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$out" << "out_collection"))));
     ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
                   AssertionException);
 
-    spec =
-        BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$skip" << 1) << BSON("$out"
-                                                                           << "out_collection"))));
+    spec = BSON("$facet" << BSON(
+                    "a" << BSON_ARRAY(BSON("$skip" << 1) << BSON("$out" << "out_collection"))));
     ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
                   AssertionException);
 
-    spec = BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$out"
-                                                        << "out_collection")
-                                                   << BSON("$skip" << 1))));
+    spec = BSON("$facet" << BSON(
+                    "a" << BSON_ARRAY(BSON("$out" << "out_collection") << BSON("$skip" << 1))));
     ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
                   AssertionException);
 }
 
 TEST_F(DocumentSourceFacetTest, ShouldRejectFacetsContainingAMergeStage) {
     auto ctx = getExpCtx();
-    auto spec =
-        BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$merge" << BSON("into"
-                                                                      << "merge_collection")))));
+    auto spec = BSON(
+        "$facet" << BSON("a" << BSON_ARRAY(BSON("$merge" << BSON("into" << "merge_collection")))));
+    ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
+                  AssertionException);
+
+    spec = BSON("$facet" << BSON(
+                    "a" << BSON_ARRAY(BSON("$skip" << 1)
+                                      << BSON("$merge" << BSON("into" << "merge_collection")))));
     ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
                   AssertionException);
 
     spec =
-        BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$skip" << 1)
-                                                << BSON("$merge" << BSON("into"
-                                                                         << "merge_collection")))));
-    ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
-                  AssertionException);
-
-    spec = BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$merge" << BSON("into"
-                                                                         << "merge_collection"))
-                                                   << BSON("$skip" << 1))));
+        BSON("$facet" << BSON("a" << BSON_ARRAY(BSON("$merge" << BSON("into" << "merge_collection"))
+                                                << BSON("$skip" << 1))));
     ASSERT_THROWS(DocumentSourceFacet::createFromBson(spec.firstElement(), ctx),
                   AssertionException);
 }
@@ -732,7 +725,7 @@ public:
     DocumentSourceNeedsOnlyTextScore(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : DocumentSourcePassthrough(expCtx) {}
     DepsTracker::State getDependencies(DepsTracker* deps) const override {
-        deps->setNeedsMetadata(DocumentMetadataFields::kTextScore, true);
+        deps->setNeedsMetadata(DocumentMetadataFields::kTextScore);
         return DepsTracker::State::EXHAUSTIVE_ALL;
     }
     static boost::intrusive_ptr<DocumentSourceNeedsOnlyTextScore> create(
@@ -759,7 +752,7 @@ TEST_F(DocumentSourceFacetTest, ShouldRequireTextScoreIfAnyPipelineRequiresTextS
     facets.emplace_back("needsTextScore", std::move(thirdPipeline));
     auto facetStage = DocumentSourceFacet::create(std::move(facets), ctx);
 
-    DepsTracker deps(DepsTracker::kAllMetadata & ~DepsTracker::kOnlyTextScore);
+    DepsTracker deps(DepsTracker::kOnlyTextScore);
     ASSERT_EQ(facetStage->getDependencies(&deps), DepsTracker::State::EXHAUSTIVE_ALL);
     ASSERT_TRUE(deps.needWholeDocument);
     ASSERT_TRUE(deps.getNeedsMetadata(DocumentMetadataFields::kTextScore));
@@ -779,7 +772,7 @@ TEST_F(DocumentSourceFacetTest, ShouldThrowIfAnyPipelineRequiresTextScoreButItIs
     facets.emplace_back("needsTextScore", std::move(secondPipeline));
     auto facetStage = DocumentSourceFacet::create(std::move(facets), ctx);
 
-    DepsTracker deps(DepsTracker::kAllMetadata);
+    DepsTracker deps(DepsTracker::kNoMetadata);
     ASSERT_THROWS(facetStage->getDependencies(&deps), AssertionException);
 }
 

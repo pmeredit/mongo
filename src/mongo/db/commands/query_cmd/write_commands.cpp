@@ -76,8 +76,10 @@
 #include "mongo/db/query/write_ops/write_ops_exec.h"
 #include "mongo/db/query/write_ops/write_ops_gen.h"
 #include "mongo/db/query/write_ops/write_ops_parsers.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/repl/repl_client_info.h"
 #include "mongo/db/repl/replication_coordinator.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/shard_role.h"
@@ -276,6 +278,10 @@ public:
             return true;
         }
 
+        bool supportsRawData() const final {
+            return true;
+        }
+
         bool isSubjectToIngressAdmissionControl() const override {
             return true;
         }
@@ -299,9 +305,7 @@ public:
                 }
             }
 
-            if (auto [isTimeseriesViewRequest, _] =
-                    timeseries::isTimeseriesViewRequest(opCtx, request());
-                isTimeseriesViewRequest) {
+            if (timeseries::isTimeseriesRequest(opCtx, request())) {
                 // Re-throw parsing exceptions to be consistent with CmdInsert::Invocation's
                 // constructor.
                 try {
@@ -415,6 +419,10 @@ public:
             return true;
         }
 
+        bool supportsRawData() const final {
+            return true;
+        }
+
         bool isSubjectToIngressAdmissionControl() const override {
             return true;
         }
@@ -486,8 +494,9 @@ public:
 
             auto [isTimeseriesViewRequest, bucketNs] =
                 timeseries::isTimeseriesViewRequest(opCtx, request());
-            OperationSource source = isTimeseriesViewRequest ? OperationSource::kTimeseriesUpdate
-                                                             : OperationSource::kStandard;
+            OperationSource source = (isTimeseriesViewRequest && !isRawDataOperation(opCtx))
+                ? OperationSource::kTimeseriesUpdate
+                : OperationSource::kStandard;
 
             long long nModified = 0;
 
@@ -499,7 +508,8 @@ public:
             // For retryable updates on time-series collections, we needs to run them in
             // transactions to ensure the multiple writes are replicated atomically.
             bool isTimeseriesRetryableUpdate = isTimeseriesViewRequest &&
-                opCtx->isRetryableWrite() && !opCtx->inMultiDocumentTransaction();
+                opCtx->isRetryableWrite() && !opCtx->inMultiDocumentTransaction() &&
+                !isRawDataOperation(opCtx);
             if (isTimeseriesRetryableUpdate) {
                 auto executor = serverGlobalParams.clusterRole.has(ClusterRole::None)
                     ? ReplicaSetNodeProcessInterface::getReplicaSetNodeExecutor(
@@ -596,6 +606,10 @@ public:
 
             auto [isTimeseriesViewRequest, nss] =
                 timeseries::isTimeseriesViewRequest(opCtx, request());
+
+            if (isRawDataOperation(opCtx)) {
+                isTimeseriesViewRequest = false;
+            }
 
             UpdateRequest updateRequest(request().getUpdates()[0]);
             updateRequest.setNamespaceString(nss);
@@ -695,6 +709,10 @@ public:
             return true;
         }
 
+        bool supportsRawData() const final {
+            return true;
+        }
+
         bool isSubjectToIngressAdmissionControl() const override {
             return true;
         }
@@ -719,7 +737,7 @@ public:
 
             if (auto [isTimeseriesViewRequest, _] =
                     timeseries::isTimeseriesViewRequest(opCtx, request());
-                isTimeseriesViewRequest) {
+                isTimeseriesViewRequest && !isRawDataOperation(opCtx)) {
                 source = OperationSource::kTimeseriesDelete;
             }
 
@@ -760,6 +778,10 @@ public:
 
             auto [isTimeseriesViewRequest, nss] =
                 timeseries::isTimeseriesViewRequest(opCtx, request());
+
+            if (isRawDataOperation(opCtx)) {
+                isTimeseriesViewRequest = false;
+            }
 
             auto deleteRequest = DeleteRequest{};
             deleteRequest.setNsString(nss);

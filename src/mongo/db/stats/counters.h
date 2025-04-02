@@ -45,7 +45,6 @@
 #include "mongo/db/cluster_role.h"
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/curop.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/basic.h"
@@ -164,7 +163,7 @@ private:
     void _reset();
 
     // Increment member `counter` by `n`, resetting all counters if it was > 2^60.
-    void _checkWrap(CacheExclusive<AtomicWord<long long>> OpCounters::*counter, int n);
+    void _checkWrap(CacheExclusive<AtomicWord<long long>> OpCounters::* counter, int n);
 
     CacheExclusive<AtomicWord<long long>> _insert;
     CacheExclusive<AtomicWord<long long>> _query;
@@ -505,21 +504,19 @@ public:
     GroupCounters(GroupCounters&) = delete;
     GroupCounters& operator=(const GroupCounters&) = delete;
 
-    void incrementGroupCountersPerSpilling(int64_t spills,
-                                           int64_t spilledBytes,
-                                           int64_t spilledRecords) {
+    void incrementPerSpilling(int64_t spills,
+                              int64_t spilledBytes,
+                              int64_t spilledRecords,
+                              int64_t spilledDataStorageSize) {
         groupSpills.incrementRelaxed(spills);
         groupSpilledBytes.incrementRelaxed(spilledBytes);
         groupSpilledRecords.incrementRelaxed(spilledRecords);
-    }
-
-    void incrementGroupCountersPerQuery(int64_t spilledDataStorageSize) {
         groupSpilledDataStorageSize.incrementRelaxed(spilledDataStorageSize);
     }
 
     // The total number of spills from group stages.
     Counter64& groupSpills = *MetricBuilder<Counter64>{"query.group.spills"};
-    // The total number of bytes spilled from group stages. The spilled stroage size after
+    // The total number of bytes spilled from group stages. The spilled storage size after
     // compression might be different from the bytes spilled.
     Counter64& groupSpilledBytes = *MetricBuilder<Counter64>{"query.group.spilledBytes"};
     // The number of records spilled.
@@ -635,6 +632,10 @@ public:
         classicReplanned.incrementRelaxed();
     }
 
+    void incrementClassicReplannedPlanIsCachedPlanCounter() {
+        classicReplannedPlanIsCachedPlan.incrementRelaxed();
+    }
+
     void incrementSbeHitsCounter() {
         sbeHits.incrementRelaxed();
     }
@@ -651,6 +652,10 @@ public:
         sbeReplanned.incrementRelaxed();
     }
 
+    void incrementSbeReplannedPlanIsCachedPlanCounter() {
+        sbeReplannedPlanIsCachedPlan.incrementRelaxed();
+    }
+
 private:
     static Counter64& _makeMetric(std::string name) {
         return *MetricBuilder<Counter64>("query.planCache." + std::move(name));
@@ -659,17 +664,21 @@ private:
     // Counters that track the number of times a query plan is:
     // a) found in the cache (hits),
     // b) not found in cache (misses), or
-    // c) not considered for caching hence we don't even look for it in the cache (skipped).
-    // d) failed to finish trial run within budget, so we decided to replan it (replanned).
+    // c) not considered for caching hence we don't even look for it in the cache (skipped);
+    // d) failed to finish trial run within budget, so we decided to replan it (replanned);
+    // e) replanned only to produce the same plan as what's in the plan cache.
     // Split into classic and SBE, depending on which execution engine is used.
     Counter64& classicHits = _makeMetric("classic.hits");
     Counter64& classicMisses = _makeMetric("classic.misses");
     Counter64& classicSkipped = _makeMetric("classic.skipped");
     Counter64& classicReplanned = _makeMetric("classic.replanned");
+    Counter64& classicReplannedPlanIsCachedPlan =
+        _makeMetric("classic.replanned_plan_is_cached_plan");
     Counter64& sbeHits = _makeMetric("sbe.hits");
     Counter64& sbeMisses = _makeMetric("sbe.misses");
     Counter64& sbeSkipped = _makeMetric("sbe.skipped");
     Counter64& sbeReplanned = _makeMetric("sbe.replanned");
+    Counter64& sbeReplannedPlanIsCachedPlan = _makeMetric("sbe.replanned_plan_is_cached_plan");
 };
 extern PlanCacheCounters planCacheCounters;
 
@@ -762,7 +771,7 @@ extern OperatorCounters operatorCountersWindowAccumulatorExpressions;
 struct QueryCounters {
 private:
     static Counter64& _makeCounter(StringData name, ClusterRole role) {
-        return *MetricBuilder<Counter64>{format(FMT_STRING("query.{}"), name)}.setRole(role);
+        return *MetricBuilder<Counter64>{fmt::format("query.{}", name)}.setRole(role);
     }
 
     ClusterRole _role;

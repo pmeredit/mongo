@@ -82,16 +82,12 @@ export class ReplSetTest {
         // If opts is passed in as a string, let it pass unmodified since strings are pass-by-value.
         // if it is an object, though, pass in a deep copy.
         if (typeof opts === 'string' || opts instanceof String) {
-            retryOnRetryableError(
-                () => {
-                    // The primary may unexpectedly step down during startup if under heavy load
-                    // and too slowly processing heartbeats. When it steps down, it closes all of
-                    // its connections.
-                    _constructFromExistingSeedNode(this, opts);
-                },
-                ReplSetTest.kDefaultRetries,
-                1000,
-                [ErrorCodes.NotYetInitialized, ErrorCodes.InterruptedDueToStorageChange]);
+            retryOnRetryableError(() => {
+                // The primary may unexpectedly step down during startup if under heavy load
+                // and too slowly processing heartbeats. When it steps down, it closes all of
+                // its connections.
+                _constructFromExistingSeedNode(this, opts);
+            }, ReplSetTest.kDefaultRetries, 1000, [ErrorCodes.NotYetInitialized]);
         } else if (typeof opts.rstArgs === "object") {
             _constructFromExistingNodes(this, Object.extend({}, opts.rstArgs, true));
         } else {
@@ -124,9 +120,9 @@ export class ReplSetTest {
             states = [states];
         }
 
-        print("ReplSetTest waitForIndicator " + ind + " on " + node);
-        printjson(states);
-        print("ReplSetTest waitForIndicator from node " + node);
+        jsTest.log.info("ReplSetTest waitForIndicator " + ind + " on " + node);
+        jsTest.log.info({states});
+        jsTest.log.info("ReplSetTest waitForIndicator from node " + node);
 
         var lastTime = null;
         var currTime = new Date().getTime();
@@ -152,7 +148,7 @@ export class ReplSetTest {
                     status = conn.getDB('admin').runCommand({replSetGetStatus: 1});
                 });
             } catch (ex) {
-                print("ReplSetTest waitForIndicator could not get status: " + tojson(ex));
+                jsTest.log.info("ReplSetTest waitForIndicator could not get status", {error: ex});
                 return false;
             }
 
@@ -164,11 +160,11 @@ export class ReplSetTest {
             var printStatus = false;
             if (lastTime == null || (currTime = new Date().getTime()) - (1000 * 5) > lastTime) {
                 if (lastTime == null) {
-                    print("ReplSetTest waitForIndicator Initial status (timeout : " + timeout +
-                          ") :");
+                    jsTest.log.info("ReplSetTest waitForIndicator Initial status (timeout : " +
+                                    timeout + ") :");
                 }
 
-                printjson(status);
+                jsTest.log.info({status});
                 lastTime = new Date().getTime();
                 printStatus = true;
             }
@@ -179,16 +175,16 @@ export class ReplSetTest {
 
             for (var i = 0; i < status.members.length; i++) {
                 if (printStatus) {
-                    print("Status for : " + status.members[i].name + ", checking " + node.host +
-                          "/" + node.name);
+                    jsTest.log.info("Status for : " + status.members[i].name + ", checking " +
+                                    node.host + "/" + node.name);
                 }
 
                 if (status.members[i].name == node.host || status.members[i].name == node.name) {
                     for (var j = 0; j < states.length; j++) {
                         if (printStatus) {
-                            print("Status -- " +
-                                  " current state: " + status.members[i][ind] +
-                                  ",  target state : " + states[j]);
+                            jsTest.log.info("Status -- " +
+                                            " current state: " + status.members[i][ind] +
+                                            ",  target state : " + states[j]);
                         }
 
                         if (typeof (states[j]) != "number") {
@@ -220,8 +216,8 @@ export class ReplSetTest {
             }, "timed out waiting to reconnect to node " + node.name);
         }
 
-        print("ReplSetTest waitForIndicator final status:");
-        printjson(status);
+        jsTest.log.info("ReplSetTest waitForIndicator final status:");
+        jsTest.log.info({status});
     }
 
     /**
@@ -394,8 +390,9 @@ export class ReplSetTest {
 
         // Avoid waiting for connections to each node.
         if (skipWaitingForAllConnections) {
-            print("ReplSetTest startSet skipping waiting for connections to all nodes in set '" +
-                  this.name + "'");
+            jsTest.log.info(
+                "ReplSetTest startSet skipping waiting for connections to all nodes in set '" +
+                this.name + "'");
             return this.nodes;
         }
 
@@ -405,11 +402,11 @@ export class ReplSetTest {
         // proactively rather than waiting for the election timeout.
         const triggerStepUp = (restart || (options && options.restart)) && !skipStepUpOnRestart;
         if (!triggerStepUp) {
-            print("ReplSetTest startSet skipping stepping a new primary");
+            jsTest.log.info("ReplSetTest startSet skipping stepping a new primary");
             return this.nodes;
         }
 
-        print("ReplSetTest startSet attempting to step up a new primary");
+        jsTest.log.info("ReplSetTest startSet attempting to step up a new primary");
 
         // Try to step up each node and stop after the first success.
         // We use asCluster as replSetStepUp requires auth.
@@ -432,7 +429,7 @@ export class ReplSetTest {
      * @param options - The options passed to {@link MongoRunner.runMongod}
      */
     startSetAsync(options, restart) {
-        print("ReplSetTest starting set '" + this.name + "'");
+        jsTest.log.info("ReplSetTest starting set '" + this.name + "'");
         this.startSetStartTime = new Date();  // Measure the execution time of node startup.
 
         if (options && options.keyFile) {
@@ -482,10 +479,10 @@ export class ReplSetTest {
             this._waitForInitialConnection(n);
         }
 
-        print("ReplSetTest startSet, nodes: " + tojson(this.nodes));
+        jsTest.log.info("ReplSetTest startSet", {nodes: this.nodes});
 
-        print("ReplSetTest startSet took " + (new Date() - this.startSetStartTime) + "ms for " +
-              this.nodes.length + " nodes.");
+        jsTest.log.info("ReplSetTest startSet took " + (new Date() - this.startSetStartTime) +
+                        "ms for " + this.nodes.length + " nodes.");
         return this.nodes;
     }
 
@@ -498,7 +495,7 @@ export class ReplSetTest {
         timeout = timeout || this.timeoutMS;
         retryIntervalMS = retryIntervalMS || 200;
         let awaitingSecondaries;
-        print("AwaitSecondaryNodes: Waiting for the secondary nodes has started.");
+        jsTest.log.info("AwaitSecondaryNodes: Waiting for the secondary nodes has started.");
         try {
             assert.soonNoExcept(() => {
                 awaitingSecondaries = [];
@@ -527,7 +524,7 @@ export class ReplSetTest {
         if (waitForNewlyAddedRemoval && jsTest.options().enableTestCommands) {
             this.waitForAllNewlyAddedRemovals();
         }
-        print("AwaitSecondaryNodes: Completed successfully.");
+        jsTest.log.info("AwaitSecondaryNodes: Completed successfully.");
     }
 
     /**
@@ -555,7 +552,8 @@ export class ReplSetTest {
      * Blocks until the specified node says it's syncing from the given upstream node.
      */
     awaitSyncSource(node, upstreamNode, timeout) {
-        print("Waiting for node " + node.name + " to start syncing from " + upstreamNode.name);
+        jsTest.log.info("Waiting for node " + node.name + " to start syncing from " +
+                        upstreamNode.name);
         var status = null;
         assert(this !== undefined);
         assert.soonNoExcept(
@@ -590,8 +588,9 @@ export class ReplSetTest {
                 try {
                     replSetGetStatus = nodes[i].adminCommand({replSetGetStatus: 1});
                 } catch (e) {
-                    print("AwaitNodesAgreeOnAppliedOpTime: Retrying because node " + nodes[i].name +
-                          " failed to execute replSetGetStatus: " + tojson(e));
+                    jsTest.log.info("AwaitNodesAgreeOnAppliedOpTime: Retrying because node " +
+                                        nodes[i].name + " failed to execute replSetGetStatus",
+                                    {error: e});
                     return false;
                 }
                 assert.commandWorked(replSetGetStatus);
@@ -619,10 +618,10 @@ export class ReplSetTest {
                 if (replSetGetStatus.optimes &&
                     !friendlyEqual(replSetGetStatus.optimes.appliedOpTime,
                                    appliedOpTimeConsensus)) {
-                    print("AwaitNodesAgreeOnAppliedOpTime: Retrying because node " + nodes[i].name +
-                          " has appliedOpTime " + tojson(replSetGetStatus.optimes.appliedOpTime) +
-                          " that does not match the previously observed appliedOpTime " +
-                          tojson(appliedOpTimeConsensus));
+                    jsTest.log.info(
+                        "AwaitNodesAgreeOnAppliedOpTime: Retrying because node " + nodes[i].name +
+                            " has appliedOpTime that does not match previously observed appliedOpTime",
+                        {appliedOpTime: appliedOpTimeConsensus});
                     return false;
                 }
 
@@ -635,19 +634,21 @@ export class ReplSetTest {
 
                     if (!friendlyEqual(replSetGetStatus.members[j].optime,
                                        appliedOpTimeConsensus)) {
-                        print("AwaitNodesAgreeOnAppliedOpTime: Retrying because node " +
-                              nodes[i].name + " sees optime " +
-                              tojson(replSetGetStatus.members[j].optime) + " on node " +
-                              replSetGetStatus.members[j].name + " but expects to see optime " +
-                              tojson(appliedOpTimeConsensus));
+                        jsTest.log.info("AwaitNodesAgreeOnAppliedOpTime: Retrying because node " +
+                                            nodes[i].name + " sees optime not expected on node " +
+                                            replSetGetStatus.members[j].name,
+                                        {
+                                            actualOpTime: replSetGetStatus.members[j].optime,
+                                            expectedOpTime: appliedOpTimeConsensus
+                                        });
                         return false;
                     }
                 }
             }
 
-            print(
-                "AwaitNodesAgreeOnAppliedOpTime: All nodes agree that all ops are applied up to " +
-                tojson(appliedOpTimeConsensus));
+            jsTest.log.info(
+                "AwaitNodesAgreeOnAppliedOpTime: All nodes agree that all ops are applied across replica set",
+                {appliedOpTimeConsensus});
             return true;
         }, "Awaiting nodes to agree that all ops are applied across replica set", timeout);
     }
@@ -706,7 +707,8 @@ export class ReplSetTest {
         timeout = timeout || this.timeoutMS;
         nodes = nodes || this.nodes;
 
-        print("AwaitNodesAgreeOnPrimaryNoAuth: Waiting for nodes to agree on any primary.");
+        jsTest.log.info(
+            "AwaitNodesAgreeOnPrimaryNoAuth: Waiting for nodes to agree on any primary.");
 
         assert.soonNoExcept(function() {
             var primary;
@@ -716,8 +718,8 @@ export class ReplSetTest {
                 var nodesPrimary = hello.primary;
                 // Node doesn't see a primary.
                 if (!nodesPrimary) {
-                    print("AwaitNodesAgreeOnPrimaryNoAuth: Retrying because " + nodes[i].name +
-                          " does not see a primary.");
+                    jsTest.log.info("AwaitNodesAgreeOnPrimaryNoAuth: Retrying because " +
+                                    nodes[i].name + " does not see a primary.");
                     return false;
                 }
 
@@ -725,13 +727,14 @@ export class ReplSetTest {
                     // If we haven't seen a primary yet, set it to this.
                     primary = nodesPrimary;
                 } else if (primary !== nodesPrimary) {
-                    print("AwaitNodesAgreeOnPrimaryNoAuth: Retrying because " + nodes[i].name +
-                          " thinks the primary is " + nodesPrimary + " instead of " + primary);
+                    jsTest.log.info("AwaitNodesAgreeOnPrimaryNoAuth: Retrying because " +
+                                    nodes[i].name + " thinks the primary is " + nodesPrimary +
+                                    " instead of " + primary);
                     return false;
                 }
             }
 
-            print("AwaitNodesAgreeOnPrimaryNoAuth: Nodes agreed on primary " + primary);
+            jsTest.log.info("AwaitNodesAgreeOnPrimaryNoAuth: Nodes agreed on primary " + primary);
             return true;
         }, "Awaiting nodes to agree on primary", timeout);
     }
@@ -749,10 +752,10 @@ export class ReplSetTest {
         // indexOf will return -1.
         const expectedPrimaryNodeIdx = this.nodes.indexOf(expectedPrimaryNode);
         if (expectedPrimaryNodeIdx === -1) {
-            print("AwaitNodesAgreeOnPrimary: Waiting for nodes to agree on any primary.");
+            jsTest.log.info("AwaitNodesAgreeOnPrimary: Waiting for nodes to agree on any primary.");
         } else {
-            print("AwaitNodesAgreeOnPrimary: Waiting for nodes to agree on " +
-                  expectedPrimaryNode.name + " as primary.");
+            jsTest.log.info("AwaitNodesAgreeOnPrimary: Waiting for nodes to agree on " +
+                            expectedPrimaryNode.name + " as primary.");
         }
 
         assert.soonNoExcept(() => {
@@ -769,9 +772,10 @@ export class ReplSetTest {
                     if (replSetGetStatus.members[j].state === ReplSetTest.State.PRIMARY) {
                         // Node sees two primaries.
                         if (nodesPrimary !== -1) {
-                            print("AwaitNodesAgreeOnPrimary: Retrying because " + nodes[i].name +
-                                  " thinks both " + this.nodes[nodesPrimary].name + " and " +
-                                  this.nodes[j].name + " are primary.");
+                            jsTest.log.info("AwaitNodesAgreeOnPrimary: Retrying because " +
+                                            nodes[i].name + " thinks both " +
+                                            this.nodes[nodesPrimary].name + " and " +
+                                            this.nodes[j].name + " are primary.");
 
                             return false;
                         }
@@ -780,26 +784,27 @@ export class ReplSetTest {
                 }
                 // Node doesn't see a primary.
                 if (nodesPrimary < 0) {
-                    print("AwaitNodesAgreeOnPrimary: Retrying because " + node.name +
-                          " does not see a primary.");
+                    jsTest.log.info("AwaitNodesAgreeOnPrimary: Retrying because " + node.name +
+                                    " does not see a primary.");
                     return false;
                 }
 
                 if (primary < 0) {
-                    print("AwaitNodesAgreeOnPrimary: " + node.name + " thinks the " +
-                          " primary is " + this.nodes[nodesPrimary].name +
-                          ". Other nodes are expected to agree on the same primary.");
+                    jsTest.log.info("AwaitNodesAgreeOnPrimary: " + node.name + " thinks the " +
+                                    " primary is " + this.nodes[nodesPrimary].name +
+                                    ". Other nodes are expected to agree on the same primary.");
                     // If the nodes haven't seen a primary yet, set primary to nodes[i]'s primary.
                     primary = nodesPrimary;
                 } else if (primary !== nodesPrimary) {
-                    print("AwaitNodesAgreeOnPrimary: Retrying because " + node.name +
-                          " thinks the primary is " + this.nodes[nodesPrimary].name +
-                          " instead of " + this.nodes[primary].name);
+                    jsTest.log.info("AwaitNodesAgreeOnPrimary: Retrying because " + node.name +
+                                    " thinks the primary is " + this.nodes[nodesPrimary].name +
+                                    " instead of " + this.nodes[primary].name);
                     return false;
                 }
             }
 
-            print("AwaitNodesAgreeOnPrimary: Nodes agreed on primary " + this.nodes[primary].name);
+            jsTest.log.info("AwaitNodesAgreeOnPrimary: Nodes agreed on primary " +
+                            this.nodes[primary].name);
             return true;
         }, "Awaiting nodes to agree on primary timed out", timeout, undefined /*interval*/, {
             runHangAnalyzer: runHangAnalyzerOnTimeout
@@ -886,10 +891,10 @@ export class ReplSetTest {
      */
     add(config) {
         var nextPort = this._allocatePortForNode();
-        print("ReplSetTest Next port: " + nextPort);
+        jsTest.log.info("ReplSetTest Next port: " + nextPort);
 
         this.ports.push(nextPort);
-        printjson(this.ports);
+        jsTest.log.info({ports: this.ports});
 
         if (this._useBridge) {
             this._unbridgedPorts.push(this._allocatePortForBridge());
@@ -897,24 +902,24 @@ export class ReplSetTest {
 
         if (this.isRouterServer) {
             const nextPort = this._allocatePortForNode();
-            print("ReplSetTest Next router port: " + nextPort);
+            jsTest.log.info("ReplSetTest Next router port: " + nextPort);
 
             this.routerPorts.push(nextPort);
-            printjson(this.routerPorts);
+            jsTest.log.info({routerPorts: this.routerPorts});
         }
 
         if (jsTestOptions().shellGRPC) {
             const nextPort = this._allocatePortForNode();
-            print("ReplSetTest Next gRPC port: " + nextPort);
+            jsTest.log.info("ReplSetTest Next gRPC port: " + nextPort);
 
             this.grpcPorts.push(nextPort);
-            printjson(this.grpcPorts);
+            jsTest.log.info({grpcPorts: this.grpcPorts});
         }
 
         var nextId = this.nodes.length;
-        printjson(this.nodes);
+        jsTest.log.info({nodes: this.nodes});
 
-        print("ReplSetTest nextId: " + nextId);
+        jsTest.log.info("ReplSetTest nextId: " + nextId);
         return this.start(nextId, config);
     }
 
@@ -998,31 +1003,33 @@ export class ReplSetTest {
      */
     waitForConfigReplication(primary, nodes) {
         const nodeHosts = nodes ? tojson(nodes.map((n) => n.host)) : "all nodes";
-        print("waitForConfigReplication: Waiting for the config on " + primary.host +
-              " to replicate to " + nodeHosts);
+        jsTest.log.info("waitForConfigReplication: Waiting for the config on " + primary.host +
+                        " to replicate to " + nodeHosts);
 
         let rst = this;
         let configVersion = -2;
         let configTerm = -2;
-        assert.soon(function() {
-            const res = assert.commandWorked(primary.adminCommand({replSetGetStatus: 1}));
-            const primaryMember = res.members.find((m) => m.self);
-            configVersion = primaryMember.configVersion;
-            configTerm = primaryMember.configTerm;
-            function hasSameConfig(member) {
-                return member.configVersion === primaryMember.configVersion &&
-                    member.configTerm === primaryMember.configTerm;
-            }
-            let members = res.members;
-            if (nodes) {
-                members = res.members.filter((m) => nodes.some((node) => m.name === node.name));
-            }
-            return members.every((m) => hasSameConfig(m));
+        asCluster(this, primary, () => {
+            assert.soon(function() {
+                const res = assert.commandWorked(primary.adminCommand({replSetGetStatus: 1}));
+                const primaryMember = res.members.find((m) => m.self);
+                configVersion = primaryMember.configVersion;
+                configTerm = primaryMember.configTerm;
+                function hasSameConfig(member) {
+                    return member.configVersion === primaryMember.configVersion &&
+                        member.configTerm === primaryMember.configTerm;
+                }
+                let members = res.members;
+                if (nodes) {
+                    members = res.members.filter((m) => nodes.some((node) => m.name === node.name));
+                }
+                return members.every((m) => hasSameConfig(m));
+            });
         });
 
-        print("waitForConfigReplication: config on " + primary.host +
-              " replicated successfully to " + nodeHosts + " with version " + configVersion +
-              " and term " + configTerm);
+        jsTest.log.info("waitForConfigReplication: config on " + primary.host +
+                        " replicated successfully to " + nodeHosts + " with version " +
+                        configVersion + " and term " + configTerm);
     }
 
     /**
@@ -1031,7 +1038,7 @@ export class ReplSetTest {
      */
     waitForAllNewlyAddedRemovals(timeout) {
         timeout = timeout || this.timeoutMS;
-        print("waitForAllNewlyAddedRemovals: starting for set " + this.name);
+        jsTest.log.info("waitForAllNewlyAddedRemovals: starting for set " + this.name);
         const primary = this.getPrimary();
 
         // Shadow 'db' so that we can call the function on the primary without a separate shell when
@@ -1048,8 +1055,9 @@ export class ReplSetTest {
                                                          ErrorCodes.NotWritablePrimary);
 
                 if (!getConfigRes.ok) {
-                    print("waitForAllNewlyAddedRemovals: Retrying because the old primary " +
-                          " stepped down");
+                    jsTest.log.info(
+                        "waitForAllNewlyAddedRemovals: Retrying because the old primary " +
+                        " stepped down");
                     return false;
                 }
 
@@ -1058,22 +1066,23 @@ export class ReplSetTest {
                     const memberConfig = config.members[i];
                     if (memberConfig.hasOwnProperty("newlyAdded")) {
                         assert(memberConfig["newlyAdded"] === true, config);
-                        print("waitForAllNewlyAddedRemovals: Retrying because memberIndex " + i +
-                              " is still 'newlyAdded'");
+                        jsTest.log.info(
+                            "waitForAllNewlyAddedRemovals: Retrying because memberIndex " + i +
+                            " is still 'newlyAdded'");
                         return false;
                     }
                 }
                 if (!getConfigRes.hasOwnProperty("commitmentStatus")) {
-                    print(
+                    jsTest.log.info(
                         "waitForAllNewlyAddedRemovals: Skipping wait due to no commitmentStatus." +
                         " Assuming this is an older version.");
                     return true;
                 }
 
                 if (!getConfigRes.commitmentStatus) {
-                    print("waitForAllNewlyAddedRemovals: " +
-                          "Retrying because primary's config isn't committed. " +
-                          "Version: " + config.version + ", Term: " + config.term);
+                    jsTest.log.info("waitForAllNewlyAddedRemovals: " +
+                                    "Retrying because primary's config isn't committed. " +
+                                    "Version: " + config.version + ", Term: " + config.term);
                     return false;
                 }
 
@@ -1083,7 +1092,7 @@ export class ReplSetTest {
 
         this.waitForConfigReplication(primary);
 
-        print("waitForAllNewlyAddedRemovals: finished for set " + this.name);
+        jsTest.log.info("waitForAllNewlyAddedRemovals: finished for set " + this.name);
     }
 
     /**
@@ -1224,8 +1233,8 @@ export class ReplSetTest {
             clearFailPoint(this.nodes[0], "skipOplogBatcherWaitForData");
         }
 
-        print("ReplSetTest initiate command took " + (new Date() - initiateStart) + "ms for " +
-              this.nodes.length + " nodes in set '" + this.name + "'");
+        jsTest.log.info("ReplSetTest initiate command took " + (new Date() - initiateStart) +
+                        "ms for " + this.nodes.length + " nodes in set '" + this.name + "'");
 
         // Set the FCV to 'last-lts'/'last-continuous' if we are running a mixed version replica
         // set. If this is a config server, the FCV will be set as part of ShardingTest.
@@ -1243,7 +1252,8 @@ export class ReplSetTest {
             asCluster(this, this.nodes, () => {
                 let fcv = setLastLTSFCV ? lastLTSFCV : lastContinuousFCV;
 
-                print("Setting feature compatibility version for replica set to '" + fcv + "'");
+                jsTest.log.info("Setting feature compatibility version for replica set to '" + fcv +
+                                "'");
                 // When latest is not equal to last-continuous, the transition to last-continuous is
                 // not allowed. Setting fromConfigServer allows us to bypass this restriction and
                 // test last-continuous.
@@ -1253,7 +1263,7 @@ export class ReplSetTest {
 
                 // The server has a practice of adding a reconfig as part of upgrade/downgrade logic
                 // in the setFeatureCompatibilityVersion command.
-                print(
+                jsTest.log.info(
                     "Fetch the config version from primary since last-lts or last-continuous downgrade might " +
                     "perform a reconfig.");
                 config.version = this.getReplSetConfigFromNode().version;
@@ -1267,7 +1277,7 @@ export class ReplSetTest {
         let shouldWaitForKeys = true;
         if (this.waitForKeys != undefined) {
             shouldWaitForKeys = this.waitForKeys;
-            print("Set shouldWaitForKeys from RS options: " + shouldWaitForKeys);
+            jsTest.log.info("Set shouldWaitForKeys from RS options: " + shouldWaitForKeys);
         } else {
             Object.keys(this.nodeOptions).forEach(key => {
                 let val = this.nodeOptions[key];
@@ -1277,7 +1287,8 @@ export class ReplSetTest {
                          // Should not wait for keys if version is less than 3.6
                          MongoRunner.compareBinVersions(val.binVersion, "3.6") == -1)) {
                     shouldWaitForKeys = false;
-                    print("Set shouldWaitForKeys from node options: " + shouldWaitForKeys);
+                    jsTest.log.info("Set shouldWaitForKeys from node options: " +
+                                    shouldWaitForKeys);
                 }
             });
             if (this.startOptions != undefined) {
@@ -1288,7 +1299,8 @@ export class ReplSetTest {
                          // Should not wait for keys if version is less than 3.6
                          MongoRunner.compareBinVersions(val.binVersion, "3.6") == -1)) {
                     shouldWaitForKeys = false;
-                    print("Set shouldWaitForKeys from start options: " + shouldWaitForKeys);
+                    jsTest.log.info("Set shouldWaitForKeys from start options: " +
+                                    shouldWaitForKeys);
                 }
             }
         }
@@ -1297,7 +1309,7 @@ export class ReplSetTest {
          */
         if (shouldWaitForKeys) {
             asCluster(this, this.nodes, timeout => {
-                print("Waiting for keys to sign $clusterTime to be generated");
+                jsTest.log.info("Waiting for keys to sign $clusterTime to be generated");
                 assert.soonNoExcept(timeout => {
                     var keyCnt = this.getPrimary(timeout)
                                      .getCollection('admin.system.keys')
@@ -1337,9 +1349,9 @@ export class ReplSetTest {
 
             // Add in nodes 1 at a time since non-force reconfig allows only single node
             // addition/removal.
-            print("Reconfiguring replica set to add in other nodes");
+            jsTest.log.info("Reconfiguring replica set to add in other nodes");
             for (let i = 2; i <= originalMembers.length; i++) {
-                print("ReplSetTest adding in node " + i);
+                jsTest.log.info("ReplSetTest adding in node " + i);
                 assert.soon(() => {
                     primary = this.getPrimary();
                     const statusRes = asCluster(
@@ -1351,7 +1363,7 @@ export class ReplSetTest {
 
                     config.members = originalMembers.slice(0, i);
                     cmd = {replSetReconfig: config, maxTimeMS: this.timeoutMS};
-                    print("Running reconfig command: " + tojsononeline(cmd));
+                    jsTest.log.info("Running reconfig command", {cmd});
                     const reconfigRes = primary.adminCommand(cmd);
                     const retryableReconfigCodes = [
                         ErrorCodes.NodeNotFound,
@@ -1362,7 +1374,7 @@ export class ReplSetTest {
                         ErrorCodes.NotWritablePrimary
                     ];
                     if (retryableReconfigCodes.includes(reconfigRes.code)) {
-                        print("Retrying reconfig due to " + tojsononeline(reconfigRes));
+                        jsTest.log.info("Retrying reconfig", {reconfigRes});
                         return false;
                     }
                     assert.commandWorked(reconfigRes);
@@ -1392,9 +1404,9 @@ export class ReplSetTest {
             this.waitForAllNewlyAddedRemovals();
         }
 
-        print("ReplSetTest initiate reconfig and awaitSecondaryNodes took " +
-              (new Date() - reconfigStart) + "ms for " + this.nodes.length + " nodes in set '" +
-              this.name + "'");
+        jsTest.log.info("ReplSetTest initiate reconfig and awaitSecondaryNodes took " +
+                        (new Date() - reconfigStart) + "ms for " + this.nodes.length +
+                        " nodes in set '" + this.name + "'");
 
         try {
             this.awaitHighestPriorityNodeIsPrimary();
@@ -1405,9 +1417,10 @@ export class ReplSetTest {
             // became primary.
             // TODO(SERVER-14017): Unconditionally expect awaitHighestPriorityNodeIsPrimary to pass.
             assert.eq(ErrorCodes.Unauthorized, e.code, tojson(e));
-            print("Running awaitHighestPriorityNodeIsPrimary() during ReplSetTest initialization " +
-                  "failed with Unauthorized error, proceeding even though we aren't guaranteed " +
-                  "that the highest priority node is primary");
+            jsTest.log.info(
+                "Running awaitHighestPriorityNodeIsPrimary() during ReplSetTest initialization " +
+                "failed with Unauthorized error, proceeding even though we aren't guaranteed " +
+                "that the highest priority node is primary");
         }
 
         // We need to disable the enableDefaultWriteConcernUpdatesForInitiate parameter
@@ -1453,9 +1466,9 @@ export class ReplSetTest {
             // Speed up the polling interval so we can detect recovery timestamps more quickly.
             this.awaitLastStableRecoveryTimestamp(25 /* retryIntervalMS */);
         }
-        print("ReplSetTest initiate awaitLastStableRecoveryTimestamp took " +
-              (new Date() - awaitTsStart) + "ms for " + this.nodes.length + " nodes in set '" +
-              this.name + "'");
+        jsTest.log.info("ReplSetTest initiate awaitLastStableRecoveryTimestamp took " +
+                        (new Date() - awaitTsStart) + "ms for " + this.nodes.length +
+                        " nodes in set '" + this.name + "'");
 
         // Waits for the services which write on step-up to finish rebuilding to avoid background
         // writes after initiation is done. PrimaryOnlyServices wait for the stepup optime to be
@@ -1485,8 +1498,8 @@ export class ReplSetTest {
             });
         }
 
-        print("ReplSetTest initiateWithAnyNodeAsPrimary took " + (new Date() - startTime) +
-              "ms for " + this.nodes.length + " nodes.");
+        jsTest.log.info("ReplSetTest initiateWithAnyNodeAsPrimary took " +
+                        (new Date() - startTime) + "ms for " + this.nodes.length + " nodes.");
     }
 
     /**
@@ -1518,8 +1531,9 @@ export class ReplSetTest {
         // Most of the time node 0 will already be primary so we can skip the step-up.
         let primary = this.getPrimary();
         if (this.getNodeId(this.nodes[0]) == this.getNodeId(primary)) {
-            print("ReplSetTest initiateWithNodeZeroAsPrimary skipping step-up because node 0 is " +
-                  "already primary");
+            jsTest.log.info(
+                "ReplSetTest initiateWithNodeZeroAsPrimary skipping step-up because node 0 is " +
+                "already primary");
             asCluster(this, primary, () => {
                 if (!doNotWaitForPrimaryOnlyServices) {
                     this.waitForStepUpWrites(primary);
@@ -1536,8 +1550,8 @@ export class ReplSetTest {
             });
         }
 
-        print("ReplSetTest initiateWithNodeZeroAsPrimary took " + (new Date() - startTime) +
-              "ms for " + this.nodes.length + " nodes.");
+        jsTest.log.info("ReplSetTest initiateWithNodeZeroAsPrimary took " +
+                        (new Date() - startTime) + "ms for " + this.nodes.length + " nodes.");
     }
 
     _addHighElectionTimeoutIfNotSet(config) {
@@ -1776,13 +1790,13 @@ export class ReplSetTest {
 
         let membersToCheck;
         if (members !== undefined) {
-            print("Waiting for op with OpTime " + tojson(primaryOpTime) + " to be committed on " +
-                  members.map(s => s.host));
+            jsTest.log.info("Waiting for op to be committed on " + members.map(s => s.host),
+                            {opTime: primaryOpTime});
 
             membersToCheck = members;
         } else {
-            print("Waiting for op with OpTime " + tojson(primaryOpTime) +
-                  " to be committed on all secondaries");
+            jsTest.log.info("Waiting for op to be committed on all secondaries",
+                            {opTime: primaryOpTime});
 
             membersToCheck = rst.nodes;
         }
@@ -1815,8 +1829,7 @@ export class ReplSetTest {
                 " failed to be committed on all secondaries",
             timeout);
 
-        print("Op with OpTime " + tojson(primaryOpTime) +
-              " successfully committed on all secondaries");
+        jsTest.log.info("Op successfully committed on all secondaries", {opTime: primaryOpTime});
         return primaryOpTime;
     }
 
@@ -1858,7 +1871,7 @@ export class ReplSetTest {
             runFnWithAuthOnPrimary(rst, appendOplogNoteFn, "AwaitLastStableRecoveryTimestamp");
         }
 
-        print("AwaitLastStableRecoveryTimestamp: Beginning for " + id);
+        jsTest.log.info("AwaitLastStableRecoveryTimestamp: Beginning for " + id);
 
         let replSetStatus = assert.commandWorked(primary.adminCommand("replSetGetStatus"));
         if (replSetStatus["configsvr"]) {
@@ -1870,10 +1883,12 @@ export class ReplSetTest {
         rst.awaitNodesAgreeOnPrimary();
         primary = rst.getPrimary();
 
-        print("AwaitLastStableRecoveryTimestamp: ensuring the commit point advances for " + id);
+        jsTest.log.info(
+            "AwaitLastStableRecoveryTimestamp: ensuring the commit point advances for " + id);
         advanceCommitPoint(this, primary);
 
-        print("AwaitLastStableRecoveryTimestamp: Waiting for stable recovery timestamps for " + id);
+        jsTest.log.info(
+            "AwaitLastStableRecoveryTimestamp: Waiting for stable recovery timestamps for " + id);
 
         assert.soonNoExcept(function() {
             for (let node of rst.nodes) {
@@ -1897,8 +1912,8 @@ export class ReplSetTest {
                 // timestamp yet.
                 if (res.hasOwnProperty("lastStableRecoveryTimestamp") &&
                     res.lastStableRecoveryTimestamp.getTime() === 0) {
-                    print("AwaitLastStableRecoveryTimestamp: " + node.host +
-                          " does not have a stable recovery timestamp yet.");
+                    jsTest.log.info("AwaitLastStableRecoveryTimestamp: " + node.host +
+                                    " does not have a stable recovery timestamp yet.");
                     return false;
                 }
             }
@@ -1906,8 +1921,9 @@ export class ReplSetTest {
             return true;
         }, "Not all members have a stable recovery timestamp", this.timeoutMS, retryIntervalMS);
 
-        print("AwaitLastStableRecoveryTimestamp: A stable recovery timestamp has successfully " +
-              "established on " + id);
+        jsTest.log.info(
+            "AwaitLastStableRecoveryTimestamp: A stable recovery timestamp has successfully " +
+            "established on " + id);
     }
 
     // Wait until the optime of the specified type reaches the primary or the targetNode's last
@@ -1915,12 +1931,12 @@ export class ReplSetTest {
     // specified. The timeout will reset if any of the secondaries makes progress.
     awaitReplication(timeout, secondaryOpTimeType, secondaries, retryIntervalMS, targetNode) {
         if (secondaries !== undefined && secondaries !== this._secondaries) {
-            print("ReplSetTest awaitReplication: going to check only " +
-                  secondaries.map(s => s.host));
+            jsTest.log.info("ReplSetTest awaitReplication: going to check only " +
+                            secondaries.map(s => s.host));
         }
 
         if (targetNode !== undefined) {
-            print(`ReplSetTest awaitReplication: wait against targetNode ${
+            jsTest.log.info(`ReplSetTest awaitReplication: wait against targetNode ${
                 targetNode.host} instead of primary.`);
         }
 
@@ -1938,7 +1954,7 @@ export class ReplSetTest {
                 try {
                     targetLatestOpTime = _getLastOpTime(rst, target);
                 } catch (e) {
-                    print("ReplSetTest caught exception " + e);
+                    jsTest.log.info("ReplSetTest caught exception", {error: e});
                     return false;
                 }
 
@@ -1962,8 +1978,8 @@ export class ReplSetTest {
             return true;
         }, "ReplSetTest awaitReplication: couldnt get repl set config.", num_attempts, 1000);
 
-        print("ReplSetTest awaitReplication: starting: optime for target, " + targetName + ", is " +
-              tojson(targetLatestOpTime));
+        jsTest.log.info("ReplSetTest awaitReplication: starting: for target, " + targetName,
+                        {opTime: targetLatestOpTime});
 
         let nodesCaughtUp = false;
         let secondariesToCheck = secondaries || this._secondaries;
@@ -1991,9 +2007,10 @@ export class ReplSetTest {
                                                              .version);
 
             if (targetConfigVersion != secondaryConfigVersion) {
-                print("ReplSetTest awaitReplication: secondary #" + secondaryCount + ", " +
-                      secondaryName + ", has config version #" + secondaryConfigVersion +
-                      ", but expected config version #" + targetConfigVersion);
+                jsTest.log.info("ReplSetTest awaitReplication: secondary #" + secondaryCount +
+                                ", " + secondaryName + ", has config version #" +
+                                secondaryConfigVersion + ", but expected config version #" +
+                                targetConfigVersion);
 
                 if (secondaryConfigVersion > targetConfigVersion) {
                     target = targetNode || rst.getPrimary();
@@ -2005,8 +2022,8 @@ export class ReplSetTest {
                                               .version;
                     targetName = target.host;
 
-                    print("ReplSetTest awaitReplication: optime for target, " + targetName +
-                          ", is " + tojson(targetLatestOpTime));
+                    jsTest.log.info("ReplSetTest awaitReplication: for target, " + targetName,
+                                    {opTime: targetLatestOpTime});
                 }
 
                 return Progress.ConfigMismatch;
@@ -2020,8 +2037,8 @@ export class ReplSetTest {
                 return Progress.Skip;
             }
 
-            print("ReplSetTest awaitReplication: checking secondary #" + secondaryCount + ": " +
-                  secondaryName);
+            jsTest.log.info("ReplSetTest awaitReplication: checking secondary #" + secondaryCount +
+                            ": " + secondaryName);
 
             secondary.getDB("admin").getMongo().setSecondaryOk();
 
@@ -2035,9 +2052,9 @@ export class ReplSetTest {
             // If the node doesn't have a valid opTime, it likely hasn't received any writes from
             // the primary yet.
             if (!globalThis.rs.isValidOpTime(secondaryOpTime)) {
-                print("ReplSetTest awaitReplication: optime for secondary #" + secondaryCount +
-                      ", " + secondaryName + ", is " + tojson(secondaryOpTime) +
-                      ", which is NOT valid.");
+                jsTest.log.info("ReplSetTest awaitReplication: optime for secondary #" +
+                                    secondaryCount + ", " + secondaryName + ", is NOT valid.",
+                                {opTime: secondaryOpTime});
                 return Progress.Stuck;
             }
 
@@ -2050,31 +2067,33 @@ export class ReplSetTest {
 
             if (globalThis.rs.compareOpTimes(targetLatestOpTime, secondaryOpTime) < 0) {
                 targetLatestOpTime = _getLastOpTime(rst, target);
-                print("ReplSetTest awaitReplication: optime for " + secondaryName +
-                      " is newer, resetting latest target optime to " + tojson(targetLatestOpTime) +
-                      ". Also resetting awaitReplication timeout");
+                jsTest.log.info(
+                    "ReplSetTest awaitReplication: optime for " + secondaryName +
+                        " is newer, resetting latest target optime. Also resetting awaitReplication timeout.",
+                    {resetOpTime: targetLatestOpTime});
                 return Progress.InProgress;
             }
 
             if (!friendlyEqual(targetLatestOpTime, secondaryOpTime)) {
-                print("ReplSetTest awaitReplication: optime for secondary #" + secondaryCount +
-                      ", " + secondaryName + ", is " + tojson(secondaryOpTime) + " but latest is " +
-                      tojson(targetLatestOpTime));
-                print("ReplSetTest awaitReplication: secondary #" + secondaryCount + ", " +
-                      secondaryName + ", is NOT synced");
+                jsTest.log.info("ReplSetTest awaitReplication: optime for secondary #" +
+                                    secondaryCount + ", " + secondaryName +
+                                    ", is different than latest optime",
+                                {secondaryOpTime, targetLatestOpTime});
+                jsTest.log.info("ReplSetTest awaitReplication: secondary #" + secondaryCount +
+                                ", " + secondaryName + ", is NOT synced");
 
                 // Reset the timeout if a node makes progress, but isn't caught up yet.
                 if (madeProgress) {
-                    print("ReplSetTest awaitReplication: secondary #" + secondaryCount + ", " +
-                          secondaryName +
-                          ", has made progress. Resetting awaitReplication timeout");
+                    jsTest.log.info("ReplSetTest awaitReplication: secondary #" + secondaryCount +
+                                    ", " + secondaryName +
+                                    ", has made progress. Resetting awaitReplication timeout");
                     return Progress.InProgress;
                 }
                 return Progress.Stuck;
             }
 
-            print("ReplSetTest awaitReplication: secondary #" + secondaryCount + ", " +
-                  secondaryName + ", is synced");
+            jsTest.log.info("ReplSetTest awaitReplication: secondary #" + secondaryCount + ", " +
+                            secondaryName + ", is synced");
             return Progress.CaughtUp;
         }
 
@@ -2082,8 +2101,9 @@ export class ReplSetTest {
         while (!nodesCaughtUp) {
             assert.soonNoExcept(() => {
                 try {
-                    print("ReplSetTest awaitReplication: checking secondaries against latest " +
-                          "target optime " + tojson(targetLatestOpTime));
+                    jsTest.log.info(
+                        "ReplSetTest awaitReplication: checking secondaries against latest target optime",
+                        {targetLatestOpTime});
                     var secondaryCount = 0;
 
                     for (var i = 0; i < secondariesToCheck.length; i++) {
@@ -2108,18 +2128,19 @@ export class ReplSetTest {
                         }
                     }
 
-                    print("ReplSetTest awaitReplication: finished: all " + secondaryCount +
-                          " secondaries synced at optime " + tojson(targetLatestOpTime));
+                    jsTest.log.info("ReplSetTest awaitReplication: finished: all " +
+                                        secondaryCount + " secondaries synced",
+                                    {opTime: targetLatestOpTime});
                     nodesCaughtUp = true;
                     return true;
                 } catch (e) {
-                    print("ReplSetTest awaitReplication: caught exception " + e);
+                    jsTest.log.info("ReplSetTest awaitReplication: caught exception", {error: e});
 
                     // We might have a new primary now
                     awaitLastOpTimeWrittenFn(this);
 
-                    print("ReplSetTest awaitReplication: resetting: optime for target " + target +
-                          " is " + tojson(targetLatestOpTime));
+                    jsTest.log.info("ReplSetTest awaitReplication: resetting: for target " + target,
+                                    {opTime: targetLatestOpTime});
 
                     return false;
                 }
@@ -2224,14 +2245,14 @@ export class ReplSetTest {
             try {
                 assert.commandWorked(primary.adminCommand({fsyncUnlock: 1}));
             } catch (e) {
-                print(`Continuing after fsyncUnlock error: ${e}`);
+                jsTest.log.info("Continuing after fsyncUnlock error", {error: e});
             }
 
             secondaries.forEach(secondary => {
                 try {
                     assert.commandWorked(secondary.adminCommand({replSetFreeze: 0}));
                 } catch (e) {
-                    print(`Continuing after replSetFreeze error: ${e}`);
+                    jsTest.log.info("Continuing after replSetFreeze error", {error: e});
                 }
             });
         }
@@ -2249,7 +2270,7 @@ export class ReplSetTest {
                     postApplyCheckerFunction();
                 } catch (e) {
                     // Print the postApplyCheckerFunction error, propagate the original.
-                    print(e);
+                    jsTest.log.info({error: e});
                 }
             } else {
                 postApplyCheckerFunction();
@@ -2289,20 +2310,23 @@ export class ReplSetTest {
 
             const replSetConfig = rst.getReplSetConfigFromNode();
 
-            print("checkDBHashesForReplSet waiting for secondaries to be ready: " +
-                  tojson(secondaries));
+            jsTest.log.info("checkDBHashesForReplSet waiting for secondaries to be ready",
+                            {secondaries});
             this.awaitSecondaryNodes(rst.timeoutMS, secondaries);
 
-            print("checkDBHashesForReplSet checking data hashes against primary: " + primary.host);
+            jsTest.log.info("checkDBHashesForReplSet checking data hashes against primary: " +
+                            primary.host);
 
             secondaries.forEach(node => {
                 // Arbiters have no replicated data.
                 if (isNodeArbiter(node)) {
-                    print("checkDBHashesForReplSet skipping data of arbiter: " + node.host);
+                    jsTest.log.info("checkDBHashesForReplSet skipping data of arbiter: " +
+                                    node.host);
                     return;
                 }
-                print("checkDBHashesForReplSet going to check data hashes on secondary: " +
-                      node.host);
+                jsTest.log.info(
+                    "checkDBHashesForReplSet going to check data hashes on secondary: " +
+                    node.host);
                 node.getDBs().databases.forEach(db => {
                     const key = `${db.tenantId}_${db.name}`;
                     const obj = {"name": db.name, "tenant": db.tenantId};
@@ -2351,8 +2375,8 @@ export class ReplSetTest {
                         const hasSecondaryIndexes =
                             replSetConfig.members[rst.getNodeId(secondary)].buildIndexes !== false;
 
-                        print(`checking db hash between primary: ${primary.host}, and secondary: ${
-                            secondary.host}`);
+                        jsTest.log.info(`checking db hash between primary: ${
+                            primary.host}, and secondary: ${secondary.host}`);
                         success = DataConsistencyChecker.checkDBHash(primaryDBHash,
                                                                      primaryCollInfos,
                                                                      secondaryDBHash,
@@ -2365,7 +2389,8 @@ export class ReplSetTest {
 
                         if (!success) {
                             if (!hasDumpedOplog) {
-                                print("checkDBHashesForReplSet dumping oplogs from all nodes");
+                                jsTest.log.info(
+                                    "checkDBHashesForReplSet dumping oplogs from all nodes");
                                 this.dumpOplog(primary, {}, 100);
                                 rst.getSecondaries().forEach(
                                     secondary => this.dumpOplog(secondary, {}, 100));
@@ -2414,7 +2439,7 @@ export class ReplSetTest {
      * @returns a new Mongo connection object to the node.
      */
     _waitForInitialConnection(n, waitForHealth) {
-        print("ReplSetTest waiting for an initial connection to node " + n);
+        jsTest.log.info("ReplSetTest waiting for an initial connection to node " + n);
 
         // If we are using a bridge, then we want to get at the underlying mongod node object.
         let node = this._useBridge ? this._unbridgedNodes[n] : this.nodes[n];
@@ -2449,7 +2474,7 @@ export class ReplSetTest {
             this.nodes[n] = conn;
         }
 
-        print("ReplSetTest made initial connection to node: " + tojson(this.nodes[n]));
+        jsTest.log.info("ReplSetTest made initial connection to node", {node: this.nodes[n]});
 
         waitForHealth = waitForHealth || false;
         if (waitForHealth) {
@@ -2479,7 +2504,7 @@ export class ReplSetTest {
      */
     start(n, options, restart, waitForHealth) {
         n = resolveToNodeId(this, n);
-        print("ReplSetTest n is : " + n);
+        jsTest.log.info("ReplSetTest n is : " + n);
 
         var defaults = {
             useHostName: this.useHostName,
@@ -2558,7 +2583,8 @@ export class ReplSetTest {
                 options.binVersion =
                     rand < 0.5 ? "latest" : jsTest.options().useRandomBinVersionsWithinReplicaSet;
             }
-            print("Randomly assigned binary version: " + options.binVersion + " to node: " + n);
+            jsTest.log.info("Randomly assigned binary version: " + options.binVersion +
+                            " to node: " + n);
         }
 
         options.restart = options.restart || restart;
@@ -2640,9 +2666,9 @@ export class ReplSetTest {
         }
 
         if (tojson(options) != tojson({}))
-            printjson(options);
+            jsTest.log.info({options});
 
-        print("ReplSetTest " + (restart ? "(Re)" : "") + "Starting....");
+        jsTest.log.info("ReplSetTest " + (restart ? "(Re)" : "") + "Starting....");
 
         if (this._useBridge && (restart === undefined || !restart)) {
             // We leave the mongobridge process running when the mongod process is restarted so we
@@ -2696,7 +2722,7 @@ export class ReplSetTest {
 
         // Wait for a connection to the node if necessary.
         if (waitForConnect === false) {
-            print("ReplSetTest start skip waiting for a connection to node " + n);
+            jsTest.log.info("ReplSetTest start skip waiting for a connection to node " + n);
             return this.nodes[n];
         }
 
@@ -2704,8 +2730,8 @@ export class ReplSetTest {
 
         if (n == 0 && this.useAutoBootstrapProcedure && !this._hasAcquiredAutoGeneratedName) {
             const helloReply = connection.getDB('admin')._helloOrLegacyHello();
-            print('ReplSetTest start using auto generated replSet name ' + helloReply.setName +
-                  ' instead of ' + this.name);
+            jsTest.log.info('ReplSetTest start using auto generated replSet name ' +
+                            helloReply.setName + ' instead of ' + this.name);
             this.name = helloReply.setName;
             this._hasAcquiredAutoGeneratedName = true;
         }
@@ -2838,23 +2864,24 @@ export class ReplSetTest {
 
         var conn = this._useBridge ? this._unbridgedNodes[n] : this.nodes[n];
 
-        print('ReplSetTest stop *** Shutting down mongod in port ' + conn.port +
-              ', wait for process termination: ' + waitPid + ' ***');
+        jsTest.log.info('ReplSetTest stop *** Shutting down mongod in port ' + conn.port +
+                        ', wait for process termination: ' + waitPid + ' ***');
         var ret = MongoRunner.stopMongod(conn, signal, opts, waitPid);
 
         // We only expect the process to have terminated if we actually called 'waitpid'.
         if (waitPid) {
-            print('ReplSetTest stop *** Mongod in port ' + conn.port + ' shutdown with code (' +
-                  ret + ') ***');
+            jsTest.log.info('ReplSetTest stop *** Mongod in port ' + conn.port +
+                            ' shutdown with code (' + ret + ') ***');
         }
 
         if (this._useBridge && !forRestart) {
             // We leave the mongobridge process running when the mongod process is being restarted.
             const bridge = this.nodes[n];
-            print('ReplSetTest stop *** Shutting down mongobridge on port ' + bridge.port + ' ***');
+            jsTest.log.info('ReplSetTest stop *** Shutting down mongobridge on port ' +
+                            bridge.port + ' ***');
             const exitCode = bridge.stop();  // calls MongoBridge#stop()
-            print('ReplSetTest stop *** mongobridge on port ' + bridge.port +
-                  ' exited with code (' + exitCode + ') ***');
+            jsTest.log.info('ReplSetTest stop *** mongobridge on port ' + bridge.port +
+                            ' exited with code (' + exitCode + ') ***');
         }
 
         return ret;
@@ -2960,7 +2987,7 @@ export class ReplSetTest {
         const skipChecks = jsTest.options().skipCheckDBHashes || (opts && opts.skipCheckDBHashes);
         if (!skipChecks) {
             let startTime = new Date();  // Measure the execution time of consistency checks.
-            print("ReplSetTest stopSet going to run data consistency checks.");
+            jsTest.log.info("ReplSetTest stopSet going to run data consistency checks.");
             // To skip this check add TestData.skipCheckDBHashes = true or pass in {opts:
             // skipCheckDBHashes} Reasons to skip this test include:
             // - the primary goes down and none can be elected (so fsync lock/unlock commands fail)
@@ -2969,29 +2996,30 @@ export class ReplSetTest {
             if (primary && this._liveNodes.length > 1) {  // skip for sets with 1 live node
                 // Auth only on live nodes because authutil.assertAuthenticate
                 // refuses to log in live connections if some secondaries are down.
-                print("ReplSetTest stopSet checking oplogs.");
+                jsTest.log.info("ReplSetTest stopSet checking oplogs.");
                 asCluster(this, this._liveNodes, () => this.checkOplogs());
-                print("ReplSetTest stopSet checking preimages.");
+                jsTest.log.info("ReplSetTest stopSet checking preimages.");
                 asCluster(this, this._liveNodes, () => this.checkPreImageCollection());
-                print("ReplSetTest stopSet checking change_collection(s).");
+                jsTest.log.info("ReplSetTest stopSet checking change_collection(s).");
                 asCluster(this, this._liveNodes, () => this.checkChangeCollection());
-                print("ReplSetTest stopSet checking replicated data hashes.");
+                jsTest.log.info("ReplSetTest stopSet checking replicated data hashes.");
                 asCluster(this, this._liveNodes, () => this.checkReplicatedDataHashes());
             } else {
-                print(
+                jsTest.log.info(
                     "ReplSetTest stopSet skipped data consistency checks. Number of _liveNodes: " +
                     this._liveNodes.length + ", _callHello response: " + primary);
             }
-            print("ReplSetTest stopSet data consistency checks finished, took " +
-                  (new Date() - startTime) + "ms for " + this.nodes.length + " nodes.");
+            jsTest.log.info("ReplSetTest stopSet data consistency checks finished, took " +
+                            (new Date() - startTime) + "ms for " + this.nodes.length + " nodes.");
         }
 
         let startTime = new Date();  // Measure the execution time of shutting down nodes.
 
         if (opts.skipValidation) {
-            print("ReplSetTest stopSet skipping validation before stopping nodes.");
+            jsTest.log.info("ReplSetTest stopSet skipping validation before stopping nodes.");
         } else {
-            print("ReplSetTest stopSet validating all replica set nodes before stopping them.");
+            jsTest.log.info(
+                "ReplSetTest stopSet validating all replica set nodes before stopping them.");
             this._validateNodes(this.ports);
         }
 
@@ -3006,37 +3034,38 @@ export class ReplSetTest {
         for (let i = 0; i < this.ports.length; i++) {
             let conn = this._useBridge ? this._unbridgedNodes[i] : this.nodes[i];
             let port = parseInt(conn.name.split(":")[1]);
-            print("ReplSetTest stopSet waiting for mongo program on port " + port + " to stop.");
+            jsTest.log.info("ReplSetTest stopSet waiting for mongo program on port " + port +
+                            " to stop.");
             let exitCode = waitMongoProgram(port);
             if (exitCode !== MongoRunner.EXIT_CLEAN && !opts.skipValidatingExitCode) {
                 throw new Error("ReplSetTest stopSet mongo program on port " + port +
                                 " shut down unexpectedly with code " + exitCode + " when code " +
                                 MongoRunner.EXIT_CLEAN + " was expected.");
             }
-            print("ReplSetTest stopSet mongo program on port " + port + " shut down with code " +
-                  exitCode);
+            jsTest.log.info("ReplSetTest stopSet mongo program on port " + port +
+                            " shut down with code " + exitCode);
         }
 
-        print("ReplSetTest stopSet stopped all replica set nodes, took " +
-              (new Date() - startTime) + "ms for " + this.ports.length + " nodes.");
+        jsTest.log.info("ReplSetTest stopSet stopped all replica set nodes, took " +
+                        (new Date() - startTime) + "ms for " + this.ports.length + " nodes.");
 
         if (forRestart) {
-            print("ReplSetTest stopSet returning since forRestart=true.");
+            jsTest.log.info("ReplSetTest stopSet returning since forRestart=true.");
             return;
         }
 
         if ((!opts.noCleanData) && this._alldbpaths) {
-            print("ReplSetTest stopSet deleting all dbpaths");
+            jsTest.log.info("ReplSetTest stopSet deleting all dbpaths");
             for (var i = 0; i < this._alldbpaths.length; i++) {
-                print("ReplSetTest stopSet deleting dbpath: " + this._alldbpaths[i]);
+                jsTest.log.info("ReplSetTest stopSet deleting dbpath: " + this._alldbpaths[i]);
                 resetDbpath(this._alldbpaths[i]);
             }
-            print("ReplSetTest stopSet deleted all dbpaths");
+            jsTest.log.info("ReplSetTest stopSet deleted all dbpaths");
         }
 
         _forgetReplSet(this.name);
 
-        print('ReplSetTest stopSet *** Shut down repl set - test worked ****');
+        jsTest.log.info('ReplSetTest stopSet *** Shut down repl set - test worked ****');
     }
 
     /**
@@ -3076,6 +3105,44 @@ export class ReplSetTest {
         }, "waiting for primary", timeout);
 
         return primary;
+    }
+
+    /**
+     * Returns after stable_timestamp has been advanced to at least Timestamp ts. The stable
+     * timestamp is not exposed by replSetGetStatus, so we use the readConcernMajorityOpTime
+     * instead, because it reflects the time of the current committed snapshot. This time is
+     * determined before setting the stable timestamp, and both are done under the same mutex
+     * acquisition, so readConcernMajorityOpTime >= ts indicates stable_timestamp >= ts. See
+     * ReplicationCoordinatorImpl::_setStableTimestampForStorage for further
+     * implementation details.
+     * @param node The node to check for stable_timestamp.
+     * @param ts The timestamp to compare the stable_timestamp to.
+     * @param timeout How long to wait for state, defaults to global value.
+     */
+    waitForStableTimestampTobeAdvanced(node, ts, timeout = ReplSetTest.kDefaultTimeoutMS) {
+        assert.soon(function() {
+            jsTestLog("Waiting for stable_timestamp >= Timestamp " + ts.toStringIncomparable());
+            const replSetStatus = assert.commandWorked(node.adminCommand({replSetGetStatus: 1}));
+            const readConcernMajorityOpTime = replSetStatus.optimes.readConcernMajorityOpTime.ts;
+            return (timestampCmp(readConcernMajorityOpTime, ts) >= 0);
+        }, "Timed out waiting for stable_timestamp", timeout);
+    }
+
+    /**
+     * Returns after lastStableRecoveryTimestamp has been advanced to at least Timestamp ts. Note
+     * that the checkpointer thread should be running for this function to return.
+     * @param node The node to check for last checkpoint time.
+     * @param ts The timestamp to compare the lastStableRecoveryTimestamp to.
+     * @param timeout How long to wait for state, defaults to global value.
+     */
+    waitForCheckpoint(node, ts, timeout = ReplSetTest.kDefaultTimeoutMS) {
+        this.waitForStableTimestampTobeAdvanced(node, ts, timeout);
+        assert.soon(function() {
+            jsTestLog("Waiting for checkpoint >= Timestamp " + ts.toStringIncomparable());
+            const replSetStatus = assert.commandWorked(node.adminCommand({replSetGetStatus: 1}));
+            const lastStableRecoveryTimestamp = replSetStatus.lastStableRecoveryTimestamp;
+            return (timestampCmp(lastStableRecoveryTimestamp, ts) >= 0);
+        }, "Timed out waiting for checkpoint", timeout);
     }
 }
 
@@ -3117,7 +3184,7 @@ ReplSetTest.OpTimeType = {
  */
 function _constructStartNewInstances(rst, opts) {
     rst.name = opts.name || jsTest.name();
-    print('Starting new replica set ' + rst.name);
+    jsTest.log.info('Starting new replica set ' + rst.name);
 
     rst.serverless = opts.serverless;
     rst.useHostName = opts.useHostName == undefined ? true : opts.useHostName;
@@ -3263,7 +3330,7 @@ function _constructFromExistingSeedNode(rst, seedNode) {
         rst.keyFile = jsTest.options().keyFile;
     }
     var conf = asCluster(rst, conn, () => _replSetGetConfig(conn));
-    print('Recreating replica set from config ' + tojson(conf));
+    jsTest.log.info('Recreating replica set from config', {conf});
 
     var existingNodes = conf.members.map(member => member.host);
     rst.ports = existingNodes.map(node => node.split(':')[1]);
@@ -3293,7 +3360,7 @@ function _constructFromExistingNodes(rst, {
     useAutoBootstrapProcedure,
     pidValue = undefined
 }) {
-    print('Recreating replica set from existing nodes ' + tojson(nodeHosts));
+    jsTest.log.info('Recreating replica set from existing nodes', {nodeHosts});
 
     rst.name = name;
     rst.serverless = serverless;
@@ -3358,7 +3425,8 @@ function _callHello(rst) {
                 rst._secondaries.push(node);
             }
         } catch (err) {
-            print("ReplSetTest Could not call hello/ismaster on node " + node + ": " + tojson(err));
+            jsTest.log.info("ReplSetTest Could not call hello/ismaster on node " + node,
+                            {error: err});
             rst._secondaries.push(node);
         }
     });
@@ -3449,13 +3517,13 @@ function _isRunningWithoutJournaling(rst, conn) {
  * Helper functions for setting/clearing a failpoint.
  */
 function setFailPoint(node, failpoint, data = {}) {
-    print("Setting fail point " + failpoint);
+    jsTest.log.info("Setting fail point " + failpoint);
     assert.commandWorked(
         node.adminCommand({configureFailPoint: failpoint, mode: "alwaysOn", data: data}));
 }
 
 function clearFailPoint(node, failpoint) {
-    print("Clearing fail point " + failpoint);
+    jsTest.log.info("Clearing fail point " + failpoint);
     assert.commandWorked(node.adminCommand({configureFailPoint: failpoint, mode: "off"}));
 }
 
@@ -3522,7 +3590,7 @@ function isNodeArbiter(node) {
 }
 
 function replSetCommandWithRetry(primary, cmd) {
-    print("Running command with retry: " + tojson(cmd));
+    jsTest.log.info("Running command with retry", {cmd});
     const cmdName = Object.keys(cmd)[0];
     const errorMsg = `${cmdName} during initiate failed`;
     assert.retry(() => {
@@ -3552,7 +3620,7 @@ function runFnWithAuthOnPrimary(rst, fn, fnName) {
         : rst.startOptions;
     const authMode = options.clusterAuthMode;
     if (authMode === "x509") {
-        print(fnName + ": authenticating on separate shell with x509 for " + rst.name);
+        jsTest.log.info(fnName + ": authenticating on separate shell with x509 for " + rst.name);
         const caFile = options.sslCAFile ? options.sslCAFile : options.tlsCAFile;
         const keyFile =
             options.sslPEMKeyFile ? options.sslPEMKeyFile : options.tlsCertificateKeyFile;
@@ -3572,7 +3640,8 @@ function runFnWithAuthOnPrimary(rst, fn, fnName) {
         const retVal = _runMongoProgram(...subShellArgs);
         assert.eq(retVal, 0, 'mongo shell did not succeed with exit code 0');
     } else {
-        print(fnName + ": authenticating with authMode '" + authMode + "' for " + rst.name);
+        jsTest.log.info(fnName + ": authenticating with authMode '" + authMode + "' for " +
+                        rst.name);
         asCluster(rst, primary, fn, primaryOptions.keyFile);
     }
 }
@@ -3592,7 +3661,8 @@ const ReverseReader = function(mongo, coll, query) {
         try {
             return operation(this.cursor);
         } catch (err) {
-            print("Error: " + name + " threw '" + err.message + "' on " + this.mongo.host);
+            jsTest.log.info("Error: " + name + " threw '" + err.message + "' on " +
+                            this.mongo.host);
             // Occasionally, the capped collection will get truncated while we are iterating
             // over it. Since we are iterating over the collection in reverse, getting a
             // truncated item means we've reached the end of the list, so return false.
@@ -3665,8 +3735,8 @@ function checkOplogs(rst, msgPrefix = 'checkOplogs', secondaries) {
         }
     }
 
-    print("checkOplogs starting oplog checks.");
-    print("checkOplogs waiting for secondaries to be ready.");
+    jsTest.log.info("checkOplogs starting oplog checks.");
+    jsTest.log.info("checkOplogs waiting for secondaries to be ready.");
     rst.awaitSecondaryNodes(rst.timeoutMS, secondaries);
     if (secondaries.length >= 1) {
         let readers = [];
@@ -3677,7 +3747,7 @@ function checkOplogs(rst, msgPrefix = 'checkOplogs', secondaries) {
             const node = nodes[i];
 
             if (rst._primary !== node && !secondaries.includes(node)) {
-                print("checkOplogs skipping oplog of node: " + node.host);
+                jsTest.log.info("checkOplogs skipping oplog of node: " + node.host);
                 continue;
             }
 
@@ -3687,7 +3757,7 @@ function checkOplogs(rst, msgPrefix = 'checkOplogs', secondaries) {
                 continue;
             }
 
-            print("checkOplogs going to check oplog of node: " + node.host);
+            jsTest.log.info("checkOplogs going to check oplog of node: " + node.host);
             readers[i] = new ReverseReader(
                 node, node.getDB("local")[kOplogName], {ts: {$gte: new Timestamp()}});
             const currTS = readers[i].getFirstDoc().ts;
@@ -3741,7 +3811,7 @@ function checkOplogs(rst, msgPrefix = 'checkOplogs', secondaries) {
             prevOplogEntry = oplogEntry;
         }
     }
-    print("checkOplogs oplog checks complete.");
+    jsTest.log.info("checkOplogs oplog checks complete.");
 }
 
 function getPreImageReaders(msgPrefix, rst, secondaries, nsUUID) {
@@ -3751,8 +3821,9 @@ function getPreImageReaders(msgPrefix, rst, secondaries, nsUUID) {
         const node = nodes[i];
 
         if (rst._primary !== node && !secondaries.includes(node)) {
-            print(`${msgPrefix} -- skipping preimages of node as it's not in our list of ` +
-                  `secondaries: ${node.host}`);
+            jsTest.log.info(
+                `${msgPrefix} -- skipping preimages of node as it's not in our list of ` +
+                `secondaries: ${node.host}`);
             continue;
         }
 
@@ -3763,7 +3834,8 @@ function getPreImageReaders(msgPrefix, rst, secondaries, nsUUID) {
             continue;
         }
 
-        print(`${msgPrefix} -- going to check preimages of ${nsUUID} of node: ${node.host}`);
+        jsTest.log.info(
+            `${msgPrefix} -- going to check preimages of ${nsUUID} of node: ${node.host}`);
         readers[i] = new ReverseReader(
             node, node.getDB("config")["system.preimages"], {"_id.nsUUID": nsUUID});
         // Start all reverseReaders at their last document for the collection.
@@ -3819,8 +3891,8 @@ function checkPreImageCollection(rst, msgPrefix = 'checkPreImageCollection', sec
 
     const originalPreferences = [];
 
-    print(`${msgPrefix} -- starting preimage checks.`);
-    print(`${msgPrefix} -- waiting for secondaries to be ready.`);
+    jsTest.log.info(`${msgPrefix} -- starting preimage checks.`);
+    jsTest.log.info(`${msgPrefix} -- waiting for secondaries to be ready.`);
     rst.awaitSecondaryNodes(rst.timeoutMS, secondaries);
     if (secondaries.length >= 1) {
         let collectionsWithPreimages = {};
@@ -3829,8 +3901,9 @@ function checkPreImageCollection(rst, msgPrefix = 'checkPreImageCollection', sec
             const node = nodes[i];
 
             if (rst._primary !== node && !secondaries.includes(node)) {
-                print(`${msgPrefix} -- skipping preimages of node as it's not in our list of ` +
-                      `secondaries: ${node.host}`);
+                jsTest.log.info(
+                    `${msgPrefix} -- skipping preimages of node as it's not in our list of ` +
+                    `secondaries: ${node.host}`);
                 continue;
             }
 
@@ -3875,13 +3948,18 @@ function checkPreImageCollection(rst, msgPrefix = 'checkPreImageCollection', sec
                                 // TODO SERVER-55756: Investigate if we can remove this since
                                 // we'll have the data files present in case this fails with
                                 // PeriodicKillSecondaries.
-                                print(`${msgPrefix} -- preimage inconsistency detected.` +
-                                      "\n" +
-                                      `${originNode.host} -> ${
-                                          tojsononeline(preImageEntryToCompare)}` +
-                                      "\n" +
-                                      `${reader.mongo.host} -> ${tojsononeline(preImageEntry)}`);
-                                print("Printing previous entries:");
+                                jsTest.log.info(`${msgPrefix} -- preimage inconsistency detected.`,
+                                                {
+                                                    originNode: {
+                                                        host: originNode.host,
+                                                        preImageEntry: preImageEntryToCompare
+                                                    },
+                                                    currentNode: {
+                                                        host: originNode.host,
+                                                        preImageEntry: preImageEntryToCompare
+                                                    }
+                                                });
+                                jsTest.log.info("Printing previous entries:");
                                 dumpPreImagesCollection(msgPrefix,
                                                         originNode,
                                                         nsUUID,
@@ -3904,7 +3982,7 @@ function checkPreImageCollection(rst, msgPrefix = 'checkPreImageCollection', sec
             }
         }
     }
-    print(`${msgPrefix} -- preimages check complete.`);
+    jsTest.log.info(`${msgPrefix} -- preimages check complete.`);
 
     // Restore original read preferences used by the connection.
     for (const idx in originalPreferences) {
@@ -3951,7 +4029,7 @@ function dumpChangeCollection(node, tenantDatabaseName, timestamp, limit, msgPre
 function checkTenantChangeCollection(
     rst, secondaries, db, msgPrefix = 'checkTenantChangeCollection') {
     const tenantDatabaseName = db.name;
-    print(`${msgPrefix} -- starting check on ${db.tenantId} ${
+    jsTest.log.info(`${msgPrefix} -- starting check on ${db.tenantId} ${
         tenantDatabaseName}.system.change_collection`);
 
     // Prepare reverse read from the primary and specified secondaries.
@@ -3985,13 +4063,16 @@ function checkTenantChangeCollection(
                 return;
             }
             if (!bsonBinaryEqual(baselineEntryAndNode.entry, entryAndNode.entry)) {
-                print(`${msgPrefix} -- inconsistency detected in ${
-                          tenantDatabaseName}.system.change_collection` +
-                      "\n" +
-                      `${baselineEntryAndNode.node.host} -> ${
-                          tojsononeline(baselineEntryAndNode.entry)}` +
-                      "\n" +
-                      `${entryAndNode.node.host} -> ${tojsononeline(entryAndNode.entry)}`);
+                jsTest.log.info(
+                    `${msgPrefix} -- inconsistency detected in ${
+                        tenantDatabaseName}.system.change_collection`,
+                    {
+                        baselineNode: {
+                            host: baselineEntryAndNode.node.host,
+                            entry: baselineEntryAndNode.entry
+                        },
+                        currentNode: {host: entryAndNode.node.host, entry: entryAndNode.entry}
+                    });
 
                 dumpChangeCollection(baselineEntryAndNode.node,
                                      tenantDatabaseName,
@@ -4009,7 +4090,7 @@ function checkTenantChangeCollection(
             break;
         }
     }
-    print(`${msgPrefix} -- finished check on ${
+    jsTest.log.info(`${msgPrefix} -- finished check on ${
         tenantDatabaseName}.system.change_collection, inspected ${
         inspectedEntryCount} unique entries`);
 }
@@ -4027,12 +4108,12 @@ function checkChangeCollection(rst, msgPrefix = 'checkChangeCollection', seconda
     secondaries = secondaries.filter((node) => !isNodeArbiter(node));
 
     if (secondaries.length == 0) {
-        print(`${msgPrefix} -- no data bearing secondaries specified, nothing to do.`);
+        jsTest.log.info(`${msgPrefix} -- no data bearing secondaries specified, nothing to do.`);
         return;
     }
 
-    print(`${msgPrefix} -- starting change_collection checks.`);
-    print(`${msgPrefix} -- waiting for secondaries to be ready.`);
+    jsTest.log.info(`${msgPrefix} -- starting change_collection checks.`);
+    jsTest.log.info(`${msgPrefix} -- waiting for secondaries to be ready.`);
     rst.awaitSecondaryNodes(rst.timeoutMS, secondaries);
 
     // Get all change_collections for all tenants.
@@ -4051,7 +4132,7 @@ function checkChangeCollection(rst, msgPrefix = 'checkChangeCollection', seconda
             checkTenantChangeCollection(rst, secondaries, db);
         }
     });
-    print(`${msgPrefix} -- change_collection check complete.`);
+    jsTest.log.info(`${msgPrefix} -- change_collection check complete.`);
 }
 
 /**

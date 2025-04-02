@@ -72,7 +72,6 @@
 #include "mongo/db/views/view.h"
 #include "mongo/idl/command_generic_argument.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/transport/session.h"
 #include "mongo/util/assert_util.h"
@@ -93,7 +92,6 @@ constexpr auto kCreateCommandHelp =
     "{\n"
     "  create: <string: collection or view name> [,\n"
     "  capped: <bool: capped collection>,\n"
-    "  autoIndexId: <bool: automatic creation of _id index>,\n"
     "  idIndex: <document: _id index specification>,\n"
     "  size: <int: size in bytes of the capped collection>,\n"
     "  max: <int: max number of documents in the capped collection>,\n"
@@ -127,8 +125,9 @@ BSONObj pipelineAsBsonObj(const std::vector<BSONObj>& pipeline) {
  */
 void checkCollectionOptions(OperationContext* opCtx,
                             const Status& originalStatus,
-                            const NamespaceString& ns,
+                            const CreateCommand& cmd,
                             const CollectionOptions& options) {
+    const auto& ns = cmd.getNamespace();
     AutoGetDb autoDb(opCtx, ns.dbName(), MODE_IS);
     Lock::CollectionLock collLock(opCtx, ns, MODE_IS);
 
@@ -137,12 +136,30 @@ void checkCollectionOptions(OperationContext* opCtx,
     const auto catalog = CollectionCatalog::get(opCtx);
     const auto coll = catalog->lookupCollectionByNamespace(opCtx, ns);
     if (coll) {
-        auto actualOptions = coll->getCollectionOptions();
+
+        const bool hasExplicitlyDisabledClustering = cmd.getClusteredIndex() &&
+            holds_alternative<bool>(*cmd.getClusteredIndex()) &&
+            !get<bool>(*cmd.getClusteredIndex());
+        auto requestedOptions =
+            (hasExplicitlyDisabledClustering ? options
+                                             : translateOptionsIfClusterByDefault(ns, options));
+        auto existingOptions = coll->getCollectionOptions();
+
+        if (requestedOptions.timeseries) {
+            // When checking that the options for the timeseries collection are the same, filter out
+            // the options that were internally generated upon time-series collection creation (i.e.
+            // were not specified by the user).
+            uassertStatusOK(
+                timeseries::validateAndSetBucketingParameters(requestedOptions.timeseries.get()));
+            existingOptions = uassertStatusOK(CollectionOptions::parse(existingOptions.toBSON(
+                false /* includeUUID */, timeseries::kAllowedCollectionCreationOptions)));
+        }
+
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "namespace " << ns.toStringForErrorMsg()
                               << " already exists, but with different options: "
-                              << actualOptions.toBSON(),
-                options.matchesStorageOptions(actualOptions, collatorFactory));
+                              << existingOptions.toBSON(),
+                requestedOptions.matchesStorageOptions(existingOptions, collatorFactory));
         return;
     }
 
@@ -293,14 +310,13 @@ public:
         CreateCommandReply typedRun(OperationContext* opCtx) final {
             // Intentional copy of request made here, as request object can be modified below.
             auto cmd = request();
+            auto createViewlessTimeseriesColl =
+                gFeatureFlagCreateViewlessTimeseriesCollections
+                    .isEnabledUseLastLTSFCVWhenUninitialized(
+                        VersionContext::getDecoration(opCtx),
+                        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
 
             CreateCommandReply reply;
-            if (cmd.getAutoIndexId()) {
-                constexpr const char depr_23800[] =
-                    "The autoIndexId option is deprecated and will be removed in a future release";
-                LOGV2_WARNING(23800, depr_23800);
-                reply.setNote(std::string(depr_23800));
-            }
 
             if (!cmd.getClusteredIndex()) {
                 // Ensure that the 'size' field is present if 'capped' is set to true and this is
@@ -376,6 +392,10 @@ public:
                             "prefixPreview unless featureFlagQETextSearchPreview is enabled",
                             !hasQueryType(cmd.getEncryptedFields().get(),
                                           QueryTypeEnum::PrefixPreview));
+                    uassert(10075600,
+                            "Cannot create a collection with a strEncodeVersion set unless "
+                            "featureFlagQETextSearchPreview is enabled",
+                            !cmd.getEncryptedFields()->getStrEncodeVersion());
                 }
             }
 
@@ -449,11 +469,6 @@ public:
                         str::stream() << "'idIndex' is not allowed with 'viewOn': " << idIndexSpec,
                         !cmd.getViewOn());
 
-                uassert(ErrorCodes::InvalidOptions,
-                        str::stream()
-                            << "'idIndex' is not allowed with 'autoIndexId': " << idIndexSpec,
-                        !cmd.getAutoIndexId());
-
                 // Perform index spec validation.
                 idIndexSpec =
                     uassertStatusOK(index_key_validate::validateIndexSpec(opCtx, idIndexSpec));
@@ -502,6 +517,7 @@ public:
                     ErrorCodes::InvalidOptions,
                     "Validation action 'errorAndLog' is not supported with current FCV",
                     gFeatureFlagErrorAndLogValidationAction.isEnabledUseLastLTSFCVWhenUninitialized(
+                        VersionContext::getDecoration(opCtx),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
             }
 
@@ -524,7 +540,7 @@ public:
             if (createStatus == ErrorCodes::NamespaceExists &&
                 !opCtx->inMultiDocumentTransaction()) {
                 auto options = CollectionOptions::fromCreateCommand(cmd);
-                if (options.timeseries) {
+                if (options.timeseries && !createViewlessTimeseriesColl) {
                     const auto& bucketNss = cmd.getNamespace().isTimeseriesBucketsCollection()
                         ? cmd.getNamespace()
                         : cmd.getNamespace().makeTimeseriesBucketsNamespace();
@@ -536,7 +552,7 @@ public:
                             opCtx, createStatus, cmd.getNamespace(), options);
                     }
                 } else {
-                    checkCollectionOptions(opCtx, createStatus, cmd.getNamespace(), options);
+                    checkCollectionOptions(opCtx, createStatus, cmd, options);
                 }
             } else {
                 uassertStatusOK(createStatus);

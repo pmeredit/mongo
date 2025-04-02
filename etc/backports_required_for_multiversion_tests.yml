@@ -21,6 +21,26 @@
 #
 last-continuous:
   all:
+    - test_file: jstests/core/query/query_settings/query_settings_strict_api.js
+      ticket: SERVER-99550
+    - test_file: jstests/aggregation/expressions/null_chars_string_input.js
+      ticket: SERVER-95687
+    - test_file: jstests/core/query/explain/explain_plan_cache.js
+      ticket: SERVER-97662
+    - test_file: jstests/core/query/json_schema/json_schema.js
+      ticket: SERVER-98676
+    - test_file: jstests/aggregation/sources/setWindowFields/partition_results.js
+      ticket: SERVER-96405
+    - test_file: jstests/aggregation/sources/sort_by_count_validation.js
+      ticket: SERVER-98214
+    - test_file: jstests/aggregation/sources/foreign_coll_read_foreign_db_write.js
+      ticket: SERVER-96197
+    - test_file: jstests/aggregation/sources/lookup/lookup_absorb_match.js
+      ticket: SERVER-99121
+    - test_file: jstests/change_streams/change_streams_namespace_match_expressions.js
+      ticket: SERVER-100489
+    - test_file: jstests/change_streams/change_streams_dynamic_match_expressions.js
+      ticket: SERVER-100345
     - test_file: jstests/sharding/analyze_shard_key/analyze_shard_key_cmd_validation.js
       ticket: SERVER-95869
     - test_file: jstests/core/query/query_settings/query_settings_and_index_filters.js
@@ -339,7 +359,7 @@ last-continuous:
       ticket: SERVER-94259
     - test_file: jstests/core/timeseries/ddl/timeseries_drop.js
       ticket: SERVER-94829
-    - test_file: jstests/core/connection_status.js
+    - test_file: jstests/core/administrative/connection_status.js
       ticket: SERVER-95952
     - test_file: jstests/sharding/resharding_skip_cloning_and_applying.js
       ticket: SERVER-91109
@@ -370,9 +390,61 @@ last-continuous:
       ticket: SERVER-95687
     - test_file: jstests/sharding/remove_shard_with_unsharded.js
       ticket: SERVER-89883
+    - test_file: jstests/sharding/metadata_refresh_on_shard_removal.js
+      ticket: SERVER-99277
+    - test_file: jstests/core/txns/multi_statement_transaction_abort.js
+      ticket: SERVER-84081
+    - test_file: jstests/replsets/rollback_with_coalesced_txn_table_updates_during_oplog_application_inserts.js
+      ticket: SERVER-99185
+    - test_file: jstests/sharding/direct_shard_connection_auth.js
+      ticket: SERVER-100223
+    - test_file: jstests/sharding/coll_mod_unsplittable_collection.js
+      ticket: SERVER-99618
+    - test_file: jstests/concurrency/fsm_workloads/ddl/collMod/collMod.js
+      ticket: SERVER-99618
+    - test_file: jstests/sharding/check_metadata_consistency.js
+      ticket: SERVER-98664
+    - test_file: jstests/core/timeseries/query/bucket_unpacking_with_limit.js
+      ticket: SERVER-100299
+    - test_file: src/mongo/db/modules/enterprise/jstests/hot_backups_multiversion/*.js
+      ticket: SERVER-81208
+    - test_file: jstests/core_sharding/ddl/shard_collection_outside_db_primary_index_compatibility.js
+      ticket: SERVER-100844
+    - test_file: jstests/core/timeseries/query/timeseries_groupby_reorder.js
+      ticket: SERVER-99773
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog.js
+      ticket: SERVER-102582
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog_sharding_fields.js
+      ticket: SERVER-102582
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog_with_match.js
+      ticket: SERVER-102582
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog_sharding_fields.js
+      ticket: SERVER-102543
+    - test_file: jstests/core_sharding/resharding/reshard_collection_atlas_log_ingestion.js
+      ticket: SERVER-100421
   suites: null
 last-lts:
   all:
+    - test_file: jstests/core/query/query_settings/query_settings_strict_api.js
+      ticket: SERVER-99550
+    - test_file: jstests/aggregation/expressions/null_chars_string_input.js
+      ticket: SERVER-95687
+    - test_file: jstests/core/query/explain/explain_plan_cache.js
+      ticket: SERVER-97662
+    - test_file: jstests/core/query/json_schema/json_schema.js
+      ticket: SERVER-98676
+    - test_file: jstests/aggregation/sources/setWindowFields/partition_results.js
+      ticket: SERVER-96405
+    - test_file: jstests/aggregation/sources/sort_by_count_validation.js
+      ticket: SERVER-98214
+    - test_file: jstests/aggregation/sources/foreign_coll_read_foreign_db_write.js
+      ticket: SERVER-96197
+    - test_file: jstests/aggregation/sources/lookup/lookup_absorb_match.js
+      ticket: SERVER-99121
+    - test_file: jstests/change_streams/change_streams_namespace_match_expressions.js
+      ticket: SERVER-100489
+    - test_file: jstests/change_streams/change_streams_dynamic_match_expressions.js
+      ticket: SERVER-100345
     - test_file: jstests/sharding/analyze_shard_key/analyze_shard_key_cmd_validation.js
       ticket: SERVER-95869
     - test_file: jstests/core/query/query_settings/query_settings_and_index_filters.js
@@ -723,7 +795,7 @@ last-lts:
       ticket: SERVER-94259
     - test_file: jstests/core/timeseries/ddl/timeseries_drop.js
       ticket: SERVER-94829
-    - test_file: jstests/core/connection_status.js
+    - test_file: jstests/core/administrative/connection_status.js
       ticket: SERVER-95952
     - test_file: jstests/sharding/resharding_skip_cloning_and_applying.js
       ticket: SERVER-91109
@@ -787,4 +859,38 @@ last-lts:
       ticket: SERVER-95687
     - test_file: jstests/sharding/remove_shard_with_unsharded.js
       ticket: SERVER-89883
+    - test_file: jstests/core/catalog/db_stats.js
+      ticket: SERVER-98571
+    - test_file: jstests/sharding/metadata_refresh_on_shard_removal.js
+      ticket: SERVER-99277
+    - test_file: jstests/core/txns/multi_statement_transaction_abort.js
+      ticket: SERVER-84081
+    - test_file: jstests/replsets/rollback_with_coalesced_txn_table_updates_during_oplog_application_inserts.js
+      ticket: SERVER-99185
+    - test_file: jstests/sharding/direct_shard_connection_auth.js
+      ticket: SERVER-100223
+    - test_file: jstests/sharding/coll_mod_unsplittable_collection.js
+      ticket: SERVER-99618
+    - test_file: jstests/concurrency/fsm_workloads/ddl/collMod/collMod.js
+      ticket: SERVER-99618
+    - test_file: jstests/sharding/check_metadata_consistency.js
+      ticket: SERVER-98664
+    - test_file: jstests/core/timeseries/query/bucket_unpacking_with_limit.js
+      ticket: SERVER-100299
+    - test_file: src/mongo/db/modules/enterprise/jstests/hot_backups_multiversion/*.js
+      ticket: SERVER-81208
+    - test_file: jstests/core_sharding/ddl/shard_collection_outside_db_primary_index_compatibility.js
+      ticket: SERVER-100844
+    - test_file: jstests/core/timeseries/query/timeseries_groupby_reorder.js
+      ticket: SERVER-99773
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog.js
+      ticket: SERVER-102582
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog_sharding_fields.js
+      ticket: SERVER-102582
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog_with_match.js
+      ticket: SERVER-102582
+    - test_file: jstests/core/catalog/agg_list_cluster_catalog_sharding_fields.js
+      ticket: SERVER-102543
+    - test_file: jstests/core_sharding/resharding/reshard_collection_atlas_log_ingestion.js
+      ticket: SERVER-100421
   suites: null

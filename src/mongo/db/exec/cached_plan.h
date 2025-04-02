@@ -39,7 +39,6 @@
 #include "mongo/db/exec/plan_stats.h"
 #include "mongo/db/exec/requires_all_indices_stage.h"
 #include "mongo/db/exec/working_set.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/plan_executor.h"
@@ -70,7 +69,8 @@ public:
                     WorkingSet* ws,
                     CanonicalQuery* cq,
                     size_t decisionWorks,
-                    std::unique_ptr<PlanStage> root);
+                    std::unique_ptr<PlanStage> root,
+                    size_t cachedPlanHash = 0);
 
     bool isEOF() const final;
 
@@ -133,6 +133,10 @@ private:
     // The number of work cycles taken to decide on a winning plan when the plan was first
     // cached.
     size_t _decisionWorks;
+
+    // The hash of the QuerySolution that was retrieved from the plan cache. It is used to compare
+    // against the result of replanning for metrics gathering purposes.
+    const size_t _cachedPlanHash;
 
     // If we fall back to re-planning the query, and there is just one resulting query solution,
     // that solution is owned here.

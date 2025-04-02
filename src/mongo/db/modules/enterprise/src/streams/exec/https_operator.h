@@ -6,18 +6,14 @@
 
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <cstdint>
-#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "mongo/base/string_data.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/expression.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/cidr.h"
 #include "mongo/util/net/http_client.h"
@@ -25,13 +21,10 @@
 #include "streams/exec/feedable_pipeline.h"
 #include "streams/exec/message.h"
 #include "streams/exec/operator.h"
+#include "streams/exec/planner.h"
 #include "streams/exec/rate_limiter.h"
-#include "streams/exec/stream_processor_feature_flags.h"
-#include "streams/exec/stream_stats.h"
 
 namespace streams {
-
-using StringOrExpression = std::variant<std::string, boost::intrusive_ptr<mongo::Expression>>;
 
 /**
  * HttpsOperator is an operator that allows users to make requests to a configured
@@ -58,7 +51,8 @@ public:
         // Optional url path that is evaluated per document and appended to the url defined in
         // the connection.
         boost::intrusive_ptr<mongo::Expression> pathExpr{nullptr};
-
+        // Represents whether to url encode the path.
+        bool urlEncodePath{false};
         // Defined in the connection.
         std::vector<std::string> connectionHeaders;
         // Query parameters used when making a HTTP request. Evaluated at runtime on each
@@ -84,6 +78,9 @@ public:
 
         // Specifies how error responses are handled
         mongo::OnErrorEnum onError{mongo::OnErrorEnum::DLQ};
+
+        // Specifies if we should try to parse json strings in the json response.
+        bool parseJsonStrings{false};
     };
     struct UrlComponents {
         std::string scheme;
@@ -216,7 +213,5 @@ private:
 
     stdx::unordered_map<int, std::unique_ptr<RateLimiter>> _logIDToRateLimiter;
 };
-
-int64_t getRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags);
 
 }  // namespace streams

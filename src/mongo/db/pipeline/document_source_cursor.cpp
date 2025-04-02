@@ -45,7 +45,7 @@
 #include "mongo/db/pipeline/document_source_cursor.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/initialize_auto_get_helper.h"
-#include "mongo/db/query/collection_query_info.h"
+#include "mongo/db/query/collection_index_usage_tracker_decoration.h"
 #include "mongo/db/query/explain.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/db/query/find_common.h"
@@ -54,7 +54,6 @@
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/resharding/resume_token_gen.h"
 #include "mongo/util/decorable.h"
@@ -162,9 +161,10 @@ void DocumentSourceCursor::loadBatch() {
         return;
     }
 
+    auto opCtx = pExpCtx->getOperationContext();
     CurOpFailpointHelpers::waitWhileFailPointEnabled(
         &hangBeforeDocumentSourceCursorLoadBatch,
-        pExpCtx->getOperationContext(),
+        opCtx,
         "hangBeforeDocumentSourceCursorLoadBatch",
         []() {
             LOGV2(20895,
@@ -175,23 +175,46 @@ void DocumentSourceCursor::loadBatch() {
     PlanExecutor::ExecState state;
     Document resultObj;
 
-    boost::optional<AutoGetCollectionForReadMaybeLockFree> autoColl;
     tassert(5565800,
             "Expected PlanExecutor to use an external lock policy",
             _exec->lockPolicy() == PlanExecutor::LockPolicy::kLockExternally);
-    autoColl.emplace(
-        pExpCtx->getOperationContext(),
-        _exec->nss(),
-        AutoGetCollection::Options{}.secondaryNssOrUUIDs(_exec->getSecondaryNamespaces().cbegin(),
-                                                         _exec->getSecondaryNamespaces().cend()));
-    uassertStatusOK(
-        repl::ReplicationCoordinator::get(pExpCtx->getOperationContext())
-            ->checkCanServeReadsFor(pExpCtx->getOperationContext(), _exec->nss(), true));
 
-    _exec->restoreState(autoColl ? &autoColl->getCollection() : nullptr);
+    // Restore the TransactionResources for this ShardRole collection acquisition. On destruction of
+    // this object, the TransactionResources will be stashed back.
+    tassert(
+        10096100, "Expected _transactionResourcesStasher to exist", _transactionResourcesStasher);
+    HandleTransactionResourcesFromStasher handleTransactionResourcesFromStasher(
+        opCtx, _transactionResourcesStasher.get());
+
+    if (!shard_role_details::TransactionResources::get(opCtx).isEmpty()) {
+        uassertStatusOK(repl::ReplicationCoordinator::get(opCtx)->checkCanServeReadsFor(
+            opCtx, _exec->nss(), true));
+    }
+
+    RestoreContext restoreContext(nullptr);
+    _exec->restoreState(restoreContext);
 
     try {
-        ON_BLOCK_EXIT([this] { recordPlanSummaryStats(); });
+        ON_BLOCK_EXIT([&] {
+            recordPlanSummaryStats();
+            try {
+                // At any given time only one operation can own the entirety of resources used by a
+                // multi-document transaction. As we can perform a remote call during the query
+                // execution we will check in the session to avoid deadlocks. If we don't release
+                // the storage engine resources used here then we could have two operations
+                // interacting with resources of a session at the same time. This will leave the
+                // plan in the saved state as a side-effect.
+                _exec->releaseAllAcquiredResources();
+            } catch (const ExceptionFor<ErrorCodes::WriteConflict>&) {
+                // The storage engine can throw a WriteConflict when releasing resources, as the
+                // operation is failing anyways it's fine to swallow the exception here since
+                // otherwise it will crash the server.
+            } catch (const ExceptionFor<ErrorCodes::TemporarilyUnavailable>&) {
+                // The storage engine can also technically throw a TemporarilyUnavailable when
+                // releasing resources, as the operation is failing anyways it's fine to swallow the
+                // exception here since otherwise it will crash the server.
+            }
+        });
 
         while ((state = _exec->getNextDocument(&resultObj, nullptr)) == PlanExecutor::ADVANCED) {
             boost::optional<BSONObj> resumeToken;
@@ -203,14 +226,7 @@ void DocumentSourceCursor::loadBatch() {
             // need the whole pipeline to see each document to see if we should stop waiting.
             bool batchCountFull = _batchSizeCount != 0 && _currentBatch.count() >= _batchSizeCount;
             if (batchCountFull || _currentBatch.memUsageBytes() > _batchSizeBytes ||
-                awaitDataState(pExpCtx->getOperationContext()).shouldWaitForInserts) {
-                // At any given time only one operation can own the entirety of resources used by a
-                // multi-document transaction. As we can perform a remote call during the query
-                // execution we will check in the session to avoid deadlocks. If we don't release
-                // the storage engine resources used here then we could have two operations
-                // interacting with resources of a session at the same time. This will leave the
-                // plan in the saved state as a side-effect.
-                _exec->releaseAllAcquiredResources();
+                awaitDataState(opCtx).shouldWaitForInserts) {
                 // Double the size for next batch when batch is full.
                 if (batchCountFull && overflow::mul(_batchSizeCount, 2, &_batchSizeCount)) {
                     _batchSizeCount = 0;  // Go unlimited if we overflow.
@@ -226,13 +242,6 @@ void DocumentSourceCursor::loadBatch() {
         // since we will need to retrieve the resume information the executor observed before
         // hitting EOF.
         if (_resumeTrackingType != ResumeTrackingType::kNone || pExpCtx->isTailableAwaitData()) {
-            // At any given time only one operation can own the entirety of resources used by a
-            // multi-document transaction. As we can perform a remote call during the query
-            // execution we will check in the session to avoid deadlocks. If we don't release the
-            // storage engine resources used here then we could have two operations interacting with
-            // resources of a session at the same time. This will leave the plan in the saved state
-            // as a side-effect.
-            _exec->releaseAllAcquiredResources();
             return;
         }
     } catch (...) {
@@ -276,18 +285,17 @@ void DocumentSourceCursor::recordPlanSummaryStats() {
 }
 
 Value DocumentSourceCursor::serialize(const SerializationOptions& opts) const {
-    auto verbosity = opts.verbosity;
     // We never parse a DocumentSourceCursor, so we only serialize for explain. Since it's never
     // part of user input, there's no need to compute its query shape.
-    if (!verbosity || opts.transformIdentifiers ||
-        opts.literalPolicy != LiteralSerializationPolicy::kUnchanged)
+    if (!opts.isSerializingForExplain() || opts.isSerializingForQueryStats()) {
         return Value();
+    }
 
     invariant(_exec);
 
     uassert(50660,
             "Mismatch between verbosity passed to serialize() and expression context verbosity",
-            verbosity == pExpCtx->getExplain());
+            opts.verbosity == pExpCtx->getExplain());
 
     MutableDocument out;
 
@@ -304,7 +312,7 @@ Value DocumentSourceCursor::serialize(const SerializationOptions& opts) const {
                                  secondaryNssList.cbegin(), secondaryNssList.cend()));
         };
         bool isAnySecondaryCollectionNotLocal =
-            intializeAutoGet(opCtx, _exec->nss(), secondaryNssList, initAutoGetFn);
+            initializeAutoGet(opCtx, _exec->nss(), secondaryNssList, initAutoGetFn);
         tassert(8322003,
                 "Should have initialized AutoGet* after calling 'initializeAutoGet'",
                 readLock.has_value());
@@ -317,7 +325,7 @@ Value DocumentSourceCursor::serialize(const SerializationOptions& opts) const {
         Explain::explainStages(
             _exec.get(),
             collections,
-            verbosity.value(),
+            opts.verbosity.value(),
             _execStatus,
             _winningPlanTrialStats,
             BSONObj(),
@@ -330,7 +338,7 @@ Value DocumentSourceCursor::serialize(const SerializationOptions& opts) const {
     invariant(explainStats["queryPlanner"]);
     out["queryPlanner"] = Value(explainStats["queryPlanner"]);
 
-    if (verbosity.value() >= ExplainOptions::Verbosity::kExecStats) {
+    if (opts.verbosity.value() >= ExplainOptions::Verbosity::kExecStats) {
         invariant(explainStats["executionStats"]);
         out["executionStats"] = Value(explainStats["executionStats"]);
     }
@@ -391,11 +399,14 @@ DocumentSourceCursor::~DocumentSourceCursor() {
 DocumentSourceCursor::DocumentSourceCursor(
     const MultipleCollectionAccessor& collections,
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
+    const boost::intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>&
+        transactionResourcesStasher,
     const intrusive_ptr<ExpressionContext>& pCtx,
     CursorType cursorType,
     ResumeTrackingType resumeTrackingType)
     : DocumentSource(kStageName, pCtx),
       _currentBatch(cursorType),
+      _transactionResourcesStasher(transactionResourcesStasher),
       _exec(std::move(exec)),
       _resumeTrackingType(resumeTrackingType),
       _queryFramework(_exec->getQueryFramework()) {
@@ -405,6 +416,12 @@ DocumentSourceCursor::DocumentSourceCursor(
             "The resumeToken is not compatible with this query",
             cursorType != CursorType::kEmptyDocuments ||
                 resumeTrackingType == ResumeTrackingType::kNone);
+
+    tassert(10240803,
+            "Expected enclosed executor to use ShardRole",
+            _exec->usesCollectionAcquisitions());
+    tassert(
+        10096101, "Expected _transactionResourcesStasher to exist", _transactionResourcesStasher);
 
     // Later code in the DocumentSourceCursor lifecycle expects that '_exec' is in a saved state.
     _exec->saveState();
@@ -421,15 +438,18 @@ DocumentSourceCursor::DocumentSourceCursor(
 
     if (collections.hasMainCollection()) {
         const auto& coll = collections.getMainCollection();
-        CollectionQueryInfo::get(coll).notifyOfQuery(
-            pExpCtx->getOperationContext(), coll, _stats.planSummaryStats);
+        CollectionIndexUsageTrackerDecoration::get(coll.get())
+            .recordCollectionIndexUsage(_stats.planSummaryStats.collectionScans,
+                                        _stats.planSummaryStats.collectionScansNonTailable,
+                                        _stats.planSummaryStats.indexesUsed);
     }
     for (auto& [nss, coll] : collections.getSecondaryCollections()) {
         if (coll) {
             PlanSummaryStats stats;
             explainer.getSecondarySummaryStats(nss, &stats);
-            CollectionQueryInfo::get(coll).notifyOfQuery(
-                pExpCtx->getOperationContext(), coll, stats);
+            CollectionIndexUsageTrackerDecoration::get(coll.get())
+                .recordCollectionIndexUsage(
+                    stats.collectionScans, stats.collectionScansNonTailable, stats.indexesUsed);
         }
     }
 
@@ -459,11 +479,17 @@ void DocumentSourceCursor::initializeBatchSizeCounts() {
 intrusive_ptr<DocumentSourceCursor> DocumentSourceCursor::create(
     const MultipleCollectionAccessor& collections,
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
+    const intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>&
+        transactionResourcesStasher,
     const intrusive_ptr<ExpressionContext>& pExpCtx,
     CursorType cursorType,
     ResumeTrackingType resumeTrackingType) {
-    intrusive_ptr<DocumentSourceCursor> source(new DocumentSourceCursor(
-        collections, std::move(exec), pExpCtx, cursorType, resumeTrackingType));
+    intrusive_ptr<DocumentSourceCursor> source(new DocumentSourceCursor(collections,
+                                                                        std::move(exec),
+                                                                        transactionResourcesStasher,
+                                                                        pExpCtx,
+                                                                        cursorType,
+                                                                        resumeTrackingType));
     return source;
 }
 }  // namespace mongo

@@ -29,7 +29,6 @@
 
 #include "mongo/s/query/planner/cluster_find.h"
 
-#include "mongo/db/query/query_stats/query_stats.h"
 #include <algorithm>
 #include <boost/optional.hpp>
 #include <chrono>
@@ -85,8 +84,11 @@
 #include "mongo/db/query/query_feature_flags_gen.h"
 #include "mongo/db/query/query_planner_common.h"
 #include "mongo/db/query/query_request_helper.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
 #include "mongo/db/query/query_stats/query_stats.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
 #include "mongo/db/query/sort_pattern.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/session/logical_session_id.h"
@@ -94,9 +96,6 @@
 #include "mongo/db/shard_id.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/overflow_arithmetic.h"
 #include "mongo/s/analyze_shard_key_common_gen.h"
@@ -143,12 +142,8 @@ namespace {
 // Ticks for server-side Javascript deprecation log messages.
 Rarely _samplerFunctionJs, _samplerWhereClause;
 
-using namespace fmt::literals;
-
-static const BSONObj kSortKeyMetaProjection = BSON("$meta"
-                                                   << "sortKey");
-static const BSONObj kGeoNearDistanceMetaProjection = BSON("$meta"
-                                                           << "geoNearDistance");
+static const BSONObj kSortKeyMetaProjection = BSON("$meta" << "sortKey");
+static const BSONObj kGeoNearDistanceMetaProjection = BSON("$meta" << "geoNearDistance");
 
 const char kFindCmdName[] = "find";
 
@@ -190,9 +185,9 @@ std::unique_ptr<FindCommandRequest> makeFindCommandForShards(OperationContext* o
         findCommand->setLet(vars.toBSON(vps, *letParams));
     }
 
-    // ExpressionContext may contain query settings that were looked up in QuerySettingsManager.
-    // Propagate it to the shards.
-    if (!query.getExpCtx()->getQuerySettings().toBSON().isEmpty()) {
+    // ExpressionContext may contain previously looked up query settings. Propagate it to the
+    // shards.
+    if (!query_settings::isDefault(query.getExpCtx()->getQuerySettings())) {
         findCommand->setQuerySettings(query.getExpCtx()->getQuerySettings());
     }
 
@@ -231,8 +226,6 @@ std::vector<AsyncRequestsSender::Request> constructRequestsForShards(
     const boost::optional<UUID> sampleId,
     bool requestQueryStatsFromRemotes,
     const auto& opKey) {
-    const auto& cm = cri.cm;
-
     // Choose the shard to sample the query on if needed.
     const auto sampleShardId = sampleId
         ? boost::make_optional(analyze_shard_key::getRandomShardId(shardIds))
@@ -240,11 +233,11 @@ std::vector<AsyncRequestsSender::Request> constructRequestsForShards(
 
     // Helper methods for appending additional attributes to the shard command.
     auto appendShardVersion = [&](const auto& shardId, auto& cmdBuilder) {
-        if (cm.hasRoutingTable()) {
+        if (cri.hasRoutingTable()) {
             cri.getShardVersion(shardId).serialize(ShardVersion::kShardVersionField, &cmdBuilder);
         } else if (!query.nss().isOnInternalDb()) {
             ShardVersion::UNSHARDED().serialize(ShardVersion::kShardVersionField, &cmdBuilder);
-            cmdBuilder.append("databaseVersion", cm.dbVersion().toBSON());
+            cmdBuilder.append("databaseVersion", cri.getDbVersion().toBSON());
         }
     };
 
@@ -269,7 +262,14 @@ std::vector<AsyncRequestsSender::Request> constructRequestsForShards(
         appendShardVersion(shardId, cmdBuilder);
         appendSampleId(shardId, cmdBuilder);
 
-        return AsyncRequestsSender::Request(shardId, cmdBuilder.obj(), std::move(shard));
+        auto cmdObj = isRawDataOperation(opCtx) &&
+                findCommandToForward->getNamespaceOrUUID().isNamespaceString() &&
+                findCommandToForward->getNamespaceOrUUID().nss().isTimeseriesBucketsCollection()
+            ? rewriteCommandForRawDataOperation<FindCommandRequest>(
+                  cmdBuilder.obj(), findCommandToForward->getNamespaceOrUUID().nss().coll())
+            : cmdBuilder.obj();
+
+        return AsyncRequestsSender::Request(shardId, std::move(cmdObj), std::move(shard));
     };
 
     std::vector<AsyncRequestsSender::Request> requests;
@@ -280,13 +280,14 @@ std::vector<AsyncRequestsSender::Request> constructRequestsForShards(
 }
 
 void updateNumHostsTargetedMetrics(OperationContext* opCtx,
-                                   const ChunkManager& cm,
+                                   const CollectionRoutingInfo& cri,
                                    int nTargetedShards) {
     // Note: It is fine to use 'getAproxNShardsOwningChunks' here because the result is only used to
     // update stats.
-    int nShardsOwningChunks = cm.hasRoutingTable() ? cm.getAproxNShardsOwningChunks() : 0;
+    int nShardsOwningChunks =
+        cri.hasRoutingTable() ? cri.getChunkManager().getAproxNShardsOwningChunks() : 0;
     auto targetType = NumHostsTargetedMetrics::get(opCtx).parseTargetType(
-        opCtx, nTargetedShards, nShardsOwningChunks, cm.isSharded());
+        opCtx, nTargetedShards, nShardsOwningChunks, cri.isSharded());
     NumHostsTargetedMetrics::get(opCtx).addNumHostsTargeted(
         NumHostsTargetedMetrics::QueryType::kFindCmd, targetType);
 }
@@ -298,11 +299,9 @@ CursorId runQueryWithoutRetrying(OperationContext* opCtx,
                                  const CollectionRoutingInfo& cri,
                                  std::vector<BSONObj>* results,
                                  bool* partialResultsReturned) {
-    const auto& cm = cri.cm;
-
     const auto& findCommand = query.getFindCommandRequest();
     // Get the set of shards on which we will run the query.
-    auto shardIds = getTargetedShardsForCanonicalQuery(query, cm);
+    auto shardIds = getTargetedShardsForCanonicalQuery(query, cri);
 
     bool requestQueryStatsFromRemotes =
         query_stats::shouldRequestRemoteMetrics(CurOp::get(opCtx)->debug());
@@ -411,7 +410,7 @@ CursorId runQueryWithoutRetrying(OperationContext* opCtx,
     } catch (const DBException& ex) {
         if (ex.code() == ErrorCodes::CollectionUUIDMismatch &&
             !ex.extraInfo<CollectionUUIDMismatchInfo>()->actualCollection() &&
-            !shardIds.count(cm.dbPrimary())) {
+            !shardIds.count(cri.getDbPrimaryShardId())) {
             // We received CollectionUUIDMismatch but it does not contain the actual namespace, and
             // we did not attempt to establish a cursor on the primary shard.
             uassertStatusOK(populateCollectionUUIDMismatch(opCtx, ex.toStatus()));
@@ -426,7 +425,7 @@ CursorId runQueryWithoutRetrying(OperationContext* opCtx,
         : ClusterCursorManager::CursorType::SingleTarget;
 
     // Only set skip, limit and sort to be applied to on the router for the multi-shard case. For
-    // the single-shard case skip/limit as well as sorts are appled on mongod.
+    // the single-shard case skip/limit as well as sorts are applied on mongod.
     if (cursorType == ClusterCursorManager::CursorType::MultiTarget) {
         params.skipToApplyOnRouter = findCommand.getSkip();
         params.limit = findCommand.getLimit();
@@ -444,7 +443,7 @@ CursorId runQueryWithoutRetrying(OperationContext* opCtx,
 
     if (findCommand.getAllowPartialResults() &&
         opCtx->checkForInterruptNoAssert().code() == ErrorCodes::MaxTimeMSExpired) {
-        // MaxTimeMS is expired in the router, but some remotes may still have outsanding requests.
+        // MaxTimeMS is expired in the router, but some remotes may still have outstanding requests.
         // Wait for all remotes to expire their requests.
 
         // Maximum number of 1ms sleeps to wait for remote cursors to be exhausted.
@@ -472,10 +471,8 @@ CursorId runQueryWithoutRetrying(OperationContext* opCtx,
     // ClusterClientCursor::next will fetch further results if necessary.
     while (!FindCommon::enoughForFirstBatch(findCommand, results->size())) {
         auto next = uassertStatusOK(ccc->next());
-        if (findCommand.getAllowPartialResults()) {
-            if (ccc->remotesExhausted()) {
-                cursorState = ClusterCursorManager::CursorState::Exhausted;
-            }
+        if (findCommand.getAllowPartialResults() && ccc->remotesExhausted()) {
+            cursorState = ClusterCursorManager::CursorState::Exhausted;
         }
         if (next.isEOF()) {
             // We reached end-of-stream. If the cursor is not tailable, then we mark it as
@@ -526,7 +523,7 @@ CursorId runQueryWithoutRetrying(OperationContext* opCtx,
         opDebug.cursorExhausted = true;
 
         if (shardIds.size() > 0) {
-            updateNumHostsTargetedMetrics(opCtx, cm, shardIds.size());
+            updateNumHostsTargetedMetrics(opCtx, cri, shardIds.size());
         }
         if (const auto remoteMetrics = ccc->takeRemoteMetrics()) {
             opDebug.additiveMetrics.aggregateDataBearingNodeMetrics(*remoteMetrics);
@@ -551,7 +548,7 @@ CursorId runQueryWithoutRetrying(OperationContext* opCtx,
     opDebug.cursorid = cursorId;
 
     if (shardIds.size() > 0) {
-        updateNumHostsTargetedMetrics(opCtx, cm, shardIds.size());
+        updateNumHostsTargetedMetrics(opCtx, cri, shardIds.size());
     }
 
     return cursorId;
@@ -574,11 +571,13 @@ Status setUpOperationContextStateForGetMore(OperationContext* opCtx,
     }
 
     auto apiParamsFromClient = APIParameters::get(opCtx);
-    uassert(ErrorCodes::APIMismatchError,
-            "API parameter mismatch: getMore used params {}, the cursor-creating command "
-            "used {}"_format(apiParamsFromClient.toBSON().toString(),
-                             cursor->getAPIParameters().toBSON().toString()),
-            apiParamsFromClient == cursor->getAPIParameters());
+    uassert(
+        ErrorCodes::APIMismatchError,
+        fmt::format("API parameter mismatch: getMore used params {}, the cursor-creating command "
+                    "used {}",
+                    apiParamsFromClient.toBSON().toString(),
+                    cursor->getAPIParameters().toBSON().toString()),
+        apiParamsFromClient == cursor->getAPIParameters());
 
     // If the originating command had a 'comment' field, we extract it and set it on opCtx. Note
     // that if the 'getMore' command itself has a 'comment' field, we give precedence to it.
@@ -694,6 +693,13 @@ CursorId ClusterFind::runQuery(OperationContext* opCtx,
         }
 
         const auto cri = uassertStatusOK(std::move(swCri));
+
+        // Create an RAII object that prints the collection's shard key in the case of a tassert
+        // or crash.
+        ScopedDebugInfo shardKeyDiagnostics(
+            "ShardKeyDiagnostics",
+            diagnostic_printers::ShardKeyDiagnosticPrinter{
+                cri.isSharded() ? cri.getChunkManager().getShardKeyPattern().toBSON() : BSONObj()});
 
         try {
             return runQueryWithoutRetrying(
@@ -921,7 +927,7 @@ StatusWith<CursorResponse> ClusterFind::runGetMore(OperationContext* opCtx,
     auto cursorManager = Grid::get(opCtx)->getCursorManager();
 
     auto authzSession = AuthorizationSession::get(opCtx->getClient());
-    auto authChecker = [&authzSession](const boost::optional<UserName>& userName) -> Status {
+    AuthzCheckFn authChecker = [&authzSession](AuthzCheckFnInputType userName) -> Status {
         return authzSession->isCoauthorizedWith(userName)
             ? Status::OK()
             : Status(ErrorCodes::Unauthorized, "User not authorized to access cursor");

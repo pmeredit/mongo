@@ -1,0 +1,24 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "enterprise_license_files",
+    srcs = glob(
+        ["*"],
+        exclude = ["BUILD.bazel"],
+    ),
+)
+
+filegroup(
+    name = "enterprise_license_rtf",
+    srcs = ["LICENSE-Enterprise.rtf"],
+)
+
+filegroup(
+    name = "enterprise_license",
+    srcs = ["LICENSE-Enterprise.txt"],
+)
+
+filegroup(
+    name = "windows_notices",
+    srcs = ["THIRD-PARTY-NOTICES.windows"],
+)

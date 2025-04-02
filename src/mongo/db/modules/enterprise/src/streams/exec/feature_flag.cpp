@@ -1,15 +1,15 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "streams/exec/feature_flag.h"
+
 #include <boost/none.hpp>
 #include <string>
 
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/exec/document_value/value.h"
-#include "mongo/db/feature_flag.h"
 #include "streams/exec/config_gen.h"
-#include "streams/exec/feature_flag.h"
 #include "streams/exec/operator.h"
 #include "streams/util/units.h"
 
@@ -42,6 +42,11 @@ boost::optional<bool> FeatureFlagValue::getBool() const {
     }
     returnValue.emplace(_value.getBool());
     return returnValue;
+}
+
+bool FeatureFlagValue::isTrue() const {
+    auto flag = getBool();
+    return flag && *flag;
 }
 
 boost::optional<std::string> FeatureFlagValue::getString() const {
@@ -157,9 +162,6 @@ const FeatureFlagDefinition FeatureFlags::kTestOnlyStringType{
     mongo::Value{std::string("string")},
     {}};
 
-const FeatureFlagDefinition FeatureFlags::kEnableHttpsOperator{
-    "enableHttpsOperator", "If true, the $https operator is enabled.", mongo::Value(false), {}};
-
 const FeatureFlagDefinition FeatureFlags::kHttpsRateLimitPerSecond{
     "httpsRateLimitPerSecond",
     "Specifies rate limit to be used by $https",
@@ -201,6 +203,11 @@ const FeatureFlagDefinition FeatureFlags::kCheckpointMaxIntervalSeconds{
     "Specifies the maximum periodic checkpoint interval",
     mongo::Value::createIntOrLong(60 * 60)};
 
+const FeatureFlagDefinition FeatureFlags::kMaxMergeParallelism{
+    "maxMergeParallelism",
+    "Specifies the maximum parallelism allowed in a merge stage.",
+    mongo::Value::createIntOrLong(16)};
+
 const FeatureFlagDefinition FeatureFlags::kCheckpointStateSizeToUseMaxIntervalBytes{
     "checkpointStateSizeToUseMaxIntervalBytes",
     "Specifies the byte size for which to use the maximum periodic checkpoint interval",
@@ -214,17 +221,39 @@ const FeatureFlagDefinition FeatureFlags::kTimeseriesEmitDynamicContentRouting{
 const FeatureFlagDefinition FeatureFlags::kProcessingTimeWindows{
     "processingTimeWindows",
     "Allows support for the processing time windows feature",
-    mongo::Value(false)};
+    mongo::Value(true)};
 
 const FeatureFlagDefinition FeatureFlags::kOldStreamMeta{
     "oldStreamMeta",
     "If true, the old _stream_meta and _ts projection behavior enabled.",
-    mongo::Value(true)};
+    mongo::Value(false)};
 
 const FeatureFlagDefinition FeatureFlags::kEnableMetadataRefreshInterval{
     "enableMetadataRefreshInterval",
     "If true, enable librdakfka's metadata refresh interval.",
     mongo::Value(true)};
+
+const FeatureFlagDefinition FeatureFlags::kChangestreamPredicatePushdown{
+    "changestreamPredicatePushdown",
+    "If true, changestream predicate pushdown optimization rule is enabled.",
+    mongo::Value(false)};
+
+const FeatureFlagDefinition FeatureFlags::kEnableExternalFunctionOperator{
+    "enableExternalFunctionOperator",
+    "If true, the $externalFunction operator is enabled.",
+    mongo::Value(false),
+    {}};
+
+const FeatureFlagDefinition FeatureFlags::kEnableInMemoryConstantMessage{
+    "enableInMemoryConstantMessage",
+    "If true, the InMemorySourceOperator will just repeatedly send a 1MB message.",
+    mongo::Value(false),
+    {}};
+
+const FeatureFlagDefinition FeatureFlags::kExternalFunctionRateLimitPerSecond{
+    "externalFunctionRateLimitPerSecond",
+    "Specifies rate limit to be used by $externalFunction",
+    mongo::Value::createIntOrLong(10L * 1000)};
 
 mongo::Value defaultCidrDenyListValue() {
     if (mongo::getTestCommandsEnabled()) {
@@ -258,6 +287,27 @@ const FeatureFlagDefinition FeatureFlags::kEnableMongoCxxMonitoring{
     mongo::Value(false),
     {}};
 
+const FeatureFlagDefinition FeatureFlags::kEnableS3Emit{
+    "enableS3Emit",
+    "If true, the planner will allow users to create a $emit operator that writes to S3",
+    mongo::Value(false),
+    {}};
+
+const FeatureFlagDefinition FeatureFlags::kKafkaEmitMessageMaxBytes{
+    "kafkaEmitMessageMaxBytes",
+    "The maximum Kafka protocol request message size.",
+    mongo::Value(16 * 1024 * 1024)};  // 16MB to mirror BSON max document size
+
+const FeatureFlagDefinition FeatureFlags::kPerTargetStats{
+    "perTargetStats",
+    "If true, per collection and per topic stats will be collected.",
+    mongo::Value(false)};
+
+const FeatureFlagDefinition FeatureFlags::kKafkaEmitMessageTimeoutMillis{
+    "kafkaEmitMessageTimeoutMillis",
+    "Message delivery is considered to have failed if ack is not received from broker in time",
+    mongo::Value(30'000)};
+
 mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefinitions = {
     {FeatureFlags::kCheckpointDurationInMs.name, FeatureFlags::kCheckpointDurationInMs},
     {FeatureFlags::kKafkaMaxPrefetchByteSize.name, FeatureFlags::kKafkaMaxPrefetchByteSize},
@@ -272,7 +322,6 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kEnableSessionWindow.name, FeatureFlags::kEnableSessionWindow},
     {FeatureFlags::kSourceBufferMinPageSize.name, FeatureFlags::kSourceBufferMinPageSize},
     {FeatureFlags::kSourceBufferMaxPageSize.name, FeatureFlags::kSourceBufferMaxPageSize},
-    {FeatureFlags::kEnableHttpsOperator.name, FeatureFlags::kEnableHttpsOperator},
     {FeatureFlags::kHttpsRateLimitPerSecond.name, FeatureFlags::kHttpsRateLimitPerSecond},
     {FeatureFlags::kTestOnlyStringType.name, FeatureFlags::kTestOnlyStringType},
     {FeatureFlags::kMaxConcurrentCheckpoints.name, FeatureFlags::kMaxConcurrentCheckpoints},
@@ -280,7 +329,17 @@ mongo::stdx::unordered_map<std::string, FeatureFlagDefinition> featureFlagDefini
     {FeatureFlags::kOldStreamMeta.name, FeatureFlags::kOldStreamMeta},
     {FeatureFlags::kEnableMetadataRefreshInterval.name,
      FeatureFlags::kEnableMetadataRefreshInterval},
-    {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring}};
+    {FeatureFlags::kEnableMongoCxxMonitoring.name, FeatureFlags::kEnableMongoCxxMonitoring},
+    {FeatureFlags::kEnableS3Emit.name, FeatureFlags::kEnableS3Emit},
+    {FeatureFlags::kEnableExternalFunctionOperator.name,
+     FeatureFlags::kEnableExternalFunctionOperator},
+    {FeatureFlags::kExternalFunctionRateLimitPerSecond.name,
+     FeatureFlags::kExternalFunctionRateLimitPerSecond},
+    {FeatureFlags::kKafkaEmitMessageMaxBytes.name, FeatureFlags::kKafkaEmitMessageMaxBytes},
+    {FeatureFlags::kPerTargetStats.name, FeatureFlags::kPerTargetStats},
+    {FeatureFlags::kKafkaEmitMessageTimeoutMillis.name,
+     FeatureFlags::kKafkaEmitMessageTimeoutMillis},
+};
 
 bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Value& value) {
     auto definition = featureFlagDefinitions.find(name);
@@ -290,6 +349,8 @@ bool FeatureFlags::validateFeatureFlag(const std::string& name, const mongo::Val
             case mongo::BSONType::NumberLong:
                 return definition->second.defaultValue.getType() == mongo::BSONType::NumberInt ||
                     definition->second.defaultValue.getType() == mongo::BSONType::NumberLong;
+            case mongo::BSONType::NumberDouble:
+                return definition->second.defaultValue.getType() == mongo::BSONType::NumberDouble;
             default:
                 return value.getType() == definition->second.defaultValue.getType();
         }

@@ -41,8 +41,7 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/name_expression.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace expression_evaluation_test {
@@ -60,14 +59,12 @@ TEST(ExpressionConstantTest, Create) {
 
 TEST(ExpressionConstantTest, CreateFromBsonElement) {
     /** Create an ExpressionConstant from a BsonElement. */
-    BSONObj spec = BSON("IGNORED_FIELD_NAME"
-                        << "foo");
+    BSONObj spec = BSON("IGNORED_FIELD_NAME" << "foo");
     auto expCtx = ExpressionContextForTest{};
     BSONElement specElement = spec.firstElement();
     VariablesParseState vps = expCtx.variablesParseState;
     intrusive_ptr<Expression> expression = ExpressionConstant::parse(&expCtx, specElement, vps);
-    ASSERT_BSONOBJ_BINARY_EQ(BSON(""
-                                  << "foo"),
+    ASSERT_BSONOBJ_BINARY_EQ(BSON("" << "foo"),
                              toBson(expression->evaluate({}, &expCtx.variables)));
 }
 

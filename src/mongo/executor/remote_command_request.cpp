@@ -45,12 +45,10 @@
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/str.h"
-
-using namespace fmt::literals;
 
 namespace mongo {
 namespace executor {

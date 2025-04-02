@@ -39,7 +39,10 @@
 #include "mongo/db/pipeline/search/document_source_internal_search_mongot_remote.h"
 #include "mongo/db/pipeline/search/lite_parsed_search.h"
 #include "mongo/db/pipeline/skip_and_limit.h"
+#include "mongo/db/query/search/manage_search_index_request_gen.h"
 #include "mongo/db/query/search/mongot_cursor.h"
+#include "mongo/db/views/resolved_view.h"
+#include <boost/optional/optional.hpp>
 
 namespace mongo {
 
@@ -65,13 +68,15 @@ const char* DocumentSourceSearch::getSourceName() const {
 }
 
 Value DocumentSourceSearch::serialize(const SerializationOptions& opts) const {
-    if (!opts.verbosity || pExpCtx->getInRouter()) {
+    if (!opts.isSerializingForExplain() || pExpCtx->getInRouter()) {
         // When serializing $search, we only need to serialize the full mongot remote spec when
         // in a sharded scenario (i.e., when we have a metadata merge protocol verison), regardless
         // of whether we're on a router or a data-bearing node. Otherwise, we only need the mongot
-        // query.
         if (_spec.getMetadataMergeProtocolVersion().has_value()) {
             MutableDocument spec{Document(_spec.toBSON())};
+            if (_view) {
+                spec["view"] = Value(_view->toBSON());
+            }
             return Value(Document{{getSourceName(), spec.freezeToValue()}});
         }
     }
@@ -86,7 +91,6 @@ intrusive_ptr<DocumentSource> DocumentSourceSearch::createFromBson(
             str::stream() << "$search value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
     auto specObj = elem.embeddedObject();
-
     // If kMongotQueryFieldName is present, this is the case that we re-create the
     // DocumentSource from a serialized DocumentSourceSearch that was originally parsed on a
     // router.
@@ -98,10 +102,19 @@ intrusive_ptr<DocumentSource> DocumentSourceSearch::createFromBson(
         specObj.hasField(InternalSearchMongotRemoteSpec::kMongotQueryFieldName)
         ? InternalSearchMongotRemoteSpec::parse(IDLParserContext(kStageName), specObj)
         : InternalSearchMongotRemoteSpec(specObj.getOwned());
-    return make_intrusive<DocumentSourceSearch>(expCtx, std::move(spec));
+
+    auto view = search_helpers::getViewFromBSONObj(expCtx, specObj);
+
+    return make_intrusive<DocumentSourceSearch>(expCtx, std::move(spec), view);
 }
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::desugar() {
+    if (_view) {
+        // This function will throw if the view violates validation rules for supporting
+        // mongot-indexed views.
+        search_helpers::validateViewPipeline(*_view);
+    }
+
     auto executor =
         executor::getMongotTaskExecutor(pExpCtx->getOperationContext()->getServiceContext());
     std::list<intrusive_ptr<DocumentSource>> desugaredPipeline;
@@ -120,8 +133,15 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::desugar() {
     // DocumentSourceInternalSearchMongotRemote.
     spec.setMergingPipeline(boost::none);
 
+    // Extract the viewPipeline to share with DocumentSourceInternalSearchIdLookUp as it is required
+    // for mongot-indexed views.
+    boost::optional<std::vector<BSONObj>> viewPipeline;
+    if (_view) {
+        viewPipeline = boost::make_optional(_view->getEffectivePipeline());
+    }
+
     auto mongoTRemoteStage = make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-        std::move(spec), pExpCtx, executor);
+        std::move(spec), pExpCtx, executor, _view);
     desugaredPipeline.push_back(mongoTRemoteStage);
 
     // If 'returnStoredSource' is true, we don't want to do idLookup. Instead, promote the fields in
@@ -146,7 +166,10 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::desugar() {
         // idLookup must always be immediately after the $mongotRemote stage, which is always first
         // in the pipeline.
         auto idLookupStage = make_intrusive<DocumentSourceInternalSearchIdLookUp>(
-            pExpCtx, _spec.getLimit().value_or(0), buildExecShardFilterPolicy(shardFilterer));
+            pExpCtx,
+            _spec.getLimit().value_or(0),
+            buildExecShardFilterPolicy(shardFilterer),
+            viewPipeline);
         desugaredPipeline.insert(std::next(desugaredPipeline.begin()), idLookupStage);
         // In this case, connect the shared search state of these two stages of the pipeline
         // for batch size tuning.
@@ -168,7 +191,7 @@ StageConstraints DocumentSourceSearch::constraints(Pipeline::SplitState pipeStat
 }
 bool checkRequiresSearchSequenceToken(Pipeline::SourceContainer::iterator itr,
                                       Pipeline::SourceContainer* container) {
-    DepsTracker deps = DepsTracker::kNoMetadata;
+    DepsTracker deps;
     while (itr != container->end()) {
         auto nextStage = itr->get();
         nextStage->getDependencies(&deps);
@@ -214,7 +237,6 @@ Pipeline::SourceContainer::iterator DocumentSourceSearch::doOptimizeAt(
 }
 
 void DocumentSourceSearch::validateSortSpec(boost::optional<BSONObj> sortSpec) {
-    using namespace fmt::literals;
     if (sortSpec) {
         // Verify that sortSpec do not contain dots after '$searchSortValues', as we expect it
         // to only contain top-level fields (no nested objects).
@@ -224,7 +246,8 @@ void DocumentSourceSearch::validateSortSpec(boost::optional<BSONObj> sortSpec) {
                 key = key.substr(mongot_cursor::kSearchSortValuesFieldPrefix.size());
             }
             tassert(7320404,
-                    "planShardedSearch returned sortSpec with key containing a dot: {}"_format(key),
+                    fmt::format("planShardedSearch returned sortSpec with key containing a dot: {}",
+                                key),
                     key.find('.', 0) == std::string::npos);
         }
     }
@@ -264,6 +287,20 @@ boost::optional<DocumentSource::DistributedPlanLogic> DocumentSourceSearch::dist
     logic.canMovePast = canMovePastDuringSplit;
 
     return logic;
+}
+
+DepsTracker::State DocumentSourceSearch::getDependencies(DepsTracker* deps) const {
+    // This stage doesn't currently support tracking field dependencies since mongot is
+    // responsible for determining what fields to return. We do need to track metadata
+    // dependencies though, so downstream stages know they are allowed to access "searchScore"
+    // metadata.
+    // TODO SERVER-101100 Implement logic for dependency analysis.
+
+    deps->setMetadataAvailable(DocumentMetadataFields::kSearchScore);
+    if (hasScoreDetails()) {
+        deps->setMetadataAvailable(DocumentMetadataFields::kSearchScoreDetails);
+    }
+    return DepsTracker::State::NOT_SUPPORTED;
 }
 
 bool DocumentSourceSearch::canMovePastDuringSplit(const DocumentSource& ds) {

@@ -53,18 +53,12 @@ public:
         using InvocationBase::InvocationBase;
 
         void typedRun(OperationContext* opCtx) {
-            uassert(
-                ErrorCodes::CommandNotSupported,
-                "Resharding improvements is not enabled, cannot perform moveCollection command.",
-                resharding::gFeatureFlagReshardingImprovements.isEnabled(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
-
             const auto& nss = ns();
             auto moveCollectionRequest = cluster::unsplittable::makeMoveCollectionRequest(
                 request().getDbName(),
                 nss,
                 request().getToShard(),
-                ProvenanceEnum::kMoveCollection,
+                ReshardingProvenanceEnum::kMoveCollection,
                 request().getPerformVerification(),
                 request().getOplogBatchApplierTaskCount());
             generic_argument_util::setMajorityWriteConcern(moveCollectionRequest,
@@ -122,7 +116,7 @@ public:
 };
 
 MONGO_REGISTER_COMMAND(ClusterMoveCollectionCmd)
-    .requiresFeatureFlag(&resharding::gFeatureFlagMoveCollection)
+    .requiresFeatureFlag(resharding::gFeatureFlagMoveCollection)
     .forRouter();
 
 }  // namespace

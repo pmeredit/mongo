@@ -70,8 +70,7 @@
 #include "mongo/s/shard_version.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/stale_exception.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/uuid.h"
@@ -314,9 +313,6 @@ TEST_F(DispatchShardPipelineTest, WrappedDispatchDoesRetryOnStaleConfigError) {
 
     expectCollectionAndChunksAggregation(
         kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, {chunk1, chunk2});
-
-    expectCollectionAndIndexesAggregation(
-        kTestAggregateNss, epoch, timestamp, uuid, shardKeyPattern, boost::none, {});
 
     // That error should be retried, but only the one on that shard.
     onCommand([&](const executor::RemoteCommandRequest& request) {

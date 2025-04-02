@@ -30,7 +30,6 @@
 #include <absl/container/node_hash_map.h>
 #include <boost/optional.hpp>
 #include <functional>
-#include <mutex>
 #include <string>
 
 #include <boost/move/utility_core.hpp>
@@ -41,12 +40,10 @@
 #include "mongo/base/status_with.h"
 #include "mongo/bson/bson_field.h"
 #include "mongo/bson/bsonmisc.h"
-#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/client/dbclient_cursor.h"
 #include "mongo/db/client.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/keypattern.h"
-#include "mongo/db/op_observer/op_observer.h"
 #include "mongo/db/op_observer/op_observer_registry.h"
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/repl/member_state.h"
@@ -56,7 +53,10 @@
 #include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/wait_for_majority_service.h"
 #include "mongo/db/s/config/config_server_test_fixture.h"
+#include "mongo/db/s/resharding/resharding_coordinator.h"
+#include "mongo/db/s/resharding/resharding_coordinator_observer.h"
 #include "mongo/db/s/resharding/resharding_coordinator_service.h"
+#include "mongo/db/s/resharding/resharding_coordinator_service_external_state.h"
 #include "mongo/db/s/resharding/resharding_op_observer.h"
 #include "mongo/db/s/resharding/resharding_service_test_helpers.h"
 #include "mongo/db/s/resharding/resharding_util.h"
@@ -70,10 +70,7 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog/type_collection.h"
-#include "mongo/s/catalog/type_collection_gen.h"
 #include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/catalog/type_shard.h"
 #include "mongo/s/database_version.h"
@@ -81,8 +78,7 @@
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/fail_point.h"
@@ -103,6 +99,10 @@ using PauseDuringStateTransitions =
 class ExternalStateForTest : public ReshardingCoordinatorExternalState {
 public:
     struct Options {
+        std::map<ShardId, int64_t> documentsToCopy;
+        std::map<ShardId, int64_t> documentsDelta;
+        boost::optional<ErrorCodes::Error> getDocumentsToCopyErrorCode;
+        boost::optional<ErrorCodes::Error> getDocumentsDeltaErrorCode;
         boost::optional<ErrorCodes::Error> verifyClonedErrorCode;
         boost::optional<ErrorCodes::Error> verifyFinalErrorCode;
     };
@@ -131,7 +131,50 @@ public:
             {coordinatorDoc.getDonorShards(), coordinatorDoc.getRecipientShards(), initialChunks});
     }
 
+    std::map<ShardId, int64_t> getDocumentsToCopyFromDonors(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::TaskExecutor>& executor,
+        CancellationToken token,
+        const UUID& reshardingUUID,
+        const NamespaceString& nss,
+        const Timestamp& cloneTimestamp,
+        const std::map<ShardId, ShardVersion>& shardVersions) override {
+        if (_options.getDocumentsToCopyErrorCode) {
+            uasserted(*_options.getDocumentsToCopyErrorCode, "Failing call to getDocumentsToCopy.");
+        }
+
+        std::map<ShardId, int64_t> docsToCopy;
+        for (const auto& [shardId, _] : shardVersions) {
+            auto it = _options.documentsToCopy.find(shardId);
+            ASSERT(it != _options.documentsToCopy.end());
+            docsToCopy.emplace(shardId, it->second);
+        }
+        return docsToCopy;
+    }
+
+    std::map<ShardId, int64_t> getDocumentsDeltaFromDonors(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::TaskExecutor>& executor,
+        CancellationToken token,
+        const UUID& reshardingUUID,
+        const NamespaceString& nss,
+        const std::vector<ShardId>& shardIds) override {
+        if (_options.getDocumentsDeltaErrorCode) {
+            uasserted(*_options.getDocumentsDeltaErrorCode, "Failing call to getDocumentsDelta");
+        }
+
+        std::map<ShardId, int64_t> docsDelta;
+        for (const auto& shardId : shardIds) {
+            auto it = _options.documentsDelta.find(shardId);
+            ASSERT(it != _options.documentsDelta.end());
+            docsDelta.emplace(shardId, it->second);
+        }
+        return docsDelta;
+    }
+
     void verifyClonedCollection(OperationContext* opCtx,
+                                const std::shared_ptr<executor::TaskExecutor>& executor,
+                                CancellationToken token,
                                 const ReshardingCoordinatorDocument& coordinatorDoc) override {
         if (_options.verifyClonedErrorCode) {
             uasserted(*_options.verifyClonedErrorCode, "Failing cloned collection verification");
@@ -288,21 +331,17 @@ public:
         std::transform(reshardingOptions.donorShardIds.begin(),
                        reshardingOptions.donorShardIds.end(),
                        std::back_inserter(donorShards),
-                       [](auto shardId) {
-                           return DonorShardEntry{shardId, {}};
-                       });
+                       [](auto shardId) { return DonorShardEntry{shardId, {}}; });
 
         std::vector<RecipientShardEntry> recipientShards;
         std::transform(reshardingOptions.recipientShardIds.begin(),
                        reshardingOptions.recipientShardIds.end(),
                        std::back_inserter(recipientShards),
-                       [](auto shardId) {
-                           return RecipientShardEntry{shardId, {}};
-                       });
+                       [](auto shardId) { return RecipientShardEntry{shardId, {}}; });
 
         ReshardingCoordinatorDocument doc(state, donorShards, recipientShards);
         doc.setCommonReshardingMetadata(meta);
-        resharding::emplaceCloneTimestampIfExists(doc, cloneTimestamp);
+        resharding::emplaceCloneTimestampIfExists(doc, _cloneTimestamp);
         return doc;
     }
 
@@ -336,13 +375,14 @@ public:
         return CollectionType{std::move(doc)};
     }
 
-    void replaceCoordinatorDoc(OperationContext* opCtx,
-                               const ReshardingCoordinatorDocument& newDoc) {
+    void updateCoordinatorDoc(OperationContext* opCtx,
+                              const UUID& reshardingUUID,
+                              const BSONObj& updates) {
         DBDirectClient client(opCtx);
 
-        const BSONObj query(BSON(ReshardingCoordinatorDocument::kReshardingUUIDFieldName
-                                 << newDoc.getReshardingUUID()));
-        client.update(NamespaceString::kConfigReshardingOperationsNamespace, {}, newDoc.toBSON());
+        const BSONObj query(
+            BSON(ReshardingCoordinatorDocument::kReshardingUUIDFieldName << reshardingUUID));
+        client.update(NamespaceString::kConfigReshardingOperationsNamespace, query, updates);
     }
 
     void waitUntilCommittedCoordinatorDocReach(OperationContext* opCtx,
@@ -365,32 +405,34 @@ public:
         ASSERT_NE(coordDoc.getStartTime(), Date_t::min());
 
         auto donorShards = coordDoc.getDonorShards();
-        DonorShardContext donorCtx;
-        donorCtx.setState(DonorStateEnum::kDonatingInitialData);
-        donorCtx.setMinFetchTimestamp(cloneTimestamp);
-        donorCtx.setBytesToClone(totalApproxBytesToClone / donorShards.size());
-        donorCtx.setDocumentsToClone(totalApproxDocumentsToClone / donorShards.size());
-        for (auto& shard : donorShards) {
-            shard.setMutableState(donorCtx);
-        }
-        coordDoc.setDonorShards(donorShards);
 
-        replaceCoordinatorDoc(opCtx, coordDoc);
+        BSONObj updates = BSON(
+            "$set" << BSON(
+                ReshardingCoordinatorDocument::kDonorShardsFieldName + ".$[].mutableState.state"
+                << DonorState_serializer(DonorStateEnum::kDonatingInitialData).toString()
+                << ReshardingCoordinatorDocument::kDonorShardsFieldName +
+                    ".$[].mutableState.minFetchTimestamp"
+                << _cloneTimestamp
+                << ReshardingCoordinatorDocument::kDonorShardsFieldName +
+                    ".$[].mutableState.bytesToClone"
+                << static_cast<int64_t>(totalApproxBytesToClone / donorShards.size())
+                << ReshardingCoordinatorDocument::kDonorShardsFieldName +
+                    ".$[].mutableState.documentsToClone"
+                << static_cast<int64_t>(totalApproxDocumentsToClone / donorShards.size())));
+
+        updateCoordinatorDoc(opCtx, coordDoc.getReshardingUUID(), updates);
     }
 
     void makeRecipientsFinishedCloningWithAssert(OperationContext* opCtx) {
         auto coordDoc = getCoordinatorDoc(opCtx);
         ASSERT_NE(coordDoc.getMetrics()->getDocumentCopy()->getStart(), Date_t::min());
 
-        auto shards = coordDoc.getRecipientShards();
-        RecipientShardContext ctx;
-        ctx.setState(RecipientStateEnum::kApplying);
-        for (auto& shard : shards) {
-            shard.setMutableState(ctx);
-        }
-        coordDoc.setRecipientShards(shards);
+        BSONObj updates = BSON(
+            "$set" << BSON(
+                ReshardingCoordinatorDocument::kRecipientShardsFieldName + ".$[].mutableState.state"
+                << RecipientState_serializer(RecipientStateEnum::kApplying).toString()));
 
-        replaceCoordinatorDoc(opCtx, coordDoc);
+        updateCoordinatorDoc(opCtx, coordDoc.getReshardingUUID(), updates);
     }
 
     void makeRecipientsBeInStrictConsistencyWithAssert(OperationContext* opCtx) {
@@ -398,27 +440,21 @@ public:
         ASSERT_LTE(coordDoc.getMetrics()->getOplogApplication()->getStart(),
                    coordDoc.getMetrics()->getOplogApplication()->getStop());
 
-        auto shards = coordDoc.getRecipientShards();
-        RecipientShardContext ctx;
-        ctx.setState(RecipientStateEnum::kStrictConsistency);
-        for (auto& shard : shards) {
-            shard.setMutableState(ctx);
-        }
-        coordDoc.setRecipientShards(shards);
+        BSONObj updates = BSON(
+            "$set" << BSON(
+                ReshardingCoordinatorDocument::kRecipientShardsFieldName + ".$[].mutableState.state"
+                << RecipientState_serializer(RecipientStateEnum::kStrictConsistency).toString()));
 
-        replaceCoordinatorDoc(opCtx, coordDoc);
+        updateCoordinatorDoc(opCtx, coordDoc.getReshardingUUID(), updates);
     }
 
     void makeDonorsProceedToDone(OperationContext* opCtx, ReshardingCoordinatorDocument coordDoc) {
-        auto donorShards = coordDoc.getDonorShards();
-        DonorShardContext donorCtx;
-        donorCtx.setState(DonorStateEnum::kDone);
-        for (auto& shard : donorShards) {
-            shard.setMutableState(donorCtx);
-        }
-        coordDoc.setDonorShards(donorShards);
+        BSONObj updates = BSON(
+            "$set" << BSON(
+                ReshardingCoordinatorDocument::kDonorShardsFieldName + ".$[].mutableState.state"
+                << DonorState_serializer(DonorStateEnum::kDone).toString()));
 
-        replaceCoordinatorDoc(opCtx, coordDoc);
+        updateCoordinatorDoc(opCtx, coordDoc.getReshardingUUID(), updates);
     }
 
     void makeDonorsProceedToDone(OperationContext* opCtx) {
@@ -436,15 +472,12 @@ public:
 
     void makeRecipientsProceedToDone(OperationContext* opCtx,
                                      ReshardingCoordinatorDocument coordDoc) {
-        auto shards = coordDoc.getRecipientShards();
-        RecipientShardContext ctx;
-        ctx.setState(RecipientStateEnum::kDone);
-        for (auto& shard : shards) {
-            shard.setMutableState(ctx);
-        }
-        coordDoc.setRecipientShards(shards);
+        BSONObj updates = BSON(
+            "$set" << BSON(
+                ReshardingCoordinatorDocument::kRecipientShardsFieldName + ".$[].mutableState.state"
+                << RecipientState_serializer(RecipientStateEnum::kDone).toString()));
 
-        replaceCoordinatorDoc(opCtx, coordDoc);
+        updateCoordinatorDoc(opCtx, coordDoc.getReshardingUUID(), updates);
     }
 
     void makeRecipientsProceedToDone(OperationContext* opCtx) {
@@ -462,18 +495,20 @@ public:
     void makeRecipientsReturnErrorWithAssert(OperationContext* opCtx) {
         auto coordDoc = getCoordinatorDoc(opCtx);
         ASSERT_NE(coordDoc.getMetrics()->getDocumentCopy()->getStart(), Date_t::min());
-        auto shards = coordDoc.getRecipientShards();
-        RecipientShardContext ctx;
-        ctx.setState(RecipientStateEnum::kError);
+
         Status abortReasonStatus{ErrorCodes::SnapshotUnavailable, "test simulated error"};
-        resharding::emplaceTruncatedAbortReasonIfExists(ctx, abortReasonStatus);
+        BSONObjBuilder tmpBuilder;
+        abortReasonStatus.serialize(&tmpBuilder);
 
-        for (auto& shard : shards) {
-            shard.setMutableState(ctx);
-        }
+        BSONObj updates = BSON(
+            "$set" << BSON(
+                ReshardingCoordinatorDocument::kRecipientShardsFieldName + ".$[].mutableState.state"
+                << RecipientState_serializer(RecipientStateEnum::kError).toString()
+                << ReshardingCoordinatorDocument::kRecipientShardsFieldName +
+                    ".$[].mutableState.abortReason"
+                << tmpBuilder.obj()));
 
-        coordDoc.setRecipientShards(shards);
-        replaceCoordinatorDoc(opCtx, coordDoc);
+        updateCoordinatorDoc(opCtx, coordDoc.getReshardingUUID(), updates);
     }
 
     CollectionType makeOriginalCollectionCatalogEntry(
@@ -786,7 +821,49 @@ public:
         coordinator->getCompletionFuture().get(opCtx);
     }
 
-    void runReshardingToCompletionAssertToCopyMetrics(const ReshardingOptions& reshardingOptions) {
+    int64_t getDocumentsToCopyForDonor(const ShardId& shardId) {
+        auto it = documentsToCopy.find(shardId);
+        ASSERT(it != documentsToCopy.end());
+        return it->second;
+    }
+
+    int64_t getDocumentsDeltaForDonor(const ShardId& shardId) {
+        auto it = documentsDelta.find(shardId);
+        ASSERT(it != documentsDelta.end());
+        return it->second;
+    }
+
+    void checkDonorDocumentsToCopyMetrics(const ReshardingCoordinatorDocument& coordinatorDoc) {
+        if (coordinatorDoc.getState() < CoordinatorStateEnum::kApplying) {
+            return;
+        }
+        for (const auto& donorShard : coordinatorDoc.getDonorShards()) {
+            if (coordinatorDoc.getCommonReshardingMetadata().getPerformVerification()) {
+                ASSERT_EQUALS(*donorShard.getDocumentsToCopy(),
+                              getDocumentsToCopyForDonor(donorShard.getId()));
+            } else {
+                ASSERT_FALSE(donorShard.getDocumentsToCopy().has_value());
+            }
+        }
+    }
+
+    void checkDonorDocumentsFinalMetrics(const ReshardingCoordinatorDocument& coordinatorDoc) {
+        if (coordinatorDoc.getState() < CoordinatorStateEnum::kBlockingWrites) {
+            return;
+        }
+        for (auto& donorShardEntry : coordinatorDoc.getDonorShards()) {
+            if (coordinatorDoc.getCommonReshardingMetadata().getPerformVerification()) {
+                ASSERT_EQUALS(donorShardEntry.getDocumentsFinal(),
+                              *donorShardEntry.getDocumentsToCopy() +
+                                  getDocumentsDeltaForDonor(donorShardEntry.getId()));
+            } else {
+                ASSERT_FALSE(donorShardEntry.getDocumentsFinal().has_value());
+            }
+        }
+    }
+
+    void runReshardingToCompletionAssertApproxToCopyMetrics(
+        const ReshardingOptions& reshardingOptions) {
         long numRecipientsToClone = reshardingOptions.recipientShardIds.size() -
             reshardingOptions.recipientShardIdsNoInitialChunks.size();
         long expectedApproxBytesToClone = totalApproxBytesToClone / numRecipientsToClone;
@@ -852,14 +929,10 @@ public:
         ChunkRange(BSON("newShardKey" << 0), _newShardKey.getKeyPattern().globalMax()),
     };
 
-    Timestamp cloneTimestamp = Timestamp(Date_t::now());
+    Timestamp _cloneTimestamp = Timestamp(Date_t::now());
 
-    RAIIServerParameterControllerForTest serverParamController{
+    RAIIServerParameterControllerForTest _serverParamController{
         "reshardingMinimumOperationDurationMillis", 0};
-    FailPointEnableBlock _performVerificationAfterCloning{
-        "reshardingPerformValidationAfterCloning"};
-    FailPointEnableBlock _performVerificationAfterApplying{
-        "reshardingPerformValidationAfterApplying"};
 
     long long _term = 0;
 
@@ -873,12 +946,22 @@ protected:
 
     const long totalApproxBytesToClone = 10000;
     const long totalApproxDocumentsToClone = 100;
+
+    const std::map<ShardId, int64_t> documentsToCopy{
+        {shardId0, 65},
+        {shardId1, 55},
+    };
+
+    const std::map<ShardId, int64_t> documentsDelta{
+        {shardId0, 10},
+        {shardId1, 20},
+    };
 };
 
 class ReshardingCoordinatorServiceTest : public ReshardingCoordinatorServiceTestBase {
 public:
     ExternalStateForTest::Options getExternalStateOptions() const override {
-        return {};
+        return {.documentsToCopy = documentsToCopy, .documentsDelta = documentsDelta};
     }
 };
 
@@ -887,6 +970,8 @@ TEST_F(ReshardingCoordinatorServiceTest, ReshardingCoordinatorSuccessfullyTransi
 }
 
 TEST_F(ReshardingCoordinatorServiceTest, ReshardingCoordinatorTransitionsTokDoneWithInterrupt) {
+    auto reshardingOptions = makeDefaultReshardingOptions();
+    reshardingOptions.performVerification = true;
     const auto interrupt = [this] {
         killAllReshardingCoordinatorOps();
     };
@@ -894,7 +979,14 @@ TEST_F(ReshardingCoordinatorServiceTest, ReshardingCoordinatorTransitionsTokDone
         TransitionFunctionMap{{CoordinatorStateEnum::kPreparingToDonate, interrupt},
                               {CoordinatorStateEnum::kCloning, interrupt},
                               {CoordinatorStateEnum::kApplying, interrupt},
-                              {CoordinatorStateEnum::kBlockingWrites, interrupt}});
+                              {CoordinatorStateEnum::kBlockingWrites, interrupt}},
+        nullptr /* stateTransitionsGuard */,
+        {CoordinatorStateEnum::kPreparingToDonate,
+         CoordinatorStateEnum::kCloning,
+         CoordinatorStateEnum::kApplying,
+         CoordinatorStateEnum::kBlockingWrites,
+         CoordinatorStateEnum::kCommitting},
+        reshardingOptions);
 }
 
 TEST_F(ReshardingCoordinatorServiceTest,
@@ -1069,6 +1161,10 @@ TEST_F(ReshardingCoordinatorServiceTest, StepDownStepUpEachTransition) {
             coordinator = getCoordinator(opCtx, instanceId);
             coordinator->onOkayToEnterCritical();
         }
+
+        auto coordinatorDoc = getCoordinatorDoc(opCtx);
+        checkDonorDocumentsToCopyMetrics(coordinatorDoc);
+        checkDonorDocumentsFinalMetrics(coordinatorDoc);
 
         // 'done' state is never written to storage so don't wait for it.
         waitUntilCommittedCoordinatorDocReach(opCtx, state);
@@ -1358,7 +1454,7 @@ TEST_F(ReshardingCoordinatorServiceTest, ZeroNumRecipientShardsNoInitialChunks) 
     auto reshardingOptions =
         ReshardingOptions(donorShardIds, recipientShardIds, recipientShardIdsNoInitialChunks);
 
-    runReshardingToCompletionAssertToCopyMetrics(reshardingOptions);
+    runReshardingToCompletionAssertApproxToCopyMetrics(reshardingOptions);
 }
 
 TEST_F(ReshardingCoordinatorServiceTest, NonZeroNumRecipientShardsNoInitialChunks) {
@@ -1368,7 +1464,7 @@ TEST_F(ReshardingCoordinatorServiceTest, NonZeroNumRecipientShardsNoInitialChunk
     auto reshardingOptions =
         ReshardingOptions(donorShardIds, recipientShardIds, recipientShardIdsNoInitialChunks);
 
-    runReshardingToCompletionAssertToCopyMetrics(reshardingOptions);
+    runReshardingToCompletionAssertApproxToCopyMetrics(reshardingOptions);
 }
 
 TEST_F(ReshardingCoordinatorServiceTest, CoordinatorHonorsCriticalSectionTimeoutAfterStepUp) {
@@ -1423,13 +1519,15 @@ TEST_F(ReshardingCoordinatorServiceTest, CoordinatorHonorsCriticalSectionTimeout
 
     // Reset the critical section timeout to earlier time to guarantee timeout event.
     auto coordDoc = getCoordinatorDoc(opCtx);
-    auto coordDocNewTime = coordDoc;
     auto expiresAt = coordDoc.getCriticalSectionExpiresAt();
     auto now = Date_t::now();
     invariant(expiresAt && expiresAt.value() > now);
     LOGV2_DEBUG(9697800, 5, "Resetting critical section expiry time", "expiresAt"_attr = now);
-    coordDocNewTime.setCriticalSectionExpiresAt(now);
-    replaceCoordinatorDoc(opCtx, coordDocNewTime);
+
+    BSONObj updates = BSON(
+        "$set" << BSON(ReshardingCoordinatorDocument::kCriticalSectionExpiresAtFieldName << now));
+
+    updateCoordinatorDoc(opCtx, coordDoc.getReshardingUUID(), updates);
 
     stepUp(opCtx);
 
@@ -1448,13 +1546,13 @@ TEST_F(ReshardingCoordinatorServiceTest, CoordinatorHonorsCriticalSectionTimeout
                        ErrorCodes::ReshardingCriticalSectionTimeout);
 }
 
-TEST_F(ReshardingCoordinatorServiceTest, FeatureFlagReshardingNoRefreshSendsCloneCmd) {
+TEST_F(ReshardingCoordinatorServiceTest, FeatureFlagReshardingCloneNoRefreshSendsCloneCmd) {
     const std::vector<CoordinatorStateEnum> states = {
         CoordinatorStateEnum::kPreparingToDonate,
     };
 
     RAIIServerParameterControllerForTest noRefreshFeatureFlagController(
-        "featureFlagReshardingNoRefresh", true);
+        "featureFlagReshardingCloneNoRefresh", true);
     auto pauseBeforeTellingRecipientsToClone =
         globalFailPointRegistry().find("reshardingPauseBeforeTellingRecipientsToClone");
     auto timesEnteredFailPoint =
@@ -1487,7 +1585,9 @@ class ReshardingCoordinatorServiceFailCloningVerificationTest
     : public ReshardingCoordinatorServiceTestBase {
 public:
     ExternalStateForTest::Options getExternalStateOptions() const override {
-        return {.verifyClonedErrorCode = verifyClonedErrorCode};
+        return {.documentsToCopy = documentsToCopy,
+                .documentsDelta = documentsDelta,
+                .verifyClonedErrorCode = verifyClonedErrorCode};
     }
 
 protected:
@@ -1553,7 +1653,9 @@ class ReshardingCoordinatorServiceFailFinalVerificationTest
     : public ReshardingCoordinatorServiceTestBase {
 public:
     ExternalStateForTest::Options getExternalStateOptions() const override {
-        return {.verifyFinalErrorCode = verifyFinalErrorCode};
+        return {.documentsToCopy = documentsToCopy,
+                .documentsDelta = documentsDelta,
+                .verifyFinalErrorCode = verifyFinalErrorCode};
     }
 
 protected:
@@ -1626,6 +1728,239 @@ TEST_F(ReshardingCoordinatorServiceFailFinalVerificationTest, CommitIfNotPerform
                                CoordinatorStateEnum::kBlockingWrites,
                                CoordinatorStateEnum::kCommitting},
                               reshardingOptions);
+}
+
+TEST_F(ReshardingCoordinatorServiceTest,
+       CoordinatorDocDonorShardEntriesShouldHaveDocumentsToCopyAndFinal) {
+    auto reshardingOptions = makeDefaultReshardingOptions();
+    auto checkPersistentStates = [&] {
+        auto opCtx = operationContext();
+        auto coordinatorDoc = getCoordinatorDoc(opCtx);
+        checkDonorDocumentsToCopyMetrics(coordinatorDoc);
+        checkDonorDocumentsFinalMetrics(coordinatorDoc);
+    };
+
+    auto transitionFunctions =
+        TransitionFunctionMap{{CoordinatorStateEnum::kCloning, checkPersistentStates},
+                              {CoordinatorStateEnum::kApplying, checkPersistentStates},
+                              {CoordinatorStateEnum::kBlockingWrites, checkPersistentStates},
+                              {CoordinatorStateEnum::kCommitting, checkPersistentStates}};
+    auto states = {CoordinatorStateEnum::kPreparingToDonate,
+                   CoordinatorStateEnum::kCloning,
+                   CoordinatorStateEnum::kApplying,
+                   CoordinatorStateEnum::kBlockingWrites,
+                   CoordinatorStateEnum::kCommitting};
+    runReshardingToCompletion(
+        transitionFunctions, nullptr /* stateTransitionsGuard */, states, reshardingOptions);
+}
+
+class ReshardingCoordinatorServiceFailGetDocumentsToCopy
+    : public ReshardingCoordinatorServiceTestBase {
+public:
+    ExternalStateForTest::Options getExternalStateOptions() const override {
+        return {.documentsToCopy = documentsToCopy,
+                .documentsDelta = documentsDelta,
+                .getDocumentsToCopyErrorCode = getDocumentsToCopyErrorCode};
+    }
+
+protected:
+    const ErrorCodes::Error getDocumentsToCopyErrorCode{9858108};
+};
+
+TEST_F(ReshardingCoordinatorServiceFailGetDocumentsToCopy, AbortIfPerformVerification) {
+    const std::vector<CoordinatorStateEnum> states = {CoordinatorStateEnum::kPreparingToDonate,
+                                                      CoordinatorStateEnum::kCloning,
+                                                      CoordinatorStateEnum::kAborting};
+
+    PauseDuringStateTransitions stateTransitionsGuard{controller(), states};
+
+    auto opCtx = operationContext();
+
+    auto reshardingOptions = makeDefaultReshardingOptions();
+    auto coordinator = initializeAndGetCoordinator(_reshardingUUID,
+                                                   _originalNss,
+                                                   _tempNss,
+                                                   _newShardKey,
+                                                   _originalUUID,
+                                                   _oldShardKey,
+                                                   reshardingOptions);
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kPreparingToDonate);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kPreparingToDonate);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kPreparingToDonate);
+
+    makeDonorsReadyToDonateWithAssert(opCtx);
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kCloning);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kCloning);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kCloning);
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kAborting);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kAborting);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kAborting);
+
+    makeRecipientsProceedToDone(opCtx);
+    makeDonorsProceedToDone(opCtx);
+
+    ASSERT_THROWS_CODE(
+        coordinator->getCompletionFuture().get(opCtx), DBException, getDocumentsToCopyErrorCode);
+}
+
+TEST_F(
+    ReshardingCoordinatorServiceFailGetDocumentsToCopy,
+    CoordinatorDocDonorShardEntriesShouldNotHaveDocumentsToCopyAndFinalIfNotPerformVerification) {
+    auto reshardingOptions = makeDefaultReshardingOptions();
+    reshardingOptions.performVerification = false;
+    auto checkPersistentStates = [&] {
+        auto opCtx = operationContext();
+        auto coordinatorDoc = getCoordinatorDoc(opCtx);
+        checkDonorDocumentsToCopyMetrics(coordinatorDoc);
+        checkDonorDocumentsFinalMetrics(coordinatorDoc);
+    };
+
+    auto transitionFunctions =
+        TransitionFunctionMap{{CoordinatorStateEnum::kCloning, checkPersistentStates},
+                              {CoordinatorStateEnum::kApplying, checkPersistentStates},
+                              {CoordinatorStateEnum::kBlockingWrites, checkPersistentStates},
+                              {CoordinatorStateEnum::kCommitting, checkPersistentStates}};
+    auto states = {CoordinatorStateEnum::kPreparingToDonate,
+                   CoordinatorStateEnum::kCloning,
+                   CoordinatorStateEnum::kApplying,
+                   CoordinatorStateEnum::kBlockingWrites,
+                   CoordinatorStateEnum::kCommitting};
+    runReshardingToCompletion(
+        transitionFunctions, nullptr /* stateTransitionsGuard */, states, reshardingOptions);
+}
+
+class ReshardingCoordinatorServiceReturnZeroFromGetDocumentsToCopy
+    : public ReshardingCoordinatorServiceTestBase {
+public:
+    ExternalStateForTest::Options getExternalStateOptions() const override {
+        return {.documentsToCopy = documentsToCopy, .documentsDelta = documentsDelta};
+    }
+
+protected:
+    const std::map<ShardId, int64_t> documentsToCopy = {
+        {shardId0, 0},
+        {shardId1, 0},
+    };
+};
+
+TEST_F(ReshardingCoordinatorServiceReturnZeroFromGetDocumentsToCopy,
+       CoordinatorDocDonorShardEntriesShouldHaveDocumentsToCopyEvenWithZeroDocuments) {
+    auto reshardingOptions = makeDefaultReshardingOptions();
+    auto checkPersistentStates = [&] {
+        auto opCtx = operationContext();
+        auto coordinatorDoc = getCoordinatorDoc(opCtx);
+        if (coordinatorDoc.getState() >= CoordinatorStateEnum::kApplying) {
+            for (const auto& donorShardEntry : coordinatorDoc.getDonorShards()) {
+                ASSERT_TRUE(donorShardEntry.getDocumentsToCopy().has_value());
+                ASSERT_EQUALS(*donorShardEntry.getDocumentsToCopy(), (int64_t)0);
+            }
+        }
+    };
+
+    auto transitionFunctions =
+        TransitionFunctionMap{{CoordinatorStateEnum::kCloning, checkPersistentStates},
+                              {CoordinatorStateEnum::kApplying, checkPersistentStates},
+                              {CoordinatorStateEnum::kBlockingWrites, checkPersistentStates},
+                              {CoordinatorStateEnum::kCommitting, checkPersistentStates}};
+    auto states = {CoordinatorStateEnum::kPreparingToDonate,
+                   CoordinatorStateEnum::kCloning,
+                   CoordinatorStateEnum::kApplying,
+                   CoordinatorStateEnum::kBlockingWrites,
+                   CoordinatorStateEnum::kCommitting};
+    runReshardingToCompletion(
+        transitionFunctions, nullptr /* stateTransitionsGuard */, states, reshardingOptions);
+}
+
+class ReshardingCoordinatorServiceFailGetDocumentsDelta
+    : public ReshardingCoordinatorServiceTestBase {
+public:
+    ExternalStateForTest::Options getExternalStateOptions() const override {
+        return {.documentsToCopy = documentsToCopy,
+                .documentsDelta = documentsDelta,
+                .getDocumentsDeltaErrorCode = getDocumentsDeltaErrorCode};
+    }
+
+protected:
+    const ErrorCodes::Error getDocumentsDeltaErrorCode{9858608};
+};
+
+TEST_F(ReshardingCoordinatorServiceFailGetDocumentsDelta, AbortIfPerformVerification) {
+    const std::vector<CoordinatorStateEnum> states = {CoordinatorStateEnum::kPreparingToDonate,
+                                                      CoordinatorStateEnum::kCloning,
+                                                      CoordinatorStateEnum::kBlockingWrites,
+                                                      CoordinatorStateEnum::kAborting};
+
+    PauseDuringStateTransitions stateTransitionsGuard{controller(), states};
+
+    auto opCtx = operationContext();
+
+    auto reshardingOptions = makeDefaultReshardingOptions();
+    auto coordinator = initializeAndGetCoordinator(_reshardingUUID,
+                                                   _originalNss,
+                                                   _tempNss,
+                                                   _newShardKey,
+                                                   _originalUUID,
+                                                   _oldShardKey,
+                                                   reshardingOptions);
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kPreparingToDonate);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kPreparingToDonate);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kPreparingToDonate);
+
+    makeDonorsReadyToDonateWithAssert(opCtx);
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kCloning);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kCloning);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kCloning);
+
+    makeRecipientsFinishedCloningWithAssert(opCtx);
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kApplying);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kApplying);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kApplying);
+
+    coordinator->onOkayToEnterCritical();
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kBlockingWrites);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kBlockingWrites);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kBlockingWrites);
+
+    stateTransitionsGuard.wait(CoordinatorStateEnum::kAborting);
+    stateTransitionsGuard.unset(CoordinatorStateEnum::kAborting);
+    waitUntilCommittedCoordinatorDocReach(opCtx, CoordinatorStateEnum::kAborting);
+
+    makeRecipientsProceedToDone(opCtx);
+    makeDonorsProceedToDone(opCtx);
+
+    ASSERT_THROWS_CODE(
+        coordinator->getCompletionFuture().get(opCtx), DBException, getDocumentsDeltaErrorCode);
+}
+
+TEST_F(ReshardingCoordinatorServiceFailGetDocumentsDelta,
+       CoordinatorDocDonorShardEntriesShouldNotHaveDocumentsFinalIfNotPerformVerification) {
+    auto reshardingOptions = makeDefaultReshardingOptions();
+    reshardingOptions.performVerification = false;
+    auto checkPersistentStates = [&] {
+        auto opCtx = operationContext();
+        auto coordinatorDoc = getCoordinatorDoc(opCtx);
+        checkDonorDocumentsFinalMetrics(coordinatorDoc);
+    };
+
+    auto transitionFunctions =
+        TransitionFunctionMap{{CoordinatorStateEnum::kCloning, checkPersistentStates},
+                              {CoordinatorStateEnum::kApplying, checkPersistentStates},
+                              {CoordinatorStateEnum::kBlockingWrites, checkPersistentStates},
+                              {CoordinatorStateEnum::kCommitting, checkPersistentStates}};
+    auto states = {CoordinatorStateEnum::kPreparingToDonate,
+                   CoordinatorStateEnum::kCloning,
+                   CoordinatorStateEnum::kApplying,
+                   CoordinatorStateEnum::kBlockingWrites,
+                   CoordinatorStateEnum::kCommitting};
+    runReshardingToCompletion(
+        transitionFunctions, nullptr /* stateTransitionsGuard */, states, reshardingOptions);
 }
 
 }  // namespace

@@ -15,6 +15,7 @@
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/service_context.h"
+#include "mongo/db/shard_role.h"
 #include "mongo/db/storage/control/journal_flusher.h"
 #include "mongo/db/storage/durable_catalog.h"
 #include "mongo/db/storage/encryption_hooks.h"
@@ -23,6 +24,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
+#include "mongo/util/testing_proctor.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
@@ -30,7 +32,6 @@
 namespace mongo {
 
 MONGO_FAIL_POINT_DEFINE(backupCursorErrorAfterOpen);
-MONGO_FAIL_POINT_DEFINE(backupCursorHangAfterOpen);
 MONGO_FAIL_POINT_DEFINE(backupCursorForceCheckpointConflict);
 
 namespace {
@@ -120,23 +121,27 @@ BackupCursorState BackupCursorService::openBackupCursor(
             "The existing backup cursor must be closed before $backupCursor can succeed.",
             _state.load() != kBackupCursorOpened);
 
-    // Open a checkpoint cursor on the catalog.
-    std::unique_ptr<SeekableRecordCursor> catalogCursor;
-    ReadSourceScope scope(opCtx, RecoveryUnit::ReadSource::kCheckpoint);
-    try {
-        catalogCursor =
-            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
-    } catch (const ExceptionFor<ErrorCodes::CursorNotFound>&) {
-        // The catalog was not part of a checkpoint yet, do nothing.
-        LOGV2_DEBUG(9538602, 2, "Cannot open a checkpoint cursor on the catalog");
-    }
-
     auto replCoord = repl::ReplicationCoordinator::get(opCtx);
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    boost::optional<Timestamp> checkpointTimestamp;
-    if (replCoord->getSettings().isReplSet()) {
-        checkpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
-    };
+
+    // Pin the oldest timestamp so that it doesn't advance beyond the checkpoint we are about to
+    // take.
+    Timestamp oldestTs = storageEngine->getOldestTimestamp();
+    const std::string kOpenBackupServiceName = "openBackupCursor";
+    uassertStatusOK(storageEngine->pinOldestTimestamp(*shard_role_details::getRecoveryUnit(opCtx),
+                                                      kOpenBackupServiceName,
+                                                      oldestTs,
+                                                      /*roundUpIfTooOld= */ true));
+
+    ON_BLOCK_EXIT([&] { storageEngine->unpinOldestTimestamp(kOpenBackupServiceName); });
+
+    uassert(8120801,
+            "Using test-only option to opt out of checkpoint.",
+            options.takeCheckpoint || TestingProctor::instance().isEnabled());
+
+    if (options.takeCheckpoint) {
+        storageEngine->checkpoint();
+    }
 
     std::unique_ptr<StorageEngine::StreamingCursor> streamingCursor;
     if (options.disableIncrementalBackup) {
@@ -144,6 +149,19 @@ BackupCursorState BackupCursorService::openBackupCursor(
     } else {
         streamingCursor = uassertStatusOK(storageEngine->beginNonBlockingBackup(options));
     }
+
+    // Open a cursor at the checkpoint timestamp of the backup on the catalog.
+    std::unique_ptr<SeekableRecordCursor> catalogCursor;
+    boost::optional<ReadSourceScope> scope;
+    boost::optional<Timestamp> checkpointTimestamp;
+
+    if (checkpointTimestamp = storageEngine->getBackupCheckpointTimestamp();
+        !checkpointTimestamp->isNull()) {
+        scope.emplace(opCtx, RecoveryUnit::ReadSource::kProvided, checkpointTimestamp);
+    }
+
+    catalogCursor =
+        DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, /*forward=*/true);
 
     _state.store(kBackupCursorOpened);
     _activeBackupId = UUID::gen();
@@ -165,29 +183,6 @@ BackupCursorState BackupCursorService::openBackupCursor(
     uassert(50919,
             "Failpoint hit after opening the backup cursor.",
             !backupCursorErrorAfterOpen.shouldFail());
-
-    backupCursorHangAfterOpen.pauseWhileSet(opCtx);
-
-    // Ensure the checkpoint id hasn't changed. If it has changed, fail the operation and have the
-    // user retry. A subtle case to catch is the first stable checkpoint coming out of initial sync
-    // racing with opening the backup cursor.
-    if (!options.disableIncrementalBackup && catalogCursor) {
-        // Open a new checkpoint cursor, with the previous ReadSourceScope still effective.
-        auto checkpointId =
-            DurableCatalog::get(opCtx)->getRecordStore()->getCursor(opCtx, true)->getCheckpointId();
-        auto checkpointTimestampAfter = storageEngine->getLastStableRecoveryTimestamp();
-        if (catalogCursor->getCheckpointId() != checkpointId ||
-            checkpointTimestamp != checkpointTimestampAfter) {
-            LOGV2(8412100,
-                  "A checkpoint took place while opening a backup cursor.",
-                  "checkpointIdBefore"_attr = catalogCursor->getCheckpointId(),
-                  "checkpointIdAfter"_attr = checkpointId,
-                  "checkpointTimestampBefore"_attr = checkpointTimestamp,
-                  "checkpointTimestampAfter"_attr = checkpointTimestampAfter);
-            uasserted(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
-                      "A checkpoint took place while opening a backup cursor.");
-        }
-    }
 
     // If the oplog exists, capture the first oplog entry after opening the backup cursor.
     repl::OpTime oplogStart;
@@ -228,10 +223,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
             boost::system::error_code errorCode;
             const std::uint64_t fileSize = boost::filesystem::file_size(filePath, errorCode);
 
-            using namespace fmt::literals;
             uassert(31318,
-                    "Failed to get a file's size. Filename: {} Error: {}"_format(
-                        filePath, errorCode.message()),
+                    fmt::format("Failed to get a file's size. Filename: {} Error: {}",
+                                filePath,
+                                errorCode.message()),
                     !errorCode);
 
             // The database instance backing the encryption at rest data simply returns filenames
@@ -259,6 +254,8 @@ BackupCursorState BackupCursorService::openBackupCursor(
     }
 
     // Notably during initial sync, a node may have an oplog without a stable checkpoint.
+    // Additionally, since standalone nodes don't use timestamps, we will not have a checkpoint
+    // timestamp.
     if (checkpointTimestamp) {
         builder << "checkpointTimestamp" << checkpointTimestamp.value();
     }

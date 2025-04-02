@@ -116,9 +116,8 @@
 #include "mongo/s/database_version.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/duration.h"
@@ -263,7 +262,9 @@ public:
         txnParticipant.unstashTransactionResources(opCtx, "prepareTransaction");
 
         // The transaction machinery cannot store an empty locker.
-        { Lock::GlobalLock globalLock(opCtx, MODE_IX); }
+        {
+            Lock::GlobalLock globalLock(opCtx, MODE_IX);
+        }
         auto opTime = [opCtx] {
             TransactionParticipant::SideTransactionBlock sideTxn{opCtx};
 
@@ -402,9 +403,7 @@ private:
                                                true /* allowMigrations */,
                                                chunks);
 
-        return ChunkManager(_myDonorId,
-                            DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                            makeStandaloneRoutingTableHistory(std::move(rt)),
+        return ChunkManager(makeStandaloneRoutingTableHistory(std::move(rt)),
                             boost::none /* clusterTime */);
     }
 

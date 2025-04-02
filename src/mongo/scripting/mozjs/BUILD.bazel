@@ -28,12 +28,22 @@ render_template(
     name = "mongohelpers_js_cpp",
     srcs = [
         "mongohelpers.js",
-        "//site_scons/site_tools:jstoh.py",
+        "//buildscripts:jstoh.py",
     ],
     cmd = [
-        "$(location //site_scons/site_tools:jstoh.py)",
+        "$(location //buildscripts:jstoh.py)",
         "$(location mongohelpers_js.cpp)",
         "$(location mongohelpers.js)",
     ],
     output = "mongohelpers_js.cpp",
+)
+
+load("//bazel:mongo_js_rules.bzl", "mongo_js_library")
+
+mongo_js_library(
+    name = "all",
+    srcs = glob([
+        "*.js",
+    ]),
+    visibility = ["//visibility:public"],
 )

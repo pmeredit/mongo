@@ -29,18 +29,15 @@
 
 #include "mongo/db/query/query_stats/query_stats.h"
 
-#include "mongo/db/query/query_stats/optimizer_metrics_stats_entry.h"
 #include <absl/container/node_hash_map.h>
 #include <absl/hash/hash.h>
 #include <boost/move/utility_core.hpp>
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
 #include <climits>
-#include <list>
 #include <memory>
 
 #include "mongo/base/status_with.h"
-#include "mongo/crypto/hash_block.h"
 #include "mongo/db/catalog/util/partitioned.h"
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/curop.h"
@@ -49,15 +46,12 @@
 #include "mongo/db/query/lru_key_value.h"
 #include "mongo/db/query/query_feature_flags_gen.h"
 #include "mongo/db/query/query_knobs_gen.h"
-#include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/db/query/query_stats/query_stats_failed_to_record_info.h"
 #include "mongo/db/query/query_stats/query_stats_on_parameter_change.h"
 #include "mongo/db/query/util/memory_util.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/buildinfo.h"
@@ -251,6 +245,7 @@ void updateStatistics(const QueryStatsStore::Partition& proofOfLock,
     toUpdate.bytesRead.aggregate(snapshot.bytesRead);
     toUpdate.readTimeMicros.aggregate(snapshot.readTimeMicros);
     toUpdate.workingTimeMillis.aggregate(snapshot.workingTimeMillis);
+    toUpdate.cpuNanos.aggregate(snapshot.cpuNanos);
     toUpdate.hasSortStage.aggregate(snapshot.hasSortStage);
     toUpdate.usedDisk.aggregate(snapshot.usedDisk);
     toUpdate.fromMultiPlanner.aggregate(snapshot.fromMultiPlanner);
@@ -296,7 +291,7 @@ void insertQueryStatsEntry(
 
 void registerRequest(OperationContext* opCtx,
                      const NamespaceString& collection,
-                     std::function<std::unique_ptr<Key>(void)> makeKey,
+                     const std::function<std::unique_ptr<Key>(void)>& makeKey,
                      bool willNeverExhaust) {
     if (!isQueryStatsEnabled(opCtx->getServiceContext())) {
         LOGV2_DEBUG(8473000,
@@ -350,6 +345,7 @@ void registerRequest(OperationContext* opCtx,
     // original query from queryStats metrics collection and let it execute normally.
     try {
         opDebug.queryStatsInfo.key = makeKey();
+        opDebug.queryStatsInfo.keyHash = absl::HashOf(*opDebug.queryStatsInfo.key);
     } catch (const DBException& ex) {
         queryStatsStoreWriteErrorsMetric.increment();
 
@@ -384,14 +380,7 @@ void registerRequest(OperationContext* opCtx,
                                  cmdObj, status, getBuildInfoVersionOnly().getVersion()),
                              "Failed to create query stats store key"});
         }
-
-        return;
     }
-    opDebug.queryStatsInfo.keyHash = absl::HashOf(*opDebug.queryStatsInfo.key);
-    // TODO look up this query shape (sub-component of query stats store key) in some new shared
-    // data structure that the query settings component could share. See if the query SHAPE hash has
-    // been computed before. If so, record the query shape hash on the opDebug. If not, compute the
-    // hash and store it there so we can avoid re-doing this for each request.
 }
 
 bool shouldRequestRemoteMetrics(const OpDebug& opDebug) {
@@ -427,6 +416,7 @@ QueryStatsSnapshot captureMetrics(const OperationContext* opCtx,
         static_cast<uint64_t>(metrics.bytesRead.value_or(0)),
         metrics.readingTime.value_or(Microseconds(0)).count(),
         metrics.clusterWorkingTime.value_or(Milliseconds(0)).count(),
+        nanosecondsToInt64(metrics.cpuNanos),
         metrics.hasSortStage,
         metrics.usedDisk,
         metrics.fromMultiPlanner,

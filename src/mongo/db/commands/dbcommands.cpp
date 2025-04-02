@@ -99,8 +99,6 @@
 #include "mongo/executor/async_request_executor.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/reply_builder_interface.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
@@ -625,6 +623,7 @@ public:
                     ErrorCodes::InvalidOptions,
                     "Validation action 'errorAndLog' is not supported with current FCV",
                     gFeatureFlagErrorAndLogValidationAction.isEnabledUseLastLTSFCVWhenUninitialized(
+                        VersionContext::getDecoration(opCtx),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
             }
 
@@ -690,8 +689,10 @@ public:
             const auto& cmd = request();
             const auto& dbname = cmd.getDbName();
 
-            uassert(
-                ErrorCodes::BadValue, "Scale factor must be greater than zero", cmd.getScale() > 0);
+            // Scale factors valid range (0...2^50] (up to a petabyte)
+            uassert(ErrorCodes::BadValue,
+                    "Scale factor must be greater than zero and less than or equal to 2^50",
+                    cmd.getScale() > 0 && cmd.getScale() <= (1ll << 50));
 
             uassert(ErrorCodes::InvalidNamespace,
                     str::stream() << "Invalid db name: " << dbname.toStringForErrorMsg(),

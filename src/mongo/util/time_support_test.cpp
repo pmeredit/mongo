@@ -41,8 +41,7 @@
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/base/initializer.h"
 #include "mongo/base/status.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
 #include "mongo/util/str.h"
@@ -53,8 +52,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 const bool isTimeTSmall = std::numeric_limits<time_t>::digits == 31;
 
@@ -452,7 +449,7 @@ TEST(TimeParsing, LeapYears) {
     for (int y = 1972; y <= maxYear; y += 4) {
         if (!isLeap(y))
             continue;
-        std::string in = "{:04}-02-29T00:00:00.000Z"_format(y);
+        std::string in = fmt::format("{:04}-02-29T00:00:00.000Z", y);
         StatusWith<Date_t> d = dateFromISOString(in);
         ASSERT_OK(d.getStatus()) << y;
         ASSERT_EQUALS(d.getValue(), mkDate({y, 2, 29})) << y;

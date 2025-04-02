@@ -192,7 +192,7 @@ tasks:
             --runAllFeatureFlagTests
 
   - <<: *antithesis_task_template
-    name: antithesis_config_fuzzer_stress_concurrency_sharded_replication
+    name: antithesis_config_fuzzer_concurrency_sharded_replication
     tags:
       [
         "assigned_to_jira_team_devprod_correctness",
@@ -206,7 +206,7 @@ tasks:
         vars:
           suite: concurrency_sharded_replication
           resmoke_args: >-
-            --fuzzMongodConfigs=stress
+            --fuzzMongodConfigs=normal
             --fuzzMongosConfigs=normal
             --fuzzRuntimeParams
             --excludeWithAnyTags=does_not_support_config_fuzzer
@@ -391,28 +391,6 @@ tasks:
           args:
             - "./src/evergreen/todos_check.sh"
 
-  - name: check_for_legacy_command_types
-    tags:
-      [
-        "assigned_to_jira_team_devprod_correctness",
-        "development_critical_single_variant",
-      ]
-    exec_timeout_secs: 600 # 10 minute timeout
-    commands:
-      - command: manifest.load
-      - func: "git get project and add git tag"
-      - func: "f_expansions_write"
-      - func: "kill processes"
-      - func: "cleanup environment"
-      - func: "set up venv"
-      - func: "configure evergreen api credentials"
-      - command: subprocess.exec
-        type: test
-        params:
-          binary: bash
-          args:
-            - "./src/evergreen/check_legacy_command_types.sh"
-
   - name: generate_buildid_to_debug_symbols_mapping
     tags:
       [
@@ -450,22 +428,6 @@ tasks:
       - func: "set up venv"
       - func: "upload pip requirements"
       - func: "run idl tests"
-
-  - name: iwyu_self_test
-    tags:
-      [
-        "assigned_to_jira_team_devprod_build",
-        "development_critical_single_variant",
-      ]
-    commands:
-      - func: "do scons setup"
-      - func: "f_expansions_write"
-      - command: subprocess.exec
-        params:
-          binary: bash
-          args:
-            - "src/evergreen/run_python_script.sh"
-            - "buildscripts/iwyu/test/run_tests.py"
 
   - <<: *run_jepsen_template
     name: jepsen_config_fuzzer_list-append
@@ -623,7 +585,7 @@ tasks:
           jepsen_test_name: set
 
   # TODO(SERVER-97804): rename if display_name appears on the evergreen UI
-  - name: bazel_run_//:format
+  - name: bazel_run_format
     tags:
       [
         "assigned_to_jira_team_devprod_build",
@@ -648,8 +610,6 @@ tasks:
       - func: "set up venv"
       - func: "upload pip requirements"
       - func: "get engflow creds"
-      # TODO SERVER-81038: Remove "fetch bazel" once bazelisk is self-hosted.
-      - func: "fetch bazel"
       - func: "bazel run"
         vars:
           target: >-
@@ -681,8 +641,6 @@ tasks:
       - func: "set up venv"
       - func: "upload pip requirements"
       - func: "get engflow creds"
-      # TODO SERVER-81038: Remove "fetch bazel" once bazelisk is self-hosted.
-      - func: "fetch bazel"
       - func: "bazel run"
         vars:
           target: >-
@@ -714,8 +672,6 @@ tasks:
       - func: "set up venv"
       - func: "upload pip requirements"
       - func: "get engflow creds"
-      # TODO SERVER-81038: Remove "fetch bazel" once bazelisk is self-hosted.
-      - func: "fetch bazel"
       - func: "bazel run"
         vars:
           target: >-
@@ -811,13 +767,16 @@ tasks:
             - "buildscripts/errorcodes.py"
             - "--quiet"
 
-  - name: lint_eslint
+  - name: bazel_run_lint
     tags:
       [
         "assigned_to_jira_team_devprod_build",
         "development_critical_single_variant",
         "lint",
       ]
+    depends_on:
+      - name: version_expansions_gen
+        variant: generate-tasks-for-version
     commands:
       - command: timeout.update
         params:
@@ -831,18 +790,11 @@ tasks:
       - func: "cleanup environment"
       - func: "set up venv"
       - func: "upload pip requirements"
-      - command: subprocess.exec
-        type: test
-        params:
-          binary: bash
-          args:
-            - "./src/evergreen/run_python_script_with_report.sh"
-            - "lint-eslint"
-            - "buildscripts/eslint.py"
-            - "--dirmode"
-            - "lint"
-            - "jstests/"
-            - "src/mongo"
+      - func: "get engflow creds"
+      - func: "bazel run"
+        vars:
+          target: >-
+            lint
 
   # Check that the mutational fuzzer can parse all JS filess.
   - name: lint_fuzzer_sanity_all
@@ -1128,8 +1080,6 @@ tasks:
       - func: "set up venv"
       - func: "upload pip requirements"
       - func: "get engflow creds"
-      # TODO SERVER-81038: Remove "fetch bazel" once bazelisk is self-hosted.
-      - func: "fetch bazel"
       - func: "bazel coverage"
         vars:
           # Running something like "bazel test //src/..." has to do a lot of preprocessing on *all*
@@ -1550,6 +1500,7 @@ tasks:
           docker_password: ${dockerhub_password}
 
   - name: validate_commit_message
+    allowed_requesters: ["github_merge_queue", "github_pr"]
     tags:
       [
         "assigned_to_jira_team_devprod_correctness",
@@ -1566,10 +1517,20 @@ tasks:
       - func: "upload pip requirements"
       - func: "configure evergreen api credentials"
       - func: "f_expansions_write"
+      - command: github.generate_token
+        params:
+          owner: ${github_org}
+          repo: ${github_repo}
+          expansion_name: github_token
+          permissions:
+            pull_requests: read
+            metadata: read
       - command: subprocess.exec
         type: test
         params:
           binary: bash
+          include_expansions_in_env:
+            - github_token
           args:
             - "./src/evergreen/run_python_script_with_report.sh"
             - "validate_commit_message"
@@ -1579,8 +1540,40 @@ tasks:
             JIRA_AUTH_ACCESS_TOKEN_SECRET: ${jira_auth_access_token_secret}
             JIRA_AUTH_CONSUMER_KEY: ${jira_auth_consumer_key}
             JIRA_AUTH_KEY_CERT: ${jira_auth_key_cert}
-            IS_COMMIT_QUEUE: ${is_commit_queue}
+            REQUESTER: ${requester}
             BRANCH_NAME: ${branch_name}
+            PR_NUMBER: ${github_pr_number}
+            GITHUB_ORG: ${github_org}
+            GITHUB_REPO: ${github_repo}
+            GITHUB_TOKEN: ${github_token}
+
+  - name: check_for_noexcept
+    allowed_requesters: ["github_pr"]
+    tags:
+      [
+        "assigned_to_jira_team_server_programmability",
+        "auxiliary",
+        "commit_check",
+      ]
+    exec_timeout_secs: 600
+    commands:
+      - command: manifest.load
+      - func: "git get project and add git tag"
+      - func: "f_expansions_write"
+      - func: "kill processes"
+      - func: "cleanup environment"
+      - func: "set up venv"
+      - func: "upload pip requirements"
+      - func: "configure evergreen api credentials"
+      - func: "f_expansions_write"
+      - command: subprocess.exec
+        type: test
+        params:
+          binary: bash
+          args:
+            - "./src/evergreen/run_python_script.sh"
+            - "buildscripts/check_for_noexcept.py"
+            - "--base=${revision}"
 
   - name: version_burn_in_gen
     run_on: ubuntu2004-medium
@@ -1685,3 +1678,72 @@ tasks:
       - func: "get and apply version expansions"
       - func: "gen supplementary data"
       - func: "upload supplementary data"
+
+  - name: package_bazel_rules_mongo
+    tags: ["assigned_to_jira_team_devprod_build", "experimental"]
+    commands:
+      - command: manifest.load
+      - func: "git get shallow project"
+      - func: "f_expansions_write"
+      - func: "restore git history and tags"
+      - func: "add git tag"
+      - func: "kill processes"
+      - func: "cleanup environment"
+      - func: "set up venv"
+      - func: "upload pip requirements"
+      - func: "f_expansions_write"
+      - command: subprocess.exec
+        params:
+          binary: bash
+          args:
+            - "src/evergreen/run_python_script.sh"
+            - "buildscripts/bazel_rules_mongo/scripts/package_mongo_rules.py"
+      - command: expansions.update
+        params:
+          file: src/bazel_rules_mongo_expansions.yml
+      - func: "f_expansions_write"
+      - command: s3.put
+        params:
+          aws_key: ${aws_key}
+          aws_secret: ${aws_secret}
+          bucket: mciuploads
+          content_type: application/gzip
+          display_name: "bazel_rules_mongo"
+          local_file: src/${bazel_rules_mongo_file_name}
+          permissions: public-read
+          remote_file: ${project}/${build_variant}/${version_id}/bazel_rules_mongo-${task_id}-${execution}/bazel_rules_mongo.tar.gz
+      - command: s3.put
+        params:
+          aws_key: ${aws_key}
+          aws_secret: ${aws_secret}
+          bucket: mciuploads
+          content_type: text/plain
+          display_name: "bazel_rules_mongo.sha256"
+          local_file: src/${bazel_rules_mongo_file_name_sha256}
+          permissions: public-read
+          remote_file: ${project}/${build_variant}/${version_id}/bazel_rules_mongo-${task_id}-${execution}/bazel_rules_mongo.tar.gz.sha256
+      # these release assets will not exists in patch builds
+      - command: s3.put
+        params:
+          aws_key: ${aws_key_build}
+          aws_secret: ${aws_secret_build}
+          bucket: mdb-build-public
+          content_type: application/gzip
+          display_name: "bazel_rules_mongo release"
+          local_file: src/${bazel_rules_mongo_release_file_name}
+          permissions: public-read
+          remote_file: bazel_rules_mongo/${bazel_rules_mongo_version}/bazel_rules_mongo.tar.gz
+          skip_existing: true
+          optional: true
+      - command: s3.put
+        params:
+          aws_key: ${aws_key_build}
+          aws_secret: ${aws_secret_build}
+          bucket: mdb-build-public
+          content_type: text/plain
+          display_name: "bazel_rules_mongo.sha256 release"
+          local_file: src/${bazel_rules_mongo_release_sha256_file_name}
+          permissions: public-read
+          remote_file: bazel_rules_mongo/${bazel_rules_mongo_version}/bazel_rules_mongo.tar.gz.sha256
+          skip_existing: true
+          optional: true

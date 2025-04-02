@@ -42,9 +42,7 @@
 #include "mongo/db/query/query_request_helper.h"
 #include "mongo/db/query/query_test_service_context.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -256,7 +254,7 @@ TEST(CanonicalQueryTest, NormalizeQuerySort) {
     // Field names
     testNormalizeQuery("{b: 1, a: 1}", "{a: 1, b: 1}");
     // Operator types
-    testNormalizeQuery("{a: {$gt: 5}, a: {$lt: 10}}}", "{a: {$lt: 10}, a: {$gt: 5}}");
+    testNormalizeQuery("{a: {$gt: 5}, a: {$lt: 10}}", "{a: {$lt: 10}, a: {$gt: 5}}");
     // Nested queries
     testNormalizeQuery("{a: {$elemMatch: {c: 1, b:1}}}", "{a: {$elemMatch: {b: 1, c:1}}}");
 }
@@ -393,8 +391,7 @@ TEST(CanonicalQueryTest, CanonicalQueryFromQRWithCollation) {
     auto opCtx = serviceContext.makeOperationContext();
 
     auto findCommand = std::make_unique<FindCommandRequest>(nss);
-    findCommand->setCollation(BSON("locale"
-                                   << "reverse"));
+    findCommand->setCollation(BSON("locale" << "reverse"));
     auto cq = std::make_unique<CanonicalQuery>(CanonicalQueryParams{
         .expCtx = ExpressionContextBuilder{}.fromRequest(opCtx.get(), *findCommand).build(),
         .parsedFind = ParsedFindCommandParams{std::move(findCommand)}});
@@ -422,8 +419,7 @@ TEST(CanonicalQueryTest, CanonicalQueryFromBaseQueryWithCollation) {
 
     auto findCommand = std::make_unique<FindCommandRequest>(nss);
     findCommand->setFilter(fromjson("{$or:[{a:1,b:1},{a:1,c:1}]}"));
-    findCommand->setCollation(BSON("locale"
-                                   << "reverse"));
+    findCommand->setCollation(BSON("locale" << "reverse"));
     auto baseCq = std::make_unique<CanonicalQuery>(CanonicalQueryParams{
         .expCtx = ExpressionContextBuilder{}.fromRequest(opCtx.get(), *findCommand).build(),
         .parsedFind = ParsedFindCommandParams{std::move(findCommand)}});
@@ -458,8 +454,7 @@ TEST(CanonicalQueryTest, SettingCollatorUpdatesCollatorAndMatchExpression) {
 
     unique_ptr<CollatorInterface> collator =
         assertGet(CollatorFactoryInterface::get(opCtx->getServiceContext())
-                      ->makeFromBSON(BSON("locale"
-                                          << "reverse")));
+                      ->makeFromBSON(BSON("locale" << "reverse")));
     cq->setCollator(std::move(collator));
 
     ASSERT(cq->getCollator());
@@ -552,6 +547,9 @@ TEST(CanonicalQueryTest, InvalidSortOrdersFailToCanonicalize) {
 }
 
 TEST(CanonicalQueryTest, DoNotParameterizeTextExpressions) {
+    // We never parameterize unless SBE is fully enabled.
+    RAIIServerParameterControllerForTest sbeFullController("featureFlagSbeFull", true);
+
     auto cq =
         canonicalize("{$text: {$search: \"Hello World!\"}}",
                      MatchExpressionParser::kDefaultSpecialFeatures | MatchExpressionParser::kText);
@@ -559,6 +557,9 @@ TEST(CanonicalQueryTest, DoNotParameterizeTextExpressions) {
 }
 
 TEST(CanonicalQueryTest, DoParameterizeRegularExpressions) {
+    // SBE must be enabled in order to generate SBE plan cache keys.
+    RAIIServerParameterControllerForTest sbeFullController("featureFlagSbeFull", true);
+
     auto cq = canonicalize("{a: 1, b: {$lt: 5}}");
     ASSERT_TRUE(cq->isParameterized());
 }

@@ -38,7 +38,7 @@
 #include "mongo/bson/simple_bsonobj_comparator.h"
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/rpc/reply_interface.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 
 namespace mongo {
@@ -67,17 +67,18 @@ RemoteCommandResponse::RemoteCommandResponse(HostAndPort hp,
 }
 
 std::string RemoteCommandResponse::toString() const {
-    return format(FMT_STRING("RemoteResponse -- "
-                             " cmd: {}"
-                             " target: {}"
-                             " status: {}"
-                             " elapsedMicros: {}"
-                             " moreToCome: {}"),
-                  data.toString(),
-                  target.toString(),
-                  status.toString(),
-                  elapsed ? StringData(elapsed->toString()) : "n/a"_sd,
-                  moreToCome);
+    return fmt::format(
+        "RemoteResponse -- "
+        " cmd: {}"
+        " target: {}"
+        " status: {}"
+        " elapsedMicros: {}"
+        " moreToCome: {}",
+        data.toString(),
+        target.toString(),
+        status.toString(),
+        elapsed ? StringData(elapsed->toString()) : "n/a"_sd,
+        moreToCome);
 }
 
 bool RemoteCommandResponse::isOK() const {

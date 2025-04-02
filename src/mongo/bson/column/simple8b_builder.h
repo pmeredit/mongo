@@ -44,9 +44,8 @@ namespace mongo {
  * Concept for writing 64bit simple8b blocks via a callback.
  */
 template <class F>
-concept Simple8bBlockWriter = requires(F&& f) {
-    std::invoke(std::forward<F>(f), std::declval<uint64_t>());
-};
+concept Simple8bBlockWriter =
+    requires(F&& f) { std::invoke(std::forward<F>(f), std::declval<uint64_t>()); };
 
 /**
  * Simple8bBuilder compresses a series of integers into chains of 64 bit Simple8b blocks.
@@ -71,6 +70,15 @@ public:
 
     Simple8bBuilder& operator=(const Simple8bBuilder&) = default;
     Simple8bBuilder& operator=(Simple8bBuilder&&) = default;
+
+    /**
+     * Appends a multiple missing value to Simple8b.  Should be called before any other values are
+     * appended.  This is intended to be used to initialize a new builder with a large series of
+     * skips.
+     */
+    template <class F>
+    requires Simple8bBlockWriter<F>
+    void prefillWithSkips(size_t numSkips, F&& writeFn);
 
     /**
      * Appends val to Simple8b. Returns true if the append was successful and false if the value was

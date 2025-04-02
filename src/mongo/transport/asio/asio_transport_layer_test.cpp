@@ -58,8 +58,6 @@
 #include "mongo/transport/transport_layer.h"
 #include "mongo/transport/transport_layer_manager_impl.h"
 #include "mongo/transport/transport_options_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/assert_that.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/thread_assertion_monitor.h"
 #include "mongo/unittest/unittest.h"
@@ -76,8 +74,6 @@
 
 namespace mongo::transport {
 namespace {
-
-using namespace fmt::literals;
 
 #ifdef _WIN32
 using SetsockoptPtr = char*;
@@ -115,7 +111,7 @@ std::string loadFile(std::string filename) try {
     return {std::istreambuf_iterator<char>{f}, std::istreambuf_iterator<char>{}};
 } catch (const std::ifstream::failure& ex) {
     auto ec = lastSystemError();
-    FAIL("Failed to load file: \"{}\": {}: {}"_format(filename, ex.what(), errorMessage(ec)));
+    FAIL(fmt::format("Failed to load file: \"{}\": {}: {}", filename, ex.what(), errorMessage(ec)));
     MONGO_UNREACHABLE;
 }
 
@@ -180,7 +176,7 @@ class SyncClient {
 public:
     explicit SyncClient(int port) {
         std::error_code ec;
-        _sock.connect(asio::ip::tcp::endpoint(testHostAddr(), port), ec);
+        (void)_sock.connect(asio::ip::tcp::endpoint(testHostAddr(), port), ec);
         ASSERT_FALSE(ec) << errorMessage(ec);
         LOGV2(6109504, "sync client connected");
     }
@@ -486,7 +482,8 @@ TEST(AsioTransportLayer, IngressPhysicalNetworkMetricsTest) {
     });
     SyncClient conn(tf.tla().listenerPort());
     auto stats = test::NetworkConnectionStats::get(NetworkCounter::ConnectionType::kIngress);
-    conn.write(req.buf(), req.size());
+    auto ec = conn.write(req.buf(), req.size());
+    ASSERT_FALSE(ec) << errorMessage(ec);
     ASSERT_OK(received.future.getNoThrow());
     ASSERT_OK(responsed.future.getNoThrow());
     auto diff = test::NetworkConnectionStats::get(NetworkCounter::ConnectionType::kIngress)
@@ -594,14 +591,14 @@ public:
         std::error_code ec;
         auto ep = asio::ip::tcp::endpoint(testHostAddr(), port);
 
-        _sock.open(ep.protocol(), ec);
+        (void)_sock.open(ep.protocol(), ec);
         ASSERT_FALSE(ec) << errorMessage(ec);
 
         ec = tfo::initOutgoingSocket(_sock);
         ASSERT_FALSE(ec) << errorMessage(ec);
 
         _sock.non_blocking(true);
-        _sock.connect(ep, ec);
+        (void)_sock.connect(ep, ec);
         ASSERT_FALSE(ec) << errorMessage(ec);
         LOGV2(7097407, "TFO client connected");
         _sock.non_blocking(false);
@@ -782,7 +779,7 @@ TEST(AsioTransportLayer, ConfirmSocketSetOptionOnResetConnections) {
     auto thrown = caught.get();
     LOGV2(6101610,
           "ASIO set_option response on peer-reset connection",
-          "msg"_attr = "{}"_format(thrown ? thrown->message() : ""));
+          "msg"_attr = fmt::format("{}", thrown ? thrown->message() : ""));
 }
 
 // TODO SERVER-97299: Remove this test in favor of
@@ -886,7 +883,9 @@ public:
 
 TEST_F(AsioTransportLayerWithServiceContextTest, TimerServiceDoesNotSpawnThreadsBeforeStart) {
     ThreadCounter counter;
-    { AsioTransportLayer::TimerService service{{counter.makeSpawnFunc()}}; }
+    {
+        AsioTransportLayer::TimerService service{{counter.makeSpawnFunc()}};
+    }
     ASSERT_EQ(counter.created(), 0);
 }
 
@@ -981,8 +980,8 @@ public:
     static constexpr auto kProxyIP = "54.225.237.121"_sd;
     static constexpr auto kSourceRemotePort = 1000;
     static constexpr auto kProxyPort = 3000;
-    inline static const std::string kProxyProtocolHeader = "PROXY TCP4 {} {} {} {}\r\n"_format(
-        kSourceRemoteIP, kProxyIP, kSourceRemotePort, kProxyPort);
+    inline static const std::string kProxyProtocolHeader = fmt::format(
+        "PROXY TCP4 {} {} {} {}\r\n", kSourceRemoteIP, kProxyIP, kSourceRemotePort, kProxyPort);
 
     void setUp() override {
         auto options = defaultTLAOptions();
@@ -1018,14 +1017,14 @@ public:
             switch (port) {
                 case kRouterPort: {
                     ASSERT_TRUE(st.session()->isFromRouterPort());
-                    ASSERT_FALSE(st.session()->isFromLoadBalancer());
+                    ASSERT_FALSE(st.session()->isConnectedToLoadBalancerPort());
                     ASSERT_FALSE(st.session()->getProxiedDstEndpoint());
                     ASSERT_TRUE(client->isRouterClient());
                     break;
                 }
                 case kLoadBalancerPort: {
                     ASSERT_FALSE(st.session()->isFromRouterPort());
-                    ASSERT_TRUE(st.session()->isFromLoadBalancer());
+                    ASSERT_TRUE(st.session()->isConnectedToLoadBalancerPort());
                     ASSERT_FALSE(client->isRouterClient());
                     ASSERT_EQ(st.session()->getSourceRemoteEndpoint().host(), kSourceRemoteIP);
                     ASSERT_EQ(st.session()->getSourceRemoteEndpoint().port(), kSourceRemotePort);
@@ -1035,7 +1034,7 @@ public:
                 }
                 case kMainPort: {
                     ASSERT_FALSE(st.session()->isFromRouterPort());
-                    ASSERT_FALSE(st.session()->isFromLoadBalancer());
+                    ASSERT_FALSE(st.session()->isConnectedToLoadBalancerPort());
                     ASSERT_FALSE(st.session()->getProxiedDstEndpoint());
                     ASSERT_FALSE(client->isRouterClient());
                     break;
@@ -1052,7 +1051,7 @@ public:
                 // should occur immediately after the socket is opened and connected to.
                 HostAndPort target{testHostName(), port};
                 auto conn = connect(target);
-                ASSERT_OK(conn) << " target={}"_format(target);
+                ASSERT_OK(conn) << fmt::format(" target={}", target);
                 break;
             }
             case kLoadBalancerPort: {

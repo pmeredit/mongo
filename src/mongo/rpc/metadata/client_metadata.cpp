@@ -46,8 +46,6 @@
 #include "mongo/db/client.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/process_id.h"
 #include "mongo/rpc/metadata/client_metadata.h"
@@ -539,7 +537,7 @@ boost::optional<ClientMetadata> ClientMetadata::readFromMetadata(const BSONEleme
     return uassertStatusOK(ClientMetadata::parse(element));
 }
 
-void ClientMetadata::writeToMetadata(BSONObjBuilder* builder) const noexcept {
+void ClientMetadata::writeToMetadata(BSONObjBuilder* builder) const {
     auto& document = getDocument();
     if (document.isEmpty()) {
         // Skip appending metadata if there is none

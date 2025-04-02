@@ -44,7 +44,7 @@ function runCommandWithMigrationRetries(conn, dbName, commandName, commandObj, f
         throw new Error(`Cowardly refusing to run command ${
             (inTransaction
                  ? "inside"
-                 : "outside")} of transaction with random moveCollection in the backgorund ${
+                 : "outside")} of transaction with random moveCollection in the background ${
             tojson(commandObj)}`);
     }
 
@@ -72,11 +72,11 @@ function runCommandWithMigrationRetries(conn, dbName, commandName, commandObj, f
             // This handles the retry case when run against a standalone, replica set, or mongos
             // where both shards returned the same response.
             if (hasConflictingMigrationpInProgress(res)) {
-                print(message);
+                jsTestLog(message);
                 return kRetry;
             }
 
-            print("done retrying " + commandName);
+            jsTestLog("done retrying " + commandName);
             return kNoRetry;
         },
         () => "Timed out while retrying command '" + tojson(commandObj) +

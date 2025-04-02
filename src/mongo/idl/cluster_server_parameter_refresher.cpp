@@ -69,8 +69,6 @@
 #include "mongo/idl/cluster_server_parameter_refresher.h"
 #include "mongo/idl/cluster_server_parameter_refresher_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/client/shard_registry.h"
@@ -127,7 +125,7 @@ getFCVAndClusterParametersFromConfigServer() {
             // don't interact with each other, so we don't need a consistent snapshot of cluster
             // parameters across all tenants, just a consistent snapshot per tenant.
             auto tenantIds =
-                uassertStatusOK(getTenantsWithConfigDbsOnShard(opCtx.get(), configServers.get()));
+                uassertStatusOK(getTenantsWithConfigDbsOnShard(opCtx.get(), *configServers.get()));
 
             // Fetch the FCV using a snapshotRead concern and store the atClusterTime so that the
             // cluster parameter finds per tenant can be performed at the snapshot time.

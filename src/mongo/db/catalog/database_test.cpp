@@ -81,8 +81,7 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/db/transaction_resources.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/duration.h"
@@ -257,9 +256,9 @@ void _testDropCollectionThrowsExceptionIfThereAreIndexesInProgress(OperationCont
 
         auto indexCatalog = collection->getIndexCatalog();
         ASSERT_EQUALS(indexCatalog->numIndexesInProgress(), 0);
-        auto indexInfoObj = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key"
-                                     << BSON("a" << 1) << "name"
-                                     << "a_1");
+        auto indexInfoObj =
+            BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key" << BSON("a" << 1) << "name"
+                     << "a_1");
 
         auto indexBuildBlock = std::make_unique<IndexBuildBlock>(
             collection->ns(), indexInfoObj, IndexBuildMethod::kHybrid, UUID::gen());

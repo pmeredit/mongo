@@ -20,9 +20,7 @@ selector:
     - jstests/core/**/fsync.js # uses fsync.
     - jstests/core/**/geo_s2cursorlimitskip.js # profiling.
     - jstests/core/**/geo_update_btree2.js # notablescan.
-    - jstests/core/**/index9.js # "local" database.
     - jstests/core/**/queryoptimizera.js # "local" database.
-    - jstests/core/**/stages*.js # stageDebug.
     - jstests/core/**/startup_log.js # "local" database.
     - jstests/core/**/tailable_cursor_invalidation.js # capped collections.
     - jstests/core/**/tailable_getmore_batch_size.js # capped collections.
@@ -75,10 +73,8 @@ selector:
     # as we transition to dedicated, the balancer will try an insert the document with a parallel
     # array on the shard with the index created.
     - jstests/core/index/geo/geo_multikey1.js
-    # TODO SERVER-89210: Chunk migration can unnecessarily fail due to inconsistency between listIndexes
-    # and local catalog
-    - jstests/core/index/indexu.js
-    - jstests/core/index/geo/geo_small_large.js
+    # These tests expect index creation to fail, which can block the config shard from transitioning
+    # to the dedicated state. Index creation failure will also block subsequent config transition attempts.
     - jstests/core/index/geo/geo_invalid_polygon.js
     # These timeseries tests use a helper that runs and expects a chunk migration to succeed, which can
     # conflict with a config transition.
@@ -172,12 +168,12 @@ selector:
     - jstests/core/timeseries/write/timeseries_update_one.js
     # moveChunk can be blocked by multi updates causing these tests to not be able to transition to dedicated.
     - jstests/core/index/geo/geo_update_btree.js
-    - jstests/core/write/delete/removec.js
+    - jstests/core/query/delete/remove_adjacent_index_keys.js
     # Exclude tests that run cleanupOrphaned, which can fail running on a config shard if a
     # concurrent migration fails due to the config shard transitioning to dedicated.
     - jstests/core/administrative/cleanup_orphaned.js
-    - jstests/core/views/views_all_commands.js
-    - jstests/core/commands_namespace_parsing.js
+    - jstests/core/catalog/views/views_all_commands.js
+    - jstests/core/repro/commands_namespace_parsing.js
     # Runs commands using legacy queries, which are not supported on sessions.
     - jstests/core/**/query/exhaust.js
     # TODO SERVER-96199 Re-enable this test once FLE updates to a document's shard key work
@@ -231,6 +227,7 @@ executor:
         TestData:
           alwaysInjectTransactionNumber: true
           shardsAddedRemoved: true
+          runningWithBalancer: true
           sessionOptions:
             retryWrites: true
   hooks:
@@ -257,7 +254,6 @@ executor:
     mongod_options:
       set_parameters:
         enableTestCommands: 1
-        orphanCleanupDelaySecs: 1
         skipDroppingHashedShardKeyIndex: true
         featureFlagReshardingForTimeseries: true
         reshardingMinimumOperationDurationMillis: 0

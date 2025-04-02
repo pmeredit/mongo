@@ -38,8 +38,6 @@
 
 #include "mongo/db/s/migration_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/chunk_manager.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
@@ -52,6 +50,9 @@ namespace {
  * input range.
  */
 bool metadataOverlapsRange(const CollectionMetadata& metadata, const ChunkRange& range) {
+    if (!metadata.hasRoutingTable()) {
+        return true;
+    }
     auto chunkRangeToCompareToMetadata =
         migrationutil::extendOrTruncateBoundsForMetadata(metadata, range);
     return metadata.rangeOverlapsChunk(chunkRangeToCompareToMetadata);
@@ -101,6 +102,13 @@ public:
         return _metadataTracker->metadata.value();
     }
 
+    // This determines whether the metadata currently held by the _metadataTracker is still
+    // considered valid.
+    bool isMetadataStillValid() const override {
+        stdx::lock_guard<stdx::mutex> managerLock(_metadataManager->_managerLock);
+        return _metadataTracker->valid;
+    }
+
 private:
     std::shared_ptr<MetadataManager> _metadataManager;
     std::shared_ptr<MetadataManager::CollectionMetadataTracker> _metadataTracker;
@@ -109,9 +117,7 @@ private:
 MetadataManager::MetadataManager(ServiceContext* serviceContext,
                                  NamespaceString nss,
                                  CollectionMetadata initialMetadata)
-    : _serviceContext(serviceContext),
-      _nss(std::move(nss)),
-      _collectionUuid(initialMetadata.getChunkManager()->getUUID()) {
+    : _serviceContext(serviceContext), _nss(std::move(nss)) {
     _metadata.emplace_back(std::make_shared<CollectionMetadataTracker>(std::move(initialMetadata)));
 }
 
@@ -148,6 +154,24 @@ std::shared_ptr<ScopedCollectionDescription::Impl> MetadataManager::getActiveMet
     return std::make_shared<MetadataAtTimestamp>(CollectionMetadata(
         ChunkManager::makeAtTime(*activeMetadata->getChunkManager(), atClusterTime->asTimestamp()),
         activeMetadata->shardId()));
+}
+
+boost::optional<UUID> MetadataManager::getCollectionUuid() const {
+    stdx::lock_guard<stdx::mutex> lg(_managerLock);
+    return _getCollectionUuidWithLock(lg);
+}
+
+boost::optional<UUID> MetadataManager::_getCollectionUuidWithLock(WithLock wl) const {
+    invariant(!_metadata.empty());
+    invariant(_metadata.back()->metadata.has_value());
+
+    const auto& activeMetadata = _metadata.back()->metadata.value();
+
+    // The UUID is only present on a CollectionMetadataTracker if the collection is tracked.
+    if (activeMetadata.hasRoutingTable()) {
+        return activeMetadata.getUUID();
+    }
+    return boost::none;
 }
 
 size_t MetadataManager::numberOfMetadataSnapshots() const {
@@ -200,6 +224,11 @@ void MetadataManager::setFilteringMetadata(CollectionMetadata remoteMetadata) {
 }
 
 void MetadataManager::_setActiveMetadata(WithLock wl, CollectionMetadata newMetadata) {
+    tassert(10016218,
+            "Attempted to update MetadataManager with incompatible new metadata",
+            !this->hasRoutingTable() ||
+                (newMetadata.hasRoutingTable() &&
+                 this->_getCollectionUuidWithLock(wl) == newMetadata.getUUID()));
     _metadata.emplace_back(std::make_shared<CollectionMetadataTracker>(std::move(newMetadata)));
     _retireExpiredMetadata(wl);
 }
@@ -238,6 +267,31 @@ SharedSemiFuture<void> MetadataManager::getOngoingQueriesCompletionFuture(ChunkR
     return overlapMetadata->onDestructionPromise.getFuture();
 }
 
+void MetadataManager::invalidateRangePreserversOlderThanShardVersion(
+    OperationContext* opCtx, const ChunkVersion& shardVersion) {
+    if (shardVersion == ChunkVersion::IGNORED()) {
+        return;
+    }
+    stdx::lock_guard<stdx::mutex> lg(_managerLock);
+
+    // Invalidate all metadata trackers when shardPlacementVersion is lower than or equal
+    // to the given version.
+    // The _metadata is sorted from the oldest to the newest versions. The 'for' loop can be
+    // exited if the current metadataTracker is newer, as it means there's no need to check the
+    // rest of the items.
+    for (const auto& metadataTracker : _metadata) {
+        if (metadataTracker->metadata) {
+            auto placementVersion = metadataTracker->metadata->getShardPlacementVersion();
+            if (placementVersion.isNotComparableWith(shardVersion) ||
+                placementVersion.isOlderOrEqualThan(shardVersion)) {
+                metadataTracker->valid = false;
+            } else {
+                break;
+            }
+        }
+    }
+}
+
 auto MetadataManager::_findNewestOverlappingMetadata(WithLock, ChunkRange const& range)
     -> CollectionMetadataTracker* {
     invariant(!_metadata.empty());
@@ -250,6 +304,11 @@ auto MetadataManager::_findNewestOverlappingMetadata(WithLock, ChunkRange const&
     }
 
     return nullptr;
+}
+
+bool MetadataManager::hasRoutingTable() {
+    invariant(!_metadata.empty());
+    return _metadata.back()->metadata->hasRoutingTable();
 }
 
 }  // namespace mongo

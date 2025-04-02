@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {Thread} from "jstests/libs/parallelTester.js";
 import {
     startStreamProcessorForThread
@@ -58,7 +64,7 @@ const windowGroupMTFunc = function testWindowGroup(docs,
     assert.commandWorked(result);
     assert.soon(() => { return outColl.find().itcount() >= expectedResults.length; },
                 () => { jsTestLog(`${outColl.find().itcount()}`); });
-    var fieldNames = ['_ts', '_stream_meta'];
+    var fieldNames = [];
     if (stripIds) {
         fieldNames.push('_id');
     }

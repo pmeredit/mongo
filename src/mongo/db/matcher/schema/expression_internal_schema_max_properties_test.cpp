@@ -32,54 +32,13 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_max_properties.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_min_properties.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
 
 namespace {
-
-TEST(InternalSchemaMaxPropertiesMatchExpression, RejectsObjectsWithTooManyElements) {
-    InternalSchemaMaxPropertiesMatchExpression maxProperties(0);
-
-    ASSERT_FALSE(maxProperties.matchesBSON(BSON("b" << 21)));
-    ASSERT_FALSE(maxProperties.matchesBSON(BSON("b" << 21 << "c" << 3)));
-}
-
-TEST(InternalSchemaMaxPropertiesMatchExpression, AcceptsObjectWithLessThanOrEqualToMaxElements) {
-    InternalSchemaMaxPropertiesMatchExpression maxProperties(2);
-
-    ASSERT_TRUE(maxProperties.matchesBSON(BSONObj()));
-    ASSERT_TRUE(maxProperties.matchesBSON(BSON("b" << BSONNULL)));
-    ASSERT_TRUE(maxProperties.matchesBSON(BSON("b" << 21)));
-    ASSERT_TRUE(maxProperties.matchesBSON(BSON("b" << 21 << "c" << 3)));
-}
-
-TEST(InternalSchemaMaxPropertiesMatchExpression, MatchesSingleElementTest) {
-    InternalSchemaMaxPropertiesMatchExpression maxProperties(2);
-
-    // Only BSON elements that are embedded objects can match.
-    BSONObj match = BSON("a" << BSON("a" << 5 << "b" << 10));
-    BSONObj notMatch1 = BSON("a" << 1);
-    BSONObj notMatch2 = BSON("a" << BSON("a" << 5 << "b" << 10 << "c" << 25));
-    ASSERT_TRUE(maxProperties.matchesSingleElement(match.firstElement()));
-    ASSERT_FALSE(maxProperties.matchesSingleElement(notMatch1.firstElement()));
-    ASSERT_FALSE(maxProperties.matchesSingleElement(notMatch2.firstElement()));
-}
-
-TEST(InternalSchemaMaxPropertiesMatchExpression, MaxPropertiesZeroAllowsEmptyObjects) {
-    InternalSchemaMaxPropertiesMatchExpression maxProperties(0);
-
-    ASSERT_TRUE(maxProperties.matchesBSON(BSONObj()));
-}
-
-TEST(InternalSchemaMaxPropertiesMatchExpression, NestedObjectsAreNotUnwound) {
-    InternalSchemaMaxPropertiesMatchExpression maxProperties(1);
-
-    ASSERT_TRUE(maxProperties.matchesBSON(BSON("b" << BSON("c" << 2 << "d" << 3))));
-}
 
 TEST(InternalSchemaMaxPropertiesMatchExpression, EquivalentFunctionIsAccurate) {
     InternalSchemaMaxPropertiesMatchExpression maxProperties1(1);
@@ -89,12 +48,6 @@ TEST(InternalSchemaMaxPropertiesMatchExpression, EquivalentFunctionIsAccurate) {
     ASSERT_TRUE(maxProperties1.equivalent(&maxProperties1));
     ASSERT_TRUE(maxProperties1.equivalent(&maxProperties2));
     ASSERT_FALSE(maxProperties1.equivalent(&maxProperties3));
-}
-
-TEST(InternalSchemaMaxPropertiesMatchExpression, NestedArraysAreNotUnwound) {
-    InternalSchemaMaxPropertiesMatchExpression maxProperties(2);
-
-    ASSERT_TRUE(maxProperties.matchesBSON(BSON("a" << (BSON("b" << 2 << "c" << 3 << "d" << 4)))));
 }
 
 TEST(InternalSchemaMaxPropertiesMatchExpression, MinPropertiesNotEquivalentToMaxProperties) {

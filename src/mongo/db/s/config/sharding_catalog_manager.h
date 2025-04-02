@@ -58,6 +58,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/repl/optime_with.h"
 #include "mongo/db/repl/read_concern_level.h"
+#include "mongo/db/s/remove_shard_exception.h"
 #include "mongo/db/server_parameter.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/session/logical_session_cache.h"
@@ -84,67 +85,6 @@
 #include "mongo/util/uuid.h"
 
 namespace mongo {
-
-// TODO (SERVER-97816): remove these helpers and move the implementations into the add/remove shard
-// coordinators once 9.0 becomes last LTS.
-namespace topology_change_helpers {
-
-// Returns the count of range deletion tasks locally on the config server.
-long long getRangeDeletionCount(OperationContext* opCtx);
-
-// Calls ShardsvrJoinMigrations locally on the config server.
-void joinMigrations(OperationContext* opCtx);
-
-/**
- * Used during addShard to determine if there is already an existing shard that matches the shard
- * that is currently being added. An OK return with boost::none indicates that there is no
- * conflicting shard, and we can proceed trying to add the new shard. An OK return with a ShardType
- * indicates that there is an existing shard that matches the shard being added but since the
- * options match, this addShard request can do nothing and return success. A non-OK return either
- * indicates a problem reading the existing shards from disk or more likely indicates that an
- * existing shard conflicts with the shard being added and they have different options, so the
- * addShard attempt must be aborted.
- */
-StatusWith<boost::optional<ShardType>> checkIfShardExists(
-    OperationContext* opCtx,
-    const ConnectionString& proposedShardConnectionString,
-    const boost::optional<StringData>& proposedShardName,
-    ShardingCatalogClient& localCatalogClient);
-
-}  // namespace topology_change_helpers
-
-struct RemoveShardProgress {
-    /**
-     * Used to indicate to the caller of the removeShard method whether draining of chunks for
-     * a particular shard has started, is ongoing, or has been completed. When removing a catalog
-     * shard, there is a new state when waiting for range deletions of all moved away chunks and any
-     * in progress drops of user collections. Removing other shards will skip this state.
-     */
-    enum DrainingShardStatus {
-        STARTED,
-        ONGOING,
-        PENDING_DATA_CLEANUP,
-        COMPLETED,
-    };
-
-    /**
-     * Used to indicate to the caller of the removeShard method the remaining amount of chunks,
-     * jumbo chunks and databases within the shard
-     */
-    struct DrainingShardUsage {
-        long long totalChunks;
-        long long shardedChunks;
-        long long totalCollections;
-        long long databases;
-        long long jumboChunks;
-    };
-
-    DrainingShardStatus status;
-    boost::optional<DrainingShardUsage> remainingCounts;
-    boost::optional<long long> pendingRangeDeletions;
-    boost::optional<NamespaceString> firstNonEmptyCollection;
-};
-
 /**
  * Implements modifications to the sharding catalog metadata.
  *
@@ -549,7 +489,7 @@ public:
                                       boost::optional<int32_t> chunkSizeMB,
                                       boost::optional<bool> defragmentCollection,
                                       boost::optional<bool> enableAutoMerger,
-                                      boost::optional<bool> noBalance);
+                                      boost::optional<bool> enableBalancing);
 
     /**
      * Updates the bucketing parameters of a time-series collection. Also bumps the placement
@@ -580,6 +520,10 @@ public:
                                      const ConnectionString& shardConnectionString,
                                      bool isConfigShard);
 
+    /**
+     * Gets the parameters to transition to a config shard
+     */
+    std::pair<ConnectionString, std::string> getConfigShardParameters(OperationContext* opCtx);
 
     /**
      *
@@ -596,6 +540,23 @@ public:
     void installConfigShardIdentityDocument(OperationContext* opCtx);
 
     /**
+     * Checks if the shard has already been removed from the cluster. If not, checks that
+     * preconditions for shard removal are met, starts draining for that shard, and returns progress
+     * to reflect this. If the shard is already in draining, returns boost::none to indicate the
+     * removal process should proceed.
+     */
+    boost::optional<RemoveShardProgress> checkPreconditionsAndStartDrain(OperationContext* opCtx,
+                                                                         const ShardId& shardId);
+
+    /**
+     * Checks if the shard is still draining and returns the draining status if so. If not, returns
+     * boost::none indicating that the commit of the shard removal can proceed.
+     */
+    boost::optional<RemoveShardProgress> checkDrainingProgress(OperationContext* opCtx,
+                                                               const ShardId& shardId);
+
+
+    /**
      * Tries to remove a shard. To completely remove a shard from a sharded cluster,
      * the data residing in that shard must be moved to the remaining shards in the
      * cluster by "draining" chunks from that shard.
@@ -609,7 +570,21 @@ public:
      * Returns a scoped lock object, which holds the _kShardMembershipLock in shared mode. While
      * this lock is held no topology changes can occur.
      */
-    Lock::SharedLock enterStableTopologyRegion(OperationContext* opCtx);
+    [[nodiscard]] Lock::SharedLock enterStableTopologyRegion(OperationContext* opCtx);
+
+    /**
+     * Returns a scoped lock object, which holds the _kShardMembershipLock in exclusive mode. This
+     * should only be acquired by topology change operations.
+     */
+    [[nodiscard]] Lock::ExclusiveLock acquireShardMembershipLockForTopologyChange(
+        OperationContext* opCtx);
+
+    /**
+     * Returns a scoped lock object, which holds the _kClusterCardinalityParameterLock in exclusive
+     * mode.
+     */
+    [[nodiscard]] Lock::ExclusiveLock acquireClusterCardinalityParameterLockForTopologyChange(
+        OperationContext* opCtx);
 
     /**
      * Updates the "hasTwoOrMoreShard" cluster cardinality parameter based on the number of shards
@@ -628,6 +603,11 @@ public:
      */
     Status setFeatureCompatibilityVersionOnShards(OperationContext* opCtx, const BSONObj& cmdObj);
 
+    /**
+     * Runs _shardsvrCloneAuthoritativeMetadata on all shards.
+     */
+    Status runCloneAuthoritativeMetadataOnShards(OperationContext* opCtx);
+
     //
     // For Diagnostics
     //
@@ -644,6 +624,14 @@ public:
                                    BSONObjBuilder& result,
                                    RemoveShardProgress shardDrainingStatus,
                                    ShardId shardId);
+
+    /**
+     * Appends db and coll information on the status of shard draining to the passed in result
+     * BSONObjBuilder
+     */
+    void appendDBAndCollDrainingInfo(OperationContext* opCtx,
+                                     BSONObjBuilder& result,
+                                     ShardId shardId);
 
     /**
      * Only used for unit-tests, clears a previously-created catalog manager from the specified
@@ -723,28 +711,6 @@ private:
     Status _initConfigCollections(OperationContext* opCtx);
 
     /**
-     * Validates that the specified endpoint can serve as a shard server. In particular, this
-     * this function checks that the shard can be contacted and that it is not already member of
-     * another sharded cluster.
-     *
-     * @param targeter For sending requests to the shard-to-be.
-     * @param shardProposedName Optional proposed name for the shard. Can be omitted in which case
-     *      a unique name for the shard will be generated from the shard's connection string. If it
-     *      is not omitted, the value cannot be the empty string.
-     *
-     * On success returns a partially initialized ShardType object corresponding to the requested
-     * shard. It will have the hostName field set and optionally the name, if the name could be
-     * generated from either the proposed name or the connection string set name. The returned
-     * shard's name should be checked and if empty, one should be generated using some uniform
-     * algorithm.
-     */
-    StatusWith<ShardType> _validateHostAsShard(OperationContext* opCtx,
-                                               std::shared_ptr<RemoteCommandTargeter> targeter,
-                                               const std::string* shardProposedName,
-                                               const ConnectionString& connectionString,
-                                               bool isConfigShard);
-
-    /**
      * Drops the sessions collection on the specified host.
      */
     Status _dropSessionsCollection(OperationContext* opCtx,
@@ -778,14 +744,6 @@ private:
                                                               const BSONObj& cmdObj);
 
     /**
-     * Helper method for running a count command against the config server with appropriate error
-     * handling.
-     */
-    StatusWith<long long> _runCountCommandOnConfig(OperationContext* opCtx,
-                                                   const NamespaceString& nss,
-                                                   BSONObj query);
-
-    /**
      * Appends a read committed read concern to the request object.
      */
     void _appendReadConcern(BSONObjBuilder* builder);
@@ -800,14 +758,6 @@ private:
                                              const BSONObj& key);
 
     /**
-     * Broadcasts a remote command to the requested list of recipient that contains the details on a
-     * new set of databases being added to the config catalog.
-     */
-    Status _notifyClusterOnNewDatabases(OperationContext* opCtx,
-                                        const DatabasesAdded& event,
-                                        const std::vector<ShardId>& recipients);
-
-    /**
      * Returns true if the zone with the given name has chunk ranges associated with it and the
      * shard with the given name is the only shard that it belongs to.
      */
@@ -817,64 +767,11 @@ private:
                                                       const std::string& zoneName);
 
     /**
-     * Sets the current cluster's user-write blocking state on the shard that is being added.
-     */
-    void _setUserWriteBlockingStateOnNewShard(OperationContext* opCtx,
-                                              RemoteCommandTargeter* targeter);
-
-    using FetcherDocsCallbackFn = std::function<bool(const std::vector<BSONObj>& batch)>;
-    using FetcherStatusCallbackFn = std::function<void(const Status& status)>;
-
-    /**
-     * Creates a Fetcher task for fetching documents in the given collection on the given shard.
-     * After the task is scheduled, applies 'processDocsCallback' to each fetched batch and
-     * 'processStatusCallback' to the fetch status.
-     */
-    std::unique_ptr<Fetcher> _createFetcher(OperationContext* opCtx,
-                                            std::shared_ptr<RemoteCommandTargeter> targeter,
-                                            const NamespaceString& nss,
-                                            const repl::ReadConcernLevel& readConcernLevel,
-                                            FetcherDocsCallbackFn processDocsCallback,
-                                            FetcherStatusCallbackFn processStatusCallback);
-
-    /**
-     * Gets the cluster time keys on the given shard and then saves them locally.
-     */
-    Status _pullClusterTimeKeys(OperationContext* opCtx,
-                                std::shared_ptr<RemoteCommandTargeter> targeter);
-
-    /**
-     * Given a vector of cluster parameters in disk format, sets them locally.
-     */
-    void _setClusterParametersLocally(OperationContext* opCtx,
-                                      const std::vector<BSONObj>& parameters);
-
-    /**
-     * Gets the cluster parameters set on the shard and then saves them locally.
-     */
-    void _pullClusterParametersFromNewShard(OperationContext* opCtx, Shard* shard);
-
-    /**
-     * Remove all existing cluster parameters set on the shard.
-     */
-    void _removeAllClusterParametersFromShard(OperationContext* opCtx, Shard* shard);
-
-    /**
-     * Remove all existing cluster parameters on the new added shard and sets the ones stored on the
-     * config server.
-     */
-    void _pushClusterParametersToNewShard(
-        OperationContext* opCtx,
-        Shard* shard,
-        const TenantIdMap<std::vector<BSONObj>>& allClusterParameters);
-
-    /**
      * Determines whether to absorb the cluster parameters on the newly added shard (if we're
      * converting from a replica set to a sharded cluster) or set the cluster parameters stored on
      * the config server in the newly added shard.
      */
-    void _standardizeClusterParameters(OperationContext* opCtx, Shard* shard);
-
+    void _standardizeClusterParameters(OperationContext* opCtx, RemoteCommandTargeter& targeter);
 
     /**
      * Execute the migration chunk updates using the internal transaction API.
@@ -885,22 +782,6 @@ private:
                                             const std::vector<ChunkType>& splitChunks,
                                             const boost::optional<ChunkType>& controlChunk,
                                             const ShardId& donorShardId);
-
-    /**
-     * Inserts new entries into the config catalog to describe the shard being added (and the
-     * databases being imported) through the internal transaction API.
-     */
-    void _addShardInTransaction(OperationContext* opCtx,
-                                const ShardType& newShard,
-                                std::vector<DatabaseName>&& databasesInNewShard,
-                                std::vector<CollectionType>&& collectionsInNewShard);
-    /**
-     * Use the internal transaction API to remove a shard.
-     */
-    void _removeShardInTransaction(OperationContext* opCtx,
-                                   const std::string& removedShardName,
-                                   const std::string& controlShardName,
-                                   const Timestamp& newTopologyTime);
 
     /**
      * Execute the merge chunk updates using the internal transaction API.
@@ -929,17 +810,6 @@ private:
                                                            const ChunkType& origChunk,
                                                            const ChunkVersion& collPlacementVersion,
                                                            const std::vector<BSONObj>& splitPoints);
-
-    /**
-     * Updates the "hasTwoOrMoreShard" cluster cardinality parameter based on the given number of
-     * shards. Can only be called while holding the _kClusterCardinalityParameterLock in exclusive
-     * mode and not holding the _kShardMembershipLock in exclusive mode since setting cluster
-     * parameters requires taking the latter in shared mode.
-     */
-    Status _updateClusterCardinalityParameter(
-        const Lock::ExclusiveLock& clusterCardinalityParameterLock,
-        OperationContext* opCtx,
-        int numShards);
 
     /**
      * Updates the "hasTwoOrMoreShard" cluster cardinality parameter after an add or remove shard
@@ -984,12 +854,6 @@ private:
     // Resource lock order:
     // _kShardMembershipLock -> _kChunkOpLock
     // _kZoneOpLock
-
-    /**
-     * Lock that is held for the entire duration of an add/remove shard operation so that only one
-     * command can execute at a given time.
-     */
-    Lock::ResourceMutex _kAddRemoveShardLock;
 
     /**
      * Lock that is held in exclusive mode during the commit phase of an add/remove shard operation.

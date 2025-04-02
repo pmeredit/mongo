@@ -61,8 +61,7 @@
 #include "mongo/db/timeseries/write_ops/timeseries_write_ops_utils_internal.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
@@ -477,11 +476,10 @@ TEST_F(TimeseriesWriteUtilTest, PerformAtomicDelete) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest(
         "db_timeseries_write_util_test", "PerformAtomicDelete");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // Inserts a bucket document.
     const BSONObj bucketDoc = ::mongo::fromjson(
@@ -540,11 +538,10 @@ TEST_F(TimeseriesWriteUtilTest, PerformAtomicUpdate) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest(
         "db_timeseries_write_util_test", "PerformAtomicUpdate");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // Inserts a bucket document.
     const BSONObj bucketDoc = ::mongo::fromjson(
@@ -614,11 +611,10 @@ TEST_F(TimeseriesWriteUtilTest, PerformAtomicDeleteAndInsert) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest(
         "db_timeseries_write_util_test", "PerformAtomicDeleteAndInsert");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // Inserts a bucket document.
     const BSONObj bucketDoc1 = ::mongo::fromjson(
@@ -699,11 +695,10 @@ TEST_F(TimeseriesWriteUtilTest, PerformAtomicUpdateAndInserts) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest(
         "db_timeseries_write_util_test", "PerformAtomicUpdateAndInserts");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // Inserts a bucket document.
     const BSONObj bucketDoc1 = ::mongo::fromjson(
@@ -815,11 +810,10 @@ TEST_F(TimeseriesWriteUtilTest, PerformAtomicWritesForUserDelete) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest(
         "db_timeseries_write_util_test", "PerformAtomicWritesForUserDelete");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // Inserts a bucket document.
     const BSONObj uncompressedDoc = ::mongo::fromjson(
@@ -931,11 +925,10 @@ TEST_F(TimeseriesWriteUtilTest, PerformAtomicWritesForUserUpdate) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest(
         "db_timeseries_write_util_test", "PerformAtomicWritesForUserUpdate");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // Inserts a bucket document.
     const BSONObj bucketDoc = ::mongo::fromjson(
@@ -977,8 +970,6 @@ TEST_F(TimeseriesWriteUtilTest, PerformAtomicWritesForUserUpdate) {
             /*fromMigrate=*/false,
             /*stmtId=*/kUninitializedStmtId,
             &bucketIds,
-            /*compressAndWriteBucketFunc=*/
-            nullptr,
             minTime));
         ASSERT_EQ(bucketIds.size(), 1);
     }
@@ -1008,11 +999,10 @@ TEST_F(TimeseriesWriteUtilTest, TrackInsertedBuckets) {
     NamespaceString ns = NamespaceString::createNamespaceString_forTest(
         "db_timeseries_write_util_test", "TrackInsertedBuckets");
     auto opCtx = operationContext();
-    ASSERT_OK(createCollection(opCtx,
-                               ns.dbName(),
-                               BSON("create" << ns.coll() << "timeseries"
-                                             << BSON("timeField"
-                                                     << "time"))));
+    ASSERT_OK(createCollection(
+        opCtx,
+        ns.dbName(),
+        BSON("create" << ns.coll() << "timeseries" << BSON("timeField" << "time"))));
 
     // Inserts a bucket document.
     const BSONObj bucketDoc = ::mongo::fromjson(
@@ -1057,8 +1047,6 @@ TEST_F(TimeseriesWriteUtilTest, TrackInsertedBuckets) {
             /*fromMigrate=*/false,
             /*stmtId=*/kUninitializedStmtId,
             &bucketIds,
-            /*compressAndWriteBucketFunc=*/
-            nullptr,
             minTime));
         ASSERT_EQ(bucketIds.size(), 1);
     }
@@ -1078,8 +1066,6 @@ TEST_F(TimeseriesWriteUtilTest, TrackInsertedBuckets) {
             /*fromMigrate=*/false,
             /*stmtId=*/kUninitializedStmtId,
             &bucketIds,
-            /*compressAndWriteBucketFunc=*/
-            nullptr,
             minTime));
         ASSERT_EQ(bucketIds.size(), 1);
     }
@@ -1099,8 +1085,6 @@ TEST_F(TimeseriesWriteUtilTest, TrackInsertedBuckets) {
             /*fromMigrate=*/false,
             /*stmtId=*/kUninitializedStmtId,
             &bucketIds,
-            /*compressAndWriteBucketFunc=*/
-            nullptr,
             minTime));
         ASSERT_EQ(bucketIds.size(), 2);
     }

@@ -181,21 +181,6 @@ for (let field in input) {
                                  6747901);
 }
 
-// Verify that closed range errors when the lower bound is less than the upper bound.
-// TODO SERVER-70355. This test should raise an error or return no documents
-// input = {
-//     age: [NumberInt(30), NumberInt(18)],
-//     birthdate:ISODate("2008-01-30T07:30:10.957Z"), [ISODate("1990-12-30T07:30:10.957Z") ],
-//     savings:  NumberLong(234023), [NumberLong(100)]
-// };
-// for testing purposes:
-// jsTestLog(runFind({age: {$gt: NumberInt(30), $lt: NumberInt(18)}}))
-// for (let field in input) {
-//     assert.commandFailedWithCode(
-//         runFind({[field]: {$gt: input[field][0], $lt: input[field][1]}})
-//     , <error code>);
-// }
-
 /* -------------------------- Coercion Tests ---------------------------- */
 // Verify NumberLong parameter errors when greater than MAX_INT on NumberInt range index.
 assert.commandFailedWithCode(runFind({age: {$gte: NumberLong(10), $lte: NumberLong(2147483648)}}),

@@ -48,8 +48,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/stdx/unordered_set.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future.h"
 #include "mongo/util/future_impl.h"
@@ -754,15 +753,12 @@ TEST(Future_MoveOnly, Success_unordered_set) {
 }
 
 TEST(Future_MoveOnly, Success_pair) {
-    FUTURE_SUCCESS_TEST(
-        [] {
-            return std::pair<Widget, Widget>{1, 1};
-        },
-        [](auto&& fut) {
-            auto&& pair = fut.get();
-            ASSERT_EQ(pair.first, Widget(1));
-            ASSERT_EQ(pair.second, Widget(1));
-        });
+    FUTURE_SUCCESS_TEST([] { return std::pair<Widget, Widget>{1, 1}; },
+                        [](auto&& fut) {
+                            auto&& pair = fut.get();
+                            ASSERT_EQ(pair.first, Widget(1));
+                            ASSERT_EQ(pair.second, Widget(1));
+                        });
 }
 
 TEST(Future_MoveOnly, Success_map) {

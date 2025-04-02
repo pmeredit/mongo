@@ -6,7 +6,8 @@
 
 import {
     listStreamProcessors,
-    TEST_TENANT_ID
+    TEST_PROJECT_ID,
+    TEST_TENANT_ID,
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
 assert.commandFailedWithCode(db.runCommand({
@@ -14,6 +15,7 @@ assert.commandFailedWithCode(db.runCommand({
     name: "foo",
     processorId: "foo",
     tenantId: TEST_TENANT_ID,
+    projectId: TEST_PROJECT_ID,
     pipeline: [
         {$source: {connectionName: "__testMemory"}, config: {"fullDocumentOnly": true}},
         {$emit: {connectionName: "__testLog"}}

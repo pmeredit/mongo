@@ -55,8 +55,6 @@
 #include "mongo/db/s/resharding/resharding_server_parameters_gen.h"
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/async_requests_sender.h"
@@ -72,8 +70,6 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kResharding
 
-
-using namespace fmt::literals;
 
 namespace mongo {
 namespace resharding {
@@ -187,7 +183,7 @@ CoordinatorCommitMonitor::queryRemainingOperationTimeForRecipients() const {
 
         auto response = ars.next();
         auto errorContext =
-            "Failed command: {} on {}"_format(cmdObj.toString(), response.shardId.toString());
+            fmt::format("Failed command: {} on {}", cmdObj.toString(), response.shardId.toString());
 
         auto shardResponse =
             uassertStatusOKWithContext(std::move(response.swResponse), errorContext);

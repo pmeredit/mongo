@@ -33,8 +33,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/s/catalog/type_config_version_gen.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 /**
  * Basic tests for config version parsing.
@@ -93,8 +92,7 @@ TEST(Validity, NewVersionNoClusterId) {
     // Tests error on parsing new format with no clusterId
     //
 
-    auto versionDoc = BSON("test"
-                           << "test_value");
+    auto versionDoc = BSON("test" << "test_value");
 
     ASSERT_THROWS(VersionType::parse(IDLParserContext("VersionType"), versionDoc),
                   AssertionException);

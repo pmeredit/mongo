@@ -82,9 +82,7 @@
 #include "mongo/s/shard_version.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 
@@ -92,8 +90,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 /**
  * This test fixture does not create any resharding POSs and should be preferred to
@@ -170,9 +166,7 @@ protected:
         auto range = ChunkRange(BSON(shardKey << MINKEY), BSON(shardKey << MAXKEY));
         auto chunk = ChunkType(
             uuid, range, ChunkVersion({epoch, timestamp}, {1, 0}), shardThatChunkExistsOn);
-        ChunkManager cm(primaryShard,
-                        DatabaseVersion(uuid, timestamp),
-                        makeStandaloneRoutingTableHistory(
+        ChunkManager cm(makeStandaloneRoutingTableHistory(
                             RoutingTableHistory::makeNew(nss,
                                                          uuid,
                                                          shardKeyPattern,
@@ -356,8 +350,12 @@ private:
 
 struct DonorFieldsValidator {
     void validate(ReshardingDonorDocument doc) {
+        // 'performVerification' should only be set if it is specified.
         if (performVerification) {
             ASSERT_EQ(doc.getPerformVerification(), *performVerification);
+        } else {
+            ASSERT_FALSE(doc.getPerformVerification().has_value());
+            ASSERT_EQ(doc.getPerformVerification(), false);
         }
     }
 
@@ -366,19 +364,31 @@ struct DonorFieldsValidator {
 
 struct RecipientFieldsValidator {
     void validate(ReshardingRecipientDocument doc) {
+        // 'skipCloningAndApplying' should only be set if it is true.
         if (skipCloningAndApplying) {
-            ASSERT_EQ(doc.getSkipCloningAndApplying(), *skipCloningAndApplying);
+            ASSERT_EQ(doc.getSkipCloningAndApplying(), skipCloningAndApplying);
+        } else {
+            ASSERT_FALSE(doc.getSkipCloningAndApplying().has_value());
+            ASSERT_EQ(doc.getSkipCloningAndApplying(), false);
         }
+        // 'storeOplogFetcherProgress' should only be set if it is true.
         if (storeOplogFetcherProgress) {
-            ASSERT_EQ(doc.getStoreOplogFetcherProgress(), *storeOplogFetcherProgress);
+            ASSERT_EQ(doc.getStoreOplogFetcherProgress(), storeOplogFetcherProgress);
+        } else {
+            ASSERT_FALSE(doc.getStoreOplogFetcherProgress().has_value());
+            ASSERT_EQ(doc.getStoreOplogFetcherProgress(), false);
         }
+        // 'performVerification' should only be set if it is specified.
         if (performVerification) {
             ASSERT_EQ(doc.getPerformVerification(), *performVerification);
+        } else {
+            ASSERT_FALSE(doc.getPerformVerification().has_value());
+            ASSERT_EQ(doc.getPerformVerification(), false);
         }
     }
 
-    boost::optional<bool> skipCloningAndApplying;
-    boost::optional<bool> storeOplogFetcherProgress;
+    bool skipCloningAndApplying;
+    bool storeOplogFetcherProgress;
     boost::optional<bool> performVerification;
 };
 
@@ -411,7 +421,7 @@ public:
     void tearDown() override {
         WaitForMajorityService::get(getServiceContext()).shutDown();
 
-        Grid::get(operationContext())->getExecutorPool()->shutdownAndJoin();
+        shutdownExecutorPool();
 
         _primaryOnlyServiceRegistry->onShutdown();
 
@@ -486,8 +496,7 @@ public:
         const ShardId& primaryShard,
         boost::optional<bool> performVerification,
         bool expectRecipientStateMachine,
-        boost::optional<RecipientFieldsValidator> fieldsValidator = boost::none,
-        bool reshardingNoRefreshEnabled = false) {
+        boost::optional<RecipientFieldsValidator> fieldsValidator = boost::none) {
         ASSERT(!expectRecipientStateMachine || fieldsValidator.has_value());
         OperationContext* opCtx = operationContext();
 
@@ -532,8 +541,9 @@ public:
             resharding::processReshardingFieldsForCollection(
                 opCtx, kTemporaryReshardingNss, temporaryCollMetadata, reshardingFields);
 
-            if (reshardingNoRefreshEnabled) {
-                opCtx->sleepFor(Milliseconds{50});
+            auto driveCloneNoRefresh =
+                resharding::gFeatureFlagReshardingCloneNoRefresh.isEnabledAndIgnoreFCVUnsafe();
+            if (driveCloneNoRefresh) {
                 auto recipientDoc = getPersistedRecipientDocument(opCtx, kReshardingUUID);
                 ASSERT(!recipientDoc.getCloneTimestamp());
             } else {
@@ -842,17 +852,35 @@ TEST_F(ReshardingDonorRecipientCommonTest,
                            false /* expectDonorStateMachine */);
 }
 
-TEST_F(ReshardingDonorRecipientCommonTest, ProcessDonorFieldsPerformVerificationUnspecified) {
+TEST_F(ReshardingDonorRecipientCommonTest,
+       ProcessDonorFieldsPerformVerificationUnspecified_FeatureFlagEnabled) {
+    RAIIServerParameterControllerForTest verificationFeatureFlagController(
+        "featureFlagReshardingVerification", true);
     auto performVerification = boost::none;
+
     testProcessDonorFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
                            kOtherShard.getShardId() /* primaryShard */,
                            performVerification,
                            true /* expectDonorStateMachine */,
-                           DonorFieldsValidator{.performVerification = false});
+                           DonorFieldsValidator{});
+}
+
+TEST_F(ReshardingDonorRecipientCommonTest,
+       ProcessDonorFieldsPerformVerificationUnspecified_FeatureFlagDisabled) {
+    RAIIServerParameterControllerForTest verificationFeatureFlagController(
+        "featureFlagReshardingVerification", false);
+    auto performVerification = boost::none;
+
+    testProcessDonorFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
+                           kOtherShard.getShardId() /* primaryShard */,
+                           performVerification,
+                           true /* expectDonorStateMachine */,
+                           DonorFieldsValidator{});
 }
 
 TEST_F(ReshardingDonorRecipientCommonTest, ProcessDonorFieldsNotPerformVerification) {
     bool performVerification = false;
+
     testProcessDonorFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
                            kOtherShard.getShardId() /* primaryShard */,
                            performVerification,
@@ -864,8 +892,8 @@ TEST_F(ReshardingDonorRecipientCommonTest,
        ProcessDonorFieldsPerformVerification_FeatureFlagEnabled) {
     RAIIServerParameterControllerForTest verificationFeatureFlagController(
         "featureFlagReshardingVerification", true);
-
     bool performVerification = true;
+
     testProcessDonorFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
                            kOtherShard.getShardId() /* primaryShard */,
                            performVerification,
@@ -877,8 +905,8 @@ TEST_F(ReshardingDonorRecipientCommonTest,
        ProcessDonorFieldsPerformVerification_FeatureFlagDisabled) {
     RAIIServerParameterControllerForTest verificationFeatureFlagController(
         "featureFlagReshardingVerification", false);
-
     bool performVerification = true;
+
     ASSERT_THROWS_CODE(testProcessDonorFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
                                               kOtherShard.getShardId() /* primaryShard */,
                                               performVerification,
@@ -943,17 +971,35 @@ TEST_F(ReshardingDonorRecipientCommonTest,
                                RecipientFieldsValidator{.skipCloningAndApplying = false});
 }
 
-TEST_F(ReshardingDonorRecipientCommonTest, ProcessRecipientFieldsPerformVerificationUnspecified) {
-    auto performVerification = boost::none;
+TEST_F(ReshardingDonorRecipientCommonTest,
+       ProcessRecipientFieldsPerformVerificationUnspecified_FeatureFlagEnabled) {
+    RAIIServerParameterControllerForTest verificationFeatureFlagController(
+        "featureFlagReshardingVerification", true);
+    boost::optional<bool> performVerification = boost::none;
+
     testProcessRecipientFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
                                kOtherShard.getShardId() /* primaryShard */,
                                performVerification,
                                true /* expectRecipientStateMachine */,
-                               RecipientFieldsValidator{.performVerification = false});
+                               RecipientFieldsValidator{});
+}
+
+TEST_F(ReshardingDonorRecipientCommonTest,
+       ProcessRecipientFieldsPerformVerificationUnspecified_FeatureFlagDisabled) {
+    RAIIServerParameterControllerForTest verificationFeatureFlagController(
+        "featureFlagReshardingVerification", false);
+    auto performVerification = boost::none;
+
+    testProcessRecipientFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
+                               kOtherShard.getShardId() /* primaryShard */,
+                               performVerification,
+                               true /* expectRecipientStateMachine */,
+                               RecipientFieldsValidator{});
 }
 
 TEST_F(ReshardingDonorRecipientCommonTest, ProcessRecipientFieldsNotPerformVerification) {
     bool performVerification = false;
+
     testProcessRecipientFields(
         kThisShard.getShardId() /* shardThatChunkExistsOn*/,
         kOtherShard.getShardId() /* primaryShard */,
@@ -1024,9 +1070,7 @@ TEST_F(ReshardingDonorRecipientCommonInternalsTest, ClearReshardingFilteringMeta
 
         // Assert the prestate has no filtering metadata.
         for (auto const& nss : {kOriginalNss, kTemporaryReshardingNss}) {
-            AutoGetCollection autoColl(opCtx, nss, LockMode::MODE_IS);
-            const auto csr =
-                CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
+            const auto csr = CollectionShardingRuntime::acquireShared(opCtx, nss);
             ASSERT(csr->getCurrentMetadataIfKnown() == boost::none);
         }
 
@@ -1041,9 +1085,7 @@ TEST_F(ReshardingDonorRecipientCommonInternalsTest, ClearReshardingFilteringMeta
         resharding::clearFilteringMetadata(opCtx, scheduleAsyncRefresh);
 
         for (auto const& nss : {kOriginalNss, kTemporaryReshardingNss}) {
-            AutoGetCollection autoColl(opCtx, nss, LockMode::MODE_IS);
-            const auto csr =
-                CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
+            const auto csr = CollectionShardingRuntime::acquireShared(opCtx, nss);
             ASSERT(csr->getCurrentMetadataIfKnown());
         }
     };
@@ -1061,9 +1103,7 @@ TEST_F(ReshardingDonorRecipientCommonInternalsTest, ClearReshardingFilteringMeta
     resharding::clearFilteringMetadata(opCtx, scheduleAsyncRefresh);
 
     for (auto const& nss : {kOriginalNss, kTemporaryReshardingNss}) {
-        AutoGetCollection autoColl(opCtx, nss, LockMode::MODE_IS);
-        const auto csr =
-            CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
+        const auto csr = CollectionShardingRuntime::acquireShared(opCtx, nss);
         ASSERT(csr->getCurrentMetadataIfKnown() == boost::none);
     }
 
@@ -1076,9 +1116,7 @@ TEST_F(ReshardingDonorRecipientCommonInternalsTest, ClearReshardingFilteringMeta
     resharding::clearFilteringMetadata(opCtx, scheduleAsyncRefresh);
 
     for (auto const& nss : {kOriginalNss, kTemporaryReshardingNss}) {
-        AutoGetCollection autoColl(opCtx, nss, LockMode::MODE_IS);
-        const auto csr =
-            CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
+        const auto csr = CollectionShardingRuntime::acquireShared(opCtx, nss);
         ASSERT(csr->getCurrentMetadataIfKnown() == boost::none);
     }
 }
@@ -1114,31 +1152,26 @@ TEST_F(ReshardingDonorRecipientCommonInternalsTest, ClearReshardingFilteringMeta
     resharding::clearFilteringMetadata(opCtx, {sourceNss1, tempReshardingNss1}, false);
 
     for (auto const& nss : {sourceNss1, tempReshardingNss1}) {
-        AutoGetCollection autoColl(opCtx, nss, LockMode::MODE_IS);
-        const auto csr =
-            CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
+        const auto csr = CollectionShardingRuntime::acquireShared(opCtx, nss);
         ASSERT(csr->getCurrentMetadataIfKnown() == boost::none);
     }
 
     // Assert that the filtering metadata is not cleared for other operation
     for (auto const& nss : {sourceNss2, tempReshardingNss2}) {
-        AutoGetCollection autoColl(opCtx, nss, LockMode::MODE_IS);
-        const auto csr =
-            CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
+        const auto csr = CollectionShardingRuntime::acquireShared(opCtx, nss);
         ASSERT(csr->getCurrentMetadataIfKnown() != boost::none);
     }
 }
 
 TEST_F(ReshardingDonorRecipientCommonTest, ProcessRecipientFieldsForCloningNoRefresh) {
     RAIIServerParameterControllerForTest noRefreshFeatureFlagController(
-        "featureFlagReshardingNoRefresh", true);
+        "featureFlagReshardingCloneNoRefresh", true);
 
     testProcessRecipientFields(kThisShard.getShardId() /* shardThatChunkExistsOn*/,
                                kThisShard.getShardId() /* primaryShard */,
                                boost::none /* performVerification */,
                                true /* expectRecipientStateMachine */,
-                               RecipientFieldsValidator{},
-                               true /* reshardingNoRefreshEnabled */);
+                               RecipientFieldsValidator{});
 }
 
 }  // namespace

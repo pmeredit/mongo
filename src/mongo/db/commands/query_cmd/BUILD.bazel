@@ -207,9 +207,9 @@ mongo_cc_library(
     name = "query_settings_cmds",
     srcs = [
         # This document source has been re-located here from 'pipeline' to avoid
-        # the 'pipeline' -> 'query_settings_utils' -> 'pipeline' cyclic
+        # the 'pipeline' -> 'query_settings_service' -> 'pipeline' cyclic
         # dependency. Generating the Debug Query Shape requires re-parsing the
-        # query instance via `query_settings::utils::createRepresentativeInfo()`
+        # query instance via `query_settings::createRepresentativeInfo()`
         # which internally uses `Pipeline::parse()`.
         "//src/mongo/db/pipeline:document_source_query_settings.cpp",
         ":query_settings_cmds_gen",
@@ -224,10 +224,8 @@ mongo_cc_library(
         "//src/mongo/db:dbdirectclient",
         "//src/mongo/db/commands:cluster_server_parameter_cmds_idl",
         "//src/mongo/db/commands:set_cluster_parameter_impl",
-        "//src/mongo/db/query:canonical_query",
         "//src/mongo/db/query/plan_cache:query_plan_cache",
-        "//src/mongo/db/query/query_settings:manager",
-        "//src/mongo/db/query/query_settings:utils",
+        "//src/mongo/db/query/query_settings:query_settings_service",
         "//src/mongo/db/query/query_shape",
         "//src/mongo/db/repl:repl_settings",
     ],
@@ -284,7 +282,6 @@ mongo_cc_library(
     name = "map_reduce_agg",
     srcs = [
         "map_reduce_agg.cpp",
-        "//src/mongo/db/query:command_diagnostic_printer.h",
     ],
     hdrs = [
         "map_reduce_agg.h",
@@ -298,6 +295,7 @@ mongo_cc_library(
         "//src/mongo/db/index:index_access_method",
         "//src/mongo/db/pipeline/process_interface:mongo_process_interface",
         "//src/mongo/db/pipeline/process_interface:mongod_process_interface_factory",
+        "//src/mongo/db/query:explain_diagnostic_printer",
         "//src/mongo/db/query:map_reduce_output_format",
         "//src/mongo/db/storage:storage_options",
     ],
@@ -309,7 +307,7 @@ mongo_cc_unit_test(
         "map_reduce_agg_test.cpp",
         "map_reduce_parse_test.cpp",
     ],
-    tags = ["mongo_unittest_first_group"],
+    tags = ["mongo_unittest_second_group"],
     deps = [
         ":map_reduce_agg",
         "//src/mongo/db:service_context_d_test_fixture",

@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonmisc.h"
@@ -42,17 +43,16 @@
 #include "mongo/bson/timestamp.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/catalog/create_collection.h"
+#include "mongo/db/dbdirectclient.h"
 #include "mongo/db/keypattern.h"
 #include "mongo/db/query/collation/collator_factory_icu.h"
 #include "mongo/db/s/shard_server_test_fixture.h"
 #include "mongo/db/timeseries/timeseries_options.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/random.h"
 #include "mongo/s/chunk_version.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/uuid.h"
@@ -62,6 +62,9 @@
 
 namespace mongo {
 namespace {
+
+const ShardId kShard0{"shard0"};
+const ShardId kShard1{"shard1"};
 
 ChunkType generateChunk(const UUID& collUuid,
                         const ShardId& shardId,
@@ -128,11 +131,12 @@ std::vector<CollectionPtr> getLocalCatalogCollections(OperationContext* opCtx,
 
 class MetadataConsistencyTest : public ShardServerTestFixture {
 protected:
-    std::string _shardName = "shard0000";
-    const ShardId _shardId{_shardName};
+    const ShardId _shardId = kShard0;
     const NamespaceString _nss =
         NamespaceString::createNamespaceString_forTest("TestDB", "TestColl");
+    const DatabaseName _dbName = _nss.dbName();
     const UUID _collUuid = UUID::gen();
+    const UUID _dbUuid = UUID::gen();
     const KeyPattern _keyPattern{BSON("x" << 1)};
     const CollectionType _coll{
         _nss, OID::gen(), Timestamp(1), Date_t::now(), _collUuid, _keyPattern};
@@ -142,6 +146,27 @@ protected:
                                           const KeyPattern& keyPattern = KeyPattern(BSON("_id"
                                                                                          << 1))) {
         return CollectionType{nss, OID::gen(), Timestamp(1), Date_t::now(), uuid, keyPattern};
+    }
+
+    void updateConfigChunks(const std::vector<ChunkType>& chunks) {
+        DBDirectClient client(operationContext());
+
+        // Remove all chunks
+        const auto resRemove = client.remove(write_ops::DeleteCommandRequest{
+            NamespaceString::kConfigsvrChunksNamespace,
+            {write_ops::DeleteOpEntry{BSONObj(), true /* multi */}}});
+        write_ops::checkWriteErrors(resRemove);
+
+        // Insert the given chunks
+        if (chunks.size()) {
+            std::vector<BSONObj> docs;
+            for (auto& chunk : chunks) {
+                docs.emplace_back(chunk.toConfigBSON());
+            }
+            const auto resInsert = client.insert(
+                write_ops::InsertCommandRequest{NamespaceString::kConfigsvrChunksNamespace, docs});
+            write_ops::checkWriteErrors(resInsert);
+        }
     }
 
     void assertOneInconsistencyFound(
@@ -188,7 +213,17 @@ protected:
     }
 };
 
-TEST_F(MetadataConsistencyTest, FindRoutingTableRangeGapInconsistency) {
+class MetadataConsistencyConfigTest : public MetadataConsistencyTest {
+protected:
+    void setUp() override {
+        // The ShardingState must be set to 'config' to be able to call
+        // metadata_consistency_util::checkChunksConsistency()
+        kMyShardName = ShardId::kConfigServerId;
+        MetadataConsistencyTest::setUp();
+    }
+};
+
+TEST_F(MetadataConsistencyConfigTest, FindRoutingTableRangeGapInconsistency) {
     const auto chunk1 = generateChunk(_collUuid,
                                       _shardId,
                                       _keyPattern.globalMin(),
@@ -200,43 +235,46 @@ TEST_F(MetadataConsistencyTest, FindRoutingTableRangeGapInconsistency) {
                                       BSON("x" << 1),
                                       _keyPattern.globalMax(),
                                       {ChunkHistory(Timestamp(1, 0), _shardId)});
+    updateConfigChunks({chunk1, chunk2});
 
-    const auto inconsistencies = metadata_consistency_util::checkChunksConsistency(
-        operationContext(), _coll, {chunk1, chunk2});
+    const auto inconsistencies =
+        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
 
     assertOneInconsistencyFound(MetadataInconsistencyTypeEnum::kRoutingTableRangeGap,
                                 inconsistencies);
 }
 
-TEST_F(MetadataConsistencyTest, FindMissingChunkWithMaxKeyInconsistency) {
+TEST_F(MetadataConsistencyConfigTest, FindMissingChunkWithMaxKeyInconsistency) {
     const auto chunk = generateChunk(_collUuid,
                                      _shardId,
                                      _keyPattern.globalMin(),
                                      BSON("x" << 0),
                                      {ChunkHistory(Timestamp(1, 0), _shardId)});
+    updateConfigChunks({chunk});
 
     const auto inconsistencies =
-        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll, {chunk});
+        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
 
     assertOneInconsistencyFound(MetadataInconsistencyTypeEnum::kRoutingTableMissingMaxKey,
                                 inconsistencies);
 }
 
-TEST_F(MetadataConsistencyTest, FindMissingChunkWithMinKeyInconsistency) {
+TEST_F(MetadataConsistencyConfigTest, FindMissingChunkWithMinKeyInconsistency) {
     const auto chunk = generateChunk(_collUuid,
                                      _shardId,
                                      BSON("x" << 0),
                                      _keyPattern.globalMax(),
                                      {ChunkHistory(Timestamp(1, 0), _shardId)});
+    updateConfigChunks({chunk});
 
     const auto inconsistencies =
-        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll, {chunk});
+        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
 
     assertOneInconsistencyFound(MetadataInconsistencyTypeEnum::kRoutingTableMissingMinKey,
                                 inconsistencies);
 }
 
-TEST_F(MetadataConsistencyTest, FindRoutingTableRangeOverlapInconsistency) {
+TEST_F(MetadataConsistencyConfigTest, FindRoutingTableRangeOverlapInconsistency) {
     const auto chunk1 = generateChunk(_collUuid,
                                       _shardId,
                                       _keyPattern.globalMin(),
@@ -248,15 +286,16 @@ TEST_F(MetadataConsistencyTest, FindRoutingTableRangeOverlapInconsistency) {
                                       BSON("x" << -10),
                                       _keyPattern.globalMax(),
                                       {ChunkHistory(Timestamp(1, 0), _shardId)});
+    updateConfigChunks({chunk1, chunk2});
 
-    const auto inconsistencies = metadata_consistency_util::checkChunksConsistency(
-        operationContext(), _coll, {chunk1, chunk2});
+    const auto inconsistencies =
+        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
 
     assertOneInconsistencyFound(MetadataInconsistencyTypeEnum::kRoutingTableRangeOverlap,
                                 inconsistencies);
 }
 
-TEST_F(MetadataConsistencyTest, FindCorruptedChunkShardKeyInconsistency) {
+TEST_F(MetadataConsistencyConfigTest, FindCorruptedChunkShardKeyInconsistency) {
     const auto chunk1 = generateChunk(_collUuid,
                                       _shardId,
                                       _keyPattern.globalMin(),
@@ -268,16 +307,17 @@ TEST_F(MetadataConsistencyTest, FindCorruptedChunkShardKeyInconsistency) {
                                       BSON("y" << 0),
                                       _keyPattern.globalMax(),
                                       {ChunkHistory(Timestamp(1, 0), _shardId)});
+    updateConfigChunks({chunk1, chunk2});
 
-    const auto inconsistencies = metadata_consistency_util::checkChunksConsistency(
-        operationContext(), _coll, {chunk1, chunk2});
+    const auto inconsistencies =
+        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
 
     ASSERT_EQ(2, inconsistencies.size());
     ASSERT_EQ(MetadataInconsistencyTypeEnum::kCorruptedChunkShardKey, inconsistencies[0].getType());
     ASSERT_EQ(MetadataInconsistencyTypeEnum::kRoutingTableRangeGap, inconsistencies[1].getType());
 }
 
-TEST_F(MetadataConsistencyTest, FindCorruptedZoneShardKeyInconsistency) {
+TEST_F(MetadataConsistencyConfigTest, FindCorruptedZoneShardKeyInconsistency) {
     const auto zone1 = generateZone(_nss, _keyPattern.globalMin(), BSON("x" << 0));
 
     const auto zone2 = generateZone(_nss, BSON("y" << 0), _keyPattern.globalMax());
@@ -289,7 +329,7 @@ TEST_F(MetadataConsistencyTest, FindCorruptedZoneShardKeyInconsistency) {
                                 inconsistencies);
 }
 
-TEST_F(MetadataConsistencyTest, FindZoneRangeOverlapInconsistency) {
+TEST_F(MetadataConsistencyConfigTest, FindZoneRangeOverlapInconsistency) {
     const auto zone1 = generateZone(_nss, _keyPattern.globalMin(), BSON("x" << 0));
 
     const auto zone2 = generateZone(_nss, BSON("x" << -10), _keyPattern.globalMax());
@@ -300,7 +340,7 @@ TEST_F(MetadataConsistencyTest, FindZoneRangeOverlapInconsistency) {
     assertOneInconsistencyFound(MetadataInconsistencyTypeEnum::kZonesRangeOverlap, inconsistencies);
 }
 
-TEST_F(MetadataConsistencyTest, FindCorruptedShardKeyInconsistencyForUnsplittableCollection) {
+TEST_F(MetadataConsistencyConfigTest, FindCorruptedShardKeyInconsistencyForUnsplittableCollection) {
     const NamespaceString nss =
         NamespaceString::createNamespaceString_forTest("TestDB", "TestCollUnsplittable");
     const UUID collUuid = UUID::gen();
@@ -521,15 +561,190 @@ TEST_F(MetadataConsistencyTest, TimeseriesOptionsMismatchBetweenLocalAndSharding
                            false);
 }
 
-class MetadataConsistencyRandomRoutingTableTest : public ShardServerTestFixture {
+TEST_F(MetadataConsistencyTest, FindMissingDatabaseMetadataInShardCatalogCache) {
+    RAIIServerParameterControllerForTest featureFlagControllerForDDL(
+        "featureFlagShardAuthoritativeDbMetadataDDL", true);
+    RAIIServerParameterControllerForTest featureFlagControllerForCRUD(
+        "featureFlagShardAuthoritativeDbMetadataCRUD", true);
+
+    Timestamp dbTimestamp{1, 0};
+    DatabaseType dbInGlobalCatalog{_dbName, _shardId, {_dbUuid, dbTimestamp}};
+
+    // Mock database metadata in the shard catalog.
+    DBDirectClient client(operationContext());
+    client.insert(NamespaceString::kConfigShardCatalogDatabasesNamespace,
+                  dbInGlobalCatalog.toBSON());
+
+    // Introduce an inconsistency in the shard catalog cache.
+    {
+        AutoGetDb autoDb(operationContext(), _dbName, MODE_X);
+        auto scopedDss =
+            DatabaseShardingState::assertDbLockedAndAcquireExclusive(operationContext(), _dbName);
+        scopedDss->clearDbInfo(operationContext());
+    }
+
+    // Validate that we can find the inconsistency.
+    const auto inconsistencies = metadata_consistency_util::checkDatabaseMetadataConsistency(
+        operationContext(), dbInGlobalCatalog);
+
+    assertOneInconsistencyFound(
+        MetadataInconsistencyTypeEnum::kMissingDatabaseMetadataInShardCatalogCache,
+        inconsistencies);
+}
+
+TEST_F(MetadataConsistencyTest, FindInconsistentDatabaseVersionInShardCatalogCache) {
+    RAIIServerParameterControllerForTest featureFlagControllerForDDL(
+        "featureFlagShardAuthoritativeDbMetadataDDL", true);
+    RAIIServerParameterControllerForTest featureFlagControllerForCRUD(
+        "featureFlagShardAuthoritativeDbMetadataCRUD", true);
+
+    Timestamp dbTimestamp{1, 0};
+    DatabaseType dbInGlobalCatalog{_dbName, kMyShardName, {_dbUuid, dbTimestamp}};
+
+    // Mock database metadata in the shard catalog.
+    DBDirectClient client(operationContext());
+    client.insert(NamespaceString::kConfigShardCatalogDatabasesNamespace,
+                  dbInGlobalCatalog.toBSON());
+
+    // Introduce an inconsistency in the shard catalog cache.
+    {
+        AutoGetDb autoDb(operationContext(), _dbName, MODE_X);
+        auto scopedDss =
+            DatabaseShardingState::assertDbLockedAndAcquireExclusive(operationContext(), _dbName);
+        scopedDss->setAuthoritativeDbInfo(
+            operationContext(), DatabaseType{_dbName, kMyShardName, {_dbUuid, Timestamp(2, 0)}});
+    }
+
+    // Validate that we can find the inconsistency.
+    const auto inconsistencies = metadata_consistency_util::checkDatabaseMetadataConsistency(
+        operationContext(), dbInGlobalCatalog);
+
+    assertOneInconsistencyFound(
+        MetadataInconsistencyTypeEnum::kInconsistentDatabaseVersionInShardCatalogCache,
+        inconsistencies);
+}
+
+TEST_F(MetadataConsistencyTest, FindEmptyDurableDatabaseMetadataInShard) {
+    RAIIServerParameterControllerForTest featureFlagControllerForDDL(
+        "featureFlagShardAuthoritativeDbMetadataDDL", true);
+    RAIIServerParameterControllerForTest featureFlagControllerForCRUD(
+        "featureFlagShardAuthoritativeDbMetadataCRUD", true);
+
+    Timestamp dbTimestamp{1, 0};
+    DatabaseType dbInGlobalCatalog{_dbName, kMyShardName, {_dbUuid, dbTimestamp}};
+
+    // Introduce an inconsistency in the shard catalog while mocking it in the cache.
+    {
+        AutoGetDb autoDb(operationContext(), _dbName, MODE_X);
+        auto scopedDss =
+            DatabaseShardingState::assertDbLockedAndAcquireExclusive(operationContext(), _dbName);
+        scopedDss->setAuthoritativeDbInfo(operationContext(), dbInGlobalCatalog);
+    }
+
+    // Validate that we can find the inconsistency.
+    const auto inconsistencies = metadata_consistency_util::checkDatabaseMetadataConsistency(
+        operationContext(), dbInGlobalCatalog);
+
+    assertOneInconsistencyFound(
+        MetadataInconsistencyTypeEnum::kMissingDatabaseMetadataInShardCatalog, inconsistencies);
+}
+
+TEST_F(MetadataConsistencyTest, FindInconsistentDurableDatabaseMetadataInShardWithConfig) {
+    RAIIServerParameterControllerForTest featureFlagControllerForDDL(
+        "featureFlagShardAuthoritativeDbMetadataDDL", true);
+    RAIIServerParameterControllerForTest featureFlagControllerForCRUD(
+        "featureFlagShardAuthoritativeDbMetadataCRUD", true);
+
+    Timestamp dbTimestamp{1, 0};
+    DatabaseType dbInGlobalCatalog{_dbName, kMyShardName, {_dbUuid, dbTimestamp}};
+
+    // Mock database metadata in the shard catalog cache.
+    {
+        AutoGetDb autoDb(operationContext(), _dbName, MODE_X);
+        auto scopedDss =
+            DatabaseShardingState::assertDbLockedAndAcquireExclusive(operationContext(), _dbName);
+        scopedDss->setAuthoritativeDbInfo(operationContext(), dbInGlobalCatalog);
+    }
+
+    // Introduce an inconsistency in the shard catalog
+    DBDirectClient client(operationContext());
+    DatabaseType shardDb{_dbName, kMyShardName, {_dbUuid, Timestamp(2, 0)}};
+    client.insert(NamespaceString::kConfigShardCatalogDatabasesNamespace, shardDb.toBSON());
+
+    // Validate that we can find the inconsistency.
+    const auto inconsistencies = metadata_consistency_util::checkDatabaseMetadataConsistency(
+        operationContext(), dbInGlobalCatalog);
+
+    ASSERT_EQ(2, inconsistencies.size());
+    ASSERT_EQ(MetadataInconsistencyTypeEnum::kInconsistentDatabaseVersionInShardCatalog,
+              inconsistencies[0].getType());
+    ASSERT_EQ(MetadataInconsistencyTypeEnum::kInconsistentDatabaseVersionInShardCatalogCache,
+              inconsistencies[1].getType());
+}
+
+TEST_F(MetadataConsistencyTest, FindMatchingDurableDatabaseMetadataInWrongShard) {
+    RAIIServerParameterControllerForTest featureFlagControllerForDDL(
+        "featureFlagShardAuthoritativeDbMetadataDDL", true);
+    RAIIServerParameterControllerForTest featureFlagControllerForCRUD(
+        "featureFlagShardAuthoritativeDbMetadataCRUD", true);
+
+    Timestamp dbTimestamp{1, 0};
+    DatabaseType dbInGlobalCatalog{_dbName, kMyShardName, {_dbUuid, dbTimestamp}};
+
+    // Mock database metadata in the shard catalog cache.
+    {
+        AutoGetDb autoDb(operationContext(), _dbName, MODE_X);
+        auto scopedDss =
+            DatabaseShardingState::assertDbLockedAndAcquireExclusive(operationContext(), _dbName);
+        scopedDss->setAuthoritativeDbInfo(operationContext(), dbInGlobalCatalog);
+    }
+
+    // Introduce an inconsistency in the shard catalog
+    DBDirectClient client(operationContext());
+    DatabaseType shardDb{_dbName, ShardId{"otherShard"}, {_dbUuid, dbTimestamp}};
+    client.insert(NamespaceString::kConfigShardCatalogDatabasesNamespace, shardDb.toBSON());
+
+    // Validate that we can find the inconsistency.
+    const auto inconsistencies = metadata_consistency_util::checkDatabaseMetadataConsistency(
+        operationContext(), dbInGlobalCatalog);
+
+    assertOneInconsistencyFound(
+        MetadataInconsistencyTypeEnum::kMisplacedDatabaseMetadataInShardCatalog, inconsistencies);
+}
+
+TEST_F(MetadataConsistencyTest, FindInconsistentDurableDatabaseMetadataInShard) {
+    RAIIServerParameterControllerForTest featureFlagControllerForDDL(
+        "featureFlagShardAuthoritativeDbMetadataDDL", true);
+    RAIIServerParameterControllerForTest featureFlagControllerForCRUD(
+        "featureFlagShardAuthoritativeDbMetadataCRUD", true);
+
+    Timestamp dbTimestamp{1, 0};
+    DatabaseType dbInGlobalCatalog{_dbName, kMyShardName, {_dbUuid, dbTimestamp}};
+
+    // Mock database metadata in the shard catalog cache.
+    {
+        AutoGetDb autoDb(operationContext(), _dbName, MODE_X);
+        auto scopedDss =
+            DatabaseShardingState::assertDbLockedAndAcquireExclusive(operationContext(), _dbName);
+        scopedDss->setAuthoritativeDbInfo(operationContext(), dbInGlobalCatalog);
+    }
+
+    // Introduce an inconsistency in the shard catalog
+    DBDirectClient client(operationContext());
+    client.insert(NamespaceString::kConfigShardCatalogDatabasesNamespace,
+                  BSON(DatabaseType::kDbNameFieldName << _dbName.toString_forTest()));
+
+    // Validate that we can find the inconsistency.
+    const auto inconsistencies = metadata_consistency_util::checkDatabaseMetadataConsistency(
+        operationContext(), dbInGlobalCatalog);
+
+    assertOneInconsistencyFound(
+        MetadataInconsistencyTypeEnum::kMissingDatabaseMetadataInShardCatalog, inconsistencies);
+}
+
+class MetadataConsistencyRandomRoutingTableTest : public MetadataConsistencyConfigTest {
 protected:
-    const NamespaceString _nss =
-        NamespaceString::createNamespaceString_forTest("TestDB", "TestColl");
-    const UUID _collUuid = UUID::gen();
-    const KeyPattern _keyPattern{BSON("x" << 1)};
-    const CollectionType _coll{
-        _nss, OID::gen(), Timestamp(1), Date_t::now(), _collUuid, _keyPattern};
-    inline const static auto _shards = std::vector<ShardId>{ShardId{"shard0"}, ShardId{"shard1"}};
+    inline const static auto _shards = std::vector<ShardId>{kShard0, kShard1};
     PseudoRandom _random{SecureRandom().nextInt64()};
 
     std::vector<ChunkType> getRandomRoutingTable() {
@@ -561,10 +776,11 @@ protected:
  */
 TEST_F(MetadataConsistencyRandomRoutingTableTest, FindRoutingTableRangeGapInconsistency) {
     auto chunks = getRandomRoutingTable();
+    updateConfigChunks(chunks);
 
     // Check that there are no inconsistencies in the routing table
     auto inconsistencies =
-        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll, chunks);
+        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
     ASSERT_EQ(0, inconsistencies.size());
 
     // Remove randoms chunk from the routing table
@@ -573,9 +789,9 @@ TEST_F(MetadataConsistencyRandomRoutingTableTest, FindRoutingTableRangeGapIncons
         const auto itChunkToRemove = _random.nextInt64(chunks.size());
         chunks.erase(chunks.begin() + itChunkToRemove);
     }
+    updateConfigChunks(chunks);
 
-    inconsistencies =
-        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll, chunks);
+    inconsistencies = metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
 
     // Assert that there is at least one gap inconsistency
     try {
@@ -603,10 +819,11 @@ TEST_F(MetadataConsistencyRandomRoutingTableTest, FindRoutingTableRangeGapIncons
  */
 TEST_F(MetadataConsistencyRandomRoutingTableTest, FindRoutingTableRangeOverlapInconsistency) {
     auto chunks = getRandomRoutingTable();
+    updateConfigChunks(chunks);
 
     // Check that there are no inconsistencies in the routing table
     auto inconsistencies =
-        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll, chunks);
+        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
     ASSERT_EQ(0, inconsistencies.size());
 
     // If there is only one chunk, we can't introduce an overlap
@@ -620,7 +837,7 @@ TEST_F(MetadataConsistencyRandomRoutingTableTest, FindRoutingTableRangeOverlapIn
     auto overlapMax = [&]() {
         auto newMax = [&] {
             if (_random.nextInt64(10) == 0) {
-                // With 1/10 probability, set min to MinKey
+                // With 1/10 probability, set max to MaxKey
                 return _keyPattern.globalMax();
             } else {
                 // Otherwise, set max to a random value bigger than actual
@@ -659,16 +876,17 @@ TEST_F(MetadataConsistencyRandomRoutingTableTest, FindRoutingTableRangeOverlapIn
         }
     }
 
-    inconsistencies =
-        metadata_consistency_util::checkChunksConsistency(operationContext(), _coll, chunks);
+    updateConfigChunks(chunks);
+    inconsistencies = metadata_consistency_util::checkChunksConsistency(operationContext(), _coll);
 
     // Assert that there is at least one overlap inconsistency
     try {
         ASSERT_LTE(1, inconsistencies.size());
-        for (const auto& inconsistency : inconsistencies) {
-            ASSERT_EQ(MetadataInconsistencyTypeEnum::kRoutingTableRangeOverlap,
-                      inconsistency.getType());
-        }
+        ASSERT_TRUE(std::any_of(
+            inconsistencies.begin(), inconsistencies.end(), [](const auto& inconsistency) {
+                return inconsistency.getType() ==
+                    MetadataInconsistencyTypeEnum::kRoutingTableRangeOverlap;
+            }));
     } catch (...) {
         LOGV2_INFO(7424601,
                    "Expecting overlap inconsistencies",

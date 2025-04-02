@@ -20,6 +20,9 @@ export class ProxyProtocolServer {
 
         assert(version === 1 || version === 2);
         this.version = version;
+
+        this.ingress_address = '127.0.0.1';
+        this.egress_address = '127.0.0.1';
     }
 
     /**
@@ -29,6 +32,20 @@ export class ProxyProtocolServer {
      */
     getIngressPort() {
         return this.ingress_port;
+    }
+
+    /**
+     * The the ingress connection string which can be passed to `new Mongo(...)`.
+     */
+    getIngressString() {
+        return `${this.ingress_address}:${this.ingress_port}`;
+    }
+
+    /**
+     * The the egress connection string pointing to the output.
+     */
+    getEgressString() {
+        return `${this.egress_address}:${this.egress_port}`;
     }
 
     /**
@@ -52,8 +69,8 @@ export class ProxyProtocolServer {
             "-u",
             this.web_server_py,
             "--service",
-            "127.0.0.1:" + this.ingress_port,
-            "127.0.0.1:" + this.egress_port + "?pp=v" + this.version
+            this.ingress_address + ':' + this.ingress_port,
+            this.egress_address + ':' + this.egress_port + "?pp=v" + this.version,
         ];
 
         clearRawMongoProgramOutput();
@@ -83,6 +100,37 @@ export class ProxyProtocolServer {
         });
 
         print("Proxy Protocol Server sucessfully started.");
+    }
+
+    /**
+     * Get the proxy server port used to connect to the egress port provided.
+     */
+    getServerPort() {
+        let args = ["ss", "-nt", `dst 127.0.0.1:${this.egress_port}`];
+        clearRawMongoProgramOutput();
+        _startMongoProgram({args: args});
+
+        sleep(1000);
+
+        let output = rawMongoProgramOutput(".*");
+
+        // Some variants like UBI 8 do not have ss installed
+        if (output.match("(?:not found|No such file or directory)")) {
+            args = ["netstat", "-nt"];
+            clearRawMongoProgramOutput();
+            _startMongoProgram({args: args});
+
+            sleep(1000);
+
+            output = rawMongoProgramOutput(".*");
+        }
+
+        const regexMatch = `127.0.0.1:(\\d+)\\s+127.0.0.1:${this.egress_port}`;
+        const match = output.match(regexMatch);
+        if (!match) {
+            throw Error("Could not find connection to egress port");
+        }
+        return parseInt(match[1]);
     }
 
     /**

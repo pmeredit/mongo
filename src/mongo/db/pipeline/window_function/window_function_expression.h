@@ -41,13 +41,10 @@
 #include <set>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/init.h"  // IWYU pragma: keep
-#include "mongo/base/initializer.h"
-#include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsonobj.h"
@@ -58,24 +55,21 @@
 #include "mongo/db/pipeline/accumulator.h"
 #include "mongo/db/pipeline/accumulator_for_window_functions.h"
 #include "mongo/db/pipeline/accumulator_multi.h"
-#include "mongo/db/pipeline/accumulator_percentile.h"
 #include "mongo/db/pipeline/dependencies.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_source_set_window_fields_gen.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_dependencies.h"
 #include "mongo/db/pipeline/field_path.h"
-#include "mongo/db/pipeline/percentile_algo.h"
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/db/pipeline/window_function/window_bounds.h"
 #include "mongo/db/pipeline/window_function/window_function.h"
 #include "mongo/db/pipeline/window_function/window_function_integral.h"
-#include "mongo/db/pipeline/window_function/window_function_min_max_scalar.h"
+#include "mongo/db/pipeline/window_function/window_function_min_max_scaler.h"
 #include "mongo/db/query/datetime/date_time_support.h"
-#include "mongo/db/query/query_feature_flags_gen.h"
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/db/query/sort_pattern.h"
+#include "mongo/db/version_context.h"
 #include "mongo/platform/decimal128.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
@@ -89,10 +83,11 @@ class PartitionIterator;
 
 #define REGISTER_STABLE_WINDOW_FUNCTION(name, parser) \
     REGISTER_WINDOW_FUNCTION_CONDITIONALLY(           \
-        name, parser, boost::none, AllowedWithApiStrict::kAlways, true)
+        name, parser, kDoesNotRequireFeatureFlag, AllowedWithApiStrict::kAlways, true)
 
 #define REGISTER_WINDOW_FUNCTION(name, parser, allowedWithApi) \
-    REGISTER_WINDOW_FUNCTION_CONDITIONALLY(name, parser, boost::none, allowedWithApi, true)
+    REGISTER_WINDOW_FUNCTION_CONDITIONALLY(                    \
+        name, parser, kDoesNotRequireFeatureFlag, allowedWithApi, true)
 
 /**
  * We store featureFlag in the parserMap, so that it can be checked at runtime to correctly
@@ -107,10 +102,11 @@ class PartitionIterator;
                               ("EndWindowFunctionRegistration"))                               \
     (InitializerContext*) {                                                                    \
         if (!__VA_ARGS__ ||                                                                    \
-            (boost::optional<FeatureFlag>(featureFlag) != boost::none &&                       \
-             !boost::optional<FeatureFlag>(featureFlag)                                        \
-                  ->isEnabledUseLatestFCVWhenUninitialized(                                    \
-                      serverGlobalParams.featureCompatibility.acquireFCVSnapshot()))) {        \
+            !CheckableFeatureFlagRef(featureFlag).isEnabled([](auto& fcvGatedFlag) {           \
+                return fcvGatedFlag.isEnabledUseLatestFCVWhenUninitialized(                    \
+                    kNoVersionContext,                                                         \
+                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot());             \
+            })) {                                                                              \
             return;                                                                            \
         }                                                                                      \
         ::mongo::window_function::Expression::registerParser(                                  \
@@ -125,7 +121,7 @@ class PartitionIterator;
         ::mongo::window_function::Expression::registerParser(                          \
             "$" #name,                                                                 \
             ::mongo::window_function::ExpressionRemovable<accumClass, wfClass>::parse, \
-            boost::none,                                                               \
+            kDoesNotRequireFeatureFlag,                                                \
             AllowedWithApiStrict::kAlways);                                            \
     }
 
@@ -176,13 +172,13 @@ public:
 
     struct ExpressionParserRegistration {
         Parser parser;
-        boost::optional<FeatureFlag> featureFlag;
+        CheckableFeatureFlagRef featureFlag;
         AllowedWithApiStrict allowedWithApi;
     };
 
     static void registerParser(std::string functionName,
                                Parser parser,
-                               boost::optional<FeatureFlag> featureFlag,
+                               CheckableFeatureFlagRef featureFlag,
                                AllowedWithApiStrict allowedWithApi);
 
     /**
@@ -979,14 +975,14 @@ public:
     }
 };
 
-class ExpressionMinMaxScalar : public Expression {
+class ExpressionMinMaxScaler : public Expression {
 public:
-    static constexpr StringData kWindowFnName = "$minMaxScalar"_sd;
+    static constexpr StringData kWindowFnName = "$minMaxScaler"_sd;
     static constexpr StringData kInputArg = "input"_sd;
     static constexpr StringData kMinArg = "min"_sd;
     static constexpr StringData kMaxArg = "max"_sd;
 
-    ExpressionMinMaxScalar(ExpressionContext* expCtx,
+    ExpressionMinMaxScaler(ExpressionContext* expCtx,
                            boost::intrusive_ptr<::mongo::Expression> input,
                            WindowBounds bounds,
                            std::pair<Value, Value> sMinAndsMax)
@@ -998,25 +994,25 @@ public:
                                                   ExpressionContext* expCtx);
 
     boost::intrusive_ptr<AccumulatorState> buildAccumulatorOnly() const final {
-        // This function should be unreachable as the $minMaxScalar window function does
+        // This function should be unreachable as the $minMaxScaler window function does
         // not use an accumulator to implement the non-removable version of its execution.
-        // This is because $minMaxScalar relies on the "current" document value being
+        // This is because $minMaxScaler relies on the "current" document value being
         // processed, which implies a 1:1 ratio of input to output documents in the group
         // of documents being operated over, whereas accumulators in general can reduce
         // the number of documents output compared to the input.
-        // Instead $minMaxScalar has a custom WindowFunctionExec class that handles the
+        // Instead $minMaxScaler has a custom WindowFunctionExec class that handles the
         // non-removable implementation that is installed directly in the
         // WindowFunctionExec::create() method.
         MONGO_UNREACHABLE_TASSERT(9459900);
     }
 
     std::unique_ptr<WindowFunctionState> buildRemovable() const final {
-        return WindowFunctionMinMaxScalar::create(_expCtx, _sMinAndsMax);
+        return WindowFunctionMinMaxScaler::create(_expCtx, _sMinAndsMax);
     }
 
     Value serialize(const SerializationOptions& opts) const final {
         MutableDocument result;
-        // $minMaxScalar args
+        // $minMaxScaler args
         result[_accumulatorName][kInputArg] = _input->serialize(opts);
         result[_accumulatorName][kMinArg] = _sMinAndsMax.first;
         result[_accumulatorName][kMaxArg] = _sMinAndsMax.second;
@@ -1042,18 +1038,18 @@ private:
 
     // Internal parsing helper functions.
     //
-    // Parses the top level keys to the $minMaxScalar window function BSON.
-    // Expects a '$minMaxScalar' key, and optionally a 'window' key.
-    // First return value of the pair is the unparsed arguments to '$minMaxScalar'.
+    // Parses the top level keys to the $minMaxScaler window function BSON.
+    // Expects a '$minMaxScaler' key, and optionally a 'window' key.
+    // First return value of the pair is the unparsed arguments to '$minMaxScaler'.
     // Second return value of the pair is the parsed WindowBounds.
     static std::pair<BSONElement, WindowBounds> parseTopLevelKeys(
         BSONObj obj, const boost::optional<SortPattern>& sortBy, ExpressionContext* expCtx);
-    // Parses the BSON object that is the argument to the '$minMaxScalar' key.
+    // Parses the BSON object that is the argument to the '$minMaxScaler' key.
     // First return value of the pair is the parsed Expression of the 'input' key.
     // Second return value is the pair representing the sMin and sMax arguments to the window
     // function.
     static std::pair<boost::intrusive_ptr<::mongo::Expression>, std::pair<Value, Value>>
-    parseMinMaxScalarArgs(BSONElement minMaxScalarElem, ExpressionContext* expCtx);
+    parseMinMaxScalerArgs(BSONElement minMaxScalerElem, ExpressionContext* expCtx);
 };
 
 /**

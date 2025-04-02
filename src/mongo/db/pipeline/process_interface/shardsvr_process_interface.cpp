@@ -85,8 +85,6 @@
 
 namespace mongo {
 
-using namespace fmt::literals;
-
 namespace {
 
 // Writes to the local shard. It shall only be used to write to collections that are always
@@ -124,9 +122,9 @@ void writeToLocalShard(OperationContext* opCtx,
 }  // namespace
 
 bool ShardServerProcessInterface::isSharded(OperationContext* opCtx, const NamespaceString& nss) {
-    const auto [cm, _] =
+    const auto cri =
         uassertStatusOK(Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
-    return cm.isSharded();
+    return cri.isSharded();
 }
 
 void ShardServerProcessInterface::checkRoutingInfoEpochOrThrow(
@@ -136,19 +134,10 @@ void ShardServerProcessInterface::checkRoutingInfoEpochOrThrow(
     auto* catalogCache = Grid::get(expCtx->getOperationContext())->catalogCache();
 
     auto receivedVersion = [&] {
-        // Since we are only checking the epoch, don't advance the time in store of the index cache
-        auto currentShardingIndexCatalogInfo =
-            uassertStatusOK(
-                catalogCache->getCollectionRoutingInfo(expCtx->getOperationContext(), nss))
-                .sii;
-
         // Mark the cache entry routingInfo for the 'nss' if the entry is staler than
         // 'targetCollectionPlacementVersion'.
-        auto ignoreIndexVersion = ShardVersionFactory::make(
-            targetCollectionPlacementVersion,
-            currentShardingIndexCatalogInfo
-                ? boost::make_optional(currentShardingIndexCatalogInfo->getCollectionIndexes())
-                : boost::none);
+        auto ignoreIndexVersion =
+            ShardVersionFactory::make(targetCollectionPlacementVersion, boost::none);
 
         catalogCache->onStaleCollectionVersion(nss, ignoreIndexVersion);
         return ignoreIndexVersion;
@@ -157,13 +146,11 @@ void ShardServerProcessInterface::checkRoutingInfoEpochOrThrow(
     auto wantedVersion = [&] {
         auto routingInfo = uassertStatusOK(
             catalogCache->getCollectionRoutingInfo(expCtx->getOperationContext(), nss));
-        auto foundVersion = routingInfo.cm.hasRoutingTable() ? routingInfo.cm.getVersion()
-                                                             : ChunkVersion::UNSHARDED();
+        auto foundVersion = routingInfo.hasRoutingTable()
+            ? routingInfo.getCollectionVersion().placementVersion()
+            : ChunkVersion::UNSHARDED();
 
-        auto ignoreIndexVersion = ShardVersionFactory::make(
-            foundVersion,
-            routingInfo.sii ? boost::make_optional(routingInfo.sii->getCollectionIndexes())
-                            : boost::none);
+        auto ignoreIndexVersion = ShardVersionFactory::make(foundVersion, boost::none);
         return ignoreIndexVersion;
     }();
 
@@ -303,11 +290,20 @@ void ShardServerProcessInterface::renameIfOptionsAndIndexesHaveNotChanged(
 
 BSONObj ShardServerProcessInterface::getCollectionOptions(OperationContext* opCtx,
                                                           const NamespaceString& nss) {
+    return _getCollectionOptions(opCtx, nss);
+}
+
+BSONObj ShardServerProcessInterface::_getCollectionOptions(OperationContext* opCtx,
+                                                           const NamespaceString& nss,
+                                                           bool runOnPrimary) {
     if (nss.isNamespaceAlwaysUntracked()) {
         return getCollectionOptionsLocally(opCtx, nss);
     };
 
-    const auto response = _runListCollectionsCommandOnAShardedCluster(opCtx, nss);
+    // Some collections (for example temp collections) only exist on the replica set primary so we
+    // may need to run on the primary to get the options.
+    const auto response =
+        _runListCollectionsCommandOnAShardedCluster(opCtx, nss, false, runOnPrimary);
     if (response.empty()) {
         return BSONObj{};
     }
@@ -327,6 +323,13 @@ BSONObj ShardServerProcessInterface::getCollectionOptions(OperationContext* opCt
         return optionObj.getOwned();
     }
     return BSONObj{};
+}
+
+UUID ShardServerProcessInterface::fetchCollectionUUIDFromPrimary(OperationContext* opCtx,
+                                                                 const NamespaceString& nss) {
+    const auto options = _getCollectionOptions(opCtx, nss, /*runOnPrimary*/ true);
+    auto uuid = UUID::parse(options["uuid"_sd]);
+    return uassertStatusOK(uuid);
 }
 
 query_shape::CollectionType ShardServerProcessInterface::getCollectionType(
@@ -395,7 +398,7 @@ void ShardServerProcessInterface::_createCollectionCommon(OperationContext* opCt
                                                           const DatabaseName& dbName,
                                                           const BSONObj& cmdObj,
                                                           boost::optional<ShardId> dataShard) {
-    cluster::createDatabase(opCtx, dbName);
+    cluster::createDatabase(opCtx, dbName, dataShard);
 
     // TODO (SERVER-77915): Remove the FCV check and keep only the 'else' branch
     if (!feature_flags::g80CollectionCreationPath.isEnabled(
@@ -485,8 +488,8 @@ void ShardServerProcessInterface::createIndexesOnEmptyCollection(
     sharding::router::CollectionRouter router(opCtx->getServiceContext(), ns);
     router.route(
         opCtx,
-        "copying index for empty collection {}"_format(
-            NamespaceStringUtil::serialize(ns, SerializationContext::stateDefault())),
+        fmt::format("copying index for empty collection {}",
+                    NamespaceStringUtil::serialize(ns, SerializationContext::stateDefault())),
         [&](OperationContext* opCtx, const CollectionRoutingInfo& cri) {
             BSONObjBuilder cmdBuilder;
             cmdBuilder.append("createIndexes", ns.coll());

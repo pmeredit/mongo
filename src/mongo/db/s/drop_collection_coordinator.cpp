@@ -69,8 +69,6 @@
 #include "mongo/executor/async_rpc.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/s/catalog_cache.h"
@@ -247,10 +245,9 @@ void DropCollectionCoordinator::_checkPreconditionsAndSaveArgumentsOnDoc() {
         // at this level, such as the time series collection must be resolved to remove the
         // corresponding bucket collection, or tag documents associated to non-existing collections
         // must be cleaned up.
-        using namespace fmt::literals;
         if (nss().isSystem()) {
             uassert(ErrorCodes::NamespaceNotFound,
-                    "namespace {} does not exist"_format(nss().toStringForErrorMsg()),
+                    fmt::format("namespace {} does not exist", nss().toStringForErrorMsg()),
                     *coll);
 
             uassertStatusOK(isDroppableCollection(opCtx, nss()));

@@ -104,9 +104,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/random.h"
 #include "mongo/s/analyze_shard_key_documents_gen.h"
@@ -220,9 +217,8 @@ AggregateCommandRequest makeAggregateRequestForCardinalityAndFrequency(const Nam
 
     std::vector<BSONObj> pipeline;
 
-    pipeline.push_back(BSON("$project" << BSON("_id" << 0 << kIndexKeyFieldName
-                                                     << BSON("$meta"
-                                                             << "indexKey"))));
+    pipeline.push_back(
+        BSON("$project" << BSON("_id" << 0 << kIndexKeyFieldName << BSON("$meta" << "indexKey"))));
 
     if (numDocsTotal > numDocsToSample) {
         pipeline.push_back(
@@ -262,9 +258,8 @@ AggregateCommandRequest makeAggregateRequestForCardinalityAndFrequency(const Nam
                   << kNumDistinctValuesFieldName << BSON("$sum" << 1) << kMostCommonValuesFieldName
                   << BSON("$topN" << BSON("n" << numMostCommonValues << "sortBy"
                                               << BSON(kFrequencyFieldName << -1) << "output"
-                                              << BSON("_id"
-                                                      << "$_id" << kFrequencyFieldName
-                                                      << ("$" + kFrequencyFieldName)))))));
+                                              << BSON("_id" << "$_id" << kFrequencyFieldName
+                                                            << ("$" + kFrequencyFieldName)))))));
 
     // Unwind "mostCommonValues" to return each shard value in its own document.
     pipeline.push_back(BSON("$unwind" << ("$" + kMostCommonValuesFieldName)));
@@ -300,10 +295,8 @@ AggregateCommandRequest makeAggregateRequestForCardinalityAndFrequency(const Nam
                        << BSON_ARRAY(BSON("$match" << matchBuilder.obj()) << BSON("$limit" << 1))
                        << "as"
                        << "docs")));
-        pipeline.push_back(BSON("$set" << BSON(kDocFieldName << BSON("$first"
-                                                                     << "$docs"))));
-        pipeline.push_back(BSON("$unset" << BSON_ARRAY("docs"
-                                                       << "_id")));
+        pipeline.push_back(BSON("$set" << BSON(kDocFieldName << BSON("$first" << "$docs"))));
+        pipeline.push_back(BSON("$unset" << BSON_ARRAY("docs" << "_id")));
     } else {
         pipeline.push_back(BSON(
             "$set" << BSON(kIndexKeyFieldName
@@ -375,8 +368,8 @@ void runClusterAggregate(OperationContext* opCtx,
         analyzeShardKeyHangInClusterAggregate.pauseWhileSet();
     }
 
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[nss.coll()] = {nss, std::vector<BSONObj>{}};
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[nss] = {nss, std::vector<BSONObj>{}};
 
     auto pi = std::make_shared<ShardServerProcessInterface>(
         Grid::get(opCtx)->getExecutorPool()->getArbitraryExecutor());
@@ -901,24 +894,19 @@ CollStatsMetrics calculateCollStats(OperationContext* opCtx, const NamespaceStri
 
     std::vector<BSONObj> pipeline;
     pipeline.push_back(BSON("$collStats" << BSON("storageStats" << BSONObj())));
-    pipeline.push_back(BSON("$group" << BSON("_id" << BSONNULL << kNumBytesFieldName
-                                                   << BSON("$sum"
-                                                           << "$storageStats.size")
-                                                   << kNumDocsFieldName
-                                                   << BSON("$sum"
-                                                           << "$storageStats.count")
-                                                   << kNumOrphanDocsFieldName
-                                                   << BSON("$sum"
-                                                           << "$storageStats.numOrphanDocs"))));
+    pipeline.push_back(BSON(
+        "$group" << BSON("_id" << BSONNULL << kNumBytesFieldName
+                               << BSON("$sum" << "$storageStats.size") << kNumDocsFieldName
+                               << BSON("$sum" << "$storageStats.count") << kNumOrphanDocsFieldName
+                               << BSON("$sum" << "$storageStats.numOrphanDocs"))));
     AggregateCommandRequest aggRequest(nss, pipeline);
     aggRequest.setReadConcern(extractReadConcern(opCtx));
 
     auto isShardedCollection = [&] {
         if (serverGlobalParams.clusterRole.has(ClusterRole::ShardServer)) {
-            auto cm = uassertStatusOK(
-                          Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss))
-                          .cm;
-            return cm.isSharded();
+            const auto cri = uassertStatusOK(
+                Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
+            return cri.isSharded();
         }
         return false;
     }();

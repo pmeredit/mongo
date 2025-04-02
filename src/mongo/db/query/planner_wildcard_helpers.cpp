@@ -51,7 +51,6 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/exec/index_path_projection.h"
 #include "mongo/db/exec/projection_executor_utils.h"
-#include "mongo/db/feature_flag.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index/multikey_paths.h"
@@ -60,11 +59,8 @@
 #include "mongo/db/query/index_multikey_helpers.h"
 #include "mongo/db/query/interval.h"
 #include "mongo/db/query/planner_wildcard_helpers.h"
-#include "mongo/db/query/query_feature_flags_gen.h"
 #include "mongo/db/query/stage_types.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 
@@ -106,22 +102,39 @@ bool fieldNameOrArrayIndexPathMatches(const FieldRef& fieldNameOrArrayIndexPath,
     if (staticComparisonPath.numParts() > fieldNameOrArrayIndexPath.numParts()) {
         return false;
     }
-    size_t offset = 0;
-    for (size_t i = 0; i < fieldNameOrArrayIndexPath.numParts(); ++i) {
-        if (i - offset >= staticComparisonPath.numParts()) {
+    auto comparisonPathIndex = 0;         // Index into staticComparisonPath.
+    auto parentComponentIsArray = false;  // Whether the parent path component is an array.
+    for (auto pathIndex = 0;              // Index into fieldNameOrArrayIndexPath.
+         pathIndex < fieldNameOrArrayIndexPath.numParts();
+         ++pathIndex) {
+        auto incrementComparisonPathIndexBy = 1;
+        if (comparisonPathIndex >= staticComparisonPath.numParts()) {
+            // If we exceed the bounds of the static comparison path, then clearly the path doesn't
+            // match because of the trailing path components.
+            return false;
+        } else if (fieldNameOrArrayIndexPath.getPart(pathIndex) ==
+                   staticComparisonPath.getPart(comparisonPathIndex)) {
+            // Path component matches the comparison path verbatim. Check passes, move on to the
+            // next component.
+        } else if (parentComponentIsArray &&
+                   fieldNameOrArrayIndexPath.isNumericPathComponentStrict(pathIndex)) {
+            // Check whether the path component could be an array indexing component. Since
+            // parentComponentIsArray is never true on the first iteration, this will not underflow.
+            // We then decrease the comparison path index to account to re-compare against the field
+            // in the array field path.
+            incrementComparisonPathIndexBy = 0;
+        } else {
+            // Because the path is neither a verbatim match nor could it be an array index
+            // reference, the path does not match.
             return false;
         }
-        if (fieldNameOrArrayIndexPath.getPart(i) == staticComparisonPath.getPart(i - offset)) {
-            continue;
-        } else if (multikeyPathComponents.count(i - 1) &&
-                   fieldNameOrArrayIndexPath.isNumericPathComponentStrict(i)) {
-            ++offset;
-            continue;
-        }
-        return false;
+        // Cache whether this path component, soon to be the parent path component, is array-ish.
+        parentComponentIsArray = multikeyPathComponents.contains(pathIndex);
+        comparisonPathIndex += incrementComparisonPathIndexBy;
     }
+
     // Ensure that we matched the entire 'staticComparisonPath' dotted string.
-    return fieldNameOrArrayIndexPath.numParts() == staticComparisonPath.numParts() + offset;
+    return staticComparisonPath.numParts() == comparisonPathIndex;
 }
 
 /**
@@ -414,7 +427,7 @@ boost::optional<IndexEntry> createExpandedIndexEntry(const IndexEntry& wildcardI
     const bool isMultikey = !multikeyPaths[wildcardFieldPos].empty();
     IndexEntry entry(std::move(expandedKeyPattern),
                      IndexType::INDEX_WILDCARD,
-                     IndexDescriptor::kLatestIndexVersion,
+                     IndexConfig::kLatestIndexVersion,
                      isMultikey,
                      std::move(multikeyPaths),
                      // Expanded index entries always use the fixed-size multikey paths
@@ -460,7 +473,7 @@ bool canOnlyAnswerWildcardPrefixQuery(const IndexEntry& index, const IndexBounds
 }  // namespace
 
 void expandWildcardIndexEntry(const IndexEntry& wildcardIndex,
-                              const stdx::unordered_set<std::string>& fields,
+                              const std::set<std::string>& fields,
                               std::vector<IndexEntry>* out) {
     tassert(7246502, "out parameter cannot be null", out);
     tassert(7246503,
@@ -653,88 +666,5 @@ std::vector<Interval> makeAllValuesForPath() {
     return intervals;
 }
 
-bool expandWildcardFieldBounds(std::vector<std::unique_ptr<QuerySolutionNode>>& ixscanNodes) {
-    // Check if the index is a CWI and its wildcard field was expanded to a specific field.
-    auto isCompoundWildcardIndexToExpand = [](const IndexScanNode* idxNode) {
-        const IndexEntry& index = idxNode->index;
-        BSONElement elt = index.keyPattern.firstElement();
-        if (index.type == INDEX_WILDCARD && elt.fieldNameStringData() != "$_path"_sd &&
-            index.keyPattern.nFields() > 2 &&
-            idxNode->bounds.fields[index.wildcardFieldPos].name != "$_path") {
-            return true;
-        }
-        return false;
-    };
-    // Expand the CWI's index bounds to include all keys for the '$_path' field and the wildcard
-    // field.
-    auto expandIndexBoundsForCWI = [](IndexScanNode* idxNode) {
-        IndexEntry& index = idxNode->index;
-        idxNode->bounds.fields[index.wildcardFieldPos - 1].intervals = makeAllValuesForPath();
-        idxNode->bounds.fields[index.wildcardFieldPos].intervals =
-            std::vector<Interval>{IndexBoundsBuilder::allValues()};
-        idxNode->bounds.fields[index.wildcardFieldPos - 1].name = "$_path";
-        if (!idxNode->iets.empty()) {
-            tassert(7842600,
-                    "The size of iets must be the same as in the index bounds",
-                    idxNode->iets.size() == idxNode->bounds.fields.size());
-            idxNode->iets[index.wildcardFieldPos - 1] =
-                interval_evaluation_tree::IET::make<interval_evaluation_tree::ConstNode>(
-                    idxNode->bounds.fields[index.wildcardFieldPos - 1]);
-            idxNode->iets[index.wildcardFieldPos] =
-                interval_evaluation_tree::IET::make<interval_evaluation_tree::ConstNode>(
-                    idxNode->bounds.fields[index.wildcardFieldPos]);
-        }
-        index.multikeyPaths[index.wildcardFieldPos] = MultikeyComponents();
-        idxNode->shouldDedup = true;
-
-        // Reverse the index bounds of the wildcard field.
-        size_t idx = 0;
-        for (auto elem : index.keyPattern) {
-            if (idx == index.wildcardFieldPos) {
-                if (elem.number() < 0) {
-                    idxNode->bounds.fields[index.wildcardFieldPos].reverse();
-                }
-            }
-            idx++;
-        }
-    };
-
-    // Expand the index bounds of certain compound wildcard indexes in order to avoid missing any
-    // documents for $or queries.
-    for (auto&& node : ixscanNodes) {
-        // This expanding logic is only for $or queries with the assumption that there're only FETCH
-        // and IXSCAN under OR to expand.
-        if (STAGE_FETCH == node->getType()) {
-            QuerySolutionNode* child = node->children[0].get();
-            if (STAGE_IXSCAN == child->getType()) {
-                IndexScanNode* idxNode = dynamic_cast<IndexScanNode*>(child);
-                tassert(7767201, "There must be an IndexScanNode under the FetchNode", idxNode);
-                if (isCompoundWildcardIndexToExpand(idxNode)) {
-                    if ((!node->filter || !idxNode->filter)) {
-                        expandIndexBoundsForCWI(idxNode);
-                    } else {
-                        return false;
-                    }
-                }
-            }
-        } else if (STAGE_IXSCAN == node->getType()) {
-            IndexScanNode* idxNode = static_cast<IndexScanNode*>(node.get());
-            if (isCompoundWildcardIndexToExpand(idxNode)) {
-                if (!idxNode->filter) {
-                    // It's not safe to include/expand the index bounds if there's no filter in
-                    // the IndexScanNode and no FetchNode above the IndexScanNode. Therefore,
-                    // in order to prevent missing any document in any predicate of the $or query,
-                    // we should abandon the query plan using such compound wildcard index.
-                    return false;
-                } else {
-                    // We can expand the CWI because there's a filter making sure the returning
-                    // documents match the predicate.
-                    expandIndexBoundsForCWI(idxNode);
-                }
-            }
-        }
-    }
-    return true;
-}
 }  // namespace wildcard_planning
 }  // namespace mongo

@@ -147,7 +147,7 @@ public:
     }
 
     // A virtual collection can't have an 'ident' because 'ident' is an identifier to a WT table
-    // which a virtual colelction does not have. So returns nullptr.
+    // which a virtual collection does not have. So returns nullptr.
     std::shared_ptr<Ident> getSharedIdent() const final {
         return nullptr;
     }
@@ -263,9 +263,17 @@ public:
         return true;
     }
 
-    boost::optional<bool> getTimeseriesBucketsMayHaveMixedSchemaData() const final {
+    bool isTimeseriesCollection() const final {
+        return false;
+    }
+
+    bool isNewTimeseriesWithoutView() const final {
+        return isTimeseriesCollection() && !ns().isTimeseriesBucketsCollection();
+    }
+
+    timeseries::MixedSchemaBucketsState getTimeseriesMixedSchemaBucketsState() const final {
         unimplementedTasserted();
-        return boost::none;
+        return timeseries::MixedSchemaBucketsState::Invalid;
     }
 
     void setTimeseriesBucketsMayHaveMixedSchemaData(OperationContext* opCtx,
@@ -286,6 +294,10 @@ public:
 
     void setTimeseriesBucketingParametersChanged(OperationContext* opCtx,
                                                  boost::optional<bool> value) final {
+        unimplementedTasserted();
+    }
+
+    void removeLegacyTimeseriesBucketingParametersHaveChanged(OperationContext* opCtx) final {
         unimplementedTasserted();
     }
 
@@ -356,7 +368,8 @@ public:
         unimplementedTasserted();
     }
 
-    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx) final {
+    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx,
+                                                       bool removeDeprecatedFields) final {
         unimplementedTasserted();
         return {};
     }
@@ -502,6 +515,10 @@ public:
         return _shared->_recordStore->dataSize();
     }
 
+    int64_t sizeOnDisk(OperationContext* opCtx, const StorageEngine& storageEngine) const final {
+        return 0;
+    }
+
     bool isEmpty(OperationContext* opCtx) const final {
         return _shared->_recordStore->dataSize() == 0LL;
     }
@@ -526,8 +543,8 @@ public:
 
     void setMinimumValidSnapshot(Timestamp newMinimumValidSnapshot) final {}
 
-    boost::optional<TimeseriesOptions> getTimeseriesOptions() const final {
-        return boost::none;
+    const boost::optional<TimeseriesOptions>& getTimeseriesOptions() const final {
+        return _options.timeseries;
     }
 
     void setTimeseriesOptions(OperationContext* opCtx, const TimeseriesOptions& tsOptions) final {

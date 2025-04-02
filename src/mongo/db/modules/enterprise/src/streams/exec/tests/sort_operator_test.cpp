@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/sort_operator.h"
+
 #include <fmt/format.h>
 
 #include "mongo/bson/bsonobj.h"
@@ -12,7 +14,6 @@
 #include "streams/exec/in_memory_dead_letter_queue.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
-#include "streams/exec/sort_operator.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/util/metric_manager.h"
 

@@ -31,6 +31,7 @@
 
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
+#include "mongo/db/pipeline/lite_parsed_document_source.h"
 #include "mongo/db/pipeline/search/document_source_internal_search_mongot_remote.h"
 #include "mongo/db/pipeline/search/search_helper.h"
 #include "mongo/db/query/search/internal_search_mongot_remote_spec_gen.h"
@@ -69,13 +70,15 @@ public:
     static bool canMovePastDuringSplit(const DocumentSource& ds);
 
     DocumentSourceSearch(const boost::intrusive_ptr<ExpressionContext> expCtx,
-                         InternalSearchMongotRemoteSpec spec)
-        : DocumentSource(kStageName, expCtx), _spec(std::move(spec)) {}
+                         InternalSearchMongotRemoteSpec spec,
+                         boost::optional<MongotQueryViewInfo> view = boost::none)
+        : DocumentSource(kStageName, expCtx), _spec(std::move(spec)), _view(view) {}
 
     const char* getSourceName() const override;
     StageConstraints constraints(Pipeline::SplitState pipeState) const override;
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final;
     void addVariableRefs(std::set<Variables::Id>* refs) const final {}
+    DepsTracker::State getDependencies(DepsTracker* deps) const override;
 
     static const Id& id;
 
@@ -86,6 +89,11 @@ public:
     auto isStoredSource() const {
         auto storedSourceElem = _spec.getMongotQuery()[mongot_cursor::kReturnStoredSourceArg];
         return !storedSourceElem.eoo() && storedSourceElem.Bool();
+    }
+
+    auto hasScoreDetails() const {
+        auto scoreDetailsElem = _spec.getMongotQuery()[mongot_cursor::kScoreDetailsFieldName];
+        return !scoreDetailsElem.eoo() && scoreDetailsElem.Bool();
     }
 
     std::list<boost::intrusive_ptr<DocumentSource>> desugar();
@@ -180,6 +188,9 @@ private:
     std::unique_ptr<executor::TaskExecutorCursor> _cursor;
     std::unique_ptr<executor::TaskExecutorCursor> _metadataCursor;
     boost::optional<BSONObj> _remoteCursorVars;
+
+    // If applicable, hold the view information.
+    boost::optional<MongotQueryViewInfo> _view;
 };
 
 }  // namespace mongo

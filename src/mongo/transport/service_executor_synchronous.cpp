@@ -37,7 +37,6 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/transport/service_executor_utils.h"
@@ -124,9 +123,8 @@ public:
 };
 
 void ServiceExecutorSyncImpl::SharedState::schedule(Task task, StringData name) {
-    using namespace fmt::literals;
     if (!isRunning()) {
-        task(Status(ErrorCodes::ShutdownInProgress, "{} is not running"_format(name)));
+        task(Status(ErrorCodes::ShutdownInProgress, fmt::format("{} is not running", name)));
         return;
     }
 

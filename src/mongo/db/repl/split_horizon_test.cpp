@@ -43,8 +43,7 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/repl/split_horizon.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 using namespace std::literals::string_literals;
 
@@ -293,18 +292,16 @@ TEST(SplitHorizonTesting, BSONConstruction) {
          {}},
 
         // Three horizons, two having duplicate names
-        {
-            BSON("duplicateHorizon"
-                 << "horizon1.example.com:42"
-                 << "duplicateHorizon"
-                 << "horizon2.example.com:42"
-                 << "uniqueHorizon"
-                 << "horizon3.example.com:42"),
-            defaultHostAndPort,
-            {},
-            ErrorCodes::BadValue,
-            {"Duplicate horizon name found", "duplicateHorizon"},
-            {"uniqueHorizon", "__default"}},
+        {BSON("duplicateHorizon" << "horizon1.example.com:42"
+                                 << "duplicateHorizon"
+                                 << "horizon2.example.com:42"
+                                 << "uniqueHorizon"
+                                 << "horizon3.example.com:42"),
+         defaultHostAndPort,
+         {},
+         ErrorCodes::BadValue,
+         {"Duplicate horizon name found", "duplicateHorizon"},
+         {"uniqueHorizon", "__default"}},
 
         // Two horizons with duplicate host and ports.
         {BSON("horizonWithDuplicateHost1" << matchingHostAndPort << "horizonWithDuplicateHost2"

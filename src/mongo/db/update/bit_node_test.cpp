@@ -37,8 +37,7 @@
 #include "mongo/db/update/bit_node.h"
 #include "mongo/db/update/update_executor.h"
 #include "mongo/db/update/update_node_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -69,7 +68,7 @@ TEST(BitNodeTest, InitWithArrayFails) {
 
 TEST(BitNodeTest, InitWithEmptyDocumentFails) {
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-    auto update = fromjson("{$bit: {a: {}}}}");
+    auto update = fromjson("{$bit: {a: {}}}");
     BitNode node;
     ASSERT_NOT_OK(node.init(update["$bit"]["a"], expCtx));
 }

@@ -46,11 +46,4 @@ Matcher::Matcher(const BSONObj& pattern,
         MatchExpressionParser::parse(pattern, expCtx, extensionsCallback, allowedFeatures));
 }
 
-bool Matcher::matches(const BSONObj& doc, MatchDetails* details) const {
-    if (!_expression)
-        return true;
-
-    return _expression->matchesBSON(doc, details);
-}
-
 }  // namespace mongo

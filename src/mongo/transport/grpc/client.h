@@ -38,6 +38,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/service_context.h"
 #include "mongo/stdx/mutex.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/transport/grpc/channel_pool.h"
 #include "mongo/transport/grpc/client_stream.h"
 #include "mongo/transport/grpc/grpc_client_context.h"
@@ -45,6 +46,7 @@
 #include "mongo/transport/grpc/grpc_session.h"
 #include "mongo/transport/grpc/reactor.h"
 #include "mongo/transport/grpc/serialization.h"
+#include "mongo/transport/grpc_connection_stats_gen.h"
 #include "mongo/transport/transport_layer.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/ssl_types.h"
@@ -52,9 +54,7 @@
 
 namespace mongo::transport::grpc {
 
-constexpr auto kCurrentChannelsFieldName = "currentChannels"_sd;
 constexpr auto kStreamsSubsectionFieldName = "streams"_sd;
-constexpr auto kCurrentStreamsFieldName = "current"_sd;
 
 class Client : public std::enable_shared_from_this<Client> {
 public:
@@ -67,6 +67,7 @@ public:
         std::shared_ptr<ClientContext> ctx;
         std::shared_ptr<ClientStream> stream;
         boost::optional<SSLConfiguration> sslConfig;
+        UUID channelUUID;
     };
 
     explicit Client(TransportLayer* tl, ServiceContext* svcCtx, const BSONObj& clientMetadata);
@@ -86,7 +87,7 @@ public:
      */
     virtual void shutdown();
 
-    virtual void appendStats(BSONObjBuilder* section) const = 0;
+    virtual void appendStats(GRPCConnectionStats& stats) const = 0;
 
 #ifdef MONGO_CONFIG_SSL
     virtual Status rotateCertificates(const SSLConfiguration& sslConfig) = 0;
@@ -102,6 +103,7 @@ public:
         const std::shared_ptr<GRPCReactor>& reactor,
         Milliseconds timeout,
         ConnectOptions options,
+        const CancellationToken& token = CancellationToken::uncancelable(),
         std::shared_ptr<ConnectionMetrics> connectionMetrics = nullptr);
 
     /**
@@ -112,6 +114,12 @@ public:
      */
     int getClusterMaxWireVersion() const;
 
+    size_t getPendingStreamEstablishments(const HostAndPort& target);
+
+    virtual void dropConnections() = 0;
+    virtual void dropConnections(const HostAndPort& target) = 0;
+    virtual void setKeepOpen(const HostAndPort& hostAndPort, bool keepOpen) = 0;
+
 protected:
     /**
      * Adds entries to the provided `ClientContext's` metadata as defined in the MongoDB gRPC
@@ -119,32 +127,30 @@ protected:
      */
     void setMetadataOnClientContext(ClientContext& ctx, const ConnectOptions& options);
 
-    // TODO SERVER-98590 Implement successful streams and failed streams stat.
-    Counter64 _numCurrentStreams;
-
-private:
-    enum class ClientState { kUninitialized, kStarted, kShutdown };
-    class PendingStreamState {
+    class PendingStreamState : public enable_shared_from_this<PendingStreamState> {
     public:
-        std::list<std::shared_ptr<PendingStreamState>>::iterator iter;
-
-        void cancel(Status reason) {
-            {
-                stdx::lock_guard lg(_mutex);
-                if (!_cancellationReason.isOK()) {
-                    // Already cancelled, can early return.
-                    return;
-                }
-                _cancellationReason = reason;
+        explicit PendingStreamState(HostAndPort remote,
+                                    ConnectSSLMode sslMode,
+                                    std::shared_ptr<ConnectionMetrics> connectionMetrics,
+                                    const CancellationToken& token)
+            : _remote(std::move(remote)),
+              _sslMode(std::move(sslMode)),
+              _connectionMetrics(std::move(connectionMetrics)),
+              _cancelSource(token) {
+            if (_connectionMetrics) {
+                _connectionMetrics->onConnectionStarted();
             }
-            _cancelSource.cancel();
-            cancelTimer();
         }
 
-        Status getCancellationReason() {
-            stdx::lock_guard lg(_mutex);
-            return _cancellationReason;
-        }
+        // The WithLock corresponds to the Client's mutex, not the PendingStreamState's.
+        void registerWithClient(WithLock, const HostAndPort& remote, Client& client);
+
+        // The WithLock corresponds to the Client's mutex, not the PendingStreamState's.
+        void unregisterFromClient(WithLock, const HostAndPort& remote, Client& client);
+
+        void cancel(Status reason);
+
+        Status getCancellationReason();
 
         CancellationToken getCancellationToken() {
             return _cancelSource.token();
@@ -164,7 +170,34 @@ private:
             }
         }
 
+        const HostAndPort& getRemote() {
+            return _remote;
+        }
+
+        void setDeadline(Date_t deadline) {
+            _deadline = deadline;
+        }
+
+        const boost::optional<Date_t>& getDeadline() {
+            return _deadline;
+        }
+
+        const ConnectSSLMode& getSSLMode() {
+            return _sslMode;
+        }
+
+        const std::shared_ptr<ConnectionMetrics>& getConnectionMetrics() {
+            return _connectionMetrics;
+        }
+
     private:
+        std::list<std::shared_ptr<PendingStreamState>>::iterator _iter;
+
+        HostAndPort _remote;
+        boost::optional<Date_t> _deadline;
+        ConnectSSLMode _sslMode;
+        std::shared_ptr<ConnectionMetrics> _connectionMetrics;
+
         stdx::mutex _mutex;
         Status _cancellationReason = Status::OK();
         CancellationSource _cancelSource;
@@ -172,10 +205,29 @@ private:
         std::shared_ptr<ReactorTimer> _timer;
     };
 
-    virtual Future<CallContext> _streamFactory(const HostAndPort&,
-                                               const std::shared_ptr<GRPCReactor>&,
-                                               Milliseconds,
-                                               const ConnectOptions&,
+    Counter64 _numActiveStreams;
+    Counter64 _numSuccessfulStreams;
+    Counter64 _numFailedStreams;
+
+    // The below members are protected so that dropConnections() can access them.
+    mutable stdx::mutex _mutex;
+
+    struct RemoteState {
+        std::list<std::shared_ptr<PendingStreamState>> pendingStreamStates;
+        bool keepOpen = false;
+    };
+
+    // This list corresponds to ongoing stream establishment attempts, and holds the timeout and
+    // cancellation state for those attemps.
+    stdx::unordered_map<HostAndPort, RemoteState> _remoteStates;
+
+private:
+    enum class ClientState { kUninitialized, kStarted, kShutdown };
+
+    virtual Future<CallContext> _streamFactory(const HostAndPort& remote,
+                                               const std::shared_ptr<GRPCReactor>& reactor,
+                                               boost::optional<Date_t> deadline,
+                                               const ConnectOptions& connectOptions,
                                                const CancellationToken& token) = 0;
 
     /**
@@ -190,14 +242,12 @@ private:
     std::string _clientMetadata;
     std::shared_ptr<EgressSession::SharedState> _sharedState;
 
-    mutable stdx::mutex _mutex;
+    // All accesses of _numPendingStreams must be guarded by the mutex.
+    std::uint64_t _numPendingStreams{0};
+
     stdx::condition_variable _shutdownCV;
     ClientState _state = ClientState::kUninitialized;
     std::list<std::weak_ptr<EgressSession>> _sessions;
-
-    // This list corresponds to ongoing stream establishment attempts, and holds the timeout and
-    // cancellation state for those attemps.
-    std::list<std::shared_ptr<PendingStreamState>> _pendingStreamStates;
 };
 
 class GRPCClient : public Client {
@@ -221,20 +271,23 @@ public:
 
     void start() override;
     void shutdown() override;
-    void appendStats(BSONObjBuilder* section) const override;
+    void appendStats(GRPCConnectionStats& stats) const override;
 #ifdef MONGO_CONFIG_SSL
     Status rotateCertificates(const SSLConfiguration& sslConfig) override;
 #endif
-    void dropAllChannels_forTest();
 
+    void dropConnections() override;
+    void dropConnections(const HostAndPort& target) override;
+    void setKeepOpen(const HostAndPort& hostAndPort, bool keepOpen) override;
 
 private:
-    Future<CallContext> _streamFactory(const HostAndPort&,
-                                       const std::shared_ptr<GRPCReactor>&,
-                                       Milliseconds,
-                                       const ConnectOptions&,
-                                       const CancellationToken&) override;
+    Future<CallContext> _streamFactory(const HostAndPort& remote,
+                                       const std::shared_ptr<GRPCReactor>& reactor,
+                                       boost::optional<Date_t> deadline,
+                                       const ConnectOptions& connectOptions,
+                                       const CancellationToken& token) override;
 
+    void _dropPendingStreamEstablishments(std::function<bool(const HostAndPort&)> shouldDrop);
 
     std::unique_ptr<StubFactory> _stubFactory;
 };

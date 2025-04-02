@@ -46,9 +46,7 @@
 #include "mongo/db/index_builds/index_build_interceptor.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/storage/write_unit_of_work.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -147,9 +145,8 @@ TEST_F(IndexBuilderInterceptorTest, SingleInsertIsSavedToSideWritesTable) {
 
     auto sideWrites = getSideWritesTableContents(std::move(interceptor));
     ASSERT_EQ(1, sideWrites.size());
-    ASSERT_BSONOBJ_EQ(BSON("op"
-                           << "i"
-                           << "key" << serializedKeyString),
+    ASSERT_BSONOBJ_EQ(BSON("op" << "i"
+                                << "key" << serializedKeyString),
                       sideWrites[0]);
 }
 }  // namespace

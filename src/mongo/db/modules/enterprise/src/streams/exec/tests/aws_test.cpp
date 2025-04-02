@@ -4,11 +4,9 @@
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
-#include <iostream>
 #include <memory>
 
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 using namespace Aws;
 

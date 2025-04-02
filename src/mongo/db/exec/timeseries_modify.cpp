@@ -44,10 +44,11 @@
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/client.h"
 #include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/exec/matcher/match_details.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/exec/mutable_bson/document.h"
 #include "mongo/db/feature_flag.h"
 #include "mongo/db/internal_transactions_feature_flag_gen.h"
-#include "mongo/db/matcher/match_details.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/collation/collator_interface.h"
@@ -80,7 +81,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kWrite
 
 namespace mongo {
-using namespace fmt::literals;
 const char* TimeseriesModifyStage::kStageType = "TS_MODIFY";
 
 TimeseriesModifyStage::TimeseriesModifyStage(ExpressionContext* expCtx,
@@ -200,7 +200,7 @@ const std::vector<std::unique_ptr<FieldRef>>& TimeseriesModifyStage::_getUserLev
             _immutablePaths.emplace_back(std::make_unique<FieldRef>(timeField));
         } else {
             tasserted(7687100,
-                      "Unexpected shard key field: {}"_format(shardKeyField->dottedField()));
+                      fmt::format("Unexpected shard key field: {}", shardKeyField->dottedField()));
         }
     }
 
@@ -251,9 +251,10 @@ std::vector<BSONObj> TimeseriesModifyStage::_applyUpdate(
             matchDetails.requestElemMatchKey();
 
             // We have to re-apply the filter to get the matched element.
-            tassert(7662500,
-                    "measurement must pass filter",
-                    _originalPredicate->matchesBSON(measurement, &matchDetails));
+            tassert(
+                7662500,
+                "measurement must pass filter",
+                exec::matcher::matchesBSON(_originalPredicate.get(), measurement, &matchDetails));
 
             uassertStatusOK(_params.updateDriver->update(
                 opCtx(),
@@ -279,7 +280,6 @@ std::vector<BSONObj> TimeseriesModifyStage::_applyUpdate(
 
 void TimeseriesModifyStage::_checkRestrictionsOnUpdatingShardKeyAreNotViolated(
     const ScopedCollectionDescription& collDesc, const FieldRefSet& shardKeyPaths) {
-    using namespace fmt::literals;
     // We do not allow modifying either the current shard key value or new shard key value (if
     // resharding) without specifying the full current shard key in the query.
     // If the query is a simple equality match on _id, then '_params.canonicalQuery' will be null.
@@ -313,6 +313,7 @@ void TimeseriesModifyStage::_checkRestrictionsOnUpdatingShardKeyAreNotViolated(
         // wouldChangeOwningShard error thrown below. If this node is a replica set secondary node,
         // we can skip validation.
         if (!feature_flags::gFeatureFlagUpdateDocumentShardKeyUsingTransactionApi.isEnabled(
+                VersionContext::getDecoration(opCtx()),
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             uassert(ErrorCodes::IllegalOperation,
                     "Must run update to shard key field in a multi-statement transaction or with "
@@ -322,9 +323,11 @@ void TimeseriesModifyStage::_checkRestrictionsOnUpdatingShardKeyAreNotViolated(
     } else {
         FieldRefSet userLevelShardKeyPaths(_getUserLevelShardKeyPaths(collDesc));
         uassert(7717803,
-                "Shard key update is not allowed without specifying the full shard key in the "
-                "query: pred = {}, shardKeyPaths = {}"_format(
-                    _originalPredicate->serialize().toString(), userLevelShardKeyPaths.toString()),
+                fmt::format(
+                    "Shard key update is not allowed without specifying the full shard key in the "
+                    "query: pred = {}, shardKeyPaths = {}",
+                    _originalPredicate->serialize().toString(),
+                    userLevelShardKeyPaths.toString()),
                 (_originalPredicate &&
                  pathsupport::extractFullEqualityMatches(
                      *_originalPredicate, userLevelShardKeyPaths, &equalities)
@@ -338,6 +341,7 @@ void TimeseriesModifyStage::_checkRestrictionsOnUpdatingShardKeyAreNotViolated(
         // wouldChangeOwningShard error thrown below. If this node is a replica set secondary node,
         // we can skip validation.
         if (!feature_flags::gFeatureFlagUpdateDocumentShardKeyUsingTransactionApi.isEnabled(
+                VersionContext::getDecoration(opCtx()),
                 serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
             uassert(ErrorCodes::IllegalOperation,
                     "Must run update to shard key field in a multi-statement transaction or with "
@@ -351,7 +355,6 @@ void TimeseriesModifyStage::_checkUpdateChangesExistingShardKey(const BSONObj& n
                                                                 const BSONObj& oldBucket,
                                                                 const BSONObj& newMeasurement,
                                                                 const BSONObj& oldMeasurement) {
-    using namespace fmt::literals;
     const auto& collDesc = collectionAcquisition().getShardingDescription();
     const auto& shardKeyPattern = collDesc.getShardKeyPattern();
 
@@ -401,7 +404,6 @@ void TimeseriesModifyStage::_checkUpdateChangesReshardingKey(
     const BSONObj& oldBucket,
     const BSONObj& newMeasurement,
     const BSONObj& oldMeasurement) {
-    using namespace fmt::literals;
     const auto& collDesc = collectionAcquisition().getShardingDescription();
 
     auto reshardingKeyPattern = collDesc.getReshardingKeyIfShouldForwardOps();
@@ -548,8 +550,6 @@ TimeseriesModifyStage::_writeToTimeseriesBuckets(ScopeGuard<F>& bucketFreer,
                                                              bucketFromMigrate,
                                                              _params.stmtId,
                                                              &_insertedBucketIds,
-                                                             /*compressAndWriteBucketFunc=*/
-                                                             nullptr,
                                                              currentMinTime);
                 } else {
                     timeseries::performAtomicWritesForDelete(opCtx(),
@@ -765,7 +765,8 @@ PlanStage::StageState TimeseriesModifyStage::doWork(WorkingSetID* out) {
         // We should stop matching measurements once we hit the limit of one in the non-multi case.
         bool shouldContinueMatching = _isMultiWrite() || matchedMeasurements.empty();
         if (shouldContinueMatching &&
-            (!_residualPredicate || _residualPredicate->matchesBSON(measurement))) {
+            (!_residualPredicate ||
+             exec::matcher::matchesBSON(_residualPredicate.get(), measurement))) {
             matchedMeasurements.push_back(measurement);
         } else {
             unchangedMeasurements.push_back(measurement);
@@ -804,7 +805,7 @@ PlanStage::StageState TimeseriesModifyStage::doWork(WorkingSetID* out) {
 void TimeseriesModifyStage::doRestoreStateRequiresCollection() {
     const NamespaceString& ns = collectionPtr()->ns();
     uassert(ErrorCodes::PrimarySteppedDown,
-            "Demoted from primary while removing from {}"_format(ns.toStringForErrorMsg()),
+            fmt::format("Demoted from primary while removing from {}", ns.toStringForErrorMsg()),
             !opCtx()->writesAreReplicated() ||
                 repl::ReplicationCoordinator::get(opCtx())->canAcceptWritesFor(opCtx(), ns));
 

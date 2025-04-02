@@ -2,9 +2,10 @@
 // @tags: [requires_replication]
 
 import {ReplSetTest} from "jstests/libs/replsettest.js";
+import {ShardingTest} from "jstests/libs/shardingtest.js";
 
-function testMongod(mongod, systemuserpwd = undefined) {
-    const admin = mongod.getDB('admin');
+function runTest(conn, keyFile = undefined) {
+    const admin = conn.getDB('admin');
     admin.createUser({user: 'admin', pwd: 'admin', roles: ['root']});
 
     function assertError(cmd, msg, code) {
@@ -25,30 +26,45 @@ function testMongod(mongod, systemuserpwd = undefined) {
     jsTest.log('Negative tests - Add impersonation metadata to hello command');
 
     // Adding impersonation metadata is forbidden if we're not permitted to use it.
-    const kImpersonatedHello = {
+    const kImpersonatedUserHello = {
         hello: 1,
         "$audit": {
             "$impersonatedUser": {user: 'admin', db: 'admin'},
             "$impersonatedRoles": [{role: 'root', db: 'admin'}],
         }
     };
-    assertError(
-        kImpersonatedHello, 'Unauthorized use of impersonation metadata', ErrorCodes.Unauthorized);
+    const kImpersonatedClientHello = {
+        hello: 1,
+        "$audit": {
+            "$impersonatedClient": {hosts: ['172.23.55.11:23890', '192.43.22.3:14089']},
+            "$impersonatedRoles": [],
+        }
+    };
+    assertError(kImpersonatedUserHello,
+                'Unauthorized use of impersonation metadata',
+                ErrorCodes.Unauthorized);
+    assertError(kImpersonatedClientHello,
+                'Unauthorized use of impersonation metadata',
+                ErrorCodes.Unauthorized);
 
     // Try as admin (root role), should still fail.
     admin.auth('admin', 'admin');
-    assertError(
-        kImpersonatedHello, 'Unauthorized use of impersonation metadata', ErrorCodes.Unauthorized);
+    assertError(kImpersonatedUserHello,
+                'Unauthorized use of impersonation metadata',
+                ErrorCodes.Unauthorized);
+    assertError(kImpersonatedClientHello,
+                'Unauthorized use of impersonation metadata',
+                ErrorCodes.Unauthorized);
     admin.logout();
 
-    if (systemuserpwd !== undefined) {
-        // On a ReplSet, our impersonation payload should be fine with cluster user.
+    if (keyFile !== undefined) {
+        // On a ReplSet or mongos, our impersonation payload should be fine with cluster user.
         jsTest.log('Positive test, impersonation is okay when we\'re local.__system');
 
-        const local = mongod.getDB('local');
-        local.auth('__system', systemuserpwd);
-        assert.commandWorked(admin.runCommand(kImpersonatedHello));
-        local.logout();
+        authutil.asCluster(conn, keyFile, () => {
+            assert.commandWorked(admin.runCommand(kImpersonatedUserHello));
+            assert.commandWorked(admin.runCommand(kImpersonatedClientHello));
+        });
     }
 
     jsTest.log('End');
@@ -56,18 +72,31 @@ function testMongod(mongod, systemuserpwd = undefined) {
 
 {
     const standalone = MongoRunner.runMongod({auth: ''});
-    testMongod(standalone);
+    runTest(standalone);
     MongoRunner.stopMongod(standalone);
 }
 
 {
     const kKeyfile = 'jstests/libs/key1';
-    const kKey = cat(kKeyfile).replace(/[\011-\015\040]/g, '');
 
     const rst = new ReplSetTest({nodes: 2});
     rst.startSet({keyFile: kKeyfile});
     rst.initiate();
     rst.awaitSecondaryNodes();
-    testMongod(rst.getPrimary(), kKey);
+    runTest(rst.getPrimary(), kKeyfile);
     rst.stopSet();
+}
+
+{
+    const kKeyfile = 'jstests/libs/key1';
+
+    const st = new ShardingTest({
+        mongos: 1,
+        config: 1,
+        shard: 2,
+        keyFile: kKeyfile,
+        other: {mongosOptions: {auth: null}, configOptions: {auth: null}, rsOptions: {auth: null}}
+    });
+    runTest(st.s0, kKeyfile);
+    st.stop();
 }

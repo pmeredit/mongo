@@ -37,8 +37,6 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/chunk_version.h"
 #include "mongo/s/grid.h"
@@ -261,9 +259,9 @@ CollectionRoutingInfo CollectionRouterCommon::_getRoutingInfo(OperationContext* 
 void CollectionRouterCommon::appendCRUDRoutingTokenToCommand(const ShardId& shardId,
                                                              const CollectionRoutingInfo& cri,
                                                              BSONObjBuilder* builder) {
-    if (cri.cm.getVersion(shardId) == ChunkVersion::UNSHARDED()) {
+    if (cri.getShardVersion(shardId) == ShardVersion::UNSHARDED()) {
         // Need to add the database version as well.
-        const auto& dbVersion = cri.cm.dbVersion();
+        const auto& dbVersion = cri.getDbVersion();
         if (!dbVersion.isFixed()) {
             BSONObjBuilder dbvBuilder(builder->subobjStart(DatabaseVersion::kDatabaseVersionField));
             dbVersion.serialize(&dbvBuilder);
@@ -303,8 +301,9 @@ bool MultiCollectionRouter::isAnyCollectionNotLocal(
 
         const auto atClusterTime = repl::ReadConcernArgs::get(opCtx).getArgsAtClusterTime();
         const auto chunkManagerMaybeAtClusterTime = atClusterTime
-            ? ChunkManager::makeAtTime(nssCri->second.cm, atClusterTime->asTimestamp())
-            : nssCri->second.cm;
+            ? ChunkManager::makeAtTime(nssCri->second.getChunkManager(),
+                                       atClusterTime->asTimestamp())
+            : nssCri->second.getChunkManager();
 
         bool isNssLocal = [&]() {
             if (chunkManagerMaybeAtClusterTime.isSharded()) {
@@ -313,9 +312,9 @@ bool MultiCollectionRouter::isAnyCollectionNotLocal(
                 return chunkManagerMaybeAtClusterTime.getMinKeyShardIdWithSimpleCollation() ==
                     myShardId;
             } else {
-                // If collection is untracked, it is only local if this shard is the
-                // dbPrimary shard.
-                return chunkManagerMaybeAtClusterTime.dbPrimary() == myShardId;
+                // If collection is untracked, it is only local if this shard is the dbPrimary
+                // shard.
+                return nssCri->second.getDbPrimaryShardId() == myShardId;
             }
         }();
 

@@ -55,6 +55,7 @@
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/db/query/timeseries/bucket_spec.h"
+#include "mongo/db/timeseries/mixed_schema_buckets_state.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -115,6 +116,19 @@ public:
         MONGO_UNREACHABLE_TASSERT(7484305);
     }
 
+    /**
+     * This factory function creates a BSONObj representation of a $_internalUnpackBucket stage with
+     * the parameters provided and inserts it into a copy of the provided pipeline. The altered
+     * pipeline is returned, leaving the original pipeline unchanged.
+     */
+    static std::vector<BSONObj> generateStageInPipeline(
+        const std::vector<BSONObj>& pipeline,
+        StringData timeField,
+        const boost::optional<StringData>& metaField,
+        const boost::optional<std::int32_t>& bucketMaxSpanSeconds,
+        bool assumeNoMixedSchemaData,
+        bool timeseriesBucketsAreFixed);
+
     bool includeMetaField() const {
         return _bucketUnpacker.includeMetaField();
     }
@@ -128,7 +142,7 @@ public:
                                      PositionRequirement::kNone,
                                      HostTypeRequirement::kNone,
                                      DiskUseRequirement::kNoDiskUse,
-                                     FacetRequirement::kNotAllowed,
+                                     FacetRequirement::kAllowed,
                                      TransactionRequirement::kAllowed,
                                      LookupRequirement::kAllowed,
                                      UnionRequirement::kAllowed,

@@ -51,7 +51,7 @@ std::unique_ptr<CanonicalQuery> canonicalize(const char* queryStr, bool setLimit
 IndexEntry createIndexEntry(BSONObj keyPattern, bool unique, bool sparse = false) {
     return IndexEntry(keyPattern,
                       IndexNames::nameToType(IndexNames::findPluginName(keyPattern)),
-                      IndexDescriptor::kLatestIndexVersion,
+                      IndexConfig::kLatestIndexVersion,
                       false /*multikey*/,
                       {} /*mutikeyPaths*/,
                       {} /*multikeyPathSet*/,
@@ -260,7 +260,7 @@ TEST(getIndexForExpressEquality, partialIndexEligibility) {
     QueryPlannerParams params{QueryPlannerParams::ArgsForTest{}};
     params.mainCollectionInfo.options &= ~QueryPlannerParams::INCLUDE_SHARD_FILTER;
     auto partialIdxEnt = createIndexEntry(BSON("a" << 1), true /* unique */);
-    auto idxExpr = canonicalize("{a: {$exists: true}}}");
+    auto idxExpr = canonicalize("{a: {$exists: true}}");
     partialIdxEnt.filterExpr = idxExpr->getPrimaryMatchExpression();
 
     params.mainCollectionInfo.indexes = {

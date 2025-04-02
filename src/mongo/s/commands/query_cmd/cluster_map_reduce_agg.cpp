@@ -59,6 +59,7 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/legacy_runtime_constants_gen.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/mongos_process_interface.h"
@@ -68,10 +69,11 @@
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/explain_common.h"
 #include "mongo/db/query/map_reduce_output_format.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
+#include "mongo/db/version_context.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/grid.h"
@@ -96,7 +98,7 @@ Rarely _sampler;
 
 auto makeExpressionContext(OperationContext* opCtx,
                            const MapReduceCommandRequest& parsedMr,
-                           const ChunkManager& cm,
+                           const CollectionRoutingInfo& cri,
                            boost::optional<ExplainOptions::Verbosity> verbosity) {
     // Populate the collection UUID and the appropriate collation to use.
     auto nss = parsedMr.getNamespace();
@@ -109,7 +111,7 @@ auto makeExpressionContext(OperationContext* opCtx,
     const auto requiresCollationForParsingUnshardedAggregate = false;
     auto collationObj =
         cluster_aggregation_planner::getCollation(opCtx,
-                                                  cm,
+                                                  cri,
                                                   nss,
                                                   parsedMr.getCollation().get_value_or(BSONObj()),
                                                   requiresCollationForParsingUnshardedAggregate);
@@ -122,8 +124,8 @@ auto makeExpressionContext(OperationContext* opCtx,
     }
 
     // Resolve involved namespaces.
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces.try_emplace(nss.coll(), nss, std::vector<BSONObj>{});
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces.try_emplace(nss, nss, std::vector<BSONObj>{});
     if (parsedMr.getOutOptions().getOutputType() != OutputType::InMemory) {
         auto outNss = parsedMr.getOutOptions().getDatabaseName()
             ? NamespaceStringUtil::deserialize(boost::none,
@@ -132,7 +134,7 @@ auto makeExpressionContext(OperationContext* opCtx,
                                                SerializationContext::stateDefault())
             : NamespaceStringUtil::deserialize(parsedMr.getNamespace().dbName(),
                                                parsedMr.getOutOptions().getCollectionName());
-        resolvedNamespaces.try_emplace(outNss.coll(), outNss, std::vector<BSONObj>{});
+        resolvedNamespaces.try_emplace(outNss, outNss, std::vector<BSONObj>{});
     }
     auto runtimeConstants = Variables::generateRuntimeConstants(opCtx);
     if (parsedMr.getScope()) {
@@ -154,7 +156,7 @@ auto makeExpressionContext(OperationContext* opCtx,
             .runtimeConstants(runtimeConstants)
             .inRouter(true)
             .build();
-    if (!cm.hasRoutingTable() && collationObj.isEmpty()) {
+    if (!cri.hasRoutingTable() && collationObj.isEmpty()) {
         expCtx->setIgnoreCollator();
     }
     return expCtx;
@@ -168,7 +170,10 @@ Document serializeToCommand(const MapReduceCommandRequest& parsedMr, Pipeline* p
     translatedCmd[AggregateCommandRequest::kCursorFieldName] =
         Value(Document{{"batchSize", std::numeric_limits<long long>::max()}});
     translatedCmd[AggregateCommandRequest::kAllowDiskUseFieldName] = Value(true);
-    aggregation_request_helper::setFromRouter(translatedCmd, Value(true));
+    aggregation_request_helper::setFromRouter(
+        VersionContext::getDecoration(pipeline->getContext()->getOperationContext()),
+        translatedCmd,
+        Value(true));
     translatedCmd[AggregateCommandRequest::kLetFieldName] = Value(
         pipeline->getContext()->variablesParseState.serialize(pipeline->getContext()->variables));
     translatedCmd[AggregateCommandRequest::kIsMapReduceCommandFieldName] = Value(true);
@@ -224,7 +229,20 @@ bool runAggregationMapReduce(OperationContext* opCtx,
 
     auto cri = uassertStatusOK(
         sharded_agg_helpers::getExecutionNsRoutingInfo(opCtx, parsedMr.getNamespace()));
-    auto expCtx = makeExpressionContext(opCtx, parsedMr, cri.cm, verbosity);
+
+    // Create an RAII object that prints the collection's shard key in the case of a tassert
+    // or crash.
+    ScopedDebugInfo shardKeyDiagnostics(
+        "ShardKeyDiagnostics",
+        diagnostic_printers::ShardKeyDiagnosticPrinter{
+            cri.isSharded() ? cri.getChunkManager().getShardKeyPattern().toBSON() : BSONObj()});
+
+    auto expCtx = makeExpressionContext(opCtx, parsedMr, cri, verbosity);
+
+    // Create an RAII object that prints useful information about the ExpressionContext in the case
+    // of a tassert or crash.
+    ScopedDebugInfo expCtxDiagnostics("ExpCtxDiagnostics",
+                                      diagnostic_printers::ExpressionContextPrinter{expCtx});
 
     auto pipeline = map_reduce_common::translateFromMR(parsedMr, expCtx);
 

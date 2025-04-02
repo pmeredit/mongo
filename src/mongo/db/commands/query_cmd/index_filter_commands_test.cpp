@@ -48,6 +48,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/catalog/collection_mock.h"
 #include "mongo/db/commands/query_cmd/index_filter_commands.h"
+#include "mongo/db/exec/plan_cache_callbacks_impl.h"
 #include "mongo/db/exec/plan_cache_util.h"
 #include "mongo/db/exec/plan_stats.h"
 #include "mongo/db/exec/sbe/expressions/runtime_environment.h"
@@ -56,7 +57,6 @@
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/query/plan_cache/plan_cache.h"
-#include "mongo/db/query/plan_cache/plan_cache_callbacks.h"
 #include "mongo/db/query/plan_cache/plan_cache_debug_info.h"
 #include "mongo/db/query/plan_cache/plan_cache_key_factory.h"
 #include "mongo/db/query/plan_cache/sbe_plan_cache.h"
@@ -65,9 +65,7 @@
 #include "mongo/db/query/query_test_service_context.h"
 #include "mongo/db/query/stage_builder/sbe/builder.h"
 #include "mongo/db/query/stage_types.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source.h"
 
 namespace mongo {
@@ -310,7 +308,7 @@ private:
             return plan.toString();
         };
         PlanCacheCallbacksImpl<PlanCacheKey, SolutionCacheData, plan_cache_debug_info::DebugInfo>
-            callbacks{*cq, buildDebugInfoFn, printCachedPlanFn};
+            callbacks{*cq, buildDebugInfoFn, printCachedPlanFn, _collectionPtr};
         ASSERT_OK(_classicPlanCache->set(
             makeClassicKey(*cq),
             std::move(cacheData),
@@ -355,7 +353,7 @@ private:
         PlanCacheCallbacksImpl<sbe::PlanCacheKey,
                                sbe::CachedSbePlan,
                                plan_cache_debug_info::DebugInfoSBE>
-            callbacks{*cq, buildDebugInfoFn, printCachedPlanFn};
+            callbacks{*cq, buildDebugInfoFn, printCachedPlanFn, _collectionPtr};
 
         ASSERT_OK(_sbePlanCache->set(
             makeSbeKey(*cq),

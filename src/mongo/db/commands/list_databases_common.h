@@ -36,6 +36,7 @@
 #include "mongo/db/commands/list_databases_gen.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/db_raii.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
@@ -75,6 +76,10 @@ std::unique_ptr<MatchExpression> getFilter(CommandType cmd,
     return std::unique_ptr<MatchExpression>{};
 }
 
+int64_t sizeOnDiskForDb(OperationContext* opCtx,
+                        const StorageEngine& storageEngine,
+                        const DatabaseName& dbName);
+
 template <typename ReplyItemType>
 int64_t setReplyItems(OperationContext* opCtx,
                       const std::vector<DatabaseName>& dbNames,
@@ -105,7 +110,7 @@ int64_t setReplyItems(OperationContext* opCtx,
         int64_t size = 0;
         if (!nameOnly) {
             // Filtering on name only should not require taking locks on filtered-out names.
-            if (filterNameOnly && !filter->matchesBSON(item.toBSON())) {
+            if (filterNameOnly && !exec::matcher::matchesBSON(filter.get(), item.toBSON())) {
                 continue;
             }
 
@@ -116,13 +121,13 @@ int64_t setReplyItems(OperationContext* opCtx,
             }
 
             writeConflictRetry(opCtx, "sizeOnDisk", NamespaceString(dbName), [&] {
-                size = storageEngine->sizeOnDiskForDb(opCtx, dbName);
+                size = sizeOnDiskForDb(opCtx, *storageEngine, dbName);
             });
             item.setSizeOnDisk(size);
             item.setEmpty(
                 CollectionCatalog::get(opCtx)->getAllCollectionUUIDsFromDb(dbName).empty());
         }
-        if (!filter || filter->matchesBSON(item.toBSON())) {
+        if (!filter || exec::matcher::matchesBSON(filter.get(), item.toBSON())) {
             totalSize += size;
             items.push_back(std::move(item));
         }

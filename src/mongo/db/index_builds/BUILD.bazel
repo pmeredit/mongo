@@ -139,9 +139,7 @@ mongo_cc_library(
         "//src/mongo/db/storage:record_store_base",
         "//src/mongo/db/storage:storage_options",
         "//src/mongo/db/storage:storage_repair_observer",
-        "//src/mongo/db/storage:storage_util",
         "//src/mongo/executor:task_executor_interface",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util:progress_meter",
     ],
 )
@@ -187,13 +185,12 @@ mongo_cc_library(
         ":two_phase_index_build_knobs_idl",
         "//src/mongo/db:server_base",
         "//src/mongo/db/concurrency:exception_util",
+        "//src/mongo/db/index:preallocated_container_pool",
         "//src/mongo/db/repl:repl_coordinator_interface",
         "//src/mongo/db/sorter:sorter_stats",
         "//src/mongo/db/storage:durable_catalog",
-        "//src/mongo/db/storage:execution_context",
         "//src/mongo/db/storage:storage_options",
         "//src/mongo/executor:task_executor_interface",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -215,6 +212,7 @@ mongo_cc_library(
         "//src/mongo/db/catalog:collection_catalog",
         "//src/mongo/db/s:forwardable_operation_metadata",
         "//src/mongo/executor:task_executor_interface",
+        "//src/mongo/rpc:metadata_impersonated_user",
         "//src/mongo/util/concurrency:thread_pool",
     ] + select({
         "//bazel/config:enterprise_feature_audit_enabled": [
@@ -250,7 +248,6 @@ mongo_cc_library(
         "//src/mongo/db/repl:repl_coordinator_interface",
         "//src/mongo/db/storage:storage_options",
         "//src/mongo/db/timeseries:timeseries_conversion_util",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util:log_and_backoff",
         "//src/mongo/util:progress_meter",
     ],
@@ -336,7 +333,7 @@ mongo_cc_unit_test(
         "index_builds_manager_test.cpp",
         "multi_index_block_test.cpp",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     target_compatible_with = select({
         "//bazel/config:use_wiredtiger_enabled": [],
         "//conditions:default": ["@platforms//:incompatible"],

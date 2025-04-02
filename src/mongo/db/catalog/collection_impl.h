@@ -235,9 +235,13 @@ public:
     void setChangeStreamPreAndPostImages(OperationContext* opCtx,
                                          ChangeStreamPreAndPostImagesOptions val) final;
 
+    bool isTimeseriesCollection() const final;
+
+    bool isNewTimeseriesWithoutView() const final;
+
     bool isTemporary() const final;
 
-    boost::optional<bool> getTimeseriesBucketsMayHaveMixedSchemaData() const final;
+    timeseries::MixedSchemaBucketsState getTimeseriesMixedSchemaBucketsState() const final;
 
     void setTimeseriesBucketsMayHaveMixedSchemaData(OperationContext* opCtx,
                                                     boost::optional<bool> setting) final;
@@ -246,6 +250,8 @@ public:
 
     void setTimeseriesBucketingParametersChanged(OperationContext* opCtx,
                                                  boost::optional<bool> value) final;
+
+    void removeLegacyTimeseriesBucketingParametersHaveChanged(OperationContext* opCtx) final;
 
     StatusWith<bool> doesTimeseriesBucketsDocContainMixedSchemaData(
         const BSONObj& bucketsDoc) const final;
@@ -292,6 +298,8 @@ public:
 
     long long dataSize(OperationContext* opCtx) const final;
 
+    int64_t sizeOnDisk(OperationContext* opCtx, const StorageEngine& storageEngine) const final;
+
     /**
      * Currently fast counts are prone to false negative as it is not tolerant to unclean shutdowns.
      * So, verify that the collection is really empty by opening the collection cursor and reading
@@ -326,7 +334,7 @@ public:
      */
     void setMinimumValidSnapshot(Timestamp newMinimumValidSnapshot) final;
 
-    boost::optional<TimeseriesOptions> getTimeseriesOptions() const final;
+    const boost::optional<TimeseriesOptions>& getTimeseriesOptions() const final;
     void setTimeseriesOptions(OperationContext* opCtx, const TimeseriesOptions& tsOptions) final;
 
     /**
@@ -361,7 +369,8 @@ public:
                                     StringData idxName,
                                     bool prepareUnique) final;
 
-    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx) final;
+    std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx,
+                                                       bool removeDeprecatedFields) final;
 
     void setIsTemp(OperationContext* opCtx, bool isTemp) final;
 
@@ -469,6 +478,19 @@ private:
         // This mutex synchronizes allocating and registering RecordIds for uncommited writes on
         // capped collections that accept concurrent writes (i.e. usesCappedSnapshots()).
         mutable stdx::mutex _registerCappedIdsMutex;
+
+        // Parsed value of the time-series mixed-schema flag stored in the backwards-compatible
+        // field in the collection options (md.options.storageEngine.wiredTiger.configString).
+        boost::optional<bool> _durableTimeseriesBucketsMayHaveMixedSchemaData;
+
+        // Value of the time-series bucketing parameters changed flag in the backwards-compatible
+        // field in the collection options (md.options.storageEngine.wiredTiger.configString).
+        // The flag will be set to false at the time of time-series collection creation if
+        // TSBucketingParametersUnchanged is enabled. For any other collection type and earlier
+        // versions the flag will be boost::none. Thus, if the field is absent, we assume the
+        // time-series bucketing parameters have changed. If a subsequent collMod operation changes
+        // either 'bucketRoundingSeconds' or 'bucketMaxSpanSeconds', we set the flag to true.
+        boost::optional<bool> _durableTimeseriesBucketingParametersHaveChanged;
 
         // Time-series collections are allowed to contain measurements with arbitrary dates;
         // however, many of our query optimizations only work properly with dates that can be stored

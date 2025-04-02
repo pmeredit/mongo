@@ -108,9 +108,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/async_requests_sender.h"
@@ -149,8 +146,6 @@ MONGO_FAIL_POINT_DEFINE(failAtCommitCreateCollectionCoordinator);
 MONGO_FAIL_POINT_DEFINE(hangBeforeCommitOnShardingCatalog);
 
 namespace mongo {
-
-using namespace fmt::literals;
 
 namespace create_collection_util {
 std::unique_ptr<InitialSplitPolicy> createPolicy(
@@ -232,7 +227,6 @@ CreateCommand makeCreateCommand(OperationContext* opCtx,
     createRequest.setCapped(request.getCapped());
     createRequest.setTimeseries(request.getTimeseries());
     createRequest.setSize(request.getSize());
-    createRequest.setAutoIndexId(request.getAutoIndexId());
     createRequest.setClusteredIndex(request.getClusteredIndex());
     if (request.getCollation() && !request.getCollation()->isEmpty()) {
         auto collation = Collation::parse(IDLParserContext("collation"), *request.getCollation());
@@ -284,10 +278,17 @@ bool isTimeseries(const boost::optional<CollectionAcquisition>& collection) {
         collection->getCollectionPtr()->getTimeseriesOptions().has_value();
 }
 
-void assertTimeseriesOptionsConsistency(const Collection* coll) {
+bool viewlessTimeseriesEnabled(OperationContext* opCtx) {
+    return gFeatureFlagCreateViewlessTimeseriesCollections.isEnabled(
+        VersionContext::getDecoration(opCtx),
+        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+}
+
+void assertTimeseriesOptionsConsistency(const Collection* coll,
+                                        const bool viewlessTimeseriesEnabled) {
     tassert(9934501,
-            "Encountered invalid state for target collection '{}'. "_format(
-                coll->ns().toStringForErrorMsg()) +
+            fmt::format("Encountered invalid state for target collection '{}'. ",
+                        coll->ns().toStringForErrorMsg()) +
                 "The collection namespace is prefixed with 'system.buckets.' but does not have "
                 "associated time-series options. Please consider options to correct this, "
                 "including renaming the collection or dropping the collection after inspecting "
@@ -295,13 +296,13 @@ void assertTimeseriesOptionsConsistency(const Collection* coll) {
             !coll->ns().isTimeseriesBucketsCollection() ||
                 coll->getTimeseriesOptions().has_value());
     tassert(9934502,
-            "Encountered invalid state for target collection '{}'. "_format(
-                coll->ns().toStringForErrorMsg()) +
+            fmt::format("Encountered invalid state for target collection '{}'. ",
+                        coll->ns().toStringForErrorMsg()) +
                 "The collection namespace is not prefixed with 'system.buckets.' but has "
                 "associated time-series options. Please consider options to correct this, "
                 "including renaming the collection or dropping the collection after inspecting "
                 "and/or backing up its contents.",
-            coll->ns().isTimeseriesBucketsCollection() ||
+            viewlessTimeseriesEnabled || coll->ns().isTimeseriesBucketsCollection() ||
                 !coll->getTimeseriesOptions().has_value());
 }
 
@@ -555,6 +556,10 @@ void broadcastDropCollection(OperationContext* opCtx,
  * In all the other cases the acquisition for the @originalNss is returned.
  *
  * This function throw en error in case the namespace already exists and is a normal view.
+ *
+ * TODO SERVER-101614 once 9.0 becomes last LTS we can simplify this function.
+ * In fact in 9.0 we will not need to translated the originalNss to system.buckets collection
+ * anymore.
  **/
 CollectionAcquisition acquireTargetCollection(OperationContext* opCtx,
                                               const NamespaceString& originalNss,
@@ -573,15 +578,17 @@ CollectionAcquisition acquireTargetCollection(OperationContext* opCtx,
     if (collOrView.isView()) {
         // Namespace exists in local catalog and is a view
         tassert(8119030,
-                "Found view definition on a prohibited bucket namesapce '{}'"_format(
-                    originalNss.toStringForErrorMsg()),
+                fmt::format("Found view definition on a prohibited bucket namesapce '{}'",
+                            originalNss.toStringForErrorMsg()),
                 !originalNss.isTimeseriesBucketsCollection());
 
         uassert(
             (isSharded(request) ? ErrorCodes::CommandNotSupportedOnView
                                 : ErrorCodes::NamespaceExists),
-            "Cannot {} collection '{}' because a view already exists with the same namespace"_format(
-                (isSharded(request) ? "shard" : "create"), originalNss.toStringForErrorMsg()),
+            fmt::format(
+                "Cannot {} collection '{}' because a view already exists with the same namespace",
+                (isSharded(request) ? "shard" : "create"),
+                originalNss.toStringForErrorMsg()),
             collOrView.getView().getViewDefinition().timeseries());
 
         return acquireCollectionMaybeLockFree(
@@ -620,10 +627,13 @@ CollectionAcquisition acquireTargetCollection(OperationContext* opCtx,
                                                repl::ReadConcernArgs::get(opCtx),
                                                AcquisitionPrerequisites::OperationType::kRead,
                                                AcquisitionPrerequisites::kCanBeView));
-        // In case the bucket collection is found or we are attempting to create an unexistent
-        // timeseries, return the bucket nss. This is done to provide nss translation when the
-        // collection does not exists.
-        if (bucketColl.collectionExists() || isTimeseries(request)) {
+        // In case the buckets collection is found return it.
+        //
+        // Also if we are attempting to create an unexistent legacy timeseries with a separate
+        // bucket collection we need to return the bucket collection as target namespace. This is
+        // done to provide nss translation when the collection does not exists.
+        if (bucketColl.collectionExists() ||
+            (isTimeseries(request) && !viewlessTimeseriesEnabled(opCtx))) {
             return bucketColl.getCollection();
         }
     }
@@ -655,7 +665,9 @@ void checkLocalCatalogCollectionOptions(OperationContext* opCtx,
     tassert(9934500,
             "expected the target collection to exist",
             targetColl.has_value() && targetColl->exists());
-    assertTimeseriesOptionsConsistency(targetColl->getCollectionPtr().get());
+
+    assertTimeseriesOptionsConsistency(targetColl->getCollectionPtr().get(),
+                                       viewlessTimeseriesEnabled(opCtx));
 
     if (request.getRegisterExistingCollectionInGlobalCatalog()) {
         // No need to check for collection options when registering an existing collection
@@ -688,7 +700,9 @@ void checkLocalCatalogCollectionOptions(OperationContext* opCtx,
 
         uassert(
             ErrorCodes::InvalidOptions,
-            "The `timeseries` options provided must match the ones of the existing collection. Requested {} but found {}"_format(
+            fmt::format(
+                "The `timeseries` options provided must match the ones of the existing collection. "
+                "Requested {} but found {}",
                 request.getTimeseries()->toBSON().toString(),
                 targetColl->getCollectionPtr()->getTimeseriesOptions()->toBSON().toString()),
             timeseries::optionsAreEqual(*request.getTimeseries(),
@@ -708,11 +722,13 @@ void checkShardingCatalogCollectionOptions(OperationContext* opCtx,
     tassert(
         8119040, "Found empty routing info when checking collection options", cm.hasRoutingTable());
 
-    uassert(
-        ErrorCodes::AlreadyInitialized,
-        "Collection '{}' already exists with a different 'unique' option. Requested '{}' but found '{}'"_format(
-            targetNss.toStringForErrorMsg(), request.getUnique().value_or(false), cm.isUnique()),
-        cm.isUnique() == request.getUnique().value_or(false));
+    uassert(ErrorCodes::AlreadyInitialized,
+            fmt::format("Collection '{}' already exists with a different 'unique' option. "
+                        "Requested '{}' but found '{}'",
+                        targetNss.toStringForErrorMsg(),
+                        request.getUnique().value_or(false),
+                        cm.isUnique()),
+            cm.isUnique() == request.getUnique().value_or(false));
 
     if (request.getDataShard()) {
 
@@ -721,15 +737,16 @@ void checkShardingCatalogCollectionOptions(OperationContext* opCtx,
 
         tassert(
             8119031,
-            "Collection '{}' is distributed across more than one shard even if is unsplittable"_format(
+            fmt::format(
+                "Collection '{}' is distributed across more than one shard even if is unsplittable",
                 targetNss.toStringForErrorMsg()),
             cm.getNShardsOwningChunks() == 1 || cm.isSharded());
 
-        uassert(
-            ErrorCodes::AlreadyInitialized,
-            "Incompatible 'dataShard' option. Collection '{}' is already sharded with data distributed on multiple shards"_format(
-                targetNss.toStringForErrorMsg()),
-            cm.getNShardsOwningChunks() == 1);
+        uassert(ErrorCodes::AlreadyInitialized,
+                fmt::format("Incompatible 'dataShard' option. Collection '{}' is already sharded "
+                            "with data distributed on multiple shards",
+                            targetNss.toStringForErrorMsg()),
+                cm.getNShardsOwningChunks() == 1);
 
         const auto& originalDataShard = [&] {
             std::set<ShardId> allShards;
@@ -737,13 +754,13 @@ void checkShardingCatalogCollectionOptions(OperationContext* opCtx,
             return *allShards.begin();
         }();
 
-        uassert(
-            ErrorCodes::AlreadyInitialized,
-            "Incompatible 'dataShard' option. Collection '{}' already exists on a different shard. Requested shard '{}' but found '{}'"_format(
-                targetNss.toStringForErrorMsg(),
-                request.getDataShard()->toString(),
-                originalDataShard.toString()),
-            originalDataShard == *request.getDataShard());
+        uassert(ErrorCodes::AlreadyInitialized,
+                fmt::format("Incompatible 'dataShard' option. Collection '{}' already exists on a "
+                            "different shard. Requested shard '{}' but found '{}'",
+                            targetNss.toStringForErrorMsg(),
+                            request.getDataShard()->toString(),
+                            originalDataShard.toString()),
+                originalDataShard == *request.getDataShard());
     }
 
     {
@@ -756,20 +773,20 @@ void checkShardingCatalogCollectionOptions(OperationContext* opCtx,
                                            request.getRegisterExistingCollectionInGlobalCatalog());
         const auto defaultCollator =
             cm.getDefaultCollator() ? cm.getDefaultCollator()->getSpec().toBSON() : BSONObj();
-        uassert(
-            ErrorCodes::AlreadyInitialized,
-            "Collection '{}' already exists with a different 'collator' option. Requested {} but found {}"_format(
-                targetNss.toStringForErrorMsg(),
-                requestedCollator.toString(),
-                defaultCollator.toString()),
-            SimpleBSONObjComparator::kInstance.evaluate(defaultCollator == requestedCollator));
+        uassert(ErrorCodes::AlreadyInitialized,
+                fmt::format("Collection '{}' already exists with a different 'collator' option. "
+                            "Requested {} but found {}",
+                            targetNss.toStringForErrorMsg(),
+                            requestedCollator.toString(),
+                            defaultCollator.toString()),
+                SimpleBSONObjComparator::kInstance.evaluate(defaultCollator == requestedCollator));
     }
 
     {
         // Check timeseries options
         uassert(ErrorCodes::AlreadyInitialized,
-                "Collection '{}' already exists and is not timeseries"_format(
-                    targetNss.toStringForErrorMsg()),
+                fmt::format("Collection '{}' already exists and is not timeseries",
+                            targetNss.toStringForErrorMsg()),
                 !request.getTimeseries() || cm.getTimeseriesFields());
 
         if (cm.getTimeseriesFields()) {
@@ -778,20 +795,20 @@ void checkShardingCatalogCollectionOptions(OperationContext* opCtx,
                 // they match
                 const auto& existingTimeseriesOptions =
                     cm.getTimeseriesFields()->getTimeseriesOptions();
-                uassert(
-                    ErrorCodes::AlreadyInitialized,
-                    "Collection '{}' already exists with a different timeseries options. Requested '{}' but found '{}'"_format(
-                        targetNss.toStringForErrorMsg(),
-                        request.getTimeseries()->toBSON().toString(),
-                        existingTimeseriesOptions.toBSON().toString()),
-                    timeseries::optionsAreEqual(*request.getTimeseries(),
-                                                existingTimeseriesOptions));
+                uassert(ErrorCodes::AlreadyInitialized,
+                        fmt::format("Collection '{}' already exists with a different timeseries "
+                                    "options. Requested '{}' but found '{}'",
+                                    targetNss.toStringForErrorMsg(),
+                                    request.getTimeseries()->toBSON().toString(),
+                                    existingTimeseriesOptions.toBSON().toString()),
+                        timeseries::optionsAreEqual(*request.getTimeseries(),
+                                                    existingTimeseriesOptions));
             } else {
                 // The collection exists and is timeseries but it was requested to create a normal
                 // collection
                 uassert(ErrorCodes::AlreadyInitialized,
-                        "Timeseries collection '{}' already exists"_format(
-                            targetNss.toStringForErrorMsg()),
+                        fmt::format("Timeseries collection '{}' already exists",
+                                    targetNss.toStringForErrorMsg()),
                         !isUnsplittable(request));
             }
         }
@@ -818,24 +835,27 @@ void checkShardingCatalogCollectionOptions(OperationContext* opCtx,
                 existingTimeseriesOptions, *request.getShardKey()));
         }();
 
-        uassert(
-            ErrorCodes::AlreadyInitialized,
-            "Collection '{}' already exists with a differnt shard key. Requested {} but found {}"_format(
-                targetNss.toStringForErrorMsg(),
-                requestKeyPattern.toString(),
-                cm.getShardKeyPattern().toBSON().toString()),
-            SimpleBSONObjComparator::kInstance.evaluate(requestKeyPattern ==
-                                                        cm.getShardKeyPattern().toBSON()));
+        uassert(ErrorCodes::AlreadyInitialized,
+                fmt::format("Collection '{}' already exists with a different shard key. Requested "
+                            "{} but found {}",
+                            targetNss.toStringForErrorMsg(),
+                            requestKeyPattern.toString(),
+                            cm.getShardKeyPattern().toBSON().toString()),
+                SimpleBSONObjComparator::kInstance.evaluate(requestKeyPattern ==
+                                                            cm.getShardKeyPattern().toBSON()));
     }
 }
 
 boost::optional<CreateCollectionResponse> checkIfCollectionExistsWithSameOptions(
     OperationContext* opCtx,
     const ShardsvrCreateCollectionRequest& request,
-    const NamespaceString& originalNss) {
+    const NamespaceString& originalNss,
+    bool newSessionsCollectionPath) {
 
     boost::optional<NamespaceString> optTargetNss;
     boost::optional<UUID> optTargetCollUUID;
+    // TODO (SERVER-100309): Remove once 9.0 becomes last LTS.
+    bool missingSessionsCollectionLocally = false;
 
     {
         // 1. Check if the collection already exists in the local catalog with same options
@@ -851,20 +871,28 @@ boost::optional<CreateCollectionResponse> checkIfCollectionExistsWithSameOptions
         }
 
         if (!targetColl->exists()) {
-            return boost::none;
+            // TODO (SERVER-100309): Remove once 9.0 becomes last LTS.
+            if (newSessionsCollectionPath &&
+                originalNss == NamespaceString::kLogicalSessionsNamespace) {
+                optTargetNss = originalNss;
+                missingSessionsCollectionLocally = true;
+            } else {
+                return boost::none;
+            }
+        } else {
+            optTargetNss = targetColl->nss();
+            optTargetCollUUID = targetColl->uuid();
+
+            // Since the coordinator is holding the DDL lock for the collection we have the
+            // guarantee that the collection can't be dropped concurrently.
+            checkLocalCatalogCollectionOptions(
+                opCtx, *optTargetNss, request, std::move(targetColl));
         }
-
-        optTargetNss = targetColl->nss();
-        optTargetCollUUID = targetColl->uuid();
-
-        // Since the coordinator is holding the DDL lock for the collection we have the guarantee
-        // that the collection can't be dropped concurrently.
-        checkLocalCatalogCollectionOptions(opCtx, *optTargetNss, request, std::move(targetColl));
     }
 
     invariant(optTargetNss);
     const auto& targetNss = *optTargetNss;
-    invariant(optTargetCollUUID);
+    invariant(optTargetCollUUID || missingSessionsCollectionLocally);
 
     // 2. Make sure we're not trying to track a temporary collection upon moveCollection
     if (request.getRegisterExistingCollectionInGlobalCatalog()) {
@@ -896,8 +924,16 @@ boost::optional<CreateCollectionResponse> checkIfCollectionExistsWithSameOptions
         Grid::get(opCtx)->catalogCache()->getCollectionPlacementInfoWithRefresh(opCtx, targetNss));
 
     if (!cm.hasRoutingTable()) {
-        // The collection is not tracked in the sharding catalog. We either
-        // need to register it or to shard it. Proceed with the coordinator.
+        // If the sessions collection does not already exist we need to make sure that there is an
+        // available shard for us to make it on.
+        if (targetNss == NamespaceString::kLogicalSessionsNamespace) {
+            uassert(ErrorCodes::IllegalOperation,
+                    "There are no suitable shards to create the sessions collection on",
+                    Grid::get(opCtx)->shardRegistry()->getNumShards(opCtx) != 0);
+        }
+
+        // The collection is not tracked in the sharding catalog. We either need to register it or
+        // to shard it. Proceed with the coordinator.
         return boost::none;
     }
 
@@ -918,13 +954,26 @@ boost::optional<CreateCollectionResponse> checkIfCollectionExistsWithSameOptions
             // can only be created on the primary.
             // Note that the dataShard is only used for testing and this error message is mainly
             // useful for debugging purpuses only.
-            uasserted(
-                ErrorCodes::AlreadyInitialized,
-                "Cannot specify a data shard for an implicitly created view on an existing timeseries collection."_format(
-                    targetNss.toStringForErrorMsg(), request.getDataShard()->toString()));
+            uasserted(ErrorCodes::AlreadyInitialized,
+                      fmt::format("Cannot specify a data shard for an implicitly created view on "
+                                  "an existing timeseries collection.",
+                                  targetNss.toStringForErrorMsg(),
+                                  request.getDataShard()->toString()));
         }
         // For a timeseries request, the bucket collection already exists and it's tracked but the
         // view is missing locally. We need to create it. Proceed with the coordinator.
+        return boost::none;
+    }
+
+    // If the sessions collection exists in the sharding catalog but not locally, we want to
+    // run the coordinator so that we can create the collection locally. This is also true if we
+    // have a mismatched uuid locally - we want to run the coordinator and replace the local version
+    // of the collection.
+    //
+    // TODO (SERVER-100309): Remove once 9.0 becomes last LTS.
+    if (missingSessionsCollectionLocally ||
+        (targetNss == NamespaceString::kLogicalSessionsNamespace &&
+         !cm.uuidMatches(*optTargetCollUUID))) {
         return boost::none;
     }
 
@@ -976,6 +1025,17 @@ void checkCommandArguments(OperationContext* opCtx,
 
         sharding_ddl_util::assertNamespaceLengthLimit(originalNss, request.getUnsplittable());
     }
+
+    // The moveCollection operation adds a special flag registerExistingCollectionInGlobalCatalog to
+    // teh ShardsvrCreateCollectionRequest.
+    // In this case, the createCollectionCoordinator only performs the registration and skips the
+    // creation of collection.
+    // This flag cannot be used together with dataShard, as it may cause the data to become
+    // orphaned.
+    uassert(ErrorCodes::InvalidOptions,
+            "dataShard and registerExistingCollectionInGlobalCatalog cannot be specified in the "
+            "same request",
+            !(request.getDataShard() && request.getRegisterExistingCollectionInGlobalCatalog()));
 }
 
 /**
@@ -1233,23 +1293,16 @@ boost::optional<UUID> createCollectionAndIndexes(
             shardkeyutil::ValidationBehaviorsShardCollection(opCtx, dataShard),
             translatedRequestParams.getTimeseries());
     } else {
-        const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
-        const bool isIndexOptional = shardKeyPattern.isHashedPattern() &&
-            fcvSnapshot.isVersionInitialized() &&
-            feature_flags::gFeatureFlagHashedShardKeyIndexOptionalUponShardingCollection.isEnabled(
-                fcvSnapshot);
-        if (!isIndexOptional) {
-            uassert(6373200,
-                    "Must have an index compatible with the proposed shard key",
-                    validShardKeyIndexExists(
-                        opCtx,
-                        translatedNss,
-                        shardKeyPattern,
-                        translatedRequestParams.getCollation(),
-                        request.getUnique().value_or(false) &&
-                            request.getEnforceUniquenessCheck().value_or(true),
-                        shardkeyutil::ValidationBehaviorsShardCollection(opCtx, dataShard)));
-        }
+        uassert(6373200,
+                "Must have an index compatible with the proposed shard key",
+                validShardKeyIndexExists(
+                    opCtx,
+                    translatedNss,
+                    shardKeyPattern,
+                    translatedRequestParams.getCollation(),
+                    request.getUnique().value_or(false) &&
+                        request.getEnforceUniquenessCheck().value_or(true),
+                    shardkeyutil::ValidationBehaviorsShardCollection(opCtx, dataShard)));
     }
 
     auto replClientInfo = repl::ReplClientInfo::forClient(opCtx->getClient());
@@ -1268,14 +1321,11 @@ boost::optional<UUID> createCollectionAndIndexes(
     return *sharding_ddl_util::getCollectionUUID(opCtx, translatedNss);
 }
 
-void generateCommitEventForChangeStreams(
-    OperationContext* opCtx,
-    const NamespaceString& translatedNss,
-    const UUID& collUUID,
-    const ShardsvrCreateCollectionRequest& originalRequest,
-    mongo::TranslatedRequestParams& translatedRequestParams,
-    CommitPhase commitPhase,
-    const boost::optional<std::set<ShardId>>& shardsHostingCollection = boost::none) {
+void generateCommitEventForChangeStreams(OperationContext* opCtx,
+                                         const NamespaceString& translatedNss,
+                                         const UUID& collUUID,
+                                         const ShardsvrCreateCollectionRequest& originalRequest,
+                                         mongo::TranslatedRequestParams& translatedRequestParams) {
     if (originalRequest.getUnsplittable()) {
         // Do not generate any event; unsplittable collections cannot appear as sharded ones to
         // change stream users.
@@ -1290,12 +1340,7 @@ void generateCommitEventForChangeStreams(
     // but it is still kept in the request until it can be safely removed.
     patchedRequest.setNumInitialChunks(boost::none);
 
-    notifyChangeStreamsOnShardCollection(opCtx,
-                                         translatedNss,
-                                         collUUID,
-                                         patchedRequest.toBSON(),
-                                         commitPhase,
-                                         shardsHostingCollection);
+    notifyChangeStreamsOnShardCollection(opCtx, translatedNss, collUUID, patchedRequest.toBSON());
 }
 
 /**
@@ -1318,8 +1363,8 @@ void commit(OperationContext* opCtx,
 
     if (MONGO_unlikely(nss == NamespaceString::kLogicalSessionsNamespace)) {
         tassert(ErrorCodes::IllegalOperation,
-                "The '{}' collection must always be sharded"_format(
-                    NamespaceString::kLogicalSessionsNamespace.toStringForErrorMsg()),
+                fmt::format("The '{}' collection must always be sharded",
+                            NamespaceString::kLogicalSessionsNamespace.toStringForErrorMsg()),
                 isSharded(request));
     }
 
@@ -1608,8 +1653,11 @@ void CreateCollectionCoordinator::_checkPreconditions() {
 
     // Perform a preliminary check on whether the request may resolve into a no-op before acquiring
     // any critical section.
-    auto createCollectionResponseOpt =
-        checkIfCollectionExistsWithSameOptions(opCtx, _request, originalNss());
+    auto createCollectionResponseOpt = checkIfCollectionExistsWithSameOptions(
+        opCtx,
+        _request,
+        originalNss(),
+        _doc.getCreateSessionsCollectionRemotelyOnFirstShard().value_or(false));
     if (createCollectionResponseOpt) {
         _result = createCollectionResponseOpt;
         // Launch an exception to directly jump to the end of the continuation chain
@@ -1623,8 +1671,9 @@ void CreateCollectionCoordinator::_checkPreconditions() {
     // This is important in order to fix a race where create collection for 'config.system.session',
     // which is sent to a random shard, could otherwise execute on a config server that is no longer
     // a data-bearing shard.
-    // TODO: SERVER-86949 Remove this.
-    if (ShardingState::get(opCtx)->pollClusterRole()->has(ClusterRole::ConfigServer)) {
+    // TODO (SERVER-100309): Remove this once 9.0 becomes last LTS.
+    if (!_doc.getCreateSessionsCollectionRemotelyOnFirstShard() &&
+        ShardingState::get(opCtx)->pollClusterRole()->has(ClusterRole::ConfigServer)) {
         const auto allShardIds = Grid::get(opCtx)->shardRegistry()->getAllShardIds(opCtx);
         bool amIAConfigShard = std::find(allShardIds.begin(),
                                          allShardIds.end(),
@@ -1632,6 +1681,21 @@ void CreateCollectionCoordinator::_checkPreconditions() {
         uassert(ErrorCodes::ConflictingOperationInProgress,
                 "Cannot run CreateCollectionCoordinator on a non data bearing config server",
                 amIAConfigShard);
+    }
+
+    if (_request.getDataShard() && _request.getDataShard() == ShardId::kConfigServerId) {
+        const auto allShardIds = Grid::get(opCtx)->shardRegistry()->getAllShardIds(opCtx);
+        bool isConfigShardAvailable =
+            std::find(allShardIds.begin(), allShardIds.end(), ShardId::kConfigServerId) !=
+            allShardIds.end();
+        uassert(
+            ErrorCodes::ShardNotFound,
+            str::stream()
+                << ShardId::kConfigServerId.toString()
+                << " server can't be chosen as data shard because it is currently configured to "
+                << "only host cluster metadata. Please use transitionFromDedicatedConfigServer "
+                << "command if you also want to store application data in the config server.",
+            isConfigShardAvailable);
     }
 }
 
@@ -1749,8 +1813,24 @@ void CreateCollectionCoordinator::_syncIndexesOnCoordinator(
 
     // If the collection does not exist or the current data shard is the coordinator, then the
     // indexes on the coordinator will already be accurate.
-    if (!sharding_ddl_util::getCollectionUUID(opCtx, nss()) ||
-        *_doc.getOriginalDataShard() == ShardingState::get(opCtx)->shardId()) {
+    bool collectionExists = [&] {
+        // During the transition from running the create coordintor for config.system.sessions on
+        // the first shard to running it on the config server, the collection may be sharded but the
+        // collection will not exist locally on the config server. This logic will ensure that we
+        // create the collection locally on the config server the first time the coordinator is run
+        // on the config server.
+        //
+        // TODO (SERVER-100309): Remove once 9.0 becomes last LTS
+        if (_doc.getCreateSessionsCollectionRemotelyOnFirstShard() &&
+            nss() == NamespaceString::kLogicalSessionsNamespace) {
+            const auto cri = uassertStatusOK(
+                Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss()));
+            return cri.hasRoutingTable();
+        } else {
+            return sharding_ddl_util::getCollectionUUID(opCtx, nss()).is_initialized();
+        }
+    }();
+    if (!collectionExists || *_doc.getOriginalDataShard() == ShardingState::get(opCtx)->shardId()) {
         return;
     }
 
@@ -1759,7 +1839,19 @@ void CreateCollectionCoordinator::_syncIndexesOnCoordinator(
         _performNoopRetryableWriteOnAllShardsAndConfigsvr(opCtx, getNewSession(opCtx), **executor);
     }
 
-    _uuid = *sharding_ddl_util::getCollectionUUID(opCtx, nss());
+    auto optUuid = sharding_ddl_util::getCollectionUUID(opCtx, nss());
+    // TODO (SERVER-100309): Remove sessions collection handling once 9.0 becomes last LTS.
+    if (!optUuid) {
+        invariant(nss() == NamespaceString::kLogicalSessionsNamespace &&
+                  _doc.getCreateSessionsCollectionRemotelyOnFirstShard());
+        // If we are in the state described above, we cannot get the uuid locally and so we need to
+        // take the existing one from config.collections.
+        const auto& cri = uassertStatusOK(
+            Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss()));
+        _uuid = cri.getChunkManager().getUUID();
+    } else {
+        _uuid = *optUuid;
+    }
 
     // Get indexes from the dataShard and copy them to the coordinator.
     const auto session = getNewSession(opCtx);
@@ -1803,8 +1895,15 @@ void CreateCollectionCoordinator::_createCollectionOnCoordinator(
                                   _request.getUnique().value_or(false));
     }
 
-    const auto& dataShardForPolicy =
+    auto dataShardForPolicy =
         _request.getDataShard() ? _request.getDataShard() : _doc.getOriginalDataShard();
+    if (_doc.getCreateSessionsCollectionRemotelyOnFirstShard() &&
+        nss() == NamespaceString::kLogicalSessionsNamespace &&
+        dataShardForPolicy == ShardingState::get(opCtx)->shardId()) {
+        auto allShardIds = Grid::get(opCtx)->shardRegistry()->getAllShardIds(opCtx);
+        std::sort(allShardIds.begin(), allShardIds.end());
+        dataShardForPolicy = allShardIds[0];
+    }
     const auto splitPolicy = create_collection_util::createPolicy(
         opCtx,
         shardKeyPattern,
@@ -2020,14 +2119,6 @@ void CreateCollectionCoordinator::_commitOnShardingCatalog(
         involvedShards.emplace(chunk.getShard());
     }
 
-    generateCommitEventForChangeStreams(opCtx,
-                                        nss(),
-                                        *_uuid,
-                                        _request,
-                                        *_doc.getTranslatedRequestParams(),
-                                        CommitPhase::kPrepare,
-                                        involvedShards);
-
     commit(opCtx,
            **executor,
            _request,
@@ -2104,12 +2195,8 @@ void CreateCollectionCoordinator::_setPostCommitMetadata(
     }
 
     // Ensure that the change stream event gets emitted at least once.
-    generateCommitEventForChangeStreams(opCtx,
-                                        nss(),
-                                        *_uuid,
-                                        _request,
-                                        *_doc.getTranslatedRequestParams(),
-                                        CommitPhase::kSuccessful);
+    generateCommitEventForChangeStreams(
+        opCtx, nss(), *_uuid, _request, *_doc.getTranslatedRequestParams());
 }
 
 void CreateCollectionCoordinator::_exitCriticalSection(
@@ -2158,19 +2245,8 @@ ExecutorFuture<void> CreateCollectionCoordinator::_cleanupOnAbort(
             _performNoopRetryableWriteOnAllShardsAndConfigsvr(
                 opCtx, getNewSession(opCtx), **executor);
 
-            if (_doc.getPhase() >= Phase::kCommitOnShardingCatalog) {
-                _uuid = sharding_ddl_util::getCollectionUUID(opCtx, nss());
-
-                // Notify change streams to abort the shard collection.
-                generateCommitEventForChangeStreams(opCtx,
-                                                    nss(),
-                                                    *_uuid,
-                                                    _request,
-                                                    *_doc.getTranslatedRequestParams(),
-                                                    CommitPhase::kAborted);
-            }
-
             if (_doc.getPhase() >= Phase::kCreateCollectionOnParticipants) {
+                _uuid = sharding_ddl_util::getCollectionUUID(opCtx, nss());
                 // TODO SERVER-83774: Remove the following invariant and skip the broadcast if the
                 // _uuid does not exist.
                 invariant(_uuid);

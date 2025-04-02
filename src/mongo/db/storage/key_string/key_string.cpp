@@ -46,8 +46,6 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/bits.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/platform/endian.h"
@@ -2702,21 +2700,20 @@ uint8_t TypeBits::ExplainReader::readDecimalExponent() {
 size_t getKeySize(std::span<const char> data, Ordering ord, Version version) {
     invariant(data.size() > 0);
     auto reader = makeBufReader(data);
-    unsigned remainingBytes;
-    for (int i = 0; (remainingBytes = reader.remaining()); i++) {
+    for (int i = 0;; i++) {
+        // We reached the end of the buffer without reading a valid complete key
+        if (reader.remaining() == 0)
+            return 0;
+
         const bool invert = (ord.get(i) == -1);
         uint8_t ctype = readType<uint8_t>(&reader, invert);
-        // We have already read the Key.
+        // We have reached the end of the Key. The Key size is the number of bytes we used.
         if (ctype == kEnd)
-            break;
+            return data.size() - reader.remaining();
 
         // Read the Key that comes after the first byte in KeyString.
         filterKeyFromKeyString(ctype, &reader, invert, version);
     }
-
-    invariant(data.size() > remainingBytes);
-    // Key size = buffer len - number of bytes comprising the RecordId
-    return data.size() - (remainingBytes - 1);
 }
 
 // This discriminator byte only exists in KeyStrings for queries, not in KeyStrings stored in an
@@ -2801,19 +2798,27 @@ BSONObj toBsonSafe(std::span<const char> data, Ordering ord, const TypeBits& typ
     return builder.obj();
 }
 
-BSONObj toBson(std::span<const char> data, Ordering ord, const TypeBits& typeBits) noexcept {
-    return toBsonSafe(data, ord, typeBits);
+BSONObj toBson(std::span<const char> data, Ordering ord, const TypeBits& typeBits) {
+    try {
+        return toBsonSafe(data, ord, typeBits);
+    } catch (const AssertionException& ex) {
+        LOGV2_FATAL(9895200, "toBson() called with invalid buffer", "exception"_attr = ex);
+    }
 }
 
 BSONObj toBson(std::span<const char> data,
                Ordering ord,
                std::span<const char> typeBitsRawBuffer,
                Version version) {
-    BSONObjBuilder builder;
-    auto br = makeBufReader(typeBitsRawBuffer);
-    auto reader = TypeBits::getReaderFromBuffer(version, &br);
-    toBsonSafe(data, ord, reader, builder);
-    return builder.obj();
+    try {
+        BSONObjBuilder builder;
+        auto br = makeBufReader(typeBitsRawBuffer);
+        auto reader = TypeBits::getReaderFromBuffer(version, &br);
+        toBsonSafe(data, ord, reader, builder);
+        return builder.obj();
+    } catch (const AssertionException& ex) {
+        LOGV2_FATAL(9895201, "toBson() called with invalid buffer", "exception"_attr = ex);
+    }
 }
 
 RecordId decodeRecordIdLongAtEnd(std::span<const char> buf) {

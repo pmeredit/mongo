@@ -31,7 +31,6 @@
 
 #include "mongo/bson/bson_validate.h"
 #include "mongo/db/query/util/jparse_util.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
 
 namespace mongo {
@@ -70,11 +69,10 @@ TEST(JParseUtilTest, RegexForwardSlash) {
     auto jsonStr =
         "{$regexFindAll: {input: \"$obj.obj.obj.obj.str\", regex: /transparent|Forward/, options: "
         "\"\"}}";
-    BSONObj expected =
-        BSON("$regexFindAll" << BSON("input"
-                                     << "$obj.obj.obj.obj.str"
-                                     << "regex" << BSONRegEx("transparent|Forward") << "options"
-                                     << ""));
+    BSONObj expected = BSON(
+        "$regexFindAll" << BSON("input" << "$obj.obj.obj.obj.str"
+                                        << "regex" << BSONRegEx("transparent|Forward") << "options"
+                                        << ""));
     parseFuzzerJsonAndAssertEq(jsonStr, expected);
 }
 
@@ -82,11 +80,10 @@ TEST(JParseUtilTest, RegexForwardSlashWithOptions) {
     auto jsonStr =
         "{$regexFindAll: {input: \"$obj.obj.obj.obj.str\", regex: /transparent|Forward/, options: "
         "\"\"}}";
-    BSONObj expected =
-        BSON("$regexFindAll" << BSON("input"
-                                     << "$obj.obj.obj.obj.str"
-                                     << "regex" << BSONRegEx("transparent|Forward") << "options"
-                                     << ""));
+    BSONObj expected = BSON(
+        "$regexFindAll" << BSON("input" << "$obj.obj.obj.obj.str"
+                                        << "regex" << BSONRegEx("transparent|Forward") << "options"
+                                        << ""));
     parseFuzzerJsonAndAssertEq(jsonStr, expected);
 }
 

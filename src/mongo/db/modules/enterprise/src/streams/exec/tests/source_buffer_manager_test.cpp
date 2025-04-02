@@ -2,13 +2,13 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/util/str.h"
+#include "streams/exec/source_buffer_manager.h"
+
 #include <cmath>
 #include <memory>
 
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/unittest.h"
-#include "streams/exec/source_buffer_manager.h"
+#include "mongo/util/str.h"
 #include "streams/exec/tests/test_utils.h"
 
 namespace streams {
@@ -148,7 +148,9 @@ TEST_F(SourceBufferManagerTest, RegisterDeregister) {
     // Deregister all source buffers and verify that the remaining source buffers get expected
     // number of pages preallocated to them.
     for (int i = 0; i < 200; ++i) {
-        { handles.pop_back(); }
+        {
+            handles.pop_back();
+        }
 
         auto numHandles = std::max<size_t>(handles.size(), 1);
         auto pageSize = _bufMgr->getPageSize();

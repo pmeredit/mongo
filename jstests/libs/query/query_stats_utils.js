@@ -1,5 +1,6 @@
 import {resultsEq} from "jstests/aggregation/extras/utils.js";
 import {FixtureHelpers} from "jstests/libs/fixture_helpers.js";
+import {isLinux} from "jstests/libs/os_helpers.js";
 import {ReplSetTest} from "jstests/libs/replsettest.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 
@@ -12,6 +13,11 @@ export const kDefaultQueryStatsHmacKey = BinData(8, "MjM0NTY3ODkxMDExMTIxMzE0MTU
  */
 export function verifyMetrics(batch) {
     batch.forEach(element => {
+        // The cpuNanos metric should only appear for tests running on Linux.
+        assert(
+            isLinux() == ("cpuNanos" in element.metrics),
+            `cpuNanos must be returned on only Linux systems, but received: ${tojson(element)}`,
+        );
         function skipMetric(summaryValues) {
             // Skip over fields that aren't aggregated metrics with sum/min/max (execCount,
             // lastExecutionMicros). We also skip metrics that are aggregated, but that haven't
@@ -39,6 +45,7 @@ export function verifyMetrics(batch) {
                 if (skipMetric(summaryValues)) {
                     continue;
                 }
+
                 const debugInfo = {[metricName]: summaryValues};
                 assert.gte(summaryValues.sum, summaryValues.min, debugInfo);
                 assert.gte(summaryValues.sum, summaryValues.max, debugInfo);
@@ -265,9 +272,9 @@ export function confirmAllExpectedFieldsPresent(expectedKey, resultingKey) {
             continue;
         }
         if (!expectedKey.hasOwnProperty(field)) {
-            print("Field present in actual object but missing from expected: " + field);
-            print("Expected " + tojson(expectedKey));
-            print("Actual " + tojson(resultingKey));
+            jsTest.log.info("Field present in actual object but missing from expected: " + field);
+            jsTest.log.info("Expected", {expectedKey});
+            jsTest.log.info("Actual", {resultingKey});
         }
         assert(expectedKey.hasOwnProperty(field), field);
 
@@ -312,6 +319,7 @@ export function assertExpectedResults(results,
         totalExecMicros,
         firstResponseExecMicros,
         workingTimeMillis,
+        cpuNanos,
     } = metrics;
 
     // The tests can't predict exact timings, so just assert these three fields have been set (are
@@ -322,12 +330,18 @@ export function assertExpectedResults(results,
     assert.neq(asOf.getTime(), 0);
     assert.neq(keyHash.length, 0);
     assert.neq(queryShapeHash.length, 0);
+    if (!isLinux()) {
+        assert(!cpuNanos, "cpuNanos should only be returned on Linux.");
+    }
 
     const distributionFields = ['sum', 'max', 'min', 'sumOfSquares'];
     for (const field of distributionFields) {
         assert.neq(totalExecMicros[field], NumberLong(0));
         assert.neq(firstResponseExecMicros[field], NumberLong(0));
         assert(bsonWoCompare(workingTimeMillis[field], NumberLong(0)) >= 0);
+        if (isLinux()) {
+            assert(bsonWoCompare(cpuNanos[field], NumberLong(0)) > 0);
+        }
         if (metrics.execCount > 1) {
             // If there are prior executions of the same query shape, we can't be certain if those
             // runs had getMores or not, so we can only check totalExec >= firstResponse.
@@ -825,7 +839,7 @@ export function exhaustCursorAndGetQueryStats(conn, coll, cmd, key, expectedDocs
         execCountPost, execCountPre + 1, "Didn't find query stats for namespace " + namespace);
 
     const queryStats = getSingleQueryStatsEntryForNs(conn, namespace);
-    print("Query Stats: " + tojson(queryStats));
+    jsTest.log.info("Query Stats", {queryStats});
 
     assertExpectedResults(queryStats,
                           key,

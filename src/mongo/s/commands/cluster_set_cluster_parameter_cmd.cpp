@@ -48,7 +48,7 @@
 #include "mongo/db/database_name.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/query/query_settings/query_settings_manager.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/update/storage_validation.h"
 #include "mongo/rpc/op_msg.h"
@@ -56,13 +56,12 @@
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/request_types/sharded_ddl_commands_gen.h"
+#include "mongo/s/set_cluster_server_parameter_router_impl.h"
 #include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
 namespace mongo {
-
-using namespace fmt::literals;
 namespace {
 
 class SetClusterParameterCmd final : public TypedCommand<SetClusterParameterCmd> {
@@ -95,15 +94,15 @@ public:
                     request().getCommandParameter().nFields() > 0);
 
             uassert(ErrorCodes::InvalidOptions,
-                    "{} only supports setting exactly one parameter"_format(Request::kCommandName),
+                    fmt::format("{} only supports setting exactly one parameter",
+                                Request::kCommandName),
                     request().getCommandParameter().nFields() == 1);
 
-            uassert(
-                ErrorCodes::NoSuchKey,
-                "Unknown server parameter: {}"_format(
-                    query_settings::QuerySettingsManager::kQuerySettingsClusterParameterName),
-                !request().getCommandParameter()
-                     [query_settings::QuerySettingsManager::kQuerySettingsClusterParameterName]);
+            uassert(ErrorCodes::NoSuchKey,
+                    fmt::format("Unknown server parameter: {}",
+                                query_settings::getQuerySettingsClusterParameterName()),
+                    !request().getCommandParameter()
+                         [query_settings::getQuerySettingsClusterParameterName()]);
 
             {
                 bool ignore;
@@ -111,11 +110,10 @@ public:
                 storage_validation::scanDocument(mutableUpdate, false, true, &ignore);
             }
 
-            static auto impl = getSetClusterParameterImpl(service);
-            impl(opCtx,
-                 request(),
-                 boost::none /* clusterParameterTime */,
-                 boost::none /* previousTime */);
+            setClusterParameterImplRouter(opCtx,
+                                          request(),
+                                          boost::none /* clusterParameterTime */,
+                                          boost::none /* previousTime */);
         }
 
     private:

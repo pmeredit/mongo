@@ -41,8 +41,10 @@ namespace streams {
 using namespace mongo;
 using bsoncxx::builder::basic::kvp;
 
-TimeseriesEmitOperator::TimeseriesEmitOperator(Context* context, Options options)
-    : QueuedSinkOperator(context, 1 /* numInputs */), _options(std::move(options)) {
+TimeseriesWriter::TimeseriesWriter(Context* context,
+                                   SinkOperator* sinkOperator,
+                                   TimeseriesEmitOperator::Options options)
+    : SinkWriter(context, sinkOperator), _options(std::move(options)) {
     _instance = getMongocxxInstance(_options.clientOptions.svcCtx);
     _uri = makeMongocxxUri(_options.clientOptions.uri);
     _client =
@@ -64,17 +66,16 @@ TimeseriesEmitOperator::TimeseriesEmitOperator(Context* context, Options options
                                    *_options.clientOptions.database,
                                    *_options.clientOptions.collection);
     }
-    _stats.connectionType = ConnectionTypeEnum::Atlas;
 }
 
-OperatorStats TimeseriesEmitOperator::processDataMsg(StreamDataMsg dataMsg) {
+OperatorStats TimeseriesWriter::processDataMsg(StreamDataMsg dataMsg) {
     if (_options.collExpr || _options.dbExpr) {
         return processStreamDocs(dataMsg, /* startIdx */ 0, /* maxDocCount */ 1);
     }
     return processStreamDocs(dataMsg, /* startIdx */ 0, kDataMsgMaxDocSize);
 }
 
-void TimeseriesEmitOperator::validateConnection() {
+void TimeseriesWriter::connect() {
     if (_options.dbExpr || _options.collExpr) {
         return;
     }
@@ -137,7 +138,7 @@ void TimeseriesEmitOperator::validateConnection() {
     spassert(status, status.isOK());
 }
 
-void TimeseriesEmitOperator::processDbAndCollExpressions(const StreamDocument& streamDoc) {
+void TimeseriesWriter::processDbAndCollExpressions(const StreamDocument& streamDoc) {
     // TODO(SERVER-98021): Handle collection validation with expressions.
     if (_options.dbExpr) {
         // TODO(SERVER-98021): handle expression failures with DLQ messages
@@ -186,9 +187,9 @@ void TimeseriesEmitOperator::processDbAndCollExpressions(const StreamDocument& s
     _collection = std::make_unique<mongocxx::collection>(std::move(collection));
 }
 
-OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
-                                                        size_t startIdx,
-                                                        size_t maxDocCount) {
+OperatorStats TimeseriesWriter::processStreamDocs(StreamDataMsg dataMsg,
+                                                  size_t startIdx,
+                                                  size_t maxDocCount) {
     OperatorStats stats;
     // The max document size limit for a time series collectio in 4MB
     // https://www.mongodb.com/docs/v5.0/core/timeseries/timeseries-limitations/#constraints
@@ -314,11 +315,11 @@ OperatorStats TimeseriesEmitOperator::processStreamDocs(StreamDataMsg dataMsg,
             docBatch.clear();
         }
     }
-    stats.timeSpent = dataMsg.creationTimer->elapsed();
+    stats.timeSpent = dataMsg.creationTimer.elapsed();
     return stats;
 }
 
-boost::optional<TimeseriesOptions> TimeseriesEmitOperator::getTimeseriesOptionsFromDb() {
+boost::optional<TimeseriesOptions> TimeseriesWriter::getTimeseriesOptionsFromDb() {
     boost::optional<TimeseriesOptions> tsOptions;
     // Create a filter on the name and type (timeseries) of the collection.
 
@@ -327,9 +328,8 @@ boost::optional<TimeseriesOptions> TimeseriesEmitOperator::getTimeseriesOptionsF
     tassert(9777902,
             "don't run this method if db or coll are expressions",
             !_options.dbExpr && !_options.collExpr);
-    auto filter = BSON("type"
-                       << "timeseries"
-                       << "name" << *_options.clientOptions.collection);
+    auto filter = BSON("type" << "timeseries"
+                              << "name" << *_options.clientOptions.collection);
     mongocxx::cursor tsCollectionCursor =
         _database->list_collections(toBsoncxxView(std::move(filter)));
 
@@ -349,4 +349,10 @@ boost::optional<TimeseriesOptions> TimeseriesEmitOperator::getTimeseriesOptionsF
     }
     return tsOptions;
 }
+
+std::unique_ptr<SinkWriter> TimeseriesEmitOperator::makeWriter(int id) {
+    // TODO(SERVER-100880): Duplicate expressions.
+    return std::make_unique<TimeseriesWriter>(_context, this, _options);
+}
+
 }  // namespace streams

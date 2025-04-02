@@ -110,10 +110,8 @@
 #include "mongo/s/sharding_index_catalog_cache.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/uuid.h"
@@ -306,9 +304,9 @@ public:
 
         PersistentTaskStore<repl::OplogEntryBase> store(NamespaceString::kRsOplogNamespace);
         store.forEach(opCtx,
-                      BSON("op"
-                           << "c"
-                           << "o.applyOps" << BSON("$exists" << true) << "ts" << BSON("$gt" << ts)),
+                      BSON("op" << "c"
+                                << "o.applyOps" << BSON("$exists" << true) << "ts"
+                                << BSON("$gt" << ts)),
                       [&](const auto& oplogEntry) {
                           auto applyOpsCmd = oplogEntry.getObject().getOwned();
                           auto applyOpsInfo = repl::ApplyOpsCommandInfo::parse(applyOpsCmd);
@@ -331,7 +329,6 @@ public:
 
 private:
     ChunkManager makeChunkManager(const OID& epoch,
-                                  const ShardId& shardId,
                                   const NamespaceString& nss,
                                   const UUID& uuid,
                                   const BSONObj& shardKey,
@@ -348,9 +345,7 @@ private:
                                                boost::none /* reshardingFields */,
                                                true /* allowMigrations */,
                                                chunks);
-        return ChunkManager(shardId,
-                            DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                            makeStandaloneRoutingTableHistory(std::move(rt)),
+        return ChunkManager(makeStandaloneRoutingTableHistory(std::move(rt)),
                             boost::none /* clusterTime */);
     }
 
@@ -377,7 +372,7 @@ private:
                       _myDonorId}};
 
         return makeChunkManager(
-            epoch, _myDonorId, _sourceNss, _sourceUUID, BSON(_currentShardKey << 1), chunks);
+            epoch, _sourceNss, _sourceUUID, BSON(_currentShardKey << 1), chunks);
     }
 
     ChunkManager makeChunkManagerForOutputCollection() {
@@ -389,8 +384,7 @@ private:
                       ChunkVersion({epoch, Timestamp(1, 1)}, {100, 0}),
                       _myDonorId}};
 
-        return makeChunkManager(
-            epoch, _myDonorId, _outputNss, outputUuid, BSON(_newShardKey << 1), chunks);
+        return makeChunkManager(epoch, _outputNss, outputUuid, BSON(_newShardKey << 1), chunks);
     }
 
     RoutingTableHistoryValueHandle makeStandaloneRoutingTableHistory(RoutingTableHistory rt) {
@@ -429,10 +423,8 @@ TEST_F(ReshardingOplogCrudApplicationTest, InsertOpInsertsIntoOuputCollection) {
     // ReshardingOplogApplicationRules::_applyInsert_inlock.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 1))));
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 2))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 1))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 2))));
     }
 
     {
@@ -452,16 +444,16 @@ TEST_F(ReshardingOplogCrudApplicationTest, InsertOpBecomesReplacementUpdateOnOut
     // owns the range {sk: 0} -> {sk: maxKey}).
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << 1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << 1))));
 
         checkCollectionContents(opCtx.get(), outputNss(), {BSON("_id" << 0 << sk() << 1)});
     }
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << 2))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << 2))));
     }
 
     // We should have replaced the existing document in the output collection.
@@ -483,16 +475,16 @@ TEST_F(ReshardingOplogCrudApplicationTest, InsertOpWritesToStashCollectionAfterC
     // collection.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << -1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << -1))));
 
         checkCollectionContents(opCtx.get(), outputNss(), {BSON("_id" << 0 << sk() << -1)});
     }
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << 2))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << 2))));
     }
 
     // The output collection should still hold the document {_id: 0, sk: -1}, and the document with
@@ -506,8 +498,8 @@ TEST_F(ReshardingOplogCrudApplicationTest, InsertOpWritesToStashCollectionAfterC
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << 3))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << 3))));
     }
 
     // The output collection should still hold the document {_id: 0, sk: 1}. We should have applied
@@ -530,10 +522,10 @@ TEST_F(ReshardingOplogCrudApplicationTest, UpdateOpModifiesStashCollectionAfterI
     // collection for this donor shard.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << -1))));
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << 2))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << -1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << 2))));
 
         checkCollectionContents(opCtx.get(), outputNss(), {BSON("_id" << 0 << sk() << -1)});
         checkCollectionContents(opCtx.get(), myStashNss(), {BSON("_id" << 0 << sk() << 2)});
@@ -543,7 +535,6 @@ TEST_F(ReshardingOplogCrudApplicationTest, UpdateOpModifiesStashCollectionAfterI
         auto opCtx = makeOperationContext();
         ASSERT_OK(applier()->applyOperation(
             opCtx.get(),
-            boost::none,
             makeUpdateOp(BSON("_id" << 0),
                          update_oplog_entry::makeDeltaOplogEntry(
                              BSON(doc_diff::kUpdateSectionFieldName << BSON("x" << 1))))));
@@ -569,8 +560,8 @@ TEST_F(ReshardingOplogCrudApplicationTest, UpdateOpIsNoopWhenDifferentOwningDono
     // this donor shard before applying the updates.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << -1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << -1))));
 
         checkCollectionContents(opCtx.get(), outputNss(), {BSON("_id" << 0 << sk() << -1)});
     }
@@ -579,7 +570,6 @@ TEST_F(ReshardingOplogCrudApplicationTest, UpdateOpIsNoopWhenDifferentOwningDono
         auto opCtx = makeOperationContext();
         ASSERT_OK(applier()->applyOperation(
             opCtx.get(),
-            boost::none,
             makeUpdateOp(BSON("_id" << 0),
                          update_oplog_entry::makeDeltaOplogEntry(
                              BSON(doc_diff::kUpdateSectionFieldName << BSON("x" << 1))))));
@@ -599,7 +589,6 @@ TEST_F(ReshardingOplogCrudApplicationTest, UpdateOpIsNoopWhenDifferentOwningDono
         auto opCtx = makeOperationContext();
         ASSERT_OK(applier()->applyOperation(
             opCtx.get(),
-            boost::none,
             makeUpdateOp(BSON("_id" << 2),
                          update_oplog_entry::makeDeltaOplogEntry(
                              BSON(doc_diff::kUpdateSectionFieldName << BSON("x" << 1))))));
@@ -620,10 +609,10 @@ TEST_F(ReshardingOplogCrudApplicationTest, UpdateOpModifiesOutputCollection) {
     // ReshardingOplogApplicationRules::_applyUpdate_inlock.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 1 << sk() << 1))));
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 2 << sk() << 2))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 1 << sk() << 1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 2 << sk() << 2))));
 
         checkCollectionContents(opCtx.get(),
                                 outputNss(),
@@ -634,13 +623,11 @@ TEST_F(ReshardingOplogCrudApplicationTest, UpdateOpModifiesOutputCollection) {
         auto opCtx = makeOperationContext();
         ASSERT_OK(applier()->applyOperation(
             opCtx.get(),
-            boost::none,
             makeUpdateOp(BSON("_id" << 1),
                          update_oplog_entry::makeDeltaOplogEntry(
                              BSON(doc_diff::kUpdateSectionFieldName << BSON("x" << 1))))));
         ASSERT_OK(applier()->applyOperation(
             opCtx.get(),
-            boost::none,
             makeUpdateOp(BSON("_id" << 2),
                          update_oplog_entry::makeDeltaOplogEntry(
                              BSON(doc_diff::kUpdateSectionFieldName << BSON("x" << 2))))));
@@ -667,10 +654,10 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpRemovesFromStashCollectionAft
     // collection for this donor shard.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << -1))));
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << 2))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << -1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << 2))));
 
         checkCollectionContents(opCtx.get(), outputNss(), {BSON("_id" << 0 << sk() << -1)});
         checkCollectionContents(opCtx.get(), myStashNss(), {BSON("_id" << 0 << sk() << 2)});
@@ -678,8 +665,7 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpRemovesFromStashCollectionAft
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeDeleteOp(BSON("_id" << 0))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeDeleteOp(BSON("_id" << 0))));
     }
 
     // We should have applied rule #1 and deleted the document with {_id: 0} from the stash
@@ -700,16 +686,15 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpIsNoopWhenDifferentOwningDono
     // this donor shard before applying the deletes.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << -1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << -1))));
 
         checkCollectionContents(opCtx.get(), outputNss(), {BSON("_id" << 0 << sk() << -1)});
     }
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeDeleteOp(BSON("_id" << 0))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeDeleteOp(BSON("_id" << 0))));
     }
 
     // The document {_id: 0, sk: -1} that exists in the output collection does not belong to this
@@ -724,8 +709,7 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpIsNoopWhenDifferentOwningDono
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeDeleteOp(BSON("_id" << 2))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeDeleteOp(BSON("_id" << 2))));
     }
 
     // There does not exist a document with {_id: 2} in the output collection, so we should have
@@ -743,10 +727,10 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpRemovesFromOutputCollection) 
     // ReshardingOplogApplicationRules::_applyDelete_inlock.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 1 << sk() << 1))));
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 2 << sk() << 2))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 1 << sk() << 1))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 2 << sk() << 2))));
 
         checkCollectionContents(opCtx.get(),
                                 outputNss(),
@@ -757,10 +741,8 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpRemovesFromOutputCollection) 
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeDeleteOp(BSON("_id" << 1))));
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeDeleteOp(BSON("_id" << 2))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeDeleteOp(BSON("_id" << 1))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeDeleteOp(BSON("_id" << 2))));
     }
 
     // None of the stash collections have documents with _id == [op _id], so we should not have
@@ -797,8 +779,8 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpAtomicallyMovesFromOtherStash
     // The stash collection for this donor shard is empty.
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(applier()->applyOperation(
-            opCtx.get(), boost::none, makeInsertOp(BSON("_id" << 0 << sk() << 2))));
+        ASSERT_OK(
+            applier()->applyOperation(opCtx.get(), makeInsertOp(BSON("_id" << 0 << sk() << 2))));
 
         {
             AutoGetCollection otherStashColl(opCtx.get(), otherStashNss(), MODE_IX);
@@ -819,8 +801,7 @@ TEST_F(ReshardingOplogCrudApplicationTest, DeleteOpAtomicallyMovesFromOtherStash
 
     {
         auto opCtx = makeOperationContext();
-        ASSERT_OK(
-            applier()->applyOperation(opCtx.get(), boost::none, makeDeleteOp(BSON("_id" << 0))));
+        ASSERT_OK(applier()->applyOperation(opCtx.get(), makeDeleteOp(BSON("_id" << 0))));
     }
 
     // We should have applied rule #4 and deleted the document that was in the output collection

@@ -40,9 +40,8 @@
 #include "mongo/db/update/set_node.h"
 #include "mongo/db/update/update_executor.h"
 #include "mongo/db/update/update_node_test_fixture.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -814,13 +813,13 @@ TEST_F(SetNodeTest, ApplyNoOpComplex) {
     SetNode node;
     ASSERT_OK(node.init(update["$set"]["a.1.b"], expCtx));
 
-    mutablebson::Document doc(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, d: 1}}]}}"));
+    mutablebson::Document doc(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, d: 1}}]}"));
     setPathTaken(makeRuntimeUpdatePathForTest("a.1.b"));
     addIndexedPath("a.1.b");
     auto result = node.apply(getApplyParams(doc.root()["a"][1]["b"]), getUpdateNodeApplyParams());
     ASSERT_TRUE(result.noop);
     ASSERT_FALSE(getIndexAffectedFromLogEntry());
-    ASSERT_EQUALS(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, d: 1}}]}}"), doc);
+    ASSERT_EQUALS(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, d: 1}}]}"), doc);
     ASSERT_TRUE(doc.isInPlaceModeEnabled());
     ASSERT_EQUALS("{a.1.b}", getModifiedPaths());
 }
@@ -831,13 +830,13 @@ TEST_F(SetNodeTest, ApplySameStructure) {
     SetNode node;
     ASSERT_OK(node.init(update["$set"]["a.1.b"], expCtx));
 
-    mutablebson::Document doc(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, xxx: 1}}]}}"));
+    mutablebson::Document doc(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, xxx: 1}}]}"));
     setPathTaken(makeRuntimeUpdatePathForTest("a.1.b"));
     addIndexedPath("a.1.b");
     auto result = node.apply(getApplyParams(doc.root()["a"][1]["b"]), getUpdateNodeApplyParams());
     ASSERT_FALSE(result.noop);
     ASSERT_TRUE(getIndexAffectedFromLogEntry());
-    ASSERT_EQUALS(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, d: 1}}]}}"), doc);
+    ASSERT_EQUALS(fromjson("{a: [{b: {c: 0, d: 0}}, {b: {c: 1, d: 1}}]}"), doc);
     ASSERT_FALSE(doc.isInPlaceModeEnabled());
     ASSERT_EQUALS("{a.1.b}", getModifiedPaths());
 }
@@ -954,7 +953,7 @@ TEST_F(SetNodeTest, NestedFieldNoIdFromReplication) {
 }
 
 TEST_F(SetNodeTest, ReplayArrayFieldNotAppendedIntermediateFromReplication) {
-    auto update = fromjson("{$set: {'a.0.b': [0,2]}}}");
+    auto update = fromjson("{$set: {'a.0.b': [0,2]}}");
     boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
     SetNode node;
     ASSERT_OK(node.init(update["$set"]["a.0.b"], expCtx));

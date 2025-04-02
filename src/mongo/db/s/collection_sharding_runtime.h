@@ -135,6 +135,8 @@ public:
         OperationContext* opCtx, const NamespaceString& nss);
     static ScopedExclusiveCollectionShardingRuntime assertCollectionLockedAndAcquireExclusive(
         OperationContext* opCtx, const NamespaceString& nss);
+    static ScopedSharedCollectionShardingRuntime acquireShared(OperationContext* opCtx,
+                                                               const NamespaceString& nss);
     static ScopedExclusiveCollectionShardingRuntime acquireExclusive(OperationContext* opCtx,
                                                                      const NamespaceString& nss);
 
@@ -257,10 +259,6 @@ public:
     SharedSemiFuture<void> getOngoingQueriesCompletionFuture(const UUID& collectionUuid,
                                                              ChunkRange const& range) const;
 
-    std::uint64_t getNumMetadataManagerChanges_forTest() {
-        return _numMetadataManagerChanges;
-    }
-
     /**
      * Initializes the placement version recover/refresh shared semifuture for other threads to wait
      * on it.
@@ -308,12 +306,23 @@ public:
                         const std::vector<IndexCatalogType>& indexes,
                         const CollectionIndexes& collectionIndexes);
 
+    /**
+     * It provides a mechanism to invalidate RangePreservers that can no longer be fulfilled because
+     * of an incoming RangeDeletion for a specified shard version. It invalidates all metadata
+     * trackers when shardVersion is lower than or equal to the given version. This method ensures
+     * that metadata operation is performed in a thread-safe manner.
+     */
+    void invalidateRangePreserversOlderThanShardVersion(OperationContext* opCtx,
+                                                        const ChunkVersion& shardVersion);
+
 private:
+    friend class CollectionShardingRuntimeTest;
+
     struct PlacementVersionRecoverOrRefresh {
     public:
         PlacementVersionRecoverOrRefresh(SharedSemiFuture<void> future,
                                          CancellationSource cancellationSource)
-            : future(std::move(future)), cancellationSource(std::move(cancellationSource)){};
+            : future(std::move(future)), cancellationSource(std::move(cancellationSource)) {};
 
         // Tracks ongoing placement version recover/refresh.
         SharedSemiFuture<void> future;

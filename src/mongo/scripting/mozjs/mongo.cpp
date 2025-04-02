@@ -127,6 +127,7 @@ const JSFunctionSpec MongoBase::methods[] = {
     MONGO_ATTACH_JS_CONSTRAINED_METHOD_NO_PROTO(_startSession, MongoExternalInfo),
     MONGO_ATTACH_JS_CONSTRAINED_METHOD_NO_PROTO(_setOIDCIdPAuthCallback, MongoExternalInfo),
     MONGO_ATTACH_JS_CONSTRAINED_METHOD_NO_PROTO(_refreshAccessToken, MongoExternalInfo),
+    MONGO_ATTACH_JS_CONSTRAINED_METHOD_NO_PROTO(getShellPort, MongoExternalInfo),
     JS_FS_END,
 };
 
@@ -369,7 +370,6 @@ namespace {
  */
 template <typename Params, typename MakeRequest>
 void doRunCommand(JSContext* cx, JS::CallArgs args, MakeRequest makeRequest) {
-    using namespace fmt::literals;
     uassert(ErrorCodes::BadValue,
             str::stream() << Params::kCommandName << " needs 4 args",
             args.length() >= 4);
@@ -395,7 +395,7 @@ void doRunCommand(JSContext* cx, JS::CallArgs args, MakeRequest makeRequest) {
         }
     } else {
         uassert(ErrorCodes::BadValue,
-                "The token parameter to {} must be a string"_format(Params::kCommandName),
+                fmt::format("The token parameter to {} must be a string", Params::kCommandName),
                 tokenArg.isUndefined());
     }
 
@@ -980,6 +980,12 @@ void MongoExternalInfo::Functions::_forgetReplSet::call(JSContext* cx, JS::CallA
     ReplicaSetMonitorManager::get()->removeMonitor(rsName);
 
     args.rval().setUndefined();
+}
+
+void MongoBase::Functions::getShellPort::call(JSContext* cx, JS::CallArgs args) {
+    auto conn = getConnection(args);
+    HostAndPort hostAndPort{conn->getLocalAddress()};
+    args.rval().setInt32(hostAndPort.port());
 }
 
 }  // namespace mozjs

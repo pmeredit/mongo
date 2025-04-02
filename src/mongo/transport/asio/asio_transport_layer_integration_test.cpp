@@ -31,18 +31,19 @@
 #include <array>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include "mongo/base/string_data.h"
 #include "mongo/client/connection_string.h"
+#include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
+#include "mongo/stdx/thread.h"
 #include "mongo/transport/asio/asio_transport_layer.h"
 #include "mongo/transport/transport_layer_integration_test_fixture.h"
 #include "mongo/transport/transport_layer_manager.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/log_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/str.h"
 
@@ -60,44 +61,6 @@ private:
                                                               logv2::LogSeverity::Debug(4)};
 };
 
-TEST_F(AsioTransportLayerTest, HTTPRequestGetsHTTPError) {
-    auto connectionString = unittest::getFixtureConnectionString();
-    auto server = connectionString.getServers().front();
-
-    asio::io_context ioContext;
-    asio::ip::tcp::resolver resolver(ioContext);
-    asio::ip::tcp::socket socket(ioContext);
-
-    LOGV2(23028, "Connecting to server", "server"_attr = server);
-    auto resolverIt = resolver.resolve(server.host(), std::to_string(server.port()));
-    asio::connect(socket, resolverIt);
-
-    LOGV2(23029, "Sending HTTP request");
-    std::string httpReq = str::stream() << "GET /\r\n"
-                                           "Host: "
-                                        << server
-                                        << "\r\n"
-                                           "User-Agent: MongoDB Integration test\r\n"
-                                           "Accept: */*";
-    asio::write(socket, asio::buffer(httpReq.data(), httpReq.size()));
-
-    LOGV2(23030, "Waiting for response");
-    std::array<char, 256> httpRespBuf;
-    std::error_code ec;
-    auto size = asio::read(socket, asio::buffer(httpRespBuf.data(), httpRespBuf.size()), ec);
-    StringData httpResp(httpRespBuf.data(), size);
-
-    LOGV2(23031, "Received http response", "response"_attr = httpResp);
-    ASSERT_TRUE(httpResp.startsWith("HTTP/1.0 200 OK"));
-
-// Why oh why can't ASIO unify their error codes
-#ifdef _WIN32
-    ASSERT_EQ(ec, asio::error::connection_reset);
-#else
-    ASSERT_EQ(ec, asio::error::eof);
-#endif
-}
-
 class AsioAsyncClientIntegrationTest : public AsyncClientIntegrationTestFixture {
 public:
     void setUp() override {
@@ -107,7 +70,7 @@ public:
         auto server = connectionString.getServers().front();
 
         auto sc = getGlobalServiceContext();
-        auto tl = sc->getTransportLayerManager()->getDefaultEgressLayer();
+        auto tl = getTransportLayer(sc);
         _reactor = tl->getReactor(transport::TransportLayer::kNewReactor);
         _reactorThread = stdx::thread([&] {
             _reactor->run();
@@ -118,6 +81,12 @@ public:
     void tearDown() override {
         _reactor->stop();
         _reactorThread.join();
+    }
+
+    TransportLayer* getTransportLayer(ServiceContext* svc) const override {
+        auto tl = svc->getTransportLayerManager()->getTransportLayer(TransportProtocol::MongoRPC);
+        invariant(tl);
+        return tl;
     }
 
 private:

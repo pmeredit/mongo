@@ -37,8 +37,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/db/timeseries/timeseries_options.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/time_support.h"
 
 
@@ -47,6 +46,15 @@ namespace mongo {
 auto createTimeseriesOptionsWithGranularity(BucketGranularityEnum granularity) {
     auto options = TimeseriesOptions{};
     options.setGranularity(granularity);
+    return options;
+}
+
+auto createTimeseriesOptionsWithBucketMaxSpanAndRoundingSeconds(
+    const boost::optional<std::int32_t>& bucketMaxSpanSeconds,
+    const boost::optional<std::int32_t>& bucketRoundingSeconds) {
+    auto options = TimeseriesOptions{};
+    options.setBucketMaxSpanSeconds(bucketMaxSpanSeconds);
+    options.setBucketRoundingSeconds(bucketRoundingSeconds);
     return options;
 }
 
@@ -202,6 +210,124 @@ TEST(TimeseriesOptionsTest, ExtendedRangeRoundTimestamp) {
         ASSERT_EQ(durationCount<Seconds>(roundedDate.toDurationSinceEpoch()) % roundingSeconds, 0);
         // Validate the expected output
         ASSERT_EQ(format(roundedDate), expectedOutput);
+    }
+}
+
+TEST(TimeseriesOptionsTest, ExtendedRoundMilliTimestampBySeconds) {
+    std::vector<std::tuple<long long, Date_t, Date_t>> testCases{
+        {60l, Date_t::fromMillisSinceEpoch(-1), Date_t::fromMillisSinceEpoch(-60000)},
+        {60l, Date_t::fromMillisSinceEpoch(-1000), Date_t::fromMillisSinceEpoch(-60000)},
+        {60l, Date_t::fromMillisSinceEpoch(-1001), Date_t::fromMillisSinceEpoch(-60000)},
+        {60l, Date_t::fromMillisSinceEpoch(-60000), Date_t::fromMillisSinceEpoch(-60000)},
+        {60l, Date_t::fromMillisSinceEpoch(-60001), Date_t::fromMillisSinceEpoch(-120000)},
+        {60l, Date_t::min(), Date_t::min()},
+
+        {3600l, Date_t::fromMillisSinceEpoch(-1), Date_t::fromMillisSinceEpoch(-3600000)},
+        {3600l, Date_t::fromMillisSinceEpoch(-1000), Date_t::fromMillisSinceEpoch(-3600000)},
+        {3600l, Date_t::fromMillisSinceEpoch(-1001), Date_t::fromMillisSinceEpoch(-3600000)},
+        {3600l, Date_t::fromMillisSinceEpoch(-3600000), Date_t::fromMillisSinceEpoch(-3600000)},
+        {3600l, Date_t::fromMillisSinceEpoch(-3600001), Date_t::fromMillisSinceEpoch(-7200000)},
+        {3600l, Date_t::min(), Date_t::min()},
+
+        {86400l, Date_t::fromMillisSinceEpoch(-1), Date_t::fromMillisSinceEpoch(-86400000)},
+        {86400l, Date_t::fromMillisSinceEpoch(-1000), Date_t::fromMillisSinceEpoch(-86400000)},
+        {86400l, Date_t::fromMillisSinceEpoch(-1001), Date_t::fromMillisSinceEpoch(-86400000)},
+        {86400l, Date_t::fromMillisSinceEpoch(-86400000), Date_t::fromMillisSinceEpoch(-86400000)},
+        {86400l, Date_t::fromMillisSinceEpoch(-86400001), Date_t::fromMillisSinceEpoch(-172800000)},
+        {86400l, Date_t::min(), Date_t::min()},
+    };
+
+    for (const auto& [roundingSeconds, input, expectedOutput] : testCases) {
+        auto roundedDate = timeseries::roundTimestampBySeconds(input, roundingSeconds);
+        ASSERT_EQ(roundedDate, expectedOutput);
+    }
+}
+
+TEST(TimeseriesOptionsTest, AreTimeseriesBucketsFixed) {
+    const auto optionsEqualAndNone =
+        createTimeseriesOptionsWithBucketMaxSpanAndRoundingSeconds(boost::none, boost::none);
+    const auto optionsEqualNotNone =
+        createTimeseriesOptionsWithBucketMaxSpanAndRoundingSeconds(8675309, 8675309);
+    const auto optionsMaxSpanAndNone =
+        createTimeseriesOptionsWithBucketMaxSpanAndRoundingSeconds(42, boost::none);
+    const auto optionsNoneAndRounding =
+        createTimeseriesOptionsWithBucketMaxSpanAndRoundingSeconds(boost::none, 10019);
+    const auto optionsValuesNotEqual =
+        createTimeseriesOptionsWithBucketMaxSpanAndRoundingSeconds(1633, 77);
+
+    {
+        const auto parametersChanged = false;
+        ASSERT_TRUE(timeseries::areTimeseriesBucketsFixed(optionsEqualAndNone, parametersChanged))
+            << "BucketMaxSpanSeconds=none, BucketRoundingSeconds=none, "
+            << "BucketingParametersChanged=false implies buckets should be fixed.";
+    }
+
+    {
+        const auto parametersChanged = false;
+        ASSERT_TRUE(timeseries::areTimeseriesBucketsFixed(optionsEqualNotNone, parametersChanged))
+            << "BucketMaxSpanSeconds=value, BucketRoundingSeconds=value, "
+            << "BucketingParametersChanged=false implies buckets should be fixed.";
+    }
+
+    {
+        const auto parametersChanged = false;
+        ASSERT_FALSE(
+            timeseries::areTimeseriesBucketsFixed(optionsMaxSpanAndNone, parametersChanged))
+            << "BucketMaxSpanSeconds=value, BucketRoundingSeconds=none, "
+            << "BucketingParametersChanged=false implies buckets should not be fixed.";
+    }
+
+    {
+        const auto parametersChanged = false;
+        ASSERT_FALSE(
+            timeseries::areTimeseriesBucketsFixed(optionsNoneAndRounding, parametersChanged))
+            << "BucketMaxSpanSeconds=none, BucketRoundingSeconds=value, "
+            << "BucketingParametersChanged=false implies buckets should not be fixed.";
+    }
+
+    {
+        const auto parametersChanged = false;
+        ASSERT_FALSE(
+            timeseries::areTimeseriesBucketsFixed(optionsValuesNotEqual, parametersChanged))
+            << "BucketMaxSpanSeconds=value1, BucketRoundingSeconds=value2, "
+            << "BucketingParametersChanged=false implies buckets should not be fixed.";
+    }
+    {
+        const auto parametersChanged = true;
+        ASSERT_FALSE(timeseries::areTimeseriesBucketsFixed(optionsEqualAndNone, parametersChanged))
+            << "BucketMaxSpanSeconds=none, BucketRoundingSeconds=none, "
+            << "BucketingParametersChanged=true implies buckets should not be fixed.";
+    }
+
+    {
+        const auto parametersChanged = true;
+        ASSERT_FALSE(timeseries::areTimeseriesBucketsFixed(optionsEqualNotNone, parametersChanged))
+            << "BucketMaxSpanSeconds=value, BucketRoundingSeconds=value, "
+            << "BucketingParametersChanged=true implies buckets should not be fixed.";
+    }
+
+    {
+        const auto parametersChanged = true;
+        ASSERT_FALSE(
+            timeseries::areTimeseriesBucketsFixed(optionsMaxSpanAndNone, parametersChanged))
+            << "BucketMaxSpanSeconds=value, BucketRoundingSeconds=none, "
+            << "BucketingParametersChanged=true implies buckets should not be fixed.";
+    }
+
+    {
+        const auto parametersChanged = true;
+        ASSERT_FALSE(
+            timeseries::areTimeseriesBucketsFixed(optionsNoneAndRounding, parametersChanged))
+            << "BucketMaxSpanSeconds=none, BucketRoundingSeconds=value, "
+            << "BucketingParametersChanged=true implies buckets should not be fixed.";
+    }
+
+    {
+        const auto parametersChanged = true;
+        ASSERT_FALSE(
+            timeseries::areTimeseriesBucketsFixed(optionsValuesNotEqual, parametersChanged))
+            << "BucketMaxSpanSeconds=value1, BucketRoundingSeconds=value2, "
+            << "BucketingParametersChanged=true implies buckets should not be fixed.";
     }
 }
 

@@ -31,7 +31,6 @@
 #include <boost/smart_ptr.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <fmt/format.h>
-#include <fmt/ostream.h>
 // IWYU pragma: no_include "cxxabi.h"
 #include <array>
 #include <cstddef>
@@ -61,8 +60,6 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/op_msg.h"
@@ -76,8 +73,7 @@
 #include "mongo/transport/session_workflow_test_util.h"
 #include "mongo/transport/test_fixtures.h"
 #include "mongo/transport/transport_layer_manager_impl.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/duration.h"
@@ -91,8 +87,6 @@
 
 namespace mongo::transport {
 namespace {
-using namespace fmt::literals;
-
 const Status kClosedSessionError{ErrorCodes::SocketException, "Session is closed"};
 const Status kNetworkError{ErrorCodes::HostUnreachable, "Someone is unreachable"};
 const Status kShutdownError{ErrorCodes::ShutdownInProgress, "Something is shutting down"};
@@ -217,7 +211,8 @@ public:
         stdx::unique_lock lk{_mutex};
         _cv.wait(lk, [&] { return !!_cb; });
         auto h = std::exchange(_cb, {});
-        invariant(h->event() == e, "Expecting {}, got {}"_format(h->event(), e));
+        invariant(h->event() == e,
+                  fmt::format("Expecting {}, got {}", toString(h->event()), toString(e)));
         return std::move(static_cast<Expectation<e>&>(*h).cb);
     }
 
@@ -412,7 +407,7 @@ private:
      */
     template <Event event>
     EventResultT<event> _onMockEvent(const EventTiedArgumentsT<event>& args) {
-        LOGV2_DEBUG(6742616, 2, "Mock event arrived", "event"_attr = event);
+        LOGV2_DEBUG(6742616, 2, "Mock event arrived", "event"_attr = toString(event));
         return std::apply(_expect.pop<event>(), args);
     }
 

@@ -29,14 +29,9 @@
 
 #include "mongo/db/query/cost_based_ranker/heuristic_estimator.h"
 
-#include <limits>
-
 #include "mongo/bson/json.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
-#include "mongo/db/query/index_bounds.h"
-#include "mongo/db/query/index_bounds_builder.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::cost_based_ranker {
 namespace {
@@ -73,6 +68,12 @@ TEST(HeuristicEstimate, ModExpression) {
     BSONObj query = fromjson("{a: {$mod: [5, 2]}}");
     auto expr = parse(query);
     // Selectivty of mod 5 is 1/5
+    ASSERT_EQ(heuristicLeafMatchExpressionSel(expr.get(), makeCard(100)), makeSel(0.2));
+}
+
+TEST(HeuristicEstimate, ModNegativeDivisorExpression) {
+    BSONObj query = fromjson("{a: {$mod: [-5, 2]}}");
+    auto expr = parse(query);
     ASSERT_EQ(heuristicLeafMatchExpressionSel(expr.get(), makeCard(100)), makeSel(0.2));
 }
 

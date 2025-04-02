@@ -41,8 +41,7 @@
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_mock.h"
 #include "mongo/db/pipeline/document_source_set_window_fields.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -52,22 +51,19 @@ namespace {
 using DocumentSourceSetWindowFieldsTest = AggregationContextFixture;
 
 TEST_F(DocumentSourceSetWindowFieldsTest, FailsToParseInvalidArgumentTypes) {
-    auto spec = BSON("$_internalSetWindowFields"
-                     << "invalid");
+    auto spec = BSON("$_internalSetWindowFields" << "invalid");
     ASSERT_THROWS_CODE(
         DocumentSourceInternalSetWindowFields::createFromBson(spec.firstElement(), getExpCtx()),
         AssertionException,
         ErrorCodes::FailedToParse);
 
-    spec = BSON("$_internalSetWindowFields" << BSON("sortBy"
-                                                    << "invalid sort spec"));
+    spec = BSON("$_internalSetWindowFields" << BSON("sortBy" << "invalid sort spec"));
     ASSERT_THROWS_CODE(
         DocumentSourceInternalSetWindowFields::createFromBson(spec.firstElement(), getExpCtx()),
         AssertionException,
         ErrorCodes::TypeMismatch);
 
-    spec = BSON("$_internalSetWindowFields" << BSON("output"
-                                                    << "invalid"));
+    spec = BSON("$_internalSetWindowFields" << BSON("output" << "invalid"));
     ASSERT_THROWS_CODE(
         DocumentSourceInternalSetWindowFields::createFromBson(spec.firstElement(), getExpCtx()),
         AssertionException,

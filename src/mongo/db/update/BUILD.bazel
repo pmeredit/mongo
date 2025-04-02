@@ -190,7 +190,7 @@ mongo_cc_library(
         "//src/mongo/db:common",
         "//src/mongo/db:query_expressions",
         "//src/mongo/db:server_base",
-        "//src/mongo/db/query:canonical_query",
+        "//src/mongo/db/query:canonical_query_base",
         "//src/mongo/db/query/write_ops:write_ops_parsers",
     ],
 )
@@ -230,9 +230,7 @@ mongo_cc_unit_test(
         "v2_log_builder_test.cpp",
         "//src/mongo/db/update:update_node_test_fixture.h",
     ],
-    tags = [
-        "mongo_unittest_third_group",
-    ],
+    tags = ["mongo_unittest_fifth_group"],
     deps = [
         ":update",
         ":update_common",

@@ -88,7 +88,7 @@ public:
 
     void setCheckpointInterval(mongo::Milliseconds value) {
         _options.fixedInterval = value;
-        _interval = value;
+        _interval.store(value);
     }
 
 private:
@@ -103,8 +103,10 @@ private:
     bool _writtenFirstCheckpoint{false};
 
     Options _options;
-    mongo::stdx::chrono::time_point<system_clock> _lastCheckpointTimestamp;
-    mongo::Milliseconds _interval;
+    // Use Atomics so some multi-threaded unit tests can read this while it's
+    // being written.
+    mongo::Atomic<mongo::stdx::chrono::time_point<system_clock>> _lastCheckpointTimestamp;
+    mongo::Atomic<mongo::Milliseconds> _interval;
 };
 
 }  // namespace streams

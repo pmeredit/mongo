@@ -45,11 +45,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_truncation.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/stacktrace_libunwind_test_functions.h"
 #include "mongo/util/stacktrace_test_helpers.h"
 
@@ -61,8 +57,6 @@ namespace mongo {
 // Must be a named namespace so the functions we want to unwind through have external linkage.
 // Without that, the compiler optimizes them away.
 namespace unwind_test_detail {
-
-using namespace fmt::literals;
 
 std::string trace() {
     std::string out;
@@ -79,12 +73,13 @@ std::string trace() {
         if (pc == 0) {
             break;
         }
-        out += "0x{:x}:"_format(pc);
+        out += fmt::format("0x{:x}:", pc);
         char sym[32 << 10];
         char* name = sym;
         int err;
         if ((err = unw_get_proc_name(&cursor, sym, sizeof(sym), &offset)) != 0) {
-            out += " -- error: unable to obtain symbol name for this frame: {:d}\n"_format(err);
+            out +=
+                fmt::format(" -- error: unable to obtain symbol name for this frame: {:d}\n", err);
             continue;
         }
         name = sym;
@@ -93,7 +88,7 @@ std::string trace() {
         if ((demangled_name = abi::__cxa_demangle(sym, nullptr, nullptr, &status))) {
             name = demangled_name;
         }
-        out += " ({:s}+0x{:x})\n"_format(name, offset);
+        out += fmt::format(" ({:s}+0x{:x})\n", name, offset);
         if (name != sym) {
             free(name);  // allocated by abi::__cxa_demangle
         }
@@ -103,13 +98,13 @@ std::string trace() {
 
 void assertAndRemovePrefix(std::string_view& v, std::string_view prefix) {
     auto pos = v.find(prefix);
-    ASSERT(pos != v.npos) << "expected to find '{}' in '{}'"_format(prefix, v);
+    ASSERT(pos != v.npos) << fmt::format("expected to find '{}' in '{}'", prefix, v);
     v.remove_prefix(pos + prefix.size());
 }
 
 void assertAndRemoveSuffix(std::string_view& v, std::string_view suffix) {
     auto pos = v.rfind(suffix);
-    ASSERT(pos != v.npos) << "expected to find '{}' in '{}'"_format(suffix, v);
+    ASSERT(pos != v.npos) << fmt::format("expected to find '{}' in '{}'", suffix, v);
     v.remove_suffix(v.size() - pos);
 }
 
@@ -173,7 +168,7 @@ TEST(Unwind, Linkage) {
         if (pos == remainder.npos) {
             LOGV2_OPTIONS(
                 31378, {logv2::LogTruncation::Disabled}, "BACKTRACE", "trace"_attr = view);
-            FAIL("name '{}' is missing or out of order in sample backtrace"_format(name));
+            FAIL(fmt::format("name '{}' is missing or out of order in sample backtrace", name));
         }
         LOGV2(31379, "Removing prefix", "prefix"_attr = remainder.substr(0, pos));
         remainder.remove_prefix(pos);

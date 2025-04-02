@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <curl/curl.h>
 #include <deque>
-#include <exception>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <functional>
@@ -18,18 +17,16 @@
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/logv2/log.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/net/http_client_mock.h"
-#include "mongo/util/str.h"
 #include "mongo/util/tick_source_mock.h"
 #include "mongo/util/timer.h"
 #include "streams/exec/in_memory_dead_letter_queue.h"
@@ -39,6 +36,7 @@
 #include "streams/exec/source_operator.h"
 #include "streams/exec/stream_stats.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -131,9 +129,10 @@ public:
 
     std::string createUrlFromParts(const std::string& baseUrl,
                                    const std::string& path,
+                                   bool urlEncodePath,
                                    const std::vector<std::string>& queryParams) {
-        auto oper =
-            std::make_unique<HttpsOperator>(_context.get(), HttpsOperator::Options{.url = baseUrl});
+        auto oper = std::make_unique<HttpsOperator>(
+            _context.get(), HttpsOperator::Options{.url = baseUrl, .urlEncodePath = urlEncodePath});
         oper->parseBaseUrl();
         return oper->makeUrlString(path, queryParams);
     }
@@ -555,7 +554,101 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             },
         },
         {
-            "should make a valid GET request with a url-encoded URL",
+            "should make a GET request with an unencoded url path when urlEncodePath is false",
+            [&] {
+                std::string uri = "http://localhost:10000/actions:doThing";
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri,
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+                return HttpsOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .method = HttpClient::HttpMethod::kGET,
+                    .url = uri,
+                    .urlEncodePath = false,
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{
+                Document{fromjson("{foo: \"bar\"}")},
+            },
+            [](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].Obj();
+                    ASSERT_TRUE(!response.isEmpty());
+
+                    auto ack = response["ack"];
+                    ASSERT_TRUE(ack.ok());
+                    ASSERT_EQ(ack.String(), "ok");
+                }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
+            },
+        },
+        {
+            "should make a GET request with an encoded url path when urlEncodePath is true",
+            [&] {
+                std::string uri = "http://localhost:10000";
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri + "/actions%3adoThing",
+                    },
+                    MockHttpClient::Response{.code = 200, .body = R"({"ack": "ok"})"});
+
+                return HttpsOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .method = HttpClient::HttpMethod::kGET,
+                    .url = uri + "/actions:doThing",
+                    .urlEncodePath = true,
+                    .as = "response",
+                };
+            },
+            std::vector<StreamDocument>{
+                Document{fromjson("{foo: \"bar\"}")},
+            },
+            [](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                for (const auto& streamDoc : msg.dataMsg->docs) {
+                    auto doc = streamDoc.doc.toBson();
+                    auto response = doc["response"].Obj();
+                    ASSERT_TRUE(!response.isEmpty());
+
+                    auto ack = response["ack"];
+                    ASSERT_TRUE(ack.ok());
+                    ASSERT_EQ(ack.String(), "ok");
+                }
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 13);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+                ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
+            },
+        },
+        {
+            "should make a valid GET request with url-encoded query parameters",
             [&] {
                 std::string uri = "http://localhost:10000";
                 std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
@@ -570,6 +663,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                     .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
                     .method = HttpClient::HttpMethod::kGET,
                     .url = uri,
+                    .urlEncodePath = true,
                     .queryParams =
                         std::vector<std::pair<std::string, StringOrExpression>>{
                             {"%+-=_/$", ":@#$[]()"},
@@ -608,8 +702,7 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
             "should make a POST request with payload pipeline",
             [&] {
                 auto rawPipeline = std::vector<mongo::BSONObj>{
-                    fromjson(
-                        R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }}, { $project: { include: 1 }})"),
+                    fromjson(R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }})"),
                 };
                 auto pipeline = Pipeline::parse(rawPipeline, _context->expCtx);
                 pipeline->optimizePipeline();
@@ -706,6 +799,77 @@ TEST_F(HttpsOperatorTest, HttpsOperatorTestCases) {
                 ASSERT_GREATER_THAN(stats.timeSpent.count(), 0);
             },
         },
+        {
+            "should make 1 basic GET request and deserialize response fields that are json",
+            [&] {
+                std::string uri = "http://localhost:10000/";
+                // Set up mock http client.
+                std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
+                mockHttpClient->expect(
+                    MockHttpClient::Request{
+                        HttpClient::HttpMethod::kGET,
+                        uri,
+                    },
+                    MockHttpClient::Response{
+                        .code = 200,
+                        .body =
+                            R"({"content": "{\"foo\": \"bar\"}", "nested": { "data": "{\"abc\": \"xyz\"}"}})"});
+
+                return HttpsOperator::Options{
+                    .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
+                    .url = uri,
+                    .as = "response",
+                    .parseJsonStrings = true,
+                };
+            },
+            std::vector<StreamDocument>{Document{fromjson("{'foo': 'bar'}")}},
+            [this](std::deque<StreamMsgUnion> messages) {
+                ASSERT_EQ(messages.size(), 1);
+                auto msg = messages.at(0);
+
+                ASSERT(msg.dataMsg);
+                ASSERT(!msg.controlMsg);
+                ASSERT_EQ(msg.dataMsg->docs.size(), 1);
+
+                auto doc = msg.dataMsg->docs[0].doc.toBson();
+                auto response = doc["response"].Obj();
+                ASSERT_TRUE(!response.isEmpty());
+
+                auto ack = response["content"];
+                ASSERT_TRUE(ack.ok());
+                auto content = ack.Obj();
+                ASSERT_TRUE(!content.isEmpty());
+
+                auto foo = content["foo"];
+                ASSERT_TRUE(foo.ok());
+                ASSERT_EQ(foo.valueStringData(), "bar");
+
+                ack = response["nested"];
+                ASSERT_TRUE(ack.ok());
+                auto nested = ack.Obj();
+                ASSERT_TRUE(!nested.isEmpty());
+
+                ack = nested["data"];
+                ASSERT_TRUE(ack.ok());
+                auto data = ack.Obj();
+                ASSERT_TRUE(!data.isEmpty());
+
+                auto abc = data["abc"];
+                ASSERT_TRUE(abc.ok());
+                ASSERT_EQ(abc.valueStringData(), "xyz");
+
+                StreamMetaHttps expectedStreamMetaHttps;
+                expectedStreamMetaHttps.setUrl(StringData{"http://localhost:10000"});
+                expectedStreamMetaHttps.setMethod(HttpMethodEnum::MethodGet);
+                expectedStreamMetaHttps.setHttpStatusCode(200);
+                assertStreamMetaHttps(expectedStreamMetaHttps,
+                                      doc[*_context->streamMetaFieldName].Obj()["https"].Obj());
+            },
+            [](OperatorStats stats) {
+                ASSERT_EQ(stats.numInputBytes, 76);
+                ASSERT_EQ(stats.numOutputBytes, 0);
+            },
+        },
     };
 
     for (const auto& tc : tests) {
@@ -734,9 +898,7 @@ TEST_F(HttpsOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
                 HttpClient::HttpMethod::kGET,
                 uri.toString() + path,
             },
-            MockHttpClient::Response{.code = 200,
-                                     .body = tojson(BSON("ack"
-                                                         << "ok"))});
+            MockHttpClient::Response{.code = 200, .body = serializeJson(BSON("ack" << "ok"))});
         docs.emplace_back(
             StreamDocument{Document{fromjson("{" + fmt::format("'path': '{}'", path) + "}")}});
     }
@@ -775,14 +937,16 @@ TEST_F(HttpsOperatorTest, IsThrottledWithDefaultThrottleFnAndTimer) {
     TestMetricsVisitor metrics;
     _executor->getMetricManager()->visitAllMetrics(&metrics);
     const auto& operatorCounters = metrics.counters().find(_context->streamProcessorId);
-    long metricThrottleDuration = -1;
-    if (operatorCounters != metrics.counters().end()) {
-        auto it =
-            operatorCounters->second.find(std::string{"rest_operator_throttle_duration_micros"});
-        if (it != operatorCounters->second.end()) {
-            metricThrottleDuration = it->second->value();
-        }
-    }
+    ASSERT_NOT_EQUALS(operatorCounters, metrics.counters().end());
+
+    auto operatorCountersByLabel =
+        operatorCounters->second.find(std::string{"rest_operator_throttle_duration_micros"});
+    ASSERT_NOT_EQUALS(operatorCountersByLabel, operatorCounters->second.end());
+
+    auto it = operatorCountersByLabel->second.find("");
+    ASSERT_NOT_EQUALS(it, operatorCountersByLabel->second.end());
+
+    auto metricThrottleDuration = it->second->value();
     ASSERT_GREATER_THAN_OR_EQUALS(
         Microseconds(metricThrottleDuration),
         minTestDuration - Milliseconds(5));  // metric is a hair flakey based on host configuration
@@ -814,9 +978,7 @@ TEST_F(HttpsOperatorTest, IsThrottledWithOverridenThrottleFnAndTimer) {
                 HttpClient::HttpMethod::kGET,
                 uri.toString(),
             },
-            MockHttpClient::Response{.code = 200,
-                                     .body = tojson(BSON("ack"
-                                                         << "ok"))});
+            MockHttpClient::Response{.code = 200, .body = serializeJson(BSON("ack" << "ok"))});
     };
 
     auto testAssert = [this, uri](std::deque<StreamMsgUnion> messages) {
@@ -886,9 +1048,7 @@ TEST_F(HttpsOperatorTest, RateLimitingParametersUpdate) {
                 HttpClient::HttpMethod::kGET,
                 uri.toString(),
             },
-            MockHttpClient::Response{.code = 200,
-                                     .body = tojson(BSON("ack"
-                                                         << "ok"))});
+            MockHttpClient::Response{.code = 200, .body = serializeJson(BSON("ack" << "ok"))});
     };
 
     auto testAssert = [this, uri](std::deque<StreamMsgUnion> messages) {
@@ -1235,8 +1395,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponseByDefault) {
     StringData uri{"http://localhost:10000"};
     // Set up mock http client.
     std::uint16_t statusCode{400};
-    std::string responseBody{tojson(BSON("ack"
-                                         << "ok"))};
+    std::string responseBody{serializeJson(BSON("ack" << "ok"))};
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
         MockHttpClient::Request{
@@ -1295,8 +1454,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQOnErrorResponse) {
     StringData uri{"http://localhost:10000"};
     // Set up mock http client.
     std::uint16_t statusCode{400};
-    std::string responseBody{tojson(BSON("ack"
-                                         << "ok"))};
+    std::string responseBody{serializeJson(BSON("ack" << "ok"))};
     std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
     mockHttpClient->expect(
         MockHttpClient::Request{
@@ -1356,8 +1514,7 @@ TEST_F(HttpsOperatorTest, ShouldDLQInnerPayloadDoc) {
     StringData uri{"http://localhost:10000/"};
 
     auto rawPipeline = std::vector<mongo::BSONObj>{
-        fromjson(
-            R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }}, { $project: { include: 1 }})"),
+        fromjson(R"({ $replaceRoot: { newRoot: "$fullDocument.payload" }})"),
     };
     auto pipeline = Pipeline::parse(rawPipeline, _context->expCtx);
     pipeline->optimizePipeline();
@@ -1419,17 +1576,13 @@ TEST_F(HttpsOperatorTest, ShouldIgnoreOnErrorResponse) {
             HttpClient::HttpMethod::kDELETE,
             uri.toString() + "/1",
         },
-        MockHttpClient::Response{.code = 400,
-                                 .body = tojson(BSON("ack"
-                                                     << "ok"))});
+        MockHttpClient::Response{.code = 400, .body = serializeJson(BSON("ack" << "ok"))});
     mockHttpClient->expect(
         MockHttpClient::Request{
             HttpClient::HttpMethod::kDELETE,
             uri.toString() + "/2",
         },
-        MockHttpClient::Response{.code = 400,
-                                 .body = tojson(BSON("ack"
-                                                     << "ok"))});
+        MockHttpClient::Response{.code = 400, .body = serializeJson(BSON("ack" << "ok"))});
 
     HttpsOperator::Options options{
         .httpClient = std::unique_ptr<mongo::HttpClient>(std::move(mockHttpClient)),
@@ -1490,8 +1643,7 @@ TEST_F(HttpsOperatorTest, ShouldFailOnFailureStatusCodes) {
         std::unique_ptr<MockHttpClient> mockHttpClient = std::make_unique<MockHttpClient>();
 
         std::uint16_t statusCode{code};
-        auto responseBody = tojson(BSON("ack"
-                                        << "ok"));
+        auto responseBody = serializeJson(BSON("ack" << "ok"));
         mockHttpClient->expect(
             MockHttpClient::Request{
                 HttpClient::HttpMethod::kGET,
@@ -1531,8 +1683,7 @@ TEST_F(HttpsOperatorTest, ShouldUseOnErrorBehaviorForStatusCodes) {
 
     setupDag(std::move(options));
 
-    auto responseBody = tojson(BSON("ack"
-                                    << "ok"));
+    auto responseBody = serializeJson(BSON("ack" << "ok"));
     for (uint16_t httpStatusCode : {400, 404, 410, 413, 414, 431}) {
         rawMockHttpClient->expect(
             MockHttpClient::Request{
@@ -1887,7 +2038,6 @@ TEST_F(HttpsOperatorTest, ParseResponseHeadersTest) {
     }
 }
 
-
 // This block validates libcurl parsing + url building behavior.
 TEST_F(HttpsOperatorTest, LibCurlUrlBuilding) {
     struct TestCase {
@@ -1896,6 +2046,7 @@ TEST_F(HttpsOperatorTest, LibCurlUrlBuilding) {
         std::vector<std::string> queryParams;
         std::string expectedUrl;
         std::string expectedErrorMessage;
+        bool urlEncodePath{false};
     };
 
     std::vector<TestCase> testCases{
@@ -1926,7 +2077,14 @@ TEST_F(HttpsOperatorTest, LibCurlUrlBuilding) {
         {"http://foo.com/d/", "/e/f", {}, "http://foo.com/d/e/f", ""},
         {"http://foo.com/d/", "/", {}, "http://foo.com/d", ""},
         {"http://foo.com/d/", "..", {}, "http://foo.com/d/..", ""},
-        {"http://foo.com/a/b$$/c", "/d", {}, "http://foo.com/a/b%24%24/c/d", ""},
+        {"http://foo.com/a/b$$/c", "/d", {}, "http://foo.com/a/b$$/c/d", "", false},
+        {"http://foo.com/a/b$$/c", "/d", {}, "http://foo.com/a/b%24%24/c/d", "", true},
+        {"http://foo.com/a/", ":doA", {}, "http://foo.com/a/:doA", "", false},
+        {"http://foo.com/a/", ":doA", {}, "http://foo.com/a/%3adoA", "", true},
+        {"http://foo.com/b", ":doB", {}, "http://foo.com/b/:doB", "", false},
+        {"http://foo.com/b", ":doB", {}, "http://foo.com/b/%3adoB", "", true},
+        {"http://foo.com/", "c:doC", {}, "http://foo.com/c:doC", "", false},
+        {"http://foo.com/", "c:doC", {}, "http://foo.com/c%3adoC", "", true},
 
         // query tests
         {"https://foo.com?foo=bar", {}, {}, "https://foo.com/?foo=bar", ""},  // basic
@@ -1952,7 +2110,8 @@ TEST_F(HttpsOperatorTest, LibCurlUrlBuilding) {
         {"https://foo.com/#foo#", "", {}, "https://foo.com/#foo%23", ""},  // fragment containing #
 
         // happy path
-        {"http://foo.com", "", {}, "http://foo.com/", ""},  // basic
+        {"http://foo.com", "", {}, "http://foo.com/", ""},                 // basic
+        {"http://foo.com/foo:bar", "", {}, "http://foo.com/foo:bar", ""},  // with : in path
         {"http://user:password@foo.com:4000/foo?bar=baz#header",
          "",
          {},
@@ -1967,12 +2126,14 @@ TEST_F(HttpsOperatorTest, LibCurlUrlBuilding) {
                    "path"_attr = tc.path,
                    "queryParams"_attr = tc.queryParams);
         if (tc.expectedErrorMessage.empty()) {
-            auto actualUrl = createUrlFromParts(tc.baseUrl, tc.path, tc.queryParams);
+            auto actualUrl =
+                createUrlFromParts(tc.baseUrl, tc.path, tc.urlEncodePath, tc.queryParams);
             ASSERT_EQ(actualUrl, tc.expectedUrl);
         } else {
-            ASSERT_THROWS_WHAT(createUrlFromParts(tc.baseUrl, tc.path, tc.queryParams),
-                               DBException,
-                               tc.expectedErrorMessage);
+            ASSERT_THROWS_WHAT(
+                createUrlFromParts(tc.baseUrl, tc.path, tc.urlEncodePath, tc.queryParams),
+                DBException,
+                tc.expectedErrorMessage);
         }
     }
 }

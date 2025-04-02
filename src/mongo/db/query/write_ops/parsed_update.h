@@ -51,7 +51,7 @@
 #include "mongo/db/query/write_ops/parsed_writes_common.h"
 #include "mongo/db/query/write_ops/write_ops_parsers.h"
 #include "mongo/db/update/update_driver.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -227,7 +227,7 @@ private:
 
 template <typename T, typename... Ts>
 requires std::is_same_v<T, ExtensionsCallbackNoop> || std::is_same_v<T, ExtensionsCallbackReal>
-    std::unique_ptr<ExtensionsCallback> makeExtensionsCallback(Ts&&... args) {
+std::unique_ptr<ExtensionsCallback> makeExtensionsCallback(Ts&&... args) {
     return std::make_unique<T>(std::forward<Ts>(args)...);
 }
 

@@ -29,6 +29,8 @@
 
 #include "mongo/executor/exhaust_response_reader_tl.h"
 
+#include <memory>
+
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/client/async_client.h"
@@ -39,24 +41,29 @@
 #include "mongo/db/query/getmore_command_gen.h"
 #include "mongo/db/query/write_ops/write_ops_gen.h"
 #include "mongo/db/service_context.h"
+#include "mongo/executor/async_client_factory.h"
 #include "mongo/executor/connection_pool.h"
 #include "mongo/executor/connection_pool_stats.h"
 #include "mongo/executor/connection_pool_tl.h"
-#include "mongo/executor/network_interface_tl.h"
+#include "mongo/executor/executor_integration_test_connection_stats.h"
+#include "mongo/executor/pooled_async_client_factory.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/idl/generic_argument_gen.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/topology_version_gen.h"
+#include "mongo/transport/grpc_connection_stats_gen.h"
 #include "mongo/transport/transport_layer.h"
 #include "mongo/transport/transport_layer_manager.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/integration_test.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
+
+#ifdef MONGO_CONFIG_GRPC
+#include "mongo/transport/grpc/async_client_factory.h"
+#endif
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -65,20 +72,31 @@ namespace mongo::executor {
 class ExhaustResponseReaderIntegrationFixture : public unittest::Test {
 public:
     void setUp() override {
+        const auto instanceName = "ExhaustResponseReader";
         auto connectionString = unittest::getFixtureConnectionString();
         auto server = connectionString.getServers().front();
 
         auto sc = getGlobalServiceContext();
         auto tl = sc->getTransportLayerManager()->getDefaultEgressLayer();
         _reactor = tl->getReactor(transport::TransportLayer::kNewReactor);
-        _reactorThread = stdx::thread([&] { _reactor->run(); });
+        _reactorThread = stdx::thread([&] {
+            _reactor->run();
+            _reactor->drain();
+        });
 
-        ConnectionPool::Options connPoolOptions;
-        connPoolOptions.minConnections = 0;
-        auto typeFactory = std::make_unique<connection_pool_tl::TLTypeFactory>(
-            _reactor, tl, nullptr, connPoolOptions, nullptr);
-        _pool = std::make_shared<ConnectionPool>(
-            std::move(typeFactory), "ExhaustResponseReader", connPoolOptions);
+        if (!unittest::shouldUseGRPCEgress()) {
+            ConnectionPool::Options connPoolOptions;
+            connPoolOptions.minConnections = 0;
+            _pool =
+                std::make_shared<PooledAsyncClientFactory>(instanceName, connPoolOptions, nullptr);
+        } else {
+#ifdef MONGO_CONFIG_GRPC
+            _pool = std::make_shared<transport::grpc::GRPCAsyncClientFactory>(instanceName);
+#else
+            MONGO_UNREACHABLE;
+#endif
+        }
+        _pool->startup(sc, tl, _reactor);
     }
 
     void tearDown() override {
@@ -98,12 +116,12 @@ public:
         return unittest::getFixtureConnectionString().getServers().front();
     }
 
-    ConnectionPool::ConnectionHandle getConnection() {
+    std::shared_ptr<AsyncClientFactory::AsyncClientHandle> getConnection() {
         return _pool->get(getServer(), transport::ConnectSSLMode::kGlobalSSLMode, Seconds(30))
             .get();
     }
 
-    ConnectionPool& getPool() {
+    AsyncClientFactory& getPool() {
         return *_pool;
     }
 
@@ -143,38 +161,14 @@ public:
         return _reactor;
     }
 
-    ConnectionStatsPer getPoolStats() {
-        ConnectionPoolStats stats;
-        getPool().appendConnectionStats(&stats);
-        return stats.statsByHost[getServer()];
-    }
-
     RemoteCommandResponse assertReadOK(NetworkInterface::ExhaustResponseReader& rdr) {
         auto resp = rdr.next().get();
         LOGV2(9311390, "Received exhaust response", "response"_attr = resp.toString());
         return assertOK(resp);
     }
 
-    /*
-     * Asserts that the connection pool stats reach a certain value within a 30 second window. The
-     * connection pool stats to test and the value they must reach are defined in f.
-     * TODO: SERVER-66126 We should be able to test directly without any wait once continuation get
-     * destructed right after they run.
-     */
-    void assertConnectionStatsSoon(std::function<bool(const ConnectionStatsPer&)> f,
-                                   StringData errMsg) {
-        auto start = getGlobalServiceContext()->getFastClockSource()->now();
-        while (getGlobalServiceContext()->getFastClockSource()->now() - start < Seconds(30)) {
-            if (f(getPoolStats())) {
-                return;
-            }
-            sleepFor(Milliseconds(100));
-        }
-        FAIL(errMsg.toString());
-    }
-
 private:
-    std::shared_ptr<ConnectionPool> _pool;
+    std::shared_ptr<AsyncClientFactory> _pool;
     stdx::thread _reactorThread;
     std::shared_ptr<transport::Reactor> _reactor;
 };
@@ -183,12 +177,12 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, ReceiveMultipleResponses) {
     CancellationSource cancelSource;
 
     auto conn = getConnection();
-    auto client = getClient(conn);
+    auto& client = conn->getClient();
 
     auto request = makeExhaustHello(Milliseconds(150));
     auto rdr = std::make_shared<ExhaustResponseReaderTL>(
         request,
-        assertOK(client->beginExhaustCommandRequest(request).getNoThrow()),
+        assertOK(client.beginExhaustCommandRequest(request).getNoThrow()),
         std::move(conn),
         nullptr,
         getReactor(),
@@ -206,8 +200,13 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, ReceiveMultipleResponses) {
 
     rdr.reset();
     assertConnectionStatsSoon(
+        getPool(),
+        getServer(),
         [](const ConnectionStatsPer& stats) {
             return stats.inUse + stats.available + stats.leased == 0;
+        },
+        [&](const GRPCConnectionStats& stats) {
+            return stats.getTotalInUseStreams() + stats.getTotalLeasedStreams() == 0;
         },
         "ReceiveMultipleResponses test timed out while waiting for connection count to drop to 0.");
 }
@@ -216,7 +215,7 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, CancelRead) {
     CancellationSource cancelSource;
 
     auto conn = getConnection();
-    auto client = getClient(conn);
+    auto& client = conn->getClient();
 
     // Use longer maxAwaitTimeMS to ensure we start waiting.
     auto request = makeExhaustHello(Seconds(30));
@@ -224,7 +223,7 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, CancelRead) {
 
     auto rdr = std::make_shared<ExhaustResponseReaderTL>(
         request,
-        assertOK(client->beginExhaustCommandRequest(request).getNoThrow()),
+        assertOK(client.beginExhaustCommandRequest(request).getNoThrow()),
         std::move(conn),
         nullptr,
         getReactor(),
@@ -243,8 +242,13 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, CancelRead) {
 
     rdr.reset();
     assertConnectionStatsSoon(
+        getPool(),
+        getServer(),
         [](const ConnectionStatsPer& stats) {
             return stats.inUse + stats.available + stats.leased == 0;
+        },
+        [&](const GRPCConnectionStats& stats) {
+            return stats.getTotalInUseStreams() + stats.getTotalLeasedStreams() == 0;
         },
         "CancelRead test timed out while waiting for connection count to drop to 0.");
 }
@@ -256,21 +260,20 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, CommandSucceeds) {
     const auto nss = NamespaceStringUtil::deserialize(DatabaseName::kMdbTesting, "CommandSucceeds");
 
     auto conn = getConnection();
-    auto client = getClient(conn);
+    auto& client = conn->getClient();
 
-    assertOK(client->runCommandRequest(makeTestRequest(nss.dbName(), BSON("drop" << nss.coll())))
+    assertOK(client.runCommandRequest(makeTestRequest(nss.dbName(), BSON("drop" << nss.coll())))
                  .getNoThrow());
 
     write_ops::InsertCommandRequest insert(nss);
     insert.setDocuments(documents);
-    assertOK(
-        client->runCommandRequest(makeTestRequest(nss.dbName(), insert.toBSON())).getNoThrow());
+    assertOK(client.runCommandRequest(makeTestRequest(nss.dbName(), insert.toBSON())).getNoThrow());
 
     FindCommandRequest find(nss);
     find.setSort(BSON("_id" << 1));
     find.setBatchSize(0);
     auto findResp = assertOK(
-        client->runCommandRequest(makeTestRequest(nss.dbName(), find.toBSON())).getNoThrow());
+        client.runCommandRequest(makeTestRequest(nss.dbName(), find.toBSON())).getNoThrow());
     auto cursorReply = CursorInitialReply::parse(IDLParserContext("findReply"), findResp.data);
 
     GetMoreCommandRequest getMore(cursorReply.getCursor()->getCursorId(), nss.coll().toString());
@@ -279,7 +282,7 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, CommandSucceeds) {
     auto getMoreRequest = makeTestRequest(nss.dbName(), getMore.toBSON());
     auto rdr = std::make_shared<ExhaustResponseReaderTL>(
         getMoreRequest,
-        assertOK(client->beginExhaustCommandRequest(getMoreRequest).getNoThrow()),
+        assertOK(client.beginExhaustCommandRequest(getMoreRequest).getNoThrow()),
         std::move(conn),
         nullptr,
         getReactor());
@@ -309,19 +312,24 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, CommandSucceeds) {
 
     rdr.reset();
 
-    // Once command has completed, the connection should be returned to the pool.
     assertConnectionStatsSoon(
-        [](const ConnectionStatsPer& stats) { return stats.available == 1; },
-        "CommandSucceeds test timed out while waiting for the number of available "
-        "connections to reach 1.");
-    assertConnectionStatsSoon([](const ConnectionStatsPer& stats) { return stats.inUse == 0; },
-                              "CommandSucceeds test timed out while waiting for the number of in "
-                              "use connection to reach 0.");
+        getPool(),
+        getServer(),
+        [](const ConnectionStatsPer& stats) {
+            // Once command has completed, the connection should be returned to the pool
+            return stats.inUse == 0 && stats.available == 1;
+        },
+        [&](const GRPCConnectionStats& stats) {
+            // There should still be one open channel.
+            return stats.getTotalInUseStreams() == 0 && stats.getTotalOpenChannels() == 1;
+        },
+        "CommandSucceeds test timed out while waiting for 0 inUse connections and 1 available/open "
+        "connection.");
 }
 
 TEST_F(ExhaustResponseReaderIntegrationFixture, RemoteCancel) {
     auto conn = getConnection();
-    auto client = getClient(conn);
+    auto& client = conn->getClient();
 
     // Use long maxAwaitTimeMS to ensure we start waiting.
     auto clientOperationKey = UUID::gen();
@@ -329,7 +337,7 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, RemoteCancel) {
     request.timeout = Seconds(30);
     auto rdr = std::make_shared<ExhaustResponseReaderTL>(
         request,
-        assertOK(client->beginExhaustCommandRequest(request).getNoThrow()),
+        assertOK(client.beginExhaustCommandRequest(request).getNoThrow()),
         std::move(conn),
         nullptr,
         getReactor());
@@ -344,14 +352,14 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, RemoteCancel) {
           "Killing exhaust command remotely",
           "clientOperationKey"_attr = clientOperationKey);
     auto cancelConn = getConnection();
-    auto cancelClient = getClient(cancelConn);
+    auto& cancelClient = cancelConn->getClient();
     KillOperationsRequest killOps({clientOperationKey});
     killOps.setDbName(DatabaseName::kAdmin);
-    assertOK(
-        cancelClient->runCommandRequest(makeTestRequest(DatabaseName::kAdmin, killOps.toBSON()))
-            .getNoThrow());
+    assertOK(cancelClient.runCommandRequest(makeTestRequest(DatabaseName::kAdmin, killOps.toBSON()))
+                 .getNoThrow());
     cancelConn->indicateUsed();
     cancelConn->indicateSuccess();
+    cancelConn.reset();
 
     auto resp = respFut.get();
     LOGV2(9311392, "Received response after cancellation", "response"_attr = resp.toString());
@@ -360,13 +368,23 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, RemoteCancel) {
 
     rdr.reset();
     assertConnectionStatsSoon(
-        [](const ConnectionStatsPer& stats) { return stats.available == 1; },
-        "connection should be returned to the pool after graceful cancellation");
+        getPool(),
+        getServer(),
+        [](const ConnectionStatsPer& stats) {
+            // connection should be returned to the pool after graceful cancellation
+            return stats.inUse == 0 && stats.available == 2;
+        },
+        [&](const GRPCConnectionStats& stats) {
+            // There should still be one open channel.
+            return stats.getTotalInUseStreams() == 0 && stats.getTotalOpenChannels() == 1;
+        },
+        "RemoteCancel test timed out while waiting for 0 inUse connections and the correct number "
+        "of available/open connections");
 }
 
 TEST_F(ExhaustResponseReaderIntegrationFixture, LocalTimeout) {
     auto conn = getConnection();
-    auto client = getClient(conn);
+    auto& client = conn->getClient();
 
     // Use a maxAwaitTimeMS longer than the local timeout.
     auto request = makeExhaustHello(Milliseconds(60000));
@@ -374,7 +392,7 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, LocalTimeout) {
 
     auto rdr = std::make_shared<ExhaustResponseReaderTL>(
         request,
-        assertOK(client->beginExhaustCommandRequest(request).getNoThrow()),
+        assertOK(client.beginExhaustCommandRequest(request).getNoThrow()),
         std::move(conn),
         nullptr,
         getReactor());
@@ -386,9 +404,17 @@ TEST_F(ExhaustResponseReaderIntegrationFixture, LocalTimeout) {
     // will cancel the operation early.
     auto resp = rdr->next().get();
     ASSERT_EQ(resp.status, ErrorCodes::CallbackCanceled);
-    assertConnectionStatsSoon([](const ConnectionStatsPer& stats) { return stats.available == 0; },
-                              "LocalTimeout test timed out while waiting for the number of "
-                              "available connection to reach 0.");
+    rdr.reset();
+    assertConnectionStatsSoon(
+        getPool(),
+        getServer(),
+        [](const ConnectionStatsPer& stats) { return stats.inUse == 0 && stats.available == 0; },
+        [&](const GRPCConnectionStats& stats) {
+            // There should still be one open channel.
+            return stats.getTotalInUseStreams() == 0 && stats.getTotalOpenChannels() == 1;
+        },
+        "LocalTimeout test timed out while waiting for 0 inUse connections and the correct number "
+        "of available/open connections.");
 }
 
 }  // namespace mongo::executor

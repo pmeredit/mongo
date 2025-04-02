@@ -31,8 +31,7 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/query/query_stats/count_key.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo::query_stats {
 
@@ -150,8 +149,7 @@ TEST_F(CountKeyTest, CountMaxTimeMSKey) {
 
 // Test that the comment parameter is included in the key.
 TEST_F(CountKeyTest, CountCommentKey) {
-    const auto comment = BSON("comment"
-                              << "hello");
+    const auto comment = BSON("comment" << "hello");
     expCtx->getOperationContext()->setComment(comment);
     const auto key = std::make_unique<CountKey>(expCtx,
                                                 *parsedRequest,

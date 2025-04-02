@@ -32,7 +32,6 @@
 #include <boost/none.hpp>
 #include <boost/smart_ptr.hpp>
 #include <cstddef>
-#include <cstdint>
 
 #include <boost/move/utility_core.hpp>
 #include <boost/optional/optional.hpp>
@@ -41,25 +40,20 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonelement.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/db/basic_types.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/canonical_query_encoder.h"
-#include "mongo/db/query/indexability.h"
 #include "mongo/db/query/parsed_find_command.h"
 #include "mongo/db/query/projection_ast_util.h"
 #include "mongo/db/query/projection_parser.h"
-#include "mongo/db/query/query_knob_configuration.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_planner_common.h"
 #include "mongo/db/server_parameter.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/util/str.h"
-#include "mongo/util/synchronized_value.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
@@ -149,6 +143,10 @@ CanonicalQuery::CanonicalQuery(OperationContext* opCtx, const CanonicalQuery& ba
            false,  // The parent query countLike is independent from the subquery countLike.
            baseQuery.isSearchQuery(),
            false /*optimizeMatchExpression*/);
+
+    if (baseQuery.getDistinct().has_value()) {
+        setDistinct(CanonicalDistinct(baseQuery.getDistinct().get()));
+    }
 }
 
 void CanonicalQuery::initCq(boost::intrusive_ptr<ExpressionContext> expCtx,
@@ -208,7 +206,7 @@ void CanonicalQuery::initCq(boost::intrusive_ptr<ExpressionContext> expCtx,
         _sortPattern = std::move(parsedFind->sort);
 
         // Be sure to track and add any metadata dependencies from the sort (e.g. text score).
-        _metadataDeps |= _sortPattern->metadataDeps(parsedFind->unavailableMetadata);
+        _metadataDeps |= _sortPattern->metadataDeps(parsedFind->availableMetadata);
 
         // If the results of this query might have to be merged on a remote node, then that node
         // might need the sort key metadata. Request that the plan generates this metadata.
@@ -238,7 +236,9 @@ void CanonicalQuery::initCq(boost::intrusive_ptr<ExpressionContext> expCtx,
         }
     }
     // The tree must always be valid after normalization.
-    dassert(parsed_find_command::isValid(_primaryMatchExpression.get(), *_findCommand).getStatus());
+    dassert(parsed_find_command::validateAndGetAvailableMetadata(_primaryMatchExpression.get(),
+                                                                 *_findCommand)
+                .getStatus());
     if (auto status = isValidNormalized(_primaryMatchExpression.get()); !status.isOK()) {
         uasserted(status.code(), status.reason());
     }
@@ -278,42 +278,6 @@ void CanonicalQuery::serializeToBson(BSONObjBuilder* out) const {
         out->append("sort",
                     sort->serialize(SortPattern::SortKeySerialization::kForExplain).toBson());
     }
-}
-
-// static
-bool CanonicalQuery::isSimpleIdQuery(const BSONObj& query) {
-    bool hasID = false;
-
-    BSONObjIterator it(query);
-    while (it.more()) {
-        BSONElement elt = it.next();
-        if (elt.fieldNameStringData() == "_id") {
-            // Verify that the query on _id is a simple equality.
-            hasID = true;
-
-            if (elt.type() == Object) {
-                // If the value is an object, it can only have one field and that field can only be
-                // a query operator if the operator is $eq.
-                if (elt.Obj().firstElementFieldNameStringData().starts_with('$')) {
-                    if (elt.Obj().nFields() > 1 ||
-                        std::strcmp(elt.Obj().firstElementFieldName(), "$eq") != 0) {
-                        return false;
-                    }
-                    if (!Indexability::isExactBoundsGenerating(elt["$eq"])) {
-                        return false;
-                    }
-                }
-            } else if (!Indexability::isExactBoundsGenerating(elt)) {
-                // In addition to objects, some other BSON elements are not suitable for exact index
-                // lookup.
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    return hasID;
 }
 
 Status CanonicalQuery::isValidNormalized(const MatchExpression* root) {
@@ -433,7 +397,7 @@ void CanonicalQuery::setCqPipeline(std::vector<boost::intrusive_ptr<DocumentSour
 }
 
 bool CanonicalQuery::shouldParameterizeSbe(MatchExpression* matchExpr) const {
-    if (_disablePlanCache || _isUncacheableSbe ||
+    if (_disablePlanCache || _isUncacheableSbe || !feature_flags::gFeatureFlagSbeFull.isEnabled() ||
         QueryPlannerCommon::hasNode(matchExpr, MatchExpression::TEXT)) {
         return false;
     }

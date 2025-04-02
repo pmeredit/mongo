@@ -44,7 +44,7 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/field_path.h"
 #include "mongo/db/query/plan_executor.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 
@@ -53,12 +53,15 @@ namespace mongo {
 boost::intrusive_ptr<DocumentSourceGeoNearCursor> DocumentSourceGeoNearCursor::create(
     const MultipleCollectionAccessor& collections,
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
+    const boost::intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>&
+        transactionResourcesStasher,
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     boost::optional<FieldPath> distanceField,
     boost::optional<FieldPath> locationField,
     double distanceMultiplier) {
     return {new DocumentSourceGeoNearCursor(collections,
                                             std::move(exec),
+                                            transactionResourcesStasher,
                                             expCtx,
                                             std::move(distanceField),
                                             std::move(locationField),
@@ -68,16 +71,21 @@ boost::intrusive_ptr<DocumentSourceGeoNearCursor> DocumentSourceGeoNearCursor::c
 DocumentSourceGeoNearCursor::DocumentSourceGeoNearCursor(
     const MultipleCollectionAccessor& collections,
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec,
+    const boost::intrusive_ptr<ShardRoleTransactionResourcesStasherForPipeline>&
+        transactionResourcesStasher,
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     boost::optional<FieldPath> distanceField,
     boost::optional<FieldPath> locationField,
     double distanceMultiplier)
-    : DocumentSourceCursor(
-          collections, std::move(exec), expCtx, DocumentSourceCursor::CursorType::kRegular),
+    : DocumentSourceCursor(collections,
+                           std::move(exec),
+                           transactionResourcesStasher,
+                           expCtx,
+                           DocumentSourceCursor::CursorType::kRegular),
       _distanceField(std::move(distanceField)),
       _locationField(std::move(locationField)),
       _distanceMultiplier(distanceMultiplier) {
-    invariant(_distanceMultiplier >= 0);
+    tassert(9911901, "", _distanceMultiplier >= 0);
 }
 
 const char* DocumentSourceGeoNearCursor::getSourceName() const {
@@ -88,21 +96,22 @@ Document DocumentSourceGeoNearCursor::transformDoc(Document&& objInput) const {
     MutableDocument output(std::move(objInput));
 
     // Scale the distance by the requested factor.
-    invariant(output.peek().metadata().hasGeoNearDistance(),
-              str::stream()
-                  << "Query returned a document that is unexpectedly missing the geoNear distance: "
-                  << output.peek().toString());
+    tassert(9911902,
+            str::stream()
+                << "Query returned a document that is unexpectedly missing the geoNear distance: "
+                << output.peek().toString(),
+            output.peek().metadata().hasGeoNearDistance());
     const auto distance = output.peek().metadata().getGeoNearDistance() * _distanceMultiplier;
 
     if (_distanceField) {
         output.setNestedField(*_distanceField, Value(distance));
     }
     if (_locationField) {
-        invariant(
-            output.peek().metadata().hasGeoNearPoint(),
-            str::stream()
-                << "Query returned a document that is unexpectedly missing the geoNear point: "
-                << output.peek().toString());
+        tassert(9911903,
+                str::stream()
+                    << "Query returned a document that is unexpectedly missing the geoNear point: "
+                    << output.peek().toString(),
+                output.peek().metadata().hasGeoNearPoint());
         output.setNestedField(*_locationField, output.peek().metadata().getGeoNearPoint());
     }
 

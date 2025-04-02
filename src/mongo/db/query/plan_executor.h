@@ -47,9 +47,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/plan_explainer.h"
-#include "mongo/db/query/plan_summary_stats.h"
 #include "mongo/db/query/plan_yield_policy.h"
-#include "mongo/db/query/query_stats/data_bearing_node_metrics.h"
 #include "mongo/db/query/restore_context.h"
 #include "mongo/db/query/write_ops/update_result.h"
 #include "mongo/db/record_id.h"
@@ -57,7 +55,7 @@
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/s/scoped_collection_metadata.h"
 #include "mongo/db/shard_role.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/future.h"
 
@@ -96,6 +94,12 @@ public:
                           _collectionPtrOrAcquisition);
     }
 
+    const RecordStore* getRecordStore() const {
+        return std::visit(
+            [](const auto& choice) -> const RecordStore* { return recordStore(choice); },
+            _collectionPtrOrAcquisition);
+    }
+
 private:
     static const NamespaceString& nss(const CollectionPtr* collectionPtr) {
         return (*collectionPtr)->ns();
@@ -103,6 +107,14 @@ private:
 
     static const NamespaceString& nss(const CollectionAcquisition& acquisition) {
         return acquisition.nss();
+    }
+
+    static const RecordStore* recordStore(const CollectionPtr* collectionPtr) {
+        return (*collectionPtr)->getRecordStore();
+    }
+
+    static const RecordStore* recordStore(const CollectionAcquisition& acquisition) {
+        return acquisition.getCollectionPtr()->getRecordStore();
     }
 
     std::variant<const CollectionPtr*, CollectionAcquisition> _collectionPtrOrAcquisition;
@@ -555,7 +567,7 @@ public:
     /**
      * Sets whether the executor needs to return owned data.
      */
-    virtual void setReturnOwnedData(bool returnOwnedData){};
+    virtual void setReturnOwnedData(bool returnOwnedData) {};
 
     /** TODO: SERVER-76397 Remove this once we use acquisitions everywhere.
      *

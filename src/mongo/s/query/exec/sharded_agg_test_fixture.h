@@ -102,11 +102,9 @@ public:
         expectGetDatabase(nss);
         expectCollectionAndChunksAggregation(
             nss, epoch, timestamp, UUID::gen(), shardKey, chunkDistribution);
-        expectCollectionAndIndexesAggregation(
-            nss, epoch, timestamp, UUID::gen(), shardKey, boost::none, {});
 
         const auto cri = future.default_timed_get();
-        ASSERT(cri->cm.isSharded());
+        ASSERT(cri->isSharded());
     }
 
 protected:

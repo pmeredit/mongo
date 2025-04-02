@@ -45,8 +45,6 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/routing_information_cache.h"
@@ -125,14 +123,11 @@ public:
             } else {
                 LOGV2(22763, "Routing metadata flushed for collection", logAttrs(nss));
                 catalogCache->invalidateCollectionEntry_LINEARIZABLE(nss);
-                LOGV2(7343300, "Index information flushed for collection", logAttrs(nss));
-                catalogCache->invalidateIndexEntry_LINEARIZABLE(nss);
             }
         }
 
-        // (Ignore FCV check): this feature flag is not FCV-gated.
         if (serverGlobalParams.clusterRole.has(ClusterRole::ConfigServer) &&
-            !feature_flags::gDualCatalogCache.isEnabledAndIgnoreFCVUnsafe()) {
+            !feature_flags::gDualCatalogCache.isEnabled()) {
             auto const routingInfoCache = RoutingInformationCache::get(opCtx);
 
             if (argumentElem.isNumber() || argumentElem.isBoolean()) {
@@ -150,10 +145,6 @@ public:
                 } else {
                     LOGV2(8778003, "CSRS routing info cache flushed for collection", logAttrs(nss));
                     routingInfoCache->invalidateCollectionEntry_LINEARIZABLE(nss);
-                    LOGV2(8778004,
-                          "Index information within CSRS routing info cache flushed for collection",
-                          logAttrs(nss));
-                    routingInfoCache->invalidateIndexEntry_LINEARIZABLE(nss);
                 }
             }
         }

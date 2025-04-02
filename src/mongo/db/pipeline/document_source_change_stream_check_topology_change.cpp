@@ -95,10 +95,9 @@ DocumentSource::GetNextResult DocumentSourceChangeStreamCheckTopologyChange::doG
 
 Value DocumentSourceChangeStreamCheckTopologyChange::doSerialize(
     const SerializationOptions& opts) const {
-    if (opts.verbosity) {
+    if (opts.isSerializingForExplain()) {
         return Value(DOC(DocumentSourceChangeStream::kStageName
-                         << DOC("stage"
-                                << "internalCheckTopologyChange"_sd)));
+                         << DOC("stage" << "internalCheckTopologyChange"_sd)));
     }
 
     return Value(Document{{kStageName, Document()}});

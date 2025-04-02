@@ -18,8 +18,26 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
+
+# Get relative imports to work when the package is not installed on the PYTHONPATH.
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from clang_tidy_vscode import CHECKS_SO
+from mongo_toolchain import get_mongo_toolchain
 from simple_report import make_report, put_report, try_combine_reports
+
+checks_so = ""
+for module in CHECKS_SO:
+    if os.path.exists(module):
+        checks_so = module
+        break
+
+
+config_file = ""
+for config in ["/tmp/compiledb-bin/.clang-tidy.strict", "bazel-bin/.clang-tidy.strict"]:
+    if os.path.exists(config):
+        config_file = config
+        break
 
 
 def _clang_tidy_executor(
@@ -150,7 +168,8 @@ def __dedup_errors(clang_tidy_errors_threads: List[str]) -> str:
 
 
 def _run_tidy(args, parser_defaults):
-    clang_tidy_binary = f"/opt/mongodbtoolchain/{args.clang_tidy_toolchain}/bin/clang-tidy"
+    toolchain = get_mongo_toolchain(version=args.clang_tidy_toolchain)
+    clang_tidy_binary = toolchain.get_tool_path("clang-tidy")
 
     if os.path.exists(args.check_module):
         mongo_tidy_check_module = args.check_module
@@ -164,7 +183,7 @@ def _run_tidy(args, parser_defaults):
         if args.compile_commands == parser_defaults.compile_commands:
             print(
                 f"Could not find compile commands: '{args.compile_commands}', to generate it, use the build command:\n\n"
-                + "python3 buildscripts/scons.py --build-profile=compiledb compiledb\n"
+                + "bazel build compiledb\n"
             )
         else:
             print(f"Could not find compile commands: {args.compile_commands}")
@@ -177,7 +196,7 @@ def _run_tidy(args, parser_defaults):
         if args.clang_tidy_cfg == parser_defaults.clang_tidy_cfg:
             print(
                 f"Could not find config file: '{args.clang_tidy_cfg}', to generate it, use the build command:\n\n"
-                + "python3 buildscripts/scons.py --build-profile=compiledb compiledb\n"
+                + "bazel build compiledb\n"
             )
         else:
             print(f"Could not find config file: {args.clang_tidy_cfg}")
@@ -344,7 +363,7 @@ def main():
         "-m",
         "--check-module",
         type=str,
-        default=CHECKS_SO,
+        default=checks_so,
         help="Path to load the custom mongo checks module.",
     )
     parser.add_argument(
@@ -353,9 +372,8 @@ def main():
         default=False,
         help="if this is a test evaluating clang tidy itself.",
     )
-    # TODO: Is there someway to get this without hardcoding this much
-    parser.add_argument("-y", "--clang-tidy-toolchain", type=str, default="v4")
-    parser.add_argument("-f", "--clang-tidy-cfg", type=str, default=".clang-tidy")
+    parser.add_argument("-y", "--clang-tidy-toolchain", type=str, default=None)
+    parser.add_argument("-f", "--clang-tidy-cfg", type=str, default=config_file)
     args = parser.parse_args()
 
     if args.only_process_fixes:

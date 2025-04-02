@@ -36,7 +36,7 @@
 #include "mongo/transport/grpc/mock_wire_version_provider.h"
 #include "mongo/transport/grpc/test_fixtures.h"
 #include "mongo/transport/grpc/util.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/log_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/net/hostandport.h"
@@ -51,7 +51,7 @@ public:
         return HostAndPort("localhost", 1234);
     }
 
-    virtual void setUp() override {
+    void setUp() override {
         _reactor = std::make_shared<GRPCReactor>();
         _ioThread = stdx::thread([&]() {
             _reactor->run();
@@ -59,7 +59,7 @@ public:
         });
     }
 
-    virtual void tearDown() override {
+    void tearDown() override {
         _reactor->stop();
         _ioThread.join();
     }
@@ -71,6 +71,9 @@ public:
 private:
     std::shared_ptr<GRPCReactor> _reactor;
     stdx::thread _ioThread;
+
+    unittest::MinimumLoggedSeverityGuard logSeverityGuardNetwork{logv2::LogComponent::kNetwork,
+                                                                 logv2::LogSeverity::Debug(4)};
 };
 
 TEST_F(MockClientTest, MockConnect) {
@@ -127,8 +130,30 @@ TEST_F(MockClientTest, ConnectTimeout) {
         FailPointEnableBlock fp("grpcHangOnStreamEstablishment");
         auto status =
             client.connect(defaultServerAddress(), getReactor(), Milliseconds(5), {}).getNoThrow();
+        fp->waitForTimesEntered(fp.initialTimesEntered() + 1);
         ASSERT_NOT_OK(status);
-        ASSERT_EQ(status.getStatus().code(), ErrorCodes::NetworkTimeout);
+        ASSERT_EQ(status.getStatus().code(), ErrorCodes::ExceededTimeLimit);
+    };
+
+    CommandServiceTestFixtures::runWithMockServers(
+        {defaultServerAddress()}, getServiceContext(), serverHandler, clientThreadBody);
+}
+
+TEST_F(MockClientTest, ConnectCancelled) {
+    auto serverHandler = [&](HostAndPort local, std::shared_ptr<IngressSession> session) {
+    };
+
+    auto clientThreadBody = [&](Client& client, auto& monitor) {
+        CancellationSource cancelSource;
+        client.start();
+        FailPointEnableBlock fp("grpcHangOnStreamEstablishment");
+        auto connectFut = client.connect(
+            defaultServerAddress(), getReactor(), Minutes(30), {}, cancelSource.token());
+        fp->waitForTimesEntered(fp.initialTimesEntered() + 1);
+        cancelSource.cancel();
+        auto status = connectFut.getNoThrow();
+        ASSERT_NOT_OK(status);
+        ASSERT_EQ(status.getStatus().code(), ErrorCodes::CallbackCanceled);
     };
 
     CommandServiceTestFixtures::runWithMockServers(
@@ -143,6 +168,7 @@ TEST_F(MockClientTest, ConnectCancelledByShutdown) {
         client.start();
         FailPointEnableBlock fp("grpcHangOnStreamEstablishment");
         auto connectFut = client.connect(defaultServerAddress(), getReactor(), Minutes(30), {});
+        fp->waitForTimesEntered(fp.initialTimesEntered() + 1);
         client.shutdown();
         auto status = connectFut.getNoThrow();
         ASSERT_NOT_OK(status);

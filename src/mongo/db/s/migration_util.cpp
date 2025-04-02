@@ -82,9 +82,6 @@
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
@@ -111,8 +108,6 @@
 namespace mongo {
 namespace migrationutil {
 namespace {
-
-using namespace fmt::literals;
 
 MONGO_FAIL_POINT_DEFINE(hangBeforeFilteringMetadataRefresh);
 MONGO_FAIL_POINT_DEFINE(hangInPersistMigrateCommitDecisionInterruptible);
@@ -467,8 +462,7 @@ void advanceTransactionOnRecipient(OperationContext* opCtx,
                                    const LogicalSessionId& lsid,
                                    TxnNumber currentTxnNumber) {
     write_ops::UpdateCommandRequest updateOp(NamespaceString::kServerConfigurationNamespace);
-    auto queryFilter = BSON("_id"
-                            << "migrationCoordinatorStats");
+    auto queryFilter = BSON("_id" << "migrationCoordinatorStats");
     auto updateModification = write_ops::UpdateModification(
         write_ops::UpdateModification::parseFromClassicUpdate(BSON("$inc" << BSON("count" << 1))));
 

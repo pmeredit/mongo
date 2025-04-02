@@ -31,11 +31,8 @@
 
 #include <span>
 
-#include "mongo/db/catalog/import_options.h"
 #include "mongo/db/catalog/validate/validate_results.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_error_util.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
-#include "mongo/util/string_map.h"
 
 namespace mongo {
 
@@ -55,10 +52,10 @@ class WiredTigerSession;
 class WiredTigerItem {
 public:
     WiredTigerItem() = default;
-    WiredTigerItem(const void* d, size_t s) noexcept {
+    WiredTigerItem(const void* d, size_t s) {
         _item = {d, s};
     }
-    WiredTigerItem(std::span<const char> str) noexcept : WiredTigerItem(str.data(), str.size()) {}
+    WiredTigerItem(std::span<const char> str) : WiredTigerItem(str.data(), str.size()) {}
 
     // Get this item as a WT_ITEM pointer
     // The pointer returned by get() must not be allowed to live longer than *this.
@@ -71,16 +68,16 @@ public:
 
     // Conform to std::ranges::contiguous_range and std::ranges::sized_range so that buffers read
     // from WiredTiger can be consumed as ranges.
-    size_t size() const noexcept {
+    size_t size() const {
         return _item.size;
     }
-    const char* data() const noexcept {
+    const char* data() const {
         return static_cast<const char*>(_item.data);
     }
-    const char* begin() const noexcept {
+    const char* begin() const {
         return data();
     }
-    const char* end() const noexcept {
+    const char* end() const {
         return data() + size();
     }
 
@@ -102,12 +99,19 @@ public:
      * Fetch the type and source fields out of the colgroup metadata.  'tableUri' must be a
      * valid table: uri.
      */
-    static void fetchTypeAndSourceURI(WiredTigerRecoveryUnit&,
+    static void fetchTypeAndSourceURI(WiredTigerSession& session,
                                       const std::string& tableUri,
                                       std::string* type,
                                       std::string* source);
 
     static bool collectConnectionStatistics(WiredTigerKVEngine* engine, BSONObjBuilder& bob);
+
+    /**
+     * Adds the History Store Statistics to the provided BSON Object builder.
+     *
+     * Returns true if statistics can be safely collected and false otherwise.
+     */
+    static bool historyStoreStatistics(WiredTigerKVEngine* engine, BSONObjBuilder& bob);
 
     /**
      * Reads the WT database statistics table using the URI and exports all keys to BSON as string
@@ -133,7 +137,8 @@ public:
      */
     static StatusWith<std::string> generateImportString(StringData ident,
                                                         const BSONObj& storageMetadata,
-                                                        const ImportOptions& importOptions);
+                                                        bool panicOnCorruptWtMetadata,
+                                                        bool repair);
 
     /**
      * Creates the configuration string for the 'backup_restore_target' config option passed into
@@ -170,31 +175,29 @@ public:
      *
      * This returns more information, but is slower than getMetadata().
      */
-    static StatusWith<std::string> getMetadataCreate(WiredTigerRecoveryUnit&, StringData uri);
     static StatusWith<std::string> getMetadataCreate(WiredTigerSession& session, StringData uri);
 
     /**
      * Gets the entire metadata string for collection or index at URI. Accepts an OperationContext
      * or session.
      */
-    static StatusWith<std::string> getMetadata(WiredTigerRecoveryUnit&, StringData uri);
     static StatusWith<std::string> getMetadata(WiredTigerSession& session, StringData uri);
 
     /**
      * Reads app_metadata for collection/index at URI as a BSON document.
      */
-    static Status getApplicationMetadata(WiredTigerRecoveryUnit&,
+    static Status getApplicationMetadata(WiredTigerSession& session,
                                          StringData uri,
                                          BSONObjBuilder* bob);
 
-    static StatusWith<BSONObj> getApplicationMetadata(WiredTigerRecoveryUnit&, StringData uri);
+    static StatusWith<BSONObj> getApplicationMetadata(WiredTigerSession& session, StringData uri);
 
     /**
      * Validates formatVersion in application metadata for 'uri'.
      * Version must be numeric and be in the range [minimumVersion, maximumVersion].
      * URI is used in error messages only. Returns actual version.
      */
-    static StatusWith<int64_t> checkApplicationMetadataFormatVersion(WiredTigerRecoveryUnit&,
+    static StatusWith<int64_t> checkApplicationMetadataFormatVersion(WiredTigerSession& session,
                                                                      StringData uri,
                                                                      int64_t minimumVersion,
                                                                      int64_t maximumVersion);
@@ -220,21 +223,21 @@ public:
                                                            const std::string& config,
                                                            int statisticsKey);
 
-    static int64_t getEphemeralIdentSize(WiredTigerSession& s, const std::string& uri);
+    static int64_t getEphemeralIdentSize(WiredTigerSession& session, const std::string& uri);
 
-    static int64_t getIdentSize(WiredTigerSession& s, const std::string& uri);
+    static int64_t getIdentSize(WiredTigerSession& session, const std::string& uri);
 
     /**
      * Returns the bytes available for reuse for an ident. This is the amount of allocated space on
      * disk that is not storing any data.
      */
-    static int64_t getIdentReuseSize(WiredTigerSession& s, const std::string& uri);
+    static int64_t getIdentReuseSize(WiredTigerSession& session, const std::string& uri);
 
     /**
      * Returns the bytes compaction may reclaim for an ident. This is the amount of allocated space
      * on disk that can be potentially reclaimed.
      */
-    static int64_t getIdentCompactRewrittenExpectedSize(WiredTigerSession& s,
+    static int64_t getIdentCompactRewrittenExpectedSize(WiredTigerSession& session,
                                                         const std::string& uri);
 
     /**
@@ -265,7 +268,7 @@ public:
      *
      * If errors is non-NULL, all error messages will be appended to the array.
      */
-    static int verifyTable(WiredTigerRecoveryUnit&,
+    static int verifyTable(WiredTigerSession& session,
                            const std::string& uri,
                            const boost::optional<std::string>& configurationOverride,
                            StringSet* errors = nullptr);
@@ -274,7 +277,7 @@ public:
      * Checks the table logging setting in the metadata for the given uri, comparing it against
      * 'isLogged'. Populates 'valid', 'errors', and 'warnings' accordingly.
      */
-    static void validateTableLogging(WiredTigerRecoveryUnit&,
+    static void validateTableLogging(WiredTigerSession& session,
                                      StringData uri,
                                      bool isLogged,
                                      boost::optional<StringData> indexName,
@@ -282,7 +285,7 @@ public:
 
     static bool useTableLogging(const NamespaceString& nss);
 
-    static Status setTableLogging(WiredTigerRecoveryUnit&, const std::string& uri, bool on);
+    static Status setTableLogging(WiredTigerSession& session, const std::string& uri, bool on);
 
     /**
      * Generates a WiredTiger connection configuration given the LOGV2 WiredTiger components
@@ -346,6 +349,14 @@ public:
         /* The start of non-special table ids for genTableId() */
         kLastTableId
     };
+
+    /**
+     * Helper for handling WT eviction events. Returns non-zero to indicate that WT should not take
+     * part in optional eviction on this session, and zero otherwise
+     */
+    static int handleWtEvictionEvent(WT_SESSION* session);
+
+    static long long getCancelledCacheMetric_forTest();
 
 private:
     /**

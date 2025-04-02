@@ -34,12 +34,14 @@
 
 #include <boost/filesystem.hpp>
 
+#include "mongo/client/async_client.h"
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/transport/grpc/client_cache.h"
 #include "mongo/transport/grpc/grpc_session.h"
 #include "mongo/transport/grpc/grpc_session_manager.h"
 #include "mongo/transport/grpc/grpc_transport_layer_impl.h"
+#include "mongo/transport/grpc/grpc_transport_layer_mock.h"
 #include "mongo/transport/grpc/test_fixtures.h"
 #include "mongo/transport/grpc/wire_version_provider.h"
 #include "mongo/transport/service_executor.h"
@@ -47,12 +49,13 @@
 #include "mongo/transport/session_workflow_test_util.h"
 #include "mongo/transport/test_fixtures.h"
 #include "mongo/transport/transport_layer.h"
-#include "mongo/unittest/assert.h"
+#include "mongo/transport/transport_layer_manager_impl.h"
 #include "mongo/unittest/log_test.h"
 #include "mongo/unittest/thread_assertion_monitor.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
+#include "mongo/util/fail_point.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/net/ssl_manager.h"
@@ -68,8 +71,6 @@ namespace {
 class GRPCTransportLayerTest : public ServiceContextTest {
 public:
     void setUp() override {
-        ServiceContextTest::setUp();
-
         auto svcCtx = getServiceContext();
 
         // Default SEP behavior is to fail.
@@ -90,7 +91,6 @@ public:
     }
 
     void tearDown() override {
-        ServiceContextTest::tearDown();
         ServiceExecutor::shutdownAll(getServiceContext(), Seconds{10});
     }
 
@@ -107,10 +107,11 @@ public:
         auto sm = options.enableIngress
             ? std::make_unique<GRPCSessionManager>(svcCtx, clientCache, std::move(observers))
             : nullptr;
+        bool enableIngress = options.enableIngress;
         auto tl =
             std::make_unique<GRPCTransportLayerImpl>(svcCtx, std::move(options), std::move(sm));
 
-        if (options.enableIngress) {
+        if (enableIngress) {
             uassertStatusOK(tl->registerService(
                 std::make_unique<CommandService>(tl.get(),
                                                  std::move(serverCb),
@@ -397,7 +398,6 @@ public:
 
     void tearDown() override {
         _tl.reset();
-        ServiceContextTest::tearDown();
     }
 
     GRPCTransportLayer& transportLayer() {
@@ -571,6 +571,26 @@ TEST_F(GRPCTransportLayerTest, ConnectionError) {
             tryConnect();
             // Ensure second attempt on already created channel object also gracefully fails.
             tryConnect();
+        },
+        CommandServiceTestFixtures::makeTLOptions());
+}
+
+TEST_F(GRPCTransportLayerTest, CancelBadConnectAttempt) {
+    runWithTL(
+        makeNoopRPCHandler(),
+        [&](auto& tl) {
+            CancellationSource cancelSource;
+            auto fut =
+                tl.asyncConnectWithAuthToken(HostAndPort("localhost", 1235),
+                                             ConnectSSLMode::kGlobalSSLMode,
+                                             tl.getReactor(TransportLayer::WhichReactor::kEgress),
+                                             Milliseconds::max(),  // no timeout
+                                             nullptr,
+                                             cancelSource.token());
+            cancelSource.cancel();
+            auto status = fut.getNoThrow();
+            ASSERT_NOT_OK(status);
+            ASSERT_EQ(status.getStatus().code(), ErrorCodes::CallbackCanceled);
         },
         CommandServiceTestFixtures::makeTLOptions());
 }
@@ -877,7 +897,7 @@ TEST_F(RotateCertificatesGRPCTransportLayerTest,
             ASSERT_GRPC_STUB_CONNECTED(stub);
 
             ASSERT_OK(client->connect(addr, reactor, Milliseconds(500), {}).getNoThrow());
-            client->dropAllChannels_forTest();
+            client->dropConnections();
 
             // Overwrite the tmp files to hold new, invalid certs.
             boost::filesystem::copy_file(kInvalidPEMFile,
@@ -953,14 +973,14 @@ TEST_F(RotateCertificatesGRPCTransportLayerTest, ClientUsesOldCertsUntilRotate) 
 
             // After rotating on the server side, connecting from the client should fail, as it is
             // still using the old certificates.
-            client->dropAllChannels_forTest();
+            client->dropConnections();
             ASSERT_NOT_OK(
                 client
                     ->connect(addr, reactor, CommandServiceTestFixtures::kDefaultConnectTimeout, {})
                     .getNoThrow());
 
             // After rotation, connection should now succeed.
-            client->dropAllChannels_forTest();
+            client->dropConnections();
 
             SSLConfiguration newConfig{};
             newConfig.serverCertificateExpirationDate = Date_t::fromMillisSinceEpoch(1234);
@@ -974,6 +994,27 @@ TEST_F(RotateCertificatesGRPCTransportLayerTest, ClientUsesOldCertsUntilRotate) 
                       newConfig.serverCertificateExpirationDate);
         },
         CommandServiceTestFixtures::makeTLOptions());
+}
+
+TEST_F(MockGRPCTransportLayerTest, ConnectionTimeout) {
+    runTestWithMockServer([this]() {
+        FailPointEnableBlock fp("grpcHangOnStreamEstablishment");
+
+        auto tl = getServiceContext()->getTransportLayerManager()->getTransportLayer(
+            transport::TransportProtocol::GRPC);
+        auto client =
+            AsyncDBClient::connect(kServerHostAndPort,
+                                   transport::ConnectSSLMode::kGlobalSSLMode,
+                                   getServiceContext(),
+                                   tl,
+                                   tl->getReactor(transport::TransportLayer::WhichReactor::kEgress),
+                                   Milliseconds(500),
+                                   nullptr);
+
+        auto status = client.getNoThrow();
+        ASSERT_NOT_OK(status);
+        ASSERT_EQ(status.getStatus().code(), ErrorCodes::ExceededTimeLimit);
+    });
 }
 
 }  // namespace

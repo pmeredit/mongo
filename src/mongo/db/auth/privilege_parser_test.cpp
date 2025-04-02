@@ -54,9 +54,7 @@
 #include "mongo/db/database_name.h"
 #include "mongo/db/tenant_id.h"
 #include "mongo/idl/idl_parser.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 
@@ -261,36 +259,29 @@ TEST(PrivilegeParserTest, RoundTrip) {
     const std::vector<BSONObj> resourcePatterns = {
         BSON("cluster"_sd << true),
         BSON("anyResource"_sd << true),
-        BSON("db"_sd
-             << ""
-             << "collection"_sd
-             << ""),
-        BSON("db"_sd
-             << ""
-             << "collection"_sd
-             << "coll1"),
-        BSON("db"_sd
-             << "db1"
-             << "collection"_sd
-             << ""),
-        BSON("db"_sd
-             << "db1"
-             << "collection"_sd
-             << "coll1"),
-        BSON("system_buckets"_sd
-             << "bucket"_sd),
-        BSON("db"_sd
-             << "db1"
-             << "system_buckets"_sd
-             << "bucket"_sd),
+        BSON("db"_sd << ""
+                     << "collection"_sd
+                     << ""),
+        BSON("db"_sd << ""
+                     << "collection"_sd
+                     << "coll1"),
+        BSON("db"_sd << "db1"
+                     << "collection"_sd
+                     << ""),
+        BSON("db"_sd << "db1"
+                     << "collection"_sd
+                     << "coll1"),
+        BSON("system_buckets"_sd << "bucket"_sd),
+        BSON("db"_sd << "db1"
+                     << "system_buckets"_sd
+                     << "bucket"_sd),
     };
     const std::vector<BSONArray> actionTypes = {
         BSON_ARRAY("find"_sd),
         BSON_ARRAY("anyAction"_sd),
-        BSON_ARRAY("find"_sd
-                   << "insert"_sd
-                   << "remove"_sd
-                   << "update"_sd),
+        BSON_ARRAY("find"_sd << "insert"_sd
+                             << "remove"_sd
+                             << "update"_sd),
     };
 
     for (const auto& pattern : resourcePatterns) {
@@ -305,8 +296,7 @@ TEST(PrivilegeParserTest, RoundTrip) {
 
 TEST(PrivilegeParserTest, ParseInvalidActionsTest) {
     auto obj = BSON("resource"_sd << kClusterResource << "actions"_sd
-                                  << BSON_ARRAY("find"_sd
-                                                << "fakeAction"_sd));
+                                  << BSON_ARRAY("find"_sd << "fakeAction"_sd));
     std::vector<std::string> unrecognized;
     auto priv = resolvePrivilege(obj, &unrecognized);
 

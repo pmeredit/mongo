@@ -84,7 +84,7 @@ assert.eq(firstStreamEntry.documentKey._id, 1);
 const primaryNode = rst.getPrimary();
 const mostRecentOplogEntry = getLatestOp(primaryNode);
 assert.neq(mostRecentOplogEntry, null);
-const largeStr = new Array(4 * 1024 * oplogSize).join('abcdefghi');
+const largeStr = 'abcdefghi'.repeat(4 * 1024 * oplogSize);
 
 function oplogIsRolledOver() {
     // The oplog has rolled over if the op that used to be newest is now older than the
@@ -99,9 +99,8 @@ while (!oplogIsRolledOver()) {
 }
 
 // Confirm that attempting to continue reading an existing change stream throws CappedPositionLost.
-assert.commandFailedWithCode(
-    testDB.runCommand({getMore: startAtDawnOfTimeStream.id, collection: testColl.getName()}),
-    ErrorCodes.CappedPositionLost);
+assert.throwsWithCode(() => cst.getNextBatch(startAtDawnOfTimeStream),
+                      ErrorCodes.CappedPositionLost);
 
 // Now confirm that attempting to resumeAfter or startAtOperationTime fails.
 ChangeStreamTest.assertChangeStreamThrowsCode({

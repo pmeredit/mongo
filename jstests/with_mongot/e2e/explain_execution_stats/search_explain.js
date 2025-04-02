@@ -7,7 +7,7 @@
 import {createSearchIndex, dropSearchIndex} from "jstests/libs/search.js";
 import {
     verifyE2ESearchExplainOutput,
-} from "jstests/with_mongot/e2e/lib/explain_utils.js";
+} from "jstests/with_mongot/e2e_lib/explain_utils.js";
 
 const coll = db[jsTestName()];
 coll.drop();
@@ -92,7 +92,7 @@ function runExplainTest(verbosity) {
         nReturned: NumberLong(numFireDocs)
     });
     // On a sharded cluster, $setVariableFromSubPipeline should be inserted.
-    if (result.hasOwnProperty("shards")) {
+    if (result.hasOwnProperty("splitPipeline") && result["splitPipeline"] !== null) {
         let mergingPipeline = result.splitPipeline.mergerPart;
         assert.eq(["$mergeCursors"], Object.keys(mergingPipeline[0]));
         assert.eq(["$setVariableFromSubPipeline"], Object.keys(mergingPipeline[1]));

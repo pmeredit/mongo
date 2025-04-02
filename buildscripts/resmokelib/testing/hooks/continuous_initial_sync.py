@@ -232,7 +232,7 @@ class _InitialSyncThread(threading.Thread):
                 )
                 self.__lifecycle.wait_for_action_interval(wait_secs)
 
-        except Exception as err:  # pylint: disable=broad-except
+        except Exception as err:
             msg = "Syncer Thread threw exception: {}".format(err)
             self.logger.exception(msg)
             self._is_idle_evt.set()
@@ -343,7 +343,6 @@ class _InitialSyncThread(threading.Thread):
                 # These error codes may be transient, and so we retry the reconfig with a
                 # (potentially) higher config version. We should not receive these codes
                 # indefinitely.
-                # pylint: disable=too-many-boolean-expressions
                 if err.code not in (
                     self._NEW_REPLICA_SET_CONFIGURATION_INCOMPATIBLE,
                     self._CURRENT_CONFIG_NOT_COMMITTED_YET,
@@ -476,6 +475,9 @@ class _InitialSyncThread(threading.Thread):
             try:
                 conn.admin.command(cmd)
                 break
+            except pymongo.errors.AutoReconnect:
+                self.logger.info("AutoReconnect exception thrown, retrying...")
+                time.sleep(0.1)
             except pymongo.errors.OperationFailure as err:
                 if err.code not in (
                     self.INTERRUPTED_DUE_TO_REPL_STATE_CHANGE,

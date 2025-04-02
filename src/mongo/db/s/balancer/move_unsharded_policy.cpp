@@ -67,9 +67,7 @@ bool clusterHasShardedCollections(OperationContext* opCtx, bool draining) {
     // Skip config.system.sessions if we are not draining as it isn't balanced as part of the random
     // migrations failpoint. If we are draining shards, though, we need to include this collection.
     if (!draining) {
-        matchBuilder.append(CollectionType::kNssFieldName,
-                            BSON("$regex"
-                                 << "^(?!config\\.).*"));
+        matchBuilder.append(CollectionType::kNssFieldName, BSON("$regex" << "^(?!config\\.).*"));
     }
 
     std::vector<BSONObj> rawPipelineStages{
@@ -214,14 +212,13 @@ std::vector<std::pair<NamespaceString, ChunkType>> getTrackedUnshardedCollection
         //     ],
         //     "as": "chunks",
         // }
-        BSON("$lookup" << BSON("from"
-                               << "chunks"
-                               << "localField" << ChunkType::collectionUUID.name() << "foreignField"
-                               << CollectionType::kUuidFieldName << "pipeline"
-                               << BSON_ARRAY(
-                                      BSON("$match" << BSON(ChunkType::shard.name() << shardId))
+        BSON("$lookup" << BSON(
+                 "from" << "chunks"
+                        << "localField" << ChunkType::collectionUUID.name() << "foreignField"
+                        << CollectionType::kUuidFieldName << "pipeline"
+                        << BSON_ARRAY(BSON("$match" << BSON(ChunkType::shard.name() << shardId))
                                       << BSON("$limit" << 1))
-                               << "as" << chunkFieldName)),
+                        << "as" << chunkFieldName)),
 
         // This stage has two purposes:
         //   - Promote the chunk object to top level field in every collection entry.
@@ -292,6 +289,7 @@ void MoveUnshardedPolicy::applyActionResult(OperationContext* opCtx,
                 // TODO SERVER-89892 Investigate CannotCreateIndex error
                 case ErrorCodes::CannotCreateIndex:
                 case ErrorCodes::CommandNotSupported:
+                case ErrorCodes::ConflictingOperationInProgress:
                 case ErrorCodes::DuplicateKey:
                 case ErrorCodes::FailedToSatisfyReadPreference:
                 // TODO SERVER-90851 Investigate IllegalOperation error
@@ -307,7 +305,7 @@ void MoveUnshardedPolicy::applyActionResult(OperationContext* opCtx,
                 case ErrorCodes::ShardNotFound:
                 case ErrorCodes::SnapshotTooOld:
                 case ErrorCodes::StaleDbVersion:
-                case ErrorCodes::ConflictingOperationInProgress:
+                case ErrorCodes::TemporarilyUnavailable:
                 case ErrorCodes::UserWritesBlocked:
                     return true;
                 default:
@@ -335,13 +333,15 @@ boost::optional<MigrateInfo> selectUnsplittableCollectionToMove(
     auto collectionAndChunks = [&]() -> boost::optional<std::pair<NamespaceString, ChunkType>> {
         const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
 
-        if (!feature_flags::gTrackUnshardedCollectionsUponCreation.isEnabled(fcvSnapshot) &&
+        if (!feature_flags::gTrackUnshardedCollectionsUponCreation.isEnabled(
+                VersionContext::getDecoration(opCtx), fcvSnapshot) &&
             !feature_flags::gTrackUnshardedCollectionsUponMoveCollection.isEnabled(fcvSnapshot)) {
             return boost::none;
         }
 
         for (const auto& shardId : availableDonors) {
-            if (!feature_flags::gTrackUnshardedCollectionsUponCreation.isEnabled(fcvSnapshot)) {
+            if (!feature_flags::gTrackUnshardedCollectionsUponCreation.isEnabled(
+                    VersionContext::getDecoration(opCtx), fcvSnapshot)) {
                 auto randomUntrackedColl = getRandomUntrackedCollectionOnShard(opCtx, shardId);
                 if (randomUntrackedColl) {
                     return randomUntrackedColl;

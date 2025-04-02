@@ -45,9 +45,6 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/config.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
@@ -58,8 +55,6 @@
 namespace mongo::transport {
 
 namespace {
-using namespace fmt::literals;
-
 void* runFunc(void* ctx) {
     auto taskPtr =
         std::unique_ptr<unique_function<void()>>(static_cast<unique_function<void()>*>(ctx));
@@ -150,7 +145,7 @@ Status launchServiceWorkerThread(unique_function<void()> task) {
     } catch (const std::exception& e) {
         LOGV2_ERROR(22948, "Thread creation failed", "error"_attr = e.what());
         return {ErrorCodes::InternalError,
-                format(FMT_STRING("Failed to create service entry worker thread: {}"), e.what())};
+                fmt::format("Failed to create service entry worker thread: {}", e.what())};
     }
 
     return Status::OK();

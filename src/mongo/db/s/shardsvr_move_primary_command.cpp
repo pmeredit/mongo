@@ -27,7 +27,6 @@
  *    it in the license file.
  */
 
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -51,12 +50,12 @@
 #include "mongo/db/s/sharding_ddl_util.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/shard_id.h"
-#include "mongo/rpc/op_msg.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/request_types/move_primary_gen.h"
+#include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/s/sharding_state.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future.h"
@@ -65,7 +64,6 @@
 
 namespace mongo {
 namespace {
-using namespace fmt::literals;
 
 class ShardsvrMovePrimaryCommand final : public TypedCommand<ShardsvrMovePrimaryCommand> {
 public:
@@ -85,13 +83,13 @@ public:
 
             uassert(
                 ErrorCodes::InvalidNamespace,
-                "invalid database {}"_format(dbNss.toStringForErrorMsg()),
+                fmt::format("invalid database {}", dbNss.toStringForErrorMsg()),
                 DatabaseName::isValid(dbNss.dbName(), DatabaseName::DollarInDbNameBehavior::Allow));
 
-            uassert(
-                ErrorCodes::InvalidOptions,
-                "cannot move primary of internal database {}"_format(dbNss.toStringForErrorMsg()),
-                !dbNss.isOnInternalDb());
+            uassert(ErrorCodes::InvalidOptions,
+                    fmt::format("cannot move primary of internal database {}",
+                                dbNss.toStringForErrorMsg()),
+                    !dbNss.isOnInternalDb());
 
             sharding_ddl_util::assertDataMovementAllowed();
 
@@ -101,6 +99,14 @@ public:
             const auto coordinatorFuture = [&] {
                 FixedFCVRegion fcvRegion(opCtx);
 
+                // The Operation FCV is currently propagated only for DDL operations,
+                // which cannot be nested. Therefore, the VersionContext shouldn't have
+                // been initialized yet.
+                invariant(!VersionContext::getDecoration(opCtx).isInitialized());
+                const auto authoritativeMetadataAccessLevel =
+                    sharding_ddl_util::getGrantedAuthoritativeMetadataAccessLevel(
+                        VersionContext::getDecoration(opCtx), fcvRegion->acquireFCVSnapshot());
+
                 auto shardRegistry = Grid::get(opCtx)->shardRegistry();
                 // Ensure that the shard information is up-to-date as possible to catch the case
                 // where a shard with the same name, but with a different host, has been
@@ -108,13 +114,14 @@ public:
                 shardRegistry->reload(opCtx);
                 const auto toShard = uassertStatusOKWithContext(
                     shardRegistry->getShard(opCtx, toShardId),
-                    "requested primary shard {} does not exist"_format(toShardId.toString()));
+                    fmt::format("requested primary shard {} does not exist", toShardId.toString()));
 
                 auto coordinatorDoc = [&] {
                     MovePrimaryCoordinatorDocument doc;
                     doc.setShardingDDLCoordinatorMetadata(
                         {{dbNss, DDLCoordinatorTypeEnum::kMovePrimary}});
                     doc.setToShardId(toShard->getId());
+                    doc.setAuthoritativeMetadataAccessLevel(authoritativeMetadataAccessLevel);
                     return doc.toBSON();
                 }();
 

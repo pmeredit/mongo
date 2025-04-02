@@ -37,8 +37,6 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/scopeguard.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kNetwork
@@ -49,7 +47,7 @@ SdamErrorHandler::ErrorActions SdamErrorHandler::computeErrorActions(const HostA
                                                                      const Status& status,
                                                                      HandshakeStage handshakeStage,
                                                                      bool isApplicationOperation,
-                                                                     BSONObj bson) noexcept {
+                                                                     BSONObj bson) {
     // Initial state: don't drop connections, no immediate check, and don't generate an error server
     // description.
     ErrorActions result;

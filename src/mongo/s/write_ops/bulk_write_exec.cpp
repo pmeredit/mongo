@@ -59,6 +59,7 @@
 #include "mongo/db/query/client_cursor/cursor_server_params_gen.h"
 #include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/query/write_ops/write_ops_parsers.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/session/logical_session_id_helpers.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/tenant_id.h"
@@ -67,8 +68,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/cannot_implicitly_create_collection_info.h"
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/chunk_version.h"
@@ -354,7 +353,7 @@ BatchedCommandRequest makeFLECommandRequest(OperationContext* opCtx,
 
         write_ops::UpdateCommandRequest updateCommand =
             bulk_write_common::makeUpdateCommandRequestFromUpdateOp(
-                firstOp.getUpdate(), clientRequest, /*currentOpIdx=*/0);
+                opCtx, firstOp.getUpdate(), clientRequest, /*currentOpIdx=*/0);
 
         return BatchedCommandRequest(updateCommand);
     } else {
@@ -624,7 +623,6 @@ void executeWriteWithoutShardKey(
             opCtx, targeter->getNS(), std::move(cmdObj));
 
         BulkWriteCommandReply bulkWriteResponse;
-        // TODO (SERVER-81261): Handle writeConcernErrors.
         WriteConcernErrorDetail wcError;
         Status responseStatus = swRes.getStatus();
         if (swRes.isOK()) {
@@ -745,6 +743,7 @@ BulkWriteReplyInfo execute(OperationContext* opCtx,
     int rounds = 0;
     int numCompletedOps = 0;
     int numRoundsWithoutProgress = 0;
+    Backoff backoff(Seconds(1), Seconds(2));
 
     while (!bulkWriteOp.isFinished()) {
         // Make sure we are not over our maximum memory allocation, if we are then mark the next
@@ -864,6 +863,9 @@ BulkWriteReplyInfo execute(OperationContext* opCtx,
                                << kMaxRoundsWithoutProgress << " rounds (" << numCompletedOps
                                << " ops completed in " << rounds << " rounds total)"});
             break;
+        }
+        if (numRoundsWithoutProgress > 0) {
+            sleepFor(backoff.nextSleep());
         }
     }
 
@@ -1060,7 +1062,9 @@ BulkWriteCommandRequest BulkWriteOp::buildBulkCommandRequest(
             // For tracked timeseries collections, only the bucket collections are tracked. This
             // sets the namespace to the namespace of the tracked bucket collection.
             nsInfoEntry.setNs(targeter->getNS());
-            nsInfoEntry.setIsTimeseriesNamespace(true);
+            if (!isRawDataOperation(_opCtx)) {
+                nsInfoEntry.setIsTimeseriesNamespace(true);
+            }
         }
 
         // If we are using the two phase write protocol introduced in PM-1632, we allow shard key

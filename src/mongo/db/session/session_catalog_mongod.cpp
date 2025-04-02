@@ -87,8 +87,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/concurrency/admission_context.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/decorable.h"
@@ -383,6 +381,7 @@ void createTransactionTable(OperationContext* opCtx) {
     // Because we only have one partial index on this collection, the performance benefit outweighs
     // that cost.
     if (feature_flags::gFeatureFlagClusteredConfigTransactions.isEnabled(
+            VersionContext::getDecoration(opCtx),
             serverGlobalParams.featureCompatibility.acquireFCVSnapshot()))
         options.clusteredIndex = clustered_util::makeDefaultClusteredIdIndex();
     auto storageInterface = repl::StorageInterface::get(opCtx);
@@ -537,7 +536,7 @@ void MongoDSessionCatalog::set(ServiceContext* service,
 
 BSONObj MongoDSessionCatalog::getConfigTxnPartialIndexSpec() {
     NewIndexSpec index;
-    index.setV(int(IndexDescriptor::kLatestIndexVersion));
+    index.setV(int(IndexConfig::kLatestIndexVersion));
     index.setKey(BSON(
         SessionTxnRecord::kParentSessionIdFieldName
         << 1
@@ -632,11 +631,11 @@ void MongoDSessionCatalog::observeDirectWriteToConfigTransactions(OperationConte
                                  SessionCatalog::KillToken sessionKillToken)
             : _ti(ti), _sessionKillToken(std::move(sessionKillToken)) {}
 
-        void commit(OperationContext* opCtx, boost::optional<Timestamp>) override {
+        void commit(OperationContext* opCtx, boost::optional<Timestamp>) noexcept override {
             rollback(opCtx);
         }
 
-        void rollback(OperationContext* opCtx) override {
+        void rollback(OperationContext* opCtx) noexcept override {
             std::vector<SessionCatalog::KillToken> sessionKillTokenVec;
             sessionKillTokenVec.emplace_back(std::move(_sessionKillToken));
             killSessionTokens(opCtx, _ti, std::move(sessionKillTokenVec));

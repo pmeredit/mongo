@@ -49,16 +49,14 @@
 #include "mongo/executor/task_executor_test_fixture.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/task_executor_proxy.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace {
 
 using namespace mongo;
 using namespace mongo::repl;
-using executor::RemoteCommandRequest;
 using executor::RemoteCommandResponse;
 
 class MockProgressManager {

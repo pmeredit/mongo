@@ -27,7 +27,6 @@
  *    it in the license file.
  */
 
-#include "mongo/logv2/log_severity.h"
 #include <boost/optional.hpp>
 #include <boost/smart_ptr.hpp>
 #include <fmt/format.h>
@@ -75,6 +74,7 @@
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/read_concern_level.h"
 #include "mongo/db/replica_set_endpoint_util.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/session/logical_session_id.h"
 #include "mongo/db/session/logical_session_id_gen.h"
 #include "mongo/db/stats/api_version_metrics.h"
@@ -84,11 +84,7 @@
 #include "mongo/db/vector_clock.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/logv2/log_severity_suppressor.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/check_allowed_op_query_cmd.h"
 #include "mongo/rpc/factory.h"
@@ -96,6 +92,7 @@
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/metadata.h"
 #include "mongo/rpc/metadata/client_metadata.h"
+#include "mongo/rpc/metadata/impersonated_client_session.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/rpc/protocol.h"
 #include "mongo/rpc/reply_builder_interface.h"
@@ -127,7 +124,6 @@
 
 namespace mongo {
 namespace {
-using namespace fmt::literals;
 
 MONGO_FAIL_POINT_DEFINE(hangBeforeCheckingMongosShutdownInterrupt);
 const auto kOperationTime = "operationTime"_sd;
@@ -210,8 +206,10 @@ void addContextForTransactionAbortingError(StringData txnIdAsString,
                                            StmtId latestStmtId,
                                            Status& status,
                                            StringData reason) {
-    status.addContext("Transaction {} was aborted on statement {} due to: {}"_format(
-        txnIdAsString, latestStmtId, reason));
+    status.addContext(fmt::format("Transaction {} was aborted on statement {} due to: {}",
+                                  txnIdAsString,
+                                  latestStmtId,
+                                  reason));
 }
 
 // Type that executes the invocation against the database.
@@ -253,7 +251,7 @@ void ExecCommandClient::_prologue() {
             "Can't use 'local' database through mongos",
             !dbname.isLocalDB());
     uassert(ErrorCodes::InvalidNamespace,
-            "Invalid database name: '{}'"_format(dbname.toStringForErrorMsg()),
+            fmt::format("Invalid database name: '{}'", dbname.toStringForErrorMsg()),
             DatabaseName::isValid(dbname, DatabaseName::DollarInDbNameBehavior::Allow));
 
     try {
@@ -281,7 +279,7 @@ void ExecCommandClient::_epilogue() {
         failCommand.executeIf(
             [&](const BSONObj& data) {
                 rpc::RewriteStateChangeErrors::onActiveFailCommand(opCtx, data);
-                result->getBodyBuilder().append(data["writeConcernError"]);
+                result->getBodyBuilder().append(data[kWriteConcernErrorFieldName]);
                 if (data.hasField(kErrorLabelsFieldName) &&
                     data[kErrorLabelsFieldName].type() == Array) {
                     auto labels = data.getObjectField(kErrorLabelsFieldName).getOwned();
@@ -293,7 +291,7 @@ void ExecCommandClient::_epilogue() {
             [&](const BSONObj& data) {
                 return CommandHelpers::shouldActivateFailCommandFailPoint(
                            data, _invocation, opCtx->getClient()) &&
-                    data.hasField("writeConcernError");
+                    data.hasField(kWriteConcernErrorFieldName);
             });
     }
 
@@ -376,6 +374,7 @@ private:
     const StringData _commandName;
 
     std::shared_ptr<CommandInvocation> _invocation;
+    boost::optional<rpc::ImpersonatedClientSessionGuard> _clientSessionGuard;
     boost::optional<NamespaceString> _ns;
     OperationSessionInfoFromClient _osi;
     boost::optional<WriteConcernOptions> _wc;
@@ -478,7 +477,7 @@ void ParseAndRunCommand::_parseCommand() {
 
     auto const command = CommandHelpers::findCommand(opCtx, _commandName);
     if (!command) {
-        const std::string errorMsg = "no such cmd: {}"_format(_commandName);
+        const std::string errorMsg = fmt::format("no such cmd: {}", _commandName);
         auto builder = replyBuilder->getBodyBuilder();
         CommandHelpers::appendCommandStatusNoThrow(builder,
                                                    {ErrorCodes::CommandNotFound, errorMsg});
@@ -524,7 +523,8 @@ void ParseAndRunCommand::_parseCommand() {
         APIParameters::get(opCtx) = APIParameters::fromClient(std::move(apiParams));
     }
 
-    rpc::readRequestMetadata(opCtx, _invocation->getGenericArguments(), command->requiresAuth());
+    rpc::readRequestMetadata(
+        opCtx, _invocation->getGenericArguments(), command->requiresAuth(), _clientSessionGuard);
 
     CommandInvocation::set(opCtx, _invocation);
 
@@ -591,7 +591,7 @@ void ParseAndRunCommand::_parseCommand() {
         auto result = _rec->getReplyBuilder();
         auto body = result->getBodyBuilder();
         body.append(CommandHelpers::kHelpFieldName,
-                    "help for: {} {}"_format(c->getName(), c->help()));
+                    fmt::format("help for: {} {}", c->getName(), c->help()));
         CommandHelpers::appendSimpleCommandStatus(body, true, "");
         iassert(Status(ErrorCodes::SkipCommandExecution, "Already served help command"));
     }
@@ -648,7 +648,7 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
         ClientMetadata::setFromMetadata(opCtx->getClient(), metaElem, false);
     }
 
-    enforceRequireAPIVersion(opCtx, command);
+    enforceRequireAPIVersion(opCtx, command, request);
 
     if (auto clientMetadata = ClientMetadata::get(opCtx->getClient())) {
         auto& apiParams = APIParameters::get(opCtx);
@@ -717,11 +717,11 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
 
         if (!clientSuppliedWriteConcern) {
             if (isInternalClientValue) {
-                uassert(
-                    5569900,
-                    "received command without explicit writeConcern on an internalClient connection {}"_format(
-                        redact(request.body.toString())),
-                    genericArgs.getWriteConcern());
+                uassert(5569900,
+                        fmt::format("received command without explicit writeConcern on an "
+                                    "internalClient connection {}",
+                                    redact(request.body.toString())),
+                        genericArgs.getWriteConcern());
             } else {
                 // This command is not from a DBDirectClient or internal client, and supports WC,
                 // but wasn't given one - so apply the default, if there is one.
@@ -760,8 +760,8 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
 
         // ClientSupplied is the only provenance that clients are allowed to pass to mongos.
         if (provenance.hasSource() && !provenance.isClientSupplied()) {
-            const auto errorMsg = "writeConcern provenance must be unset or \"{}\""_format(
-                ReadWriteConcernProvenance::kClientSupplied);
+            const auto errorMsg = fmt::format("writeConcern provenance must be unset or \"{}\"",
+                                              ReadWriteConcernProvenance::kClientSupplied);
             return appendStatusToReplyAndSkipCommandExecution(
                 {ErrorCodes::InvalidOptions, errorMsg});
         }
@@ -782,8 +782,8 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
 
         // Ensure that the WC being set on the opCtx has provenance.
         invariant(_parc->_wc->getProvenance().hasSource(),
-                  "unexpected unset provenance on writeConcern: {}"_format(
-                      _parc->_wc->toBSON().toString()));
+                  fmt::format("unexpected unset provenance on writeConcern: {}",
+                              _parc->_wc->toBSON().toString()));
 
         opCtx->setWriteConcern(*_parc->_wc);
     }
@@ -840,8 +840,8 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
 
     // ClientSupplied is the only provenance that clients are allowed to pass to mongos.
     if (provenance.hasSource() && !provenance.isClientSupplied()) {
-        const auto errorMsg = "readConcern provenance must be unset or \"{}\""_format(
-            ReadWriteConcernProvenance::kClientSupplied);
+        const auto errorMsg = fmt::format("readConcern provenance must be unset or \"{}\"",
+                                          ReadWriteConcernProvenance::kClientSupplied);
         return appendStatusToReplyAndSkipCommandExecution({ErrorCodes::InvalidOptions, errorMsg});
     }
 
@@ -861,8 +861,8 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
 
     // Ensure that the RC on the opCtx has provenance.
     invariant(readConcernArgs.getProvenance().hasSource(),
-              "unexpected unset provenance on readConcern: {}"_format(
-                  readConcernArgs.toBSONInner().toString()));
+              fmt::format("unexpected unset provenance on readConcern: {}",
+                          readConcernArgs.toBSONInner().toString()));
 
     // If we are starting a transaction, we only need to check whether the read concern is
     // appropriate for running a transaction. There is no need to check whether the specific command
@@ -878,8 +878,8 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
         }
         if (readConcernArgs.getArgsOpTime()) {
             const std::string errorMsg =
-                "The readConcern cannot specify '{}' in a transaction"_format(
-                    repl::ReadConcernArgs::kAfterOpTimeFieldName);
+                fmt::format("The readConcern cannot specify '{}' in a transaction",
+                            repl::ReadConcernArgs::kAfterOpTimeFieldName);
             return appendStatusToReplyAndSkipCommandExecution(
                 {ErrorCodes::InvalidOptions, errorMsg});
         }
@@ -895,8 +895,9 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
     // resources.
     if (MONGO_unlikely(!TransactionRouter::get(opCtx) && readConcernArgs.hasLevel() &&
                        !readConcernSupport.readConcernSupport.isOK())) {
-        const std::string errorMsg = "Command {} does not support {}"_format(
-            invocation->definition()->getName(), readConcernArgs.toString());
+        const std::string errorMsg = fmt::format("Command {} does not support {}",
+                                                 invocation->definition()->getName(),
+                                                 readConcernArgs.toString());
         return appendStatusToReplyAndSkipCommandExecution(
             readConcernSupport.readConcernSupport.withContext(errorMsg));
     }
@@ -920,6 +921,14 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
 
     if (opCtx->routedByReplicaSetEndpoint()) {
         replica_set_endpoint::checkIfCanRunCommand(opCtx, request);
+    }
+
+    if (genericArgs.getRawData() && !invocation->supportsRawData()) {
+        return {ErrorCodes::InvalidOptions, "Command does not support the rawData option"};
+    }
+
+    if (genericArgs.getRawData() && !gFeatureFlagRawDataCrudOperations.isEnabled()) {
+        return {ErrorCodes::InvalidOptions, "rawData is not enabled"};
     }
 
     return Status::OK();
@@ -1260,7 +1269,7 @@ void ClientCommand::_handleException(Status status) {
     BSONObjBuilder wceBuilder;
     {
         auto bob = reply->getBodyBuilder().asTempObj();
-        if (auto f = bob.getField("writeConcernError"_sd); !f.eoo()) {
+        if (auto f = bob.getField(kWriteConcernErrorFieldName); !f.eoo()) {
             wceBuilder.append(f);
             wceBuilder.done();
         }

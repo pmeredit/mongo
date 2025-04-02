@@ -24,6 +24,7 @@
  * ]
  */
 
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {ShardedMagicRestoreTest} from "jstests/libs/sharded_magic_restore_test.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
 import {isConfigCommitted} from "jstests/replsets/rslib.js";
@@ -62,10 +63,12 @@ function runTest(insertHigherTermOplogEntry) {
     assert(!shardEntries[2].draining);
 
     const dbName = "db";
+    const dbName2 = "db2";
     const coll = "coll";
     const fullNs = dbName + "." + coll;
     jsTestLog("Setting up sharded collection " + fullNs);
     assert(st.adminCommand({enableSharding: dbName, primaryShard: st.shard0.shardName}));
+    assert(st.adminCommand({enableSharding: dbName2, primaryShard: st.shard1.shardName}));
     assert(st.adminCommand({shardCollection: fullNs, key: {numForPartition: 1}}));
 
     // Split the collection into 2 chunks: [MinKey, 0), [0, MaxKey).
@@ -192,9 +195,9 @@ function runTest(insertHigherTermOplogEntry) {
         });
 
         let entries = node.getDB("config").getCollection("databases").find().toArray();
-        assert.eq(entries.length, 1);
+        assert.eq(entries.length, 2);
         for (const entry of entries) {
-            assert.eq(entry["primary"], jsTestName() + "-dst-rs0");
+            assert.includes(entry["primary"], jsTestName() + "-dst");
         }
 
         entries = node.getDB("config").getCollection("shards").find().toArray();
@@ -244,6 +247,16 @@ function runTest(insertHigherTermOplogEntry) {
                 opFilter: "i",
                 expectedNumDocsSnapshot: 4,
             });
+
+            // TODO (SERVER-98118): make unconditional once 9.0 becomes last LTS.
+            if (FeatureFlagUtil.isPresentAndEnabled(node, "ShardAuthoritativeDbMetadataDDL")) {
+                let entries =
+                    node.getDB("config").getCollection("shard.catalog.databases").find().toArray();
+                assert.eq(entries.length, 1);
+                for (const entry of entries) {
+                    assert.includes(entry["primary"], jsTestName() + "-dst");
+                }
+            }
         });
     });
 
@@ -263,7 +276,8 @@ function runTest(insertHigherTermOplogEntry) {
         "chunks",     // Renaming shards affects the "shard" field of documents in that collection
         "cache.chunks.config.system.sessions",
         `cache.chunks.${dbName}.${coll}`,
-        "placementHistory"
+        "placementHistory",
+        "shard.catalog.databases",  // Renaming shards affects the "primary" field
     ];
     shardingRestoreTest.checkPostRestoreDbHashes(excludedCollections);
 

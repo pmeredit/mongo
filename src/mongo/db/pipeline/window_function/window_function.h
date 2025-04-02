@@ -31,10 +31,8 @@
 
 #include <boost/optional.hpp>
 
-#include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/expression.h"
-#include "mongo/db/pipeline/expression_from_accumulator_quantile.h"
-#include "mongo/util/memory_usage_tracker.h"
+#include "mongo/db/memory_tracking/memory_usage_tracker.h"
+#include "mongo/db/pipeline/expression_context.h"
 
 namespace mongo {
 

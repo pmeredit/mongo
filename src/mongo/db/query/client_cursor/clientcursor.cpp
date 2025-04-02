@@ -62,14 +62,12 @@
 namespace mongo {
 namespace {
 
-using namespace fmt::literals;
-
 auto& gCursorStats = *new CursorStats{};
 }  // namespace
 
 Counter64& CursorStats::_makeStat(StringData name) {
     static constexpr auto prefix = "cursor"_sd;
-    return *MetricBuilder<Counter64>("{}.{}"_format(prefix, name))
+    return *MetricBuilder<Counter64>(fmt::format("{}.{}", prefix, name))
                 .setRole(ClusterRole::ShardServer);
 }
 
@@ -212,6 +210,7 @@ GenericCursor ClientCursor::toGenericCursor() const {
     gc.setNoCursorTimeout(isNoTimeout());
     gc.setOriginatingCommand(getOriginatingCommandObj());
     gc.setLsid(getSessionId());
+    gc.setTxnNumber(_txnNumber);
     gc.setLastAccessDate(getLastUseDate());
     gc.setCreatedDate(getCreatedDate());
     gc.setNBatchesReturned(getNBatches());
@@ -354,7 +353,9 @@ void ClientCursorPin::unstashResourcesOntoOperationContext() {
 void ClientCursorPin::stashResourcesFromOperationContext() {
     // Move the recovery unit from the operation context onto the cursor and create a new RU for
     // the current OperationContext.
-    _cursor->stashRecoveryUnit(shard_role_details::releaseAndReplaceRecoveryUnit(_opCtx));
+    ClientLock clientLock(_opCtx->getClient());
+    _cursor->stashRecoveryUnit(
+        shard_role_details::releaseAndReplaceRecoveryUnit(_opCtx, clientLock));
 }
 
 namespace {

@@ -29,9 +29,7 @@
 
 #include "mongo/db/catalog/storage_engine_collection_options_flags_parser.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -44,8 +42,7 @@ static BSONObj addExtraFields(const BSONObj& storageEngineOptions) {
     auto wtObj = storageEngineOptions[kWiredTigerEngineName].Obj();
     return storageEngineOptions.addFields(BSON("dummy1"
                                                << "value1" << kWiredTigerEngineName
-                                               << wtObj.addFields(BSON("dummy2"
-                                                                       << "value2"))));
+                                               << wtObj.addFields(BSON("dummy2" << "value2"))));
 }
 
 TEST(StorageEngineFlagsParserTest, GetEmptyOptionalWhenNoWiredTigerConfigString) {

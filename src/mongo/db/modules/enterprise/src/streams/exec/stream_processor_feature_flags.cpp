@@ -3,11 +3,17 @@
  */
 
 #include "streams/exec/stream_processor_feature_flags.h"
+
 #include "mongo/bson/bsontypes.h"
-#include "mongo/util/str.h"
+#include "mongo/logv2/log.h"
 #include "streams/exec/feature_flag.h"
+#include "streams/exec/log_util.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
 namespace streams {
+
+using namespace mongo::literals;
 
 StreamProcessorFeatureFlags::StreamProcessorFeatureFlags(
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlags,
@@ -22,17 +28,23 @@ void StreamProcessorFeatureFlags::updateFeatureFlags(StreamProcessorFeatureFlags
 }
 
 StreamProcessorFeatureFlags StreamProcessorFeatureFlags::parseFeatureFlags(
-    const mongo::BSONObj& bsonObj) {
+    const mongo::BSONObj& bsonObj, const LoggingContext& context) {
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlags;
     mongo::Document doc(bsonObj);
     auto it = doc.fieldIterator();
     while (it.more()) {
         auto fld = it.next();
-        uassert(9273402,
-                mongo::str::stream()
-                    << "feature flag " << fld.first.toString() << " type mismatched",
-                FeatureFlags::validateFeatureFlag(fld.first.toString(), fld.second));
-        featureFlags[fld.first.toString()] = fld.second;
+        const auto& name = fld.first.toString();
+        const auto& value = fld.second;
+        if (FeatureFlags::validateFeatureFlag(name, value)) {
+            featureFlags[name] = value;
+        } else {
+            LOGV2_WARNING(10262905,
+                          "Invalid feature flag",
+                          "context"_attr = context,
+                          "flagName"_attr = name,
+                          "flagValue"_attr = value.toString());
+        }
     }
     StreamProcessorFeatureFlags spff{featureFlags,
                                      std::chrono::time_point<std::chrono::system_clock>::min()};
@@ -97,10 +109,51 @@ bool getOldStreamMetaEnabled(const boost::optional<StreamProcessorFeatureFlags>&
     return *featureFlags->getFeatureFlagValue(FeatureFlags::kOldStreamMeta).getBool();
 }
 
+bool getPerTargetStatsEnabled(const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    return *featureFlags->getFeatureFlagValue(FeatureFlags::kPerTargetStats).getBool();
+}
+
 bool enableMetadataRefreshInterval(
     const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
     return *featureFlags->getFeatureFlagValue(FeatureFlags::kEnableMetadataRefreshInterval)
                 .getBool();
 }
+
+int64_t getHttpsRateLimitPerSec(boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(9503701, "Feature flags should be set", featureFlags);
+    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kHttpsRateLimitPerSecond).getInt();
+    return *val;
+}
+
+int64_t getExternalFunctionRateLimitPerSec(
+    boost::optional<StreamProcessorFeatureFlags> featureFlags) {
+    tassert(9929408, "Feature flags should be set", featureFlags);
+    auto val = featureFlags->getFeatureFlagValue(FeatureFlags::kExternalFunctionRateLimitPerSecond)
+                   .getInt();
+    return *val;
+}
+
+boost::optional<int64_t> getKafkaMessageMaxBytes(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    auto val =
+        featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitMessageMaxBytes).getValue();
+    if (val.missing()) {
+        return boost::none;
+    }
+
+    return val.coerceToLong();
+}
+
+boost::optional<mongo::Milliseconds> getKafkaEmitMessageTimeoutMillis(
+    const boost::optional<StreamProcessorFeatureFlags>& featureFlags) {
+    auto val =
+        featureFlags->getFeatureFlagValue(FeatureFlags::kKafkaEmitMessageTimeoutMillis).getValue();
+    if (val.missing()) {
+        return boost::none;
+    }
+
+    return mongo::Milliseconds{val.coerceToLong()};
+}
+
 
 }  // namespace streams

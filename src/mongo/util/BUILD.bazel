@@ -1,11 +1,17 @@
-load("//bazel:mongo_src_rules.bzl", "MONGO_GLOBAL_COPTS", "MONGO_GLOBAL_DEFINES", "MONGO_GLOBAL_LINKFLAGS", "idl_generator", "mongo_cc_benchmark", "mongo_cc_binary", "mongo_cc_library", "mongo_cc_unit_test")
+load("//bazel/toolchains:mongo_defines.bzl", "MONGO_GLOBAL_DEFINES")
+load("//bazel:mongo_src_rules.bzl", "MONGO_GLOBAL_COPTS", "MONGO_GLOBAL_LINKFLAGS", "idl_generator", "mongo_cc_benchmark", "mongo_cc_binary", "mongo_cc_library", "mongo_cc_unit_test")
 load("//bazel/config:generate_config_header.bzl", "generate_config_header")
 load("//bazel/config:render_template.bzl", "render_template")
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(
-    glob(["*.h"]) + glob(["*.cpp"]),
+    glob([
+        "*.h",
+        "*.cpp",
+        "*.py",
+        "*.in",
+    ]),
 )
 
 # Headers designed to be used without source code. Split these out
@@ -53,18 +59,6 @@ mongo_cc_library(
 idl_generator(
     name = "fail_point_server_parameter_gen",
     src = "fail_point_server_parameter.idl",
-)
-
-mongo_cc_library(
-    name = "fail_point",
-    srcs = [
-        "fail_point.cpp",
-        "fail_point_server_parameter_gen",
-    ],
-    deps = [
-        "//src/mongo/bson/util:bson_extract",
-        "//src/mongo/db:server_base",
-    ],
 )
 
 idl_generator(
@@ -602,7 +596,6 @@ mongo_cc_library(
     srcs = [
         "processinfo.cpp",
         "processinfo.h",
-        "//src/mongo/db:jsobj.h",
     ] + select({
         "@platforms//os:{}".format(os): ["processinfo_{}.cpp".format(os)]
         for os in [
@@ -638,6 +631,25 @@ mongo_cc_library(
     }),
     deps = [
         "//src/mongo:base",
+    ],
+)
+
+idl_generator(
+    name = "assert_util_parameters_gen",
+    src = "assert_util_parameters.idl",
+)
+
+mongo_cc_library(
+    name = "assert_util_params",
+    srcs = [
+        "assert_util_parameters.cpp",
+        ":assert_util_parameters_gen",
+    ],
+    hdrs = [
+        "assert_util_parameters.h",
+    ],
+    deps = [
+        "//src/mongo/db:server_base",
     ],
 )
 
@@ -799,7 +811,7 @@ mongo_cc_unit_test(
     name = "concurrent_shared_values_map_test",
     srcs = ["concurrent_shared_values_map_test.cpp"],
     tags = [
-        "mongo_unittest_fourth_group",
+        "mongo_unittest_eighth_group",
         "server-programmability",
     ],
     deps = ["//src/mongo:base"],
@@ -810,7 +822,7 @@ mongo_cc_unit_test(
     srcs = [
         "tracing_support_test.cpp",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_seventh_group"],
     deps = [
         ":tick_source_mock",
         "//src/mongo/util:clock_source_mock",
@@ -824,7 +836,7 @@ mongo_cc_unit_test(
         "thread_safety_context_test.cpp",
     ],
     tags = [
-        "mongo_unittest_fourth_group",
+        "mongo_unittest_eighth_group",
         "server-programmability",
     ],
     deps = [
@@ -862,7 +874,7 @@ mongo_cc_unit_test(
         "versioned_value_test.cpp",
     ],
     tags = [
-        "mongo_unittest_first_group",
+        "mongo_unittest_second_group",
         "server-programmability",
     ],
     deps = [
@@ -875,7 +887,7 @@ mongo_cc_unit_test(
     srcs = [
         "executor_stats_test.cpp",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         "//src/mongo/util:clock_source_mock",
         "//src/mongo/util:executor_stats",
@@ -895,7 +907,7 @@ mongo_cc_unit_test(
         "//bazel/config:tcmalloc_gperf_enabled": ["MONGO_HAVE_GPERFTOOLS_SIZE_CLASS_STATS"],
         "//conditions:default": [],
     }),
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_third_group"],
     target_compatible_with = select({
         "//bazel/config:tcmalloc_gperf_enabled": [],
         "//bazel/config:tcmalloc_google_enabled": [],
@@ -921,7 +933,6 @@ mongo_cc_unit_test(
         "base64_test.cpp",
         "cancellation_test.cpp",
         "clock_source_mock_test.cpp",
-        "concurrent_memory_aggregator_test.cpp",
         "container_size_helper_test.cpp",
         "ctype_test.cpp",
         "decimal_counter_test.cpp",
@@ -961,7 +972,6 @@ mongo_cc_unit_test(
         "log_with_sampling_test.cpp",
         "lru_cache_test.cpp",
         "md5_test.cpp",
-        "memory_usage_tracker_test.cpp",
         "optional_util_test.cpp",
         "out_of_line_executor_test.cpp",
         "overloaded_visitor_test.cpp",
@@ -999,7 +1009,7 @@ mongo_cc_unit_test(
     }),
     tags = [
         "compile_requires_large_memory_gcc_fission",
-        "mongo_unittest_second_group",
+        "mongo_unittest_fourth_group",
         "server-programmability",
         # Time functions seem to be incompatible with the sandbox
         "code_coverage_quarantine",
@@ -1013,7 +1023,6 @@ mongo_cc_unit_test(
         ":clock_source_mock",
         ":clock_sources",
         ":dns_query",
-        ":fail_point",
         ":future_util",
         ":icu",
         ":pcre_util",
@@ -1099,7 +1108,7 @@ mongo_cc_benchmark(
         "fail_point_bm.cpp",
     ],
     deps = [
-        ":fail_point",
+        "//src/mongo/db:server_base",
     ],
 )
 
@@ -1187,7 +1196,7 @@ mongo_cc_unit_test(
         "ntservice_test.cpp",
         "perfctr_collect_test.cpp",
     ],
-    tags = ["mongo_unittest_third_group"],
+    tags = ["mongo_unittest_fifth_group"],
     target_compatible_with = select({
         "@platforms//os:windows": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -1215,7 +1224,7 @@ mongo_cc_unit_test(
         "stacktrace_libunwind_test_functions.h",
     ],
     tags = [
-        "mongo_unittest_second_group",
+        "mongo_unittest_fourth_group",
         "server-programmability",
     ],
     target_compatible_with = select({
@@ -1231,12 +1240,12 @@ mongo_cc_unit_test(
         "stacktrace_test.cpp",
     ],
     # deps=stacktrace_test_LIBDEPS,
-    # From SCons, unclear if necessasry:
+    # From SCons, unclear if necessary:
     # EXPORT_SYMBOLS=[
     #     "mongo_stacktrace_test_detail_testFunctionWithLinkage",
     # ],
     tags = [
-        "mongo_unittest_fourth_group",
+        "mongo_unittest_eighth_group",
         "server-programmability",
     ],
     deps = ["stacktrace_test_helpers"],

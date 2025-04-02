@@ -70,7 +70,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/catalog/type_namespace_placement_gen.h"
@@ -96,11 +95,6 @@
 
 
 namespace mongo {
-namespace {
-
-using namespace fmt::literals;
-
-}  // namespace
 
 DatabaseType ShardingCatalogManager::createDatabase(
     OperationContext* opCtx,
@@ -234,12 +228,12 @@ void ShardingCatalogManager::commitMovePrimary(OperationContext* opCtx,
                                 BSON(ShardType::name << toShardId));
     }();
     uassert(ErrorCodes::ShardNotFound,
-            "Requested primary shard {} does not exist"_format(toShardId.toString()),
+            fmt::format("Requested primary shard {} does not exist", toShardId.toString()),
             !toShardDoc.isEmpty());
 
     const auto toShardEntry = uassertStatusOK(ShardType::fromBSON(toShardDoc));
     uassert(ErrorCodes::ShardNotFound,
-            "Requested primary shard {} is draining"_format(toShardId.toString()),
+            fmt::format("Requested primary shard {} is draining", toShardId.toString()),
             !toShardEntry.getDraining());
 
     const auto currentTime = VectorClock::get(opCtx)->getTime();
@@ -359,22 +353,6 @@ DatabaseType ShardingCatalogManager::commitCreateDatabase(OperationContext* opCt
         _localConfigShard,
         _localCatalogClient.get());
 
-    // The creation of a new database is described by the notification of multiple events, following
-    // a 2-phase protocol:
-    // - a "prepare" notification prior to the write into config.databases will ensure that
-    // change streams will start collecting events on the new database before the first user
-    // write on one of its future collection occurs
-    // - a "commitSuccessful" notification after completing the write into config.databases
-    // will allow change streams to stop collecting events on the namespace created from
-    // shards != primaryShard.
-    const auto allShards = Grid::get(opCtx)->shardRegistry()->getAllShardIds(opCtx);
-    {
-        DatabasesAdded prepareCommitEvent(
-            {dbName}, false /*areImported*/, CommitPhaseEnum::kPrepare);
-        prepareCommitEvent.setPrimaryShard(primaryShard);
-        uassertStatusOK(_notifyClusterOnNewDatabases(opCtx, prepareCommitEvent, allShards));
-    }
-
     DatabaseType db = [&]() {
         // Hold _kShardMembershipLock until the entire commit finishes to serialize with removeShard
         // in order to guarantee that the proposed dbPrimary shard continues to exist (and the
@@ -441,17 +419,6 @@ DatabaseType ShardingCatalogManager::commitCreateDatabase(OperationContext* opCt
 
         return db;
     }();
-
-    DatabasesAdded commitCompletedEvent(
-        {dbName}, false /*areImported*/, CommitPhaseEnum::kSuccessful);
-    const auto notificationOutcome =
-        _notifyClusterOnNewDatabases(opCtx, commitCompletedEvent, allShards);
-    if (!notificationOutcome.isOK()) {
-        LOGV2_WARNING(7175500,
-                      "Unable to send out notification of successful createDatabase",
-                      "db"_attr = db,
-                      "err"_attr = notificationOutcome);
-    }
 
     ShardingLogging::get(opCtx)->logChange(
         opCtx,

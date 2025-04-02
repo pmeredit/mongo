@@ -33,7 +33,6 @@ enum class WatermarkStatus { kActive, kIdle };
 struct Context;
 
 // Encapsulates a document read from Kafka and all the metadata for it.
-// TODO(SERVER-92412): Reduce this struct's size.
 struct KafkaSourceDocument {
     // Exactly one of following 2 fields is ever populated.
     // Contains the BSON document when the input event is successfully parsed.
@@ -52,7 +51,7 @@ struct KafkaSourceDocument {
     int64_t messageSizeBytes{0};
 
     // The log append time of this document.
-    boost::optional<int64_t> logAppendTimeMs{0};
+    int64_t logAppendTimeMs{0};
 
     // The key of the Kafka message.
     boost::optional<std::vector<uint8_t>> key;
@@ -101,6 +100,10 @@ struct StreamDocument {
     // the document above.
     int64_t maxDocTimestampMs{-1};
 
+    // The wall time the event was written to the source.
+    // Not maintained across a $group/$sort inside a window.
+    int64_t sourceTimestampMs{-1};
+
     // only set for session windows
     boost::optional<int32_t> windowId{-1};
 
@@ -115,7 +118,7 @@ struct StreamDocument {
 // Encapsulates the data we want to send from an operator to the next operator.
 struct StreamDataMsg {
     std::vector<StreamDocument> docs;
-    boost::optional<mongo::Timer> creationTimer;
+    mongo::Timer creationTimer;
 
     int64_t getByteSize() const {
         int64_t out{0};

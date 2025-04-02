@@ -42,7 +42,6 @@
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/rpc/topology_version_gen.h"
 #include "mongo/s/session_catalog_router.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/log_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
@@ -76,8 +75,7 @@ public:
     }
 
     BSONObj toBSON() const final {
-        return BSON("retryPolicyType"
-                    << "TestRetryPolicy");
+        return BSON("retryPolicyType" << "TestRetryPolicy");
     }
 
     void setMaxNumRetries(int maxRetries) {

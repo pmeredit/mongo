@@ -35,12 +35,14 @@ feature_flags:
         cpp_varname: gFeatureFlagSecurityToken
         default: false
         shouldBeFCVGated: true
+        fcv_context_unaware: true
     featureFlagAllowAdditionalParticipants:
         description: "Enable adding additional participants to active transaction"
         cpp_varname: gFeatureFlagAllowAdditionalParticipants
         default: true
         version: 8.0
         shouldBeFCVGated: true
+        fcv_context_unaware: true
     featureFlagBulkWriteCommand:
         description: "Support for bulkWrite command and one-shot transactions"
         cpp_varname: gFeatureFlagBulkWriteCommand
@@ -68,6 +70,7 @@ feature_flags:
         cpp_varname: feature_flags::gFeatureFlagEndOfTransactionChangeEvent
         default: false
         shouldBeFCVGated: true
+        fcv_context_unaware: true
     featureFlagAllMongodsAreSharded:
         description: "Feature flag to enable and autobootstrap sharding for all mongods"
         cpp_varname: gFeatureFlagAllMongodsAreSharded
@@ -80,6 +83,7 @@ feature_flags:
         default: true
         version: 7.2
         shouldBeFCVGated: true
+        fcv_context_unaware: true
     featureFlagRearchitectUserAcquisition:
         description: "Enable new flow for authentication and authorization"
         cpp_varname: gFeatureFlagRearchitectUserAcquisition
@@ -100,13 +104,13 @@ feature_flags:
         cpp_varname: gFeatureFlagCompactOptions
         default: true
         shouldBeFCVGated: false
-    # TODO SERVER-89999 remove once the version becomes last LTS
-    featureFlagDisallowBucketCollectionWithoutTimeseriesOptions:
-        description: "Disallow creation of timeseries bucket collection without timeseries options"
-        cpp_varname: gFeatureFlagDisallowBucketCollectionWithoutTimeseriesOptions
+    # TODO(SERVER-101423): Remove once 9.0 becomes last LTS.
+    featureFlagRemoveLegacyTimeseriesBucketingParametersHaveChanged:
+        description: "Remove the legacy 'md.timeseriesBucketingParametersHaveChanged' flag from the collection metadata"
+        cpp_varname: feature_flags::gRemoveLegacyTimeseriesBucketingParametersHaveChanged
         default: true
+        version: 8.2
         shouldBeFCVGated: true
-        version: 8.0
     featureFlagPrefetch:
         description: "Feature flag to make pre-fetching available"
         cpp_varname: gFeatureFlagPrefetch
@@ -119,23 +123,44 @@ feature_flags:
         version: 8.1
         shouldBeFCVGated: true
     featureFlagDistinguishMetadataInconsistencyFromConflictingOperation:
-         description: "Feature flag to distinguish ChunkMetadataInconsistency from ConflictingOperationInProgress error"
-         cpp_varname: gDistinguishMetadataInconsistencyFromConflictingOperation
-         default: true
-         version: 8.1
-         shouldBeFCVGated: true
+        description: "Feature flag to distinguish ChunkMetadataInconsistency from ConflictingOperationInProgress error"
+        cpp_varname: gDistinguishMetadataInconsistencyFromConflictingOperation
+        default: true
+        version: 8.1
+        shouldBeFCVGated: true
     featureFlagQETextSearchPreview:
-         description: "Queryable Encryption text search"
-         cpp_varname: gFeatureFlagQETextSearchPreview
-         default: false
-         shouldBeFCVGated: true
-    featureFlagExposeClientIpInAuditLogs:
-         description: "Expose client IP in audit logs for load-balanced connections"
-         cpp_varname: gFeatureFlagExposeClientIpInAuditLogs
-         default: false
-         shouldBeFCVGated: true
-    featureFlagMongogProxyProcolSupport:
-        description: "Enables non-OCS proxy protocol connections on Mongos and Mongod"
-        cpp_varname: gFeatureFlagMongogProxyProcolSupport
+        description: "Queryable Encryption text search"
+        cpp_varname: gFeatureFlagQETextSearchPreview
         default: false
         shouldBeFCVGated: true
+        fcv_context_unaware: true
+    featureFlagExposeClientIpInAuditLogs:
+        description: "Expose client IP in audit logs for load-balanced connections"
+        cpp_varname: gFeatureFlagExposeClientIpInAuditLogs
+        default: true
+        version: 8.1
+        shouldBeFCVGated: true
+        fcv_context_unaware: true
+    featureFlagCreateViewlessTimeseriesCollections:
+        description: "Enables the creation of viewless timeseries collections.
+        Viewless timeseries collections have only one associated namespace,
+        instead of a view namespace and a system.buckets namespace."
+        cpp_varname: gFeatureFlagCreateViewlessTimeseriesCollections
+        default: false
+        shouldBeFCVGated: true
+    featureFlagMongodProxyProtocolSupport:
+        description: "Enables non-OCS proxy protocol connections on Mongos and Mongod"
+        cpp_varname: gFeatureFlagMongodProxyProtocolSupport
+        default: true
+        version: 8.1
+        shouldBeFCVGated: true
+    featureFlagRawDataCrudOperations:
+        description: "Feature flag for rawData CRUD operations"
+        cpp_varname: gFeatureFlagRawDataCrudOperations
+        default: false
+        shouldBeFCVGated: false
+    featureFlagIntentRegistration:
+        description: "Enables intent registration in place of RSTL acquisitions"
+        cpp_varname: gFeatureFlagIntentRegistration
+        default: false 
+        shouldBeFCVGated: false

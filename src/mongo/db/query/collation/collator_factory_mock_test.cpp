@@ -33,8 +33,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/query/collation/collator_factory_mock.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace {
 
@@ -42,8 +41,7 @@ using namespace mongo;
 
 TEST(CollatorFactoryMockTest, CollatorFactoryMockReturnsNullCollatorIfLocaleSimple) {
     CollatorFactoryMock factory;
-    auto collator = factory.makeFromBSON(BSON("locale"
-                                              << "simple"));
+    auto collator = factory.makeFromBSON(BSON("locale" << "simple"));
     ASSERT_OK(collator.getStatus());
     ASSERT_FALSE(collator.getValue());
 }

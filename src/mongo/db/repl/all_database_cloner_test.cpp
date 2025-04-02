@@ -48,10 +48,8 @@
 #include "mongo/dbtests/mock/mock_remote_db_server.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/duration.h"
@@ -92,20 +90,15 @@ TEST_F(AllDatabaseClonerTest, ListDatabaseStageSortsAdminCorrectlyGlobalAdminBef
     // global Admin before tenant secific admins.
     _mockServer->setCommandReply("listDatabasesForAllTenants",
                                  BSON("ok" << 1 << "databases"
-                                           << BSON_ARRAY(BSON("name"
-                                                              << "aab"
-                                                              << "tenantId" << btid)
-                                                         << BSON("name"
-                                                                 << "a"
-                                                                 << "tenantId" << atid)
-                                                         << BSON("name"
-                                                                 << "admin"
-                                                                 << "tenantId" << atid)
-                                                         << BSON("name"
-                                                                 << "admin"
-                                                                 << "tenantId" << btid)
-                                                         << BSON("name"
-                                                                 << "admin"))));
+                                           << BSON_ARRAY(BSON("name" << "aab"
+                                                                     << "tenantId" << btid)
+                                                         << BSON("name" << "a"
+                                                                        << "tenantId" << atid)
+                                                         << BSON("name" << "admin"
+                                                                        << "tenantId" << atid)
+                                                         << BSON("name" << "admin"
+                                                                        << "tenantId" << btid)
+                                                         << BSON("name" << "admin"))));
 
     auto cloner = makeAllDatabaseCloner();
     cloner->setStopAfterStage_forTest("listDatabases");
@@ -132,20 +125,15 @@ TEST_F(AllDatabaseClonerTest, ListDatabaseStageSortsAdminCorrectlyTenantAdminSet
     // tenant specific admin is the first database.
     _mockServer->setCommandReply("listDatabasesForAllTenants",
                                  BSON("ok" << 1 << "databases"
-                                           << BSON_ARRAY(BSON("name"
-                                                              << "admin"
-                                                              << "tenantId" << btid)
-                                                         << BSON("name"
-                                                                 << "a"
-                                                                 << "tenantId" << atid)
-                                                         << BSON("name"
-                                                                 << "admin")
-                                                         << BSON("name"
-                                                                 << "admin"
-                                                                 << "tenantId" << atid)
-                                                         << BSON("name"
-                                                                 << "aab"
-                                                                 << "tenantId" << btid))));
+                                           << BSON_ARRAY(BSON("name" << "admin"
+                                                                     << "tenantId" << btid)
+                                                         << BSON("name" << "a"
+                                                                        << "tenantId" << atid)
+                                                         << BSON("name" << "admin")
+                                                         << BSON("name" << "admin"
+                                                                        << "tenantId" << atid)
+                                                         << BSON("name" << "aab"
+                                                                        << "tenantId" << btid))));
 
     auto cloner = makeAllDatabaseCloner();
     cloner->setStopAfterStage_forTest("listDatabases");
@@ -678,20 +666,15 @@ TEST_F(AllDatabaseClonerTest,
     auto tid = TenantId(OID::gen());
     _mockServer->setCommandReply("listDatabasesForAllTenants",
                                  BSON("ok" << 1 << "databases"
-                                           << BSON_ARRAY(BSON("name"
-                                                              << "aab"
-                                                              << "tenantId" << tid)
-                                                         << BSON("name"
-                                                                 << "a"
-                                                                 << "tenantId" << tid)
-                                                         << BSON("name"
-                                                                 << "admin"
-                                                                 << "tenantId" << tid)
-                                                         << BSON("name"
-                                                                 << "admin")
-                                                         << BSON("name"
-                                                                 << "local"
-                                                                 << "tenantId" << tid))));
+                                           << BSON_ARRAY(BSON("name" << "aab"
+                                                                     << "tenantId" << tid)
+                                                         << BSON("name" << "a"
+                                                                        << "tenantId" << tid)
+                                                         << BSON("name" << "admin"
+                                                                        << "tenantId" << tid)
+                                                         << BSON("name" << "admin")
+                                                         << BSON("name" << "local"
+                                                                        << "tenantId" << tid))));
 
     // Make the DatabaseCloner do nothing
     _mockServer->setCommandReply("listCollections", createCursorResponse("admin.$cmd", {}));

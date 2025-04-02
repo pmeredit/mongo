@@ -32,7 +32,6 @@ namespace mongo::aggregate_expression_intender {
 
 namespace {
 
-using namespace fmt::literals;
 using namespace std::string_literals;
 
 /**
@@ -597,9 +596,6 @@ protected:
     void visit(ExpressionCeil* expr) override {
         internalPerformReplacement(expr);
     }
-    void visit(ExpressionCoerceToBool* expr) override {
-        internalPerformReplacement(expr);
-    }
     void visit(ExpressionCompare* expr) override {
         switch (expr->getOp()) {
             case ExpressionCompare::EQ:
@@ -733,6 +729,15 @@ protected:
     }
     void visit(ExpressionInternalFLEBetween* expr) override {
         MONGO_UNREACHABLE_TASSERT(6721411);
+    }
+    void visit(ExpressionEncStrStartsWith* expr) override {
+        internalPerformReplacement(expr);
+    }
+    void visit(ExpressionEncStrEndsWith*) override {
+        uasserted(10120905, "$encStrEndsWith is not yet implemented.");
+    }
+    void visit(ExpressionEncStrContains*) override {
+        uasserted(10208805, "$encStrContains is not yet implemented.");
     }
     void visit(ExpressionMap* expr) override {
         internalPerformReplacement(expr);
@@ -1082,10 +1087,6 @@ protected:
         IntentionPostVisitorBase::visit(expr);
     }
     void visit(ExpressionCeil* expr) override {
-        internalPerformReplacement(expr);
-        IntentionPostVisitorBase::visit(expr);
-    }
-    void visit(ExpressionCoerceToBool* expr) override {
         internalPerformReplacement(expr);
         IntentionPostVisitorBase::visit(expr);
     }

@@ -46,7 +46,7 @@
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/storage/key_string/key_string.h"
 #include "mongo/platform/compiler.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/bufreader.h"
 
 namespace mongo {
@@ -144,7 +144,7 @@ public:
                                 const CollatorInterface* collator = nullptr) const;
 
 protected:
-    void release() {
+    void release() noexcept {
         RowType& self = *static_cast<RowType*>(this);
         for (size_t idx = 0; idx < self.size(); ++idx) {
             if (self.owned()[idx]) {
@@ -198,15 +198,24 @@ public:
         swap(*this, other);
     }
 
-    ~MaterializedRow() noexcept {
+    ~MaterializedRow() {
         if (_state.data) {
             release();
             delete[] _state.data;
         }
     }
 
-    MaterializedRow& operator=(MaterializedRow other) noexcept {
+    MaterializedRow& operator=(MaterializedRow&& other) noexcept {
         swap(*this, other);
+        return *this;
+    }
+
+    MaterializedRow& operator=(const MaterializedRow& other) {
+        if (this == &other)
+            return *this;
+
+        MaterializedRow temp(other);
+        swap(*this, temp);
         return *this;
     }
 
@@ -300,7 +309,7 @@ public:
         return *this;
     }
 
-    ~FixedSizeRow() noexcept {
+    ~FixedSizeRow() {
         RowBase<FixedSizeRow<N>>::release();
     }
 

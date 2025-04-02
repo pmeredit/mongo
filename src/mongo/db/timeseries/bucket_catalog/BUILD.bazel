@@ -20,12 +20,12 @@ mongo_cc_library(
         "bucket_identifiers.cpp",
         "bucket_metadata.cpp",
         "bucket_state_registry.cpp",
-        "closed_bucket.cpp",
         "execution_stats.cpp",
         "flat_bson.cpp",
         "global_bucket_catalog.cpp",
         "measurement_map.cpp",
         "reopening.cpp",
+        "rollover.cpp",
         "write_batch.cpp",
     ],
     hdrs = [
@@ -36,12 +36,12 @@ mongo_cc_library(
         "bucket_identifiers.h",
         "bucket_metadata.h",
         "bucket_state_registry.h",
-        "closed_bucket.h",
         "execution_stats.h",
         "flat_bson.h",
         "global_bucket_catalog.h",
         "measurement_map.h",
         "reopening.h",
+        "rollover.h",
         "write_batch.h",
     ],
     deps = [
@@ -56,7 +56,6 @@ mongo_cc_library(
         "//src/mongo/db/timeseries:bucket_compression_failure",
         "//src/mongo/db/timeseries:timeseries_metadata",
         "//src/mongo/db/timeseries:timeseries_options",
-        "//src/mongo/util:fail_point",
     ],
 )
 
@@ -64,13 +63,14 @@ mongo_cc_unit_test(
     name = "db_bucket_catalog_test",
     srcs = [
         "bucket_catalog_helpers_test.cpp",
+        "bucket_catalog_internal_test.cpp",
         "bucket_catalog_test.cpp",
         "bucket_state_registry_test.cpp",
         "measurement_map_test.cpp",
         "minmax_test.cpp",
         "schema_test.cpp",
     ],
-    tags = ["mongo_unittest_second_group"],
+    tags = ["mongo_unittest_fourth_group"],
     deps = [
         ":bucket_catalog",
         "//src/mongo/db:dbdirectclient",
@@ -80,6 +80,7 @@ mongo_cc_unit_test(
         "//src/mongo/db/timeseries:bucket_compression",
         "//src/mongo/db/timeseries:timeseries_metadata",
         "//src/mongo/db/timeseries:timeseries_options",
+        "//src/mongo/db/timeseries:timeseries_test_fixture",
         "//src/mongo/idl:server_parameter_test_util",
     ],
 )
@@ -89,7 +90,7 @@ mongo_cc_unit_test(
     srcs = [
         "timeseries_sizing_test.cpp",
     ],
-    tags = ["mongo_unittest_fourth_group"],
+    tags = ["mongo_unittest_eighth_group"],
     deps = [
         ":bucket_catalog",
     ],

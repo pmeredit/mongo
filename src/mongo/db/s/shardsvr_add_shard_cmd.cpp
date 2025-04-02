@@ -38,6 +38,7 @@
 #include "mongo/db/auth/action_type.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/resource_pattern.h"
+#include "mongo/db/cancelable_operation_context.h"
 #include "mongo/db/cluster_role.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/database_name.h"
@@ -46,9 +47,11 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/repl/repl_set_config.h"
 #include "mongo/db/repl/replication_coordinator.h"
-#include "mongo/db/s/add_shard_util.h"
+#include "mongo/db/repl/wait_for_majority_service.h"
+#include "mongo/db/s/topology_change_helpers.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
+#include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/balancer_configuration.h"
@@ -59,9 +62,31 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
-
 namespace mongo {
 namespace {
+
+void writeNoopEntryLocal(OperationContext* opCtx) {
+    DBDirectClient client(opCtx);
+    client.update(NamespaceString::kServerConfigurationNamespace,
+                  BSON("_id" << "AddShardStats"),
+                  BSON("$inc" << BSON("count" << 1)),
+                  true /* upsert */,
+                  false /* multi */);
+}
+
+void waitForMajority(OperationContext* opCtx) {
+    const auto majorityWriteStatus =
+        WaitForMajorityService::get(opCtx->getServiceContext())
+            .waitUntilMajorityForWrite(repl::ReplicationCoordinator::get(opCtx->getServiceContext())
+                                           ->getMyLastAppliedOpTime(),
+                                       opCtx->getCancellationToken())
+            .getNoThrow();
+
+    if (majorityWriteStatus == ErrorCodes::CallbackCanceled) {
+        uassertStatusOK(opCtx->checkForInterruptNoAssert());
+    }
+    uassertStatusOK(majorityWriteStatus);
+}
 
 /**
  * Internal sharding command run on mongod to initialize itself as a shard in the cluster.
@@ -88,28 +113,59 @@ public:
                          ->getConfig()
                          .containsCustomizedGetLastErrorDefaults());
 
+            // TODO (SERVER-97816): uassert that OSI has been attached once 9.0 becomes last LTS.
+            const auto txnParticipant = TransactionParticipant::get(opCtx);
+
             auto addShardCmd = request();
-            auto shardIdUpsertCmd = add_shard_util::createShardIdentityUpsertForAddShard(
-                addShardCmd, ShardingCatalogClient::kMajorityWriteConcern);
 
-            // A request dispatched through a local client is served within the same thread that
-            // submits it (so that the opCtx needs to be used as the vehicle to pass the WC to the
-            // ServiceEntryPoint).
-            const auto originalWC = opCtx->getWriteConcern();
-            ScopeGuard resetWCGuard([&] { opCtx->setWriteConcern(originalWC); });
-            opCtx->setWriteConcern(ShardingCatalogClient::kMajorityWriteConcern);
+            // First write the shard identity with local write concern - this can be done even with
+            // a session checked out since there are no nested commands which may try to check out
+            // another session. Doing this instantiates the grid locally which allows us to wait
+            // for majority on an AlternativeClientRegion without having to create a separate
+            // executor.
+            bool wroteSomething = topology_change_helpers::installShardIdentity(
+                opCtx, addShardCmd.getShardIdentity());
 
-            DBDirectClient localClient(opCtx);
-            BSONObj res;
+            // If the write of the shard identity document didn't actually write anything (the
+            // document already existed) then we need to do a noop write so that we have something
+            // to wait for to ensure the document was majority committed. We do this now so that we
+            // know the write of the shard identity has been applied before we use the Grid in the
+            // following operations.
+            if (!wroteSomething) {
+                writeNoopEntryLocal(opCtx);
+            }
 
-            localClient.runCommand(DatabaseName::kAdmin, shardIdUpsertCmd, res);
+            // Now we need to wait for majority. If this is the coordinator path and we have session
+            // info, we need an alternative client region so that we don't wait for majority with
+            // a session checked out.
+            // TODO (SERVER - 97816): remove non - OSI path once 9.0 becomes last LTS.
+            if (txnParticipant) {
+                auto newClient = getGlobalServiceContext()
+                                     ->getService(ClusterRole::ShardServer)
+                                     ->makeClient("ShardsvrAddShard");
+                AlternativeClientRegion acr(newClient);
+                auto cancelableOperationContext = CancelableOperationContext(
+                    cc().makeOperationContext(),
+                    opCtx->getCancellationToken(),
+                    Grid::get(opCtx)->getExecutorPool()->getFixedExecutor());
+                cancelableOperationContext->setAlwaysInterruptAtStepDownOrUp_UNSAFE();
 
-            uassertStatusOK(getStatusFromWriteCommandReply(res));
+                waitForMajority(cancelableOperationContext.get());
+            } else {
+                waitForMajority(opCtx);
+            }
 
             const auto balancerConfig = Grid::get(opCtx)->getBalancerConfiguration();
             invariant(balancerConfig);
             // Ensure we have the most up-to-date balancer configuration
             uassertStatusOK(balancerConfig->refreshAndCheck(opCtx));
+
+            // Since we know that some above write (either the shard identity or the noop write) was
+            // done with the session info, there is no need to do another noop write here (in fact,
+            // it would not write anything since the transaction number has already been used). It
+            // is ok that the write is not the last operation in the command because if any error
+            // occurs we will retry with a higher transcation number an execute the whole command
+            // again anyways.
         }
 
     private:
@@ -132,6 +188,10 @@ public:
                             ActionType::internal));
         }
     };
+
+    bool supportsRetryableWrite() const final {
+        return true;
+    }
 
     bool skipApiVersionCheck() const override {
         // Internal command (server to server).

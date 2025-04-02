@@ -92,8 +92,6 @@
 #include "mongo/db/write_concern_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/metadata/client_metadata.h"
@@ -412,6 +410,11 @@ public:
             : SerializationContext::stateCommandRequest();
         auto cmd = idl::parseCommandDocument<HelloCommand>(
             IDLParserContext("hello", vts, dbName.tenantId(), sc), cmdObj);
+
+        if (cmd.getLoadBalanced().value_or(false)) {
+            LOGV2(10107800,
+                  "Client declared load balancer support. This is not supported on mongod.");
+        }
 
         shardWaitInHello.execute(
             [&](const BSONObj& customArgs) { _handleHelloFailPoint(customArgs, opCtx, cmdObj); });

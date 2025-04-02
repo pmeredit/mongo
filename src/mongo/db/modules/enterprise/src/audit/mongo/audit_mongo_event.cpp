@@ -11,21 +11,13 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/multitenancy.h"
 #include "mongo/rpc/metadata/audit_client_attrs.h"
+#include "mongo/rpc/metadata/audit_user_attrs.h"
 #include "mongo/transport/asio/asio_session_impl.h"
 
 namespace mongo {
 namespace audit {
 
 namespace {
-template <typename Iter>
-void serializeNamesToBSON(Iter names, BSONObjBuilder* builder, StringData nameType) {
-    BSONArrayBuilder namesBuilder(builder->subarrayStart(nameType));
-    while (names.more()) {
-        const auto& name = names.next();
-        name.serializeToBSON(&namesBuilder);
-    }
-}
-
 constexpr auto kATypeField = "atype"_sd;
 constexpr auto kTimestampField = "ts"_sd;
 constexpr auto kLocalEndpointField = "local"_sd;
@@ -103,17 +95,7 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
 
     client->getUUID().appendToBuilder(builder, kUuid);
 
-    if (client->isFromSystemConnection()) {
-        {
-            auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
-            localBob.appendBool(kIsSystemUser, true);
-        }
-
-        {
-            auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
-            remoteBob.appendBool(kIsSystemUser, true);
-        }
-    } else if (auto attrs = rpc::AuditClientAttrs::get(client)) {
+    if (auto attrs = rpc::AuditClientAttrs::get(client)) {
         {
             // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
             BSONObjBuilder localBuilder(builder->subobjStart(kLocalEndpointField));
@@ -122,7 +104,7 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
 
         {
             // intermediates: [{ip: '192.168.1.1', port: "8000"}, {...}]
-            if (auto intermediates = attrs->getProxiedEndpoints(); !intermediates.empty()) {
+            if (auto intermediates = attrs->getProxies(); !intermediates.empty()) {
                 BSONArrayBuilder intermediatesArrBuilder(
                     builder->subarrayStart(kIntermediateEndpointsField));
                 for (const auto& intermediate : intermediates) {
@@ -137,30 +119,37 @@ void AuditMongo::AuditEventMongo::serializeClient(Client* client, BSONObjBuilder
             BSONObjBuilder remoteBuilder(builder->subobjStart(kRemoteEndpointField));
             serializeHostAndPortToBSONMongo(attrs->getRemote(), &remoteBuilder);
         }
-    }
-
-    if (AuthorizationSession::exists(client)) {
-        auto as = AuthorizationSession::get(client);
-        auto userName = as->getImpersonatedUserName();
-        RoleNameIterator roleNames;
-
-        if (userName) {
-            roleNames = as->getImpersonatedRoleNames();
-        } else {
-            userName = as->getAuthenticatedUserName();
-            roleNames = as->getAuthenticatedRoleNames();
+    } else if (client->isFromSystemConnection()) {
+        {
+            auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
+            localBob.appendBool(kIsSystemUser, true);
         }
 
-        // users: [{db: dbname, user: username}]
-        BSONArrayBuilder namesBuilder(builder->subarrayStart(kUsersField));
-        if (userName) {
-            userName->serializeToBSON(&namesBuilder);
+        {
+            auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
+            remoteBob.appendBool(kIsSystemUser, true);
         }
-        namesBuilder.doneFast();
-
-        // roles: [{db: dbname, role: rolename}, ...]
-        serializeNamesToBSON(roleNames, builder, kRolesField);
     }
+
+    boost::optional<UserName> userName;
+    std::vector<RoleName> roleNames;
+    if (auto auditUserAttrs = rpc::AuditUserAttrs::get(client)) {
+        userName = auditUserAttrs->getUser();
+        roleNames = auditUserAttrs->getRoles();
+    }
+    // users: [{db: dbname, user: username}]
+    BSONArrayBuilder namesBuilder(builder->subarrayStart(kUsersField));
+    if (userName) {
+        userName->serializeToBSON(&namesBuilder);
+    }
+    namesBuilder.doneFast();
+
+    // roles: [{db: dbname, role: rolename}, ...]
+    BSONArrayBuilder rolesBuilder(builder->subarrayStart(kRolesField));
+    for (const auto& role : roleNames) {
+        role.serializeToBSON(&rolesBuilder);
+    }
+    rolesBuilder.doneFast();
 }
 
 StringData AuditMongo::AuditEventMongo::getTimestampFieldName() const {

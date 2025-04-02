@@ -7,9 +7,6 @@
  *  requires_sharding,
  *  featureFlagUnshardCollection,
  *  featureFlagMoveCollection,
- *  featureFlagReshardingImprovements,
- *  # TODO (SERVER-87812) Remove multiversion_incompatible tag
- *  multiversion_incompatible,
  *  requires_fcv_80
  * ]
  */
@@ -123,8 +120,6 @@ export const $config = (function() {
                     ErrorCodes.OperationFailed,
                     // Handles the case where the collection is sharded
                     ErrorCodes.InvalidNamespace,
-                    //  TODO (SERVER-96072) remove this error once the command is backported.
-                    ErrorCodes.CommandNotFound,
                 ]);
             print(`Untrack collection completed`);
         }

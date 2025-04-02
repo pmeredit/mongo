@@ -4,18 +4,18 @@
 
 #pragma once
 
+#include <aws/core/Region.h>
 #include <memory>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/pipeline.h"
-#include "mongo/util/string_map.h"
 #include "streams/exec/document_timestamp_extractor.h"
 #include "streams/exec/event_deserializer.h"
+#include "streams/exec/external_function.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/pipeline_rewriter.h"
-#include "streams/exec/session_window_assigner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/window_assigner.h"
 
@@ -30,9 +30,12 @@ class ExpressionContext;
 namespace streams {
 
 class DocumentSourceHttpsStub;
+class DocumentSourceExternalFunctionStub;
 class SinkOperator;
 class SourceOperator;
 struct Context;
+
+using StringOrExpression = std::variant<std::string, boost::intrusive_ptr<mongo::Expression>>;
 
 /**
  * Planner is the main entrypoint for the "frontend" of streams.
@@ -130,7 +133,9 @@ private:
     // Methods that are used to plan the sink stage.
     void planMergeSink(const mongo::BSONObj& spec);
     void planEmitSink(const mongo::BSONObj& spec);
+    void planExternalFunctionSink(const mongo::BSONObj& spec);
 
+    std::unique_ptr<OperatorDag> optimizeDag(std::unique_ptr<OperatorDag> dag);
 
     // Methods that are used to plan a window stage.
     // All return a BSONObj that represents the optimized window stage.
@@ -165,6 +170,11 @@ private:
     // Plans a $https stage.
     void planHttps(DocumentSourceHttpsStub* source);
 
+    // Plans a $externalFunction stage.
+    void planExternalFunction(DocumentSourceExternalFunctionStub* source);
+    ExternalFunction::Options planExternalFunctionOptions(const mongo::BSONObj& bsonOptions,
+                                                          bool isSink);
+
     // Helper function to prepare the pipeline before sending it to planning. This step includes
     // rewriting the pipeline, parsing the pipeline, optimizing the pipeline and analyzing the
     // pipeline dependency.
@@ -187,6 +197,9 @@ private:
     // Returns true if a $hoppingWindow or $tumblingWindow's inner pipeline requires
     // prepending a dummy limit operator.
     bool shouldPrependDummyLimit(mongo::Pipeline* innerPipeline);
+
+    // Returns true if the pipeline is not ephemeral and planningUserPipeline is true.
+    bool shouldValidateDLQ();
 
     Context* _context{nullptr};
     Options _options;

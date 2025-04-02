@@ -75,9 +75,7 @@
 #include "mongo/db/views/view_catalog_helpers.h"
 #include "mongo/db/views/view_graph.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
@@ -283,11 +281,10 @@ TEST_F(ViewCatalogFixture, CanCreateViewWithLookupUsingPipelineSyntax) {
     ASSERT_OK(createView(operationContext(),
                          NamespaceString::createNamespaceString_forTest("db.view"),
                          viewOn,
-                         BSON_ARRAY(BSON("$lookup" << BSON("from"
-                                                           << "fcoll"
-                                                           << "as"
-                                                           << "as"
-                                                           << "pipeline" << BSONArray()))),
+                         BSON_ARRAY(BSON("$lookup" << BSON("from" << "fcoll"
+                                                                  << "as"
+                                                                  << "as"
+                                                                  << "pipeline" << BSONArray()))),
                          emptyCollation));
 }
 
@@ -367,16 +364,14 @@ TEST_F(ReplViewCatalogFixture, CreateViewWithPipelineFailsOnIneligibleStagePersi
     const NamespaceString viewOn = NamespaceString::createNamespaceString_forTest("db.coll");
 
     // $out cannot be used in a view definition pipeline.
-    auto invalidPipeline = BSON_ARRAY(BSON("$out"
-                                           << "someOtherCollection"));
+    auto invalidPipeline = BSON_ARRAY(BSON("$out" << "someOtherCollection"));
 
     ASSERT_THROWS_CODE(
         createView(operationContext(), viewName, viewOn, invalidPipeline, emptyCollation),
         AssertionException,
         ErrorCodes::OptionNotSupportedOnView);
 
-    invalidPipeline = BSON_ARRAY(BSON("$merge"
-                                      << "someOtherCollection"));
+    invalidPipeline = BSON_ARRAY(BSON("$merge" << "someOtherCollection"));
 
     ASSERT_THROWS_CODE(
         createView(operationContext(), viewName, viewOn, invalidPipeline, emptyCollation),
@@ -803,8 +798,7 @@ TEST_F(ViewCatalogFixture, ResolveViewCorrectlyExtractsDefaultCollation) {
     pipeline1 << BSON("$match" << BSON("foo" << 1));
     pipeline2 << BSON("$match" << BSON("foo" << 2));
 
-    BSONObj collation = BSON("locale"
-                             << "en_US");
+    BSONObj collation = BSON("locale" << "en_US");
 
     ASSERT_OK(createView(operationContext(), view1, viewOn, pipeline1.arr(), collation));
     ASSERT_OK(createView(operationContext(), view2, view1, pipeline2.arr(), collation));

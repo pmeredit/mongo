@@ -56,6 +56,7 @@ function runTest({
             }
         },
         stage,
+        {$addFields: {_stream_meta: {$meta: "stream"}}},
         {
             $merge: {
                 into: {connectionName: dbConnectionName, db: dbName, coll: outputCollName},
@@ -90,26 +91,13 @@ function runTest({
         return;
     }
 
-    try {
-        // Wait for all the messages to be read.
-        assert.soon(() => { return sp.stats()["inputMessageCount"] == inputDocs.length; },
-                    tojson(sp.stats()),
-                    waitTimeMs,
-                    null,
-                    {runHangAnalyzer: false});
-    } catch {
-        if (sp.stats()["inputMessageCount"] == 0) {
-            // we failed to notice the inserted docs try again
-            assert.commandWorked(inputColl.insertMany(inputDocs));
-            assert.soon(() => { return sp.stats()["inputMessageCount"] == inputDocs.length; },
-                        tojson(sp.stats()),
-                        waitTimeMs);
-        }
-    }
+    assert.soon(() => { return sp.stats()["inputMessageCount"] == inputDocs.length; },
+                tojson(sp.stats()),
+                waitTimeMs);
 
     // wait for docs to pass to output and dlq.
     assert.soon(() => {
-        return sp.stats()["outputMessageCount"] + sp.stats()["dlqMessageCount"] ==
+        return sp.stats()["outputMessageCount"] + sp.stats()["dlqMessageCount"] >=
             expectedOutput.length + expectedDlq.length;
     }, "waiting for expected output", waitTimeMs);
 
@@ -268,7 +256,7 @@ const testCases = [
                 httpStatusCode: 200,
             }},
             response: {inner: {method: "POST", path: "/echo/tc2", headers: {...basicHeaders,
-            "Content-Length" : "619", "Content-Type": "application/json"}, query: {},
+            "Content-Length" : "533", "Content-Type": "application/json"}, query: {},
             body: {fullDocument: {a: 1}}}}
         }],
         allowAllTraffic: true,
@@ -364,7 +352,7 @@ const testCases = [
                 headers: {
                         ...basicHeaders,
                         "Content-Type": "application/json",
-                        "Content-Length" : "640",
+                        "Content-Length" : "554",
                         "FieldPathHeader": "DynamicValue",
                         "StrHeader": "foo"
                 }
@@ -417,7 +405,7 @@ const testCases = [
                 path: "/echo/tc4",
                 headers: {
                     ...basicHeaders,
-                    "Content-Length" : "640",
+                    "Content-Length" : "554",
                     "Content-Type" : "application/json"
                 },
                 query: {
@@ -472,15 +460,15 @@ const testCases = [
         expectedRequests: [],
         inputDocs: [{foo: "DynamicValue"}],
         expectedOutput: [{
-                fullDocument: {foo: "DynamicValue"},
                 _stream_meta: {https: {
-                    url: restServerUrl + "/foo%28bar%29?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3a%2f%2fuser%3apassword%40my.domain.net%3a1234%2ffoo%2fbar%2fbaz%3fname%3dhero%26name%3dsandwich%26name%3dgrinder%23heading1",
+                    url: restServerUrl + "/foo(bar)?StrParam=StaticParameterValue&DoubleParam=1.100000000002&FieldPathExprParam=DynamicValue&ObjectExprParam=6.2&BoolParam=true&Search%25Param=https%3a%2f%2fuser%3apassword%40my.domain.net%3a1234%2ffoo%2fbar%2fbaz%3fname%3dhero%26name%3dsandwich%26name%3dgrinder%23heading1",
                     method: "GET",
                     httpStatusCode: 200,
                 }},
+                fullDocument: {foo: "DynamicValue"},
                 response: {
                     method: "GET",
-                    path: "/foo%28bar%29",
+                    path: "/foo(bar)",
                     query: {
                         "StrParam": ["StaticParameterValue"],
                         "DoubleParam": ["1.100000000002"],
@@ -778,6 +766,87 @@ const testCases = [
                        httpStatusCode: 200,
                  }
             }
+        }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should deserialize json object with json encoded strings",
+        spName: "jsonObjectWithSerializedFields",
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/jsonObjectWithSerializedFields",
+                method: "GET",
+                as: "response",
+                config: {parseJsonStrings: true}
+            },
+        },
+        inputDocs: [{foo: "bar"}],
+        expectedRequests:
+            [{method: "GET", path: "/jsonObjectWithSerializedFields", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
+        expectedOutput: [{
+            _stream_meta: {https: {
+                url: restServerUrl + "/jsonObjectWithSerializedFields",
+                method: "GET",
+                httpStatusCode: 200,
+            }},
+            fullDocument: {foo: "bar"},
+            response: {"content": {"foo": "bar"}, "nested": { "data": {"abc": "xyz"}}}
+        }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should deserialize json array with json encoded strings",
+        spName: "jsonArrayWithSerializedFields",
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/jsonArrayWithSerializedFields",
+                method: "GET",
+                as: "response",
+                config: {parseJsonStrings: true}
+            },
+        },
+        inputDocs: [{foo: "bar"}],
+        expectedRequests:
+            [{method: "GET", path: "/jsonArrayWithSerializedFields", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
+        expectedOutput: [{
+            _stream_meta: {https: {
+                url: restServerUrl + "/jsonArrayWithSerializedFields",
+                method: "GET",
+                httpStatusCode: 200,
+            }},
+            fullDocument: {foo: "bar"},
+            response: [{"content": {"foo": "bar"}}, {"content": { "nested": { "data": {"abc": "xyz"}}}}]
+        }],
+        allowAllTraffic: true,
+    },
+    {
+        description: "should not deserialize json encoded strings if parseJsonStrings isn't set",
+        spName: "jsonObjectWithSerializedFields",
+        stage: {
+            $https: {
+                connectionName: httpsName,
+                path: "/jsonObjectWithSerializedFields",
+                method: "GET",
+                as: "response",
+                config: {}
+            },
+        },
+        inputDocs: [{foo: "bar"}],
+        expectedRequests:
+            [{method: "GET", path: "/jsonObjectWithSerializedFields", headers: basicHeaders, query: {}, body: ""}],
+        outputQuery: [{$project: {fullDocument: 1, response: 1, "_stream_meta.https": 1}}],
+        expectedOutput: [{
+            _stream_meta: {https: {
+                url: restServerUrl + "/jsonObjectWithSerializedFields",
+                method: "GET",
+                httpStatusCode: 200,
+            }},
+            fullDocument: {foo: "bar"},
+            response: {"content": '{"foo": "bar"}', "nested": { "data": '{"abc": "xyz"}'}}
         }],
         allowAllTraffic: true,
     },

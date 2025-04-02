@@ -53,7 +53,7 @@ inline std::vector<ScopedSetShardRole> createScopedShardRoles(
                 "Must be an entry in criMap for namespace " + nss.toStringForErrorMsg(),
                 nssCri != criMap.end());
 
-        bool isTracked = nssCri->second.cm.hasRoutingTable();
+        bool isTracked = nssCri->second.hasRoutingTable();
         auto shardVersion = [&] {
             auto sv =
                 isTracked ? nssCri->second.getShardVersion(myShardId) : ShardVersion::UNSHARDED();
@@ -77,10 +77,10 @@ inline std::vector<ScopedSetShardRole> createScopedShardRoles(
  * Returns whether any namespaces in 'secondaryExecNssList' are non local.
  */
 template <typename F>
-bool intializeAutoGet(OperationContext* opCtx,
-                      const NamespaceString& nss,
-                      const std::vector<NamespaceStringOrUUID>& secondaryExecNssList,
-                      F&& initAutoGetFn) {
+bool initializeAutoGet(OperationContext* opCtx,
+                       const NamespaceString& nss,
+                       const std::vector<NamespaceStringOrUUID>& secondaryExecNssList,
+                       F&& initAutoGetFn) {
     bool isAnySecondaryCollectionNotLocal = false;
     auto* grid = Grid::get(opCtx->getServiceContext());
     if (grid->isInitialized() && grid->isShardingInitialized() &&

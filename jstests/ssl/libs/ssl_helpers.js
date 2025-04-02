@@ -139,6 +139,7 @@ export function mixedShardTest(options1, options2, shouldSucceed) {
             mongos: [options1],
             config: 1,
             shards: [options1, options2],
+            shouldFailInit: !shouldSucceed,
             other: {
                 enableBalancer: true,
                 configOptions: options1,
@@ -169,7 +170,7 @@ export function mixedShardTest(options1, options2, shouldSucceed) {
         assert.eq(r, true, "error sharding collection for this configuration");
 
         // Test mongos talking to shards
-        var bigstr = Array(1024 * 1024).join("#");
+        var bigstr = '#'.repeat(1024 * 1024);
 
         var bulk = db1.col.initializeUnorderedBulkOp();
         for (var i = 0; i < 128; i++) {

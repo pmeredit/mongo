@@ -33,8 +33,7 @@
 #include "mongo/bson/unordered_fields_bsonobj_comparator.h"
 #include "mongo/db/timeseries/bucket_compression.h"
 #include "mongo/db/timeseries/timeseries_constants.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -114,7 +113,7 @@ const BSONObj bucketWithDuplicateIndexFieldNames = mongo::fromjson(R"({
                         "2" : {"$date": "2022-08-31T00:00:03Z"}
                 }
         }
-}})");
+})");
 
 void assertNoDuplicateIndexFieldNames(const BSONObj& column) {
     size_t curIdx = 0;

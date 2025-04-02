@@ -19,9 +19,7 @@ selector:
     - jstests/core/**/fsync.js # uses fsync.
     - jstests/core/**/geo_s2cursorlimitskip.js # profiling.
     - jstests/core/**/geo_update_btree2.js # notablescan.
-    - jstests/core/**/index9.js # "local" database.
     - jstests/core/**/queryoptimizera.js # "local" database.
-    - jstests/core/**/stages*.js # stageDebug.
     - jstests/core/**/startup_log.js # "local" database.
     - jstests/core/**/tailable_cursor_invalidation.js # capped collections.
     - jstests/core/**/tailable_getmore_batch_size.js # capped collections.
@@ -110,8 +108,8 @@ selector:
     - jstests/core/**/update_arrayFilters.js
     - jstests/core/**/update_find_and_modify_id.js
     - jstests/core/**/update_modifier_pop.js
-    - jstests/core/**/updateh.js
-    - jstests/core/**/updatej.js
+    - jstests/core/**/update_dollar_fields.js
+    - jstests/core/**/update_fail_halts_modifications.js
 
     # TODO: SERVER-38207 Cannot insert document with MaxKey shard key.
     - jstests/core/**/type8.js
@@ -143,7 +141,7 @@ selector:
     - jstests/core/**/push_sort.js
     - jstests/core/**/update_arrayFilters.js
     - jstests/core/**/update_dbref.js
-    - jstests/core/**/updatel.js
+    - jstests/core/**/update_positional_no_array_elem.js
     - jstests/core/**/write_result.js
     - jstests/core/**/query/project/positional_projection.js
 
@@ -153,7 +151,7 @@ selector:
     - jstests/core/**/dbref1.js
     - jstests/core/**/dbref2.js
     - jstests/core/**/ref3.js
-    - jstests/core/**/update3.js
+    - jstests/core/**/update_mod_dotted.js
 
     ##
     ## Misc. reasons.
@@ -186,7 +184,7 @@ selector:
 
     # txn interrupted by command outside of txn before getMore runs.
     - jstests/core/**/commands_namespace_parsing.js
-    - jstests/core/**/drop3.js
+    - jstests/core/ddl/drop_collection_cursors.js
     - jstests/core/**/geo_s2cursorlimitskip.js
     - jstests/core/**/getmore_invalidated_cursors.js
     - jstests/core/**/getmore_invalidated_documents.js
@@ -208,10 +206,10 @@ selector:
     - jstests/core/**/geo_update_btree.js
     - jstests/core/**/loadserverscripts.js
     - jstests/core/**/mr_killop.js
-    - jstests/core/**/removeb.js
-    - jstests/core/**/removec.js
+    - jstests/core/**/remove_concurrent_inserts.js
+    - jstests/core/**/remove_adjacent_index_keys.js
     - jstests/core/**/shellstartparallel.js
-    - jstests/core/**/updatef.js
+    - jstests/core/**/update_namespace_details.js
 
     # Command expects to see result from parallel operation.
     # E.g. Suppose the following sequence of events: op1, join() op2 in parallel shell, op3.

@@ -30,8 +30,6 @@
 #include "mongo/db/query/stage_builder/sbe/expression_const_eval.h"
 
 #include <cstdint>
-#include <memory>
-#include <string>
 #include <utility>
 
 #include <absl/container/node_hash_map.h>
@@ -39,16 +37,14 @@
 
 #include "mongo/db/exec/sbe/values/arith_common.h"
 #include "mongo/db/exec/sbe/values/value.h"
-#include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/optimizer/algebra/operator.h"
 #include "mongo/db/query/optimizer/comparison_op.h"
 #include "mongo/util/assert_util.h"
 
-
 namespace mongo::stage_builder {
 using namespace std::string_literals;
-bool ExpressionConstEval::optimize(optimizer::ABT& n) {
-    invariant(_letRefs.empty());
+void ExpressionConstEval::optimize(optimizer::ABT& n) {
+    invariant(_varRefs.empty());
     invariant(_singleRef.empty());
     invariant(!_inRefBlock);
     invariant(_inCostlyCtx == 0);
@@ -61,7 +57,7 @@ bool ExpressionConstEval::optimize(optimizer::ABT& n) {
     // transport functions. The reference serves as a conceptual 'this' pointer allowing the
     // transport function to change the node itself.
     optimizer::algebra::transport<true>(n, *this);
-    invariant(_letRefs.empty());
+    invariant(_varRefs.empty());
 
     while (_changed) {
         if (_singleRef.empty()) {
@@ -76,7 +72,6 @@ bool ExpressionConstEval::optimize(optimizer::ABT& n) {
 
     _staleDefs.clear();
     _staleABTs.clear();
-    return _changed;
 }
 
 void ExpressionConstEval::transport(optimizer::ABT& n, const optimizer::Variable& var) {
@@ -100,19 +95,29 @@ void ExpressionConstEval::transport(optimizer::ABT& n, const optimizer::Variable
                 swapAndUpdate(n, def.definition.copy());
             } else if (auto variable = def.definition.cast<optimizer::Variable>();
                        variable && !_inRefBlock) {
+                // This is an alias for another variable, replace it with a reference to the
+                // original one and update its counter (if it is tracked, it could be a reference to
+                // a slot).
+                auto itLet = _varRefs.find(variable->name());
+                if (itLet != _varRefs.end()) {
+                    itLet->second++;
+                }
                 swapAndUpdate(n, def.definition.copy());
-            } else if (_singleRef.erase(&var)) {
+            } else if (_singleRef.erase(var.name())) {
                 swapAndUpdate(n, def.definition.copy());
-            } else if (auto let = def.definedBy.cast<optimizer::Let>(); let) {
-                invariant(_letRefs.count(let));
-                _letRefs[let].emplace_back(&var);
+            } else if (def.definedBy.cast<optimizer::Let>() ||
+                       def.definedBy.cast<optimizer::MultiLet>()) {
+                auto itLet = _varRefs.find(var.name());
+                tassert(10252300, "Found reference to undefined variable", itLet != _varRefs.end());
+                itLet->second++;
             }
         }
     }
 }
 
 void ExpressionConstEval::prepare(optimizer::ABT& n, const optimizer::Let& let) {
-    _letRefs[&let] = {};
+    tassert(
+        10252301, "Found duplicate variable definition", _varRefs.emplace(let.varName(), 0).second);
     _variableDefinitions.emplace(let.varName(), optimizer::Definition{n.ref(), let.bind().ref()});
 }
 
@@ -120,8 +125,8 @@ void ExpressionConstEval::transport(optimizer::ABT& n,
                                     const optimizer::Let& let,
                                     optimizer::ABT& bind,
                                     optimizer::ABT& in) {
-    auto& letRefs = _letRefs[&let];
-    if (letRefs.size() == 0) {
+    auto itLet = _varRefs.find(let.varName());
+    if (itLet->second == 0) {
         // The bind expressions has not been referenced so it is dead code and the whole let
         // expression can be removed; i.e. we implement a following rewrite:
         //
@@ -140,13 +145,77 @@ void ExpressionConstEval::transport(optimizer::ABT& n,
 
         // Swap the current node (n) for the result.
         swapAndUpdate(n, std::move(result));
-    } else if (letRefs.size() == 1) {
+    } else if (itLet->second == 1) {
         // The bind expression has been referenced exactly once so schedule it for inlining.
-        _singleRef.emplace(letRefs.front());
+        _singleRef.emplace(let.varName());
         _changed = true;
     }
-    _letRefs.erase(&let);
+    _varRefs.erase(itLet);
     _variableDefinitions.erase(let.varName());
+}
+
+void ExpressionConstEval::prepare(optimizer::ABT& n, const optimizer::MultiLet& multiLet) {
+    for (size_t i = 0; i < multiLet.numBinds(); ++i) {
+        const auto& varName = multiLet.varNames()[i];
+        tassert(
+            10130811, "Found duplicate variable definition", _varRefs.emplace(varName, 0).second);
+        _variableDefinitions.emplace(varName,
+                                     optimizer::Definition{n.ref(), multiLet.bind(i).ref()});
+    }
+}
+
+void ExpressionConstEval::transport(optimizer::ABT& n,
+                                    const optimizer::MultiLet& multiLet,
+                                    std::vector<optimizer::ABT>& args) {
+    auto& varNames = multiLet.varNames();
+    if (std::all_of(varNames.begin(), varNames.end(), [&](auto&& varName) {
+            return _varRefs.find(varName)->second == 0;
+        })) {
+        // None of the bind expressions have been referenced so it is dead code and the whole
+        // multiLet expression can be removed
+        auto result = std::exchange(args.back(), optimizer::make<optimizer::Blackhole>());
+
+        // Swap the current node (n) for the result.
+        swapAndUpdate(n, std::move(result));
+    } else {
+        if (std::any_of(varNames.begin(), varNames.end(), [&](auto&& varName) {
+                return _varRefs.find(varName)->second == 0;
+            })) {
+            // Trim out the bind expressions which have not been referenced, then constant fold it
+            std::vector<optimizer::ProjectionName> newVarNames;
+            std::vector<optimizer::ABT> newNodes;
+
+            for (size_t idx = 0; idx < multiLet.numBinds(); ++idx) {
+                if (_varRefs[varNames[idx]] != 0) {
+                    newVarNames.push_back(varNames[idx]);
+                    newNodes.emplace_back(
+                        std::exchange(args[idx], optimizer::make<optimizer::Blackhole>()));
+                }
+            }
+            newNodes.emplace_back(
+                std::exchange(args.back(), optimizer::make<optimizer::Blackhole>()));
+            auto trimmedMultiLet =
+                optimizer::make<optimizer::MultiLet>(std::move(newVarNames), std::move(newNodes));
+            swapAndUpdate(n, trimmedMultiLet);
+        }
+
+        auto& mayBeTrimmedVarNames = n.cast<optimizer::MultiLet>()->varNames();
+
+        // For the bind expressions which have been referenced exactly once, schedule them for
+        // inlining.
+        std::for_each(
+            mayBeTrimmedVarNames.begin(), mayBeTrimmedVarNames.end(), [&](auto&& varName) {
+                if (_varRefs.find(varName)->second == 1) {
+                    _singleRef.emplace(varName);
+                    _changed = true;
+                }
+            });
+    }
+
+    for (auto&& name : varNames) {
+        _varRefs.erase(name);
+        _variableDefinitions.erase(name);
+    }
 }
 
 void ExpressionConstEval::transport(optimizer::ABT& n,
@@ -340,6 +409,84 @@ void ExpressionConstEval::transport(optimizer::ABT& n,
 }
 
 void ExpressionConstEval::transport(optimizer::ABT& n,
+                                    const optimizer::NaryOp& op,
+                                    std::vector<optimizer::ABT>& args) {
+    switch (op.op()) {
+        case optimizer::Operations::And:
+        case optimizer::Operations::Or: {
+            // Truncate the list at the first constant value that causes the operation to
+            // short-circuit ('false' for And, 'true' for Or). Remove all items that evaluate to the
+            // opposite constant, as they would be ignored.
+            bool shortCircuitValue = op.op() == optimizer::Operations::And ? false : true;
+            for (auto it = args.begin(); it < args.end();) {
+                optimizer::ABT& arg = *it;
+                if (auto argConst = arg.cast<optimizer::Constant>(); argConst) {
+                    auto [argTag, argValue] = argConst->get();
+                    if (argTag == sbe::value::TypeTags::Boolean) {
+                        if (sbe::value::bitcastTo<bool>(argValue) == shortCircuitValue) {
+                            // Truncate the argument list after the short-circuit value, unless it's
+                            // already the last value and we are not modifying anything.
+                            if (it + 1 != args.end()) {
+                                args.erase(it + 1, args.end());
+                                _changed = true;
+                                break;
+                            }
+                        } else {
+                            // Remove argument.
+                            it = args.erase(it);
+                            _changed = true;
+                            continue;
+                        }
+                    }
+                }
+                it++;
+            }
+            if (args.empty()) {
+                // if we are left with no arguments, replace the entire node with the
+                // non-short-circuit value.
+                swapAndUpdate(n, optimizer::Constant::boolean(!shortCircuitValue));
+            } else if (args.size() == 1) {
+                // if we are left with just one argument, replace the entire node with that value.
+                swapAndUpdate(n, std::exchange(args[0], optimizer::make<optimizer::Blackhole>()));
+            }
+            break;
+        }
+        case optimizer::Operations::Add: {
+            auto it = args.begin();
+            if (!it->cast<optimizer::Constant>()) {
+                return;
+            }
+            it++;
+            for (; it < args.end(); it++) {
+                optimizer::ABT& rhs = *it;
+                auto rhsConst = rhs.cast<optimizer::Constant>();
+                if (!rhsConst) {
+                    break;
+                }
+                optimizer::ABT& lhs = *(it - 1);
+                auto lhsConst = lhs.cast<optimizer::Constant>();
+
+                auto [lhsTag, lhsValue] = lhsConst->get();
+                auto [rhsTag, rhsValue] = rhsConst->get();
+
+                auto [_, resultType, resultValue] =
+                    sbe::value::genericAdd(lhsTag, lhsValue, rhsTag, rhsValue);
+                swapAndUpdate(rhs, optimizer::make<optimizer::Constant>(resultType, resultValue));
+            }
+            args.erase(args.begin(), it - 1);
+            invariant(args.size() > 0);
+            if (args.size() == 1) {
+                swapAndUpdate(n, std::exchange(args[0], optimizer::make<optimizer::Blackhole>()));
+            }
+            break;
+        }
+        default:
+            // Not implemented.
+            break;
+    }
+}
+
+void ExpressionConstEval::transport(optimizer::ABT& n,
                                     const optimizer::FunctionCall& op,
                                     std::vector<optimizer::ABT>& args) {
     if (args.size() == 1 && args[0].is<optimizer::Constant>()) {
@@ -429,6 +576,14 @@ void ExpressionConstEval::transport(optimizer::ABT& n,
             swapAndUpdate(n, optimizer::make<optimizer::Constant>(tag, val));
         }
     }
+    if (op.name() == "isInList") {
+        // If the child node is a Constant, check if the type is inList, then directly set to
+        // true/false.
+        if (args.size() == 1 && args[0].is<optimizer::Constant>()) {
+            const auto tag = args[0].cast<optimizer::Constant>()->get().first;
+            swapAndUpdate(n, optimizer::Constant::boolean(tag == sbe::value::TypeTags::inList));
+        }
+    }
 }
 
 void ExpressionConstEval::transport(optimizer::ABT& n,
@@ -446,6 +601,9 @@ void ExpressionConstEval::transport(optimizer::ABT& n,
                    !sbe::value::bitcastTo<bool>(condValue)) {
             // if false -> elseBranch
             swapAndUpdate(n, std::exchange(elseBranch, optimizer::make<optimizer::Blackhole>()));
+        } else if (condTag == sbe::value::TypeTags::Nothing) {
+            // if Nothing then x else y -> Nothing
+            swapAndUpdate(n, optimizer::Constant::nothing());
         }
     } else if (auto condNot = cond.cast<optimizer::UnaryOp>();
                condNot && condNot->op() == optimizer::Operations::Not) {
@@ -454,11 +612,11 @@ void ExpressionConstEval::transport(optimizer::ABT& n,
                       std::exchange(condNot->get<0>(), optimizer::make<optimizer::Blackhole>()));
         std::swap(thenBranch, elseBranch);
     } else if (auto funct = cond.cast<optimizer::FunctionCall>(); funct &&
-               funct->name() == "exists" && funct->nodes().size() == 1 &&
+               funct->name() == "exists"s && funct->nodes().size() == 1 &&
                funct->nodes()[0] == thenBranch && elseBranch.is<optimizer::Constant>()) {
-        // If the condition is an "exists" on an expression, the thenBranch is the same expression
-        // and the elseBranch is a constant, the node is actually a FillEmpty.
-        // Note that this is not true if the replacement value is an expression that can have side
+        // If the condition is an "exists" on an expression, the thenBranch is the same
+        // expression and the elseBranch is a constant, the node is actually a FillEmpty. Note
+        // that this is not true if the replacement value is an expression that can have side
         // effects, because FillEmpty has to evaluate both operands before deciding which one to
         // return: keeping the if(exists(..)) allows not to evaluate the elseBranch when the
         // condition returns true.
@@ -467,6 +625,88 @@ void ExpressionConstEval::transport(optimizer::ABT& n,
                           optimizer::Operations::FillEmpty,
                           std::exchange(thenBranch, optimizer::make<optimizer::Blackhole>()),
                           std::exchange(elseBranch, optimizer::make<optimizer::Blackhole>())));
+    } else if (auto thenConst = thenBranch.cast<optimizer::Constant>(),
+               elseConst = elseBranch.cast<optimizer::Constant>();
+               thenConst && elseConst) {
+        // If both branches are boolean constants then we can simplify.
+        if (auto [thenTag, thenValue] = thenConst->get();
+            thenTag == sbe::value::TypeTags::Boolean) {
+            const bool v1 = sbe::value::bitcastTo<bool>(thenValue);
+            if (auto [elseTag, elseValue] = elseConst->get();
+                elseTag == sbe::value::TypeTags::Boolean) {
+                const bool v2 = sbe::value::bitcastTo<bool>(elseValue);
+                if (v1 && !v2) {
+                    // if (x) then true else false -> (x).
+                    swapAndUpdate(n, std::exchange(cond, optimizer::make<optimizer::Blackhole>()));
+                } else if (!v1 && v2) {
+                    // If (x) then false else true -> !(x).
+                    swapAndUpdate(
+                        n,
+                        optimizer::make<optimizer::UnaryOp>(
+                            optimizer::Operations::Not,
+                            std::exchange(cond, optimizer::make<optimizer::Blackhole>())));
+                }
+                // "if (x) then true else true" and "if (x) then false else false" cannot be
+                // folded because we need to return Nothing if non-const 'x' is Nothing.
+            }
+        }
+    }
+}
+
+void ExpressionConstEval::transport(optimizer::ABT& n,
+                                    const optimizer::Switch& op,
+                                    std::vector<optimizer::ABT>& args) {
+    // If the condition is a boolean constant we can remove it from the branches.
+    for (size_t i = 0; i < args.size() - 1;) {
+        optimizer::ABT& cond = args[i];
+        if (auto condConst = cond.cast<optimizer::Constant>(); condConst) {
+            auto [condTag, condValue] = condConst->get();
+            if (condTag == sbe::value::TypeTags::Boolean &&
+                sbe::value::bitcastTo<bool>(condValue)) {
+                // if true -> remove this branch and the remaining ones, promote the
+                // "thenBranch" to become the "defaultExpr".
+                args.erase(std::next(args.begin(), i));
+                args.erase(std::next(args.begin(), i + 1), args.end());
+                _changed = true;
+                continue;
+            } else if (condTag == sbe::value::TypeTags::Boolean &&
+                       !sbe::value::bitcastTo<bool>(condValue)) {
+                // if false -> remove branch.
+                args.erase(std::next(args.begin(), i), std::next(args.begin(), i + 2));
+                _changed = true;
+                continue;
+            }
+        }
+        i += 2;
+    }
+    // If we are left with no branches, replace the entire Switch with the default expression.
+    if (op.nodes().size() == 1) {
+        swapAndUpdate(n, std::exchange(args[0], optimizer::make<optimizer::Blackhole>()));
+    } else if (op.getNumBranches() == 1) {
+        // Convert Switch into If if there is a single branch, then constant fold it.
+        auto ifNode = optimizer::make<optimizer::If>(
+            std::exchange(args[0], optimizer::make<optimizer::Blackhole>()),
+            std::exchange(args[1], optimizer::make<optimizer::Blackhole>()),
+            std::exchange(args[2], optimizer::make<optimizer::Blackhole>()));
+        transport(ifNode,
+                  *ifNode.cast<optimizer::If>(),
+                  ifNode.cast<optimizer::If>()->getCondChild(),
+                  ifNode.cast<optimizer::If>()->getThenChild(),
+                  ifNode.cast<optimizer::If>()->getElseChild());
+
+        swapAndUpdate(n, ifNode);
+    } else {
+        // Check if the last condition contains a Not that can be removed by swapping the branches.
+        auto& cond = args[args.size() - 3];
+        auto& thenBranch = args[args.size() - 2];
+        auto& elseBranch = args[args.size() - 1];
+        if (auto condNot = cond.cast<optimizer::UnaryOp>();
+            condNot && condNot->op() == optimizer::Operations::Not) {
+            // If the condition is a Not we can remove it and swap the branches.
+            swapAndUpdate(
+                cond, std::exchange(condNot->get<0>(), optimizer::make<optimizer::Blackhole>()));
+            std::swap(thenBranch, elseBranch);
+        }
     }
 }
 

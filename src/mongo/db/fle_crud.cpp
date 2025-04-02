@@ -87,7 +87,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/reply_interface.h"
@@ -650,12 +649,12 @@ write_ops::DeleteCommandReply processDelete(OperationContext* opCtx,
         appendPossibleWriteConcernErrorToReply(commitResult.wcError,
                                                &reply->getWriteCommandReplyBase());
         if (!commitResult.cmdStatus.isOK()) {
-            if (commitResult.cmdStatus == ErrorCodes::UnsatisfiableWriteConcern) {
+            if (ErrorCodes::isA<ErrorCategory::WriteConcernError>(commitResult.cmdStatus)) {
                 // On single-write-shard commits, the transaction API will abort the transaction and
-                // return a CommitResult with cmdStatus=UnsatisfiableWriteConcern if any of the
-                // read-only shards fail to commit with the user requested write concern. This
-                // happens before any commits to the write shards are performed, so none of the
-                // changes are actually made durable.
+                // return a CommitResult with one of the WriteConcernErrors if any of the read-only
+                // shards fail to commit with the user requested write concern. This happens before
+                // any commits to the write shards are performed, so none of the changes are
+                // actually made durable.
                 reply->setN(0);
             }
             appendSingleStatusToWriteErrors(commitResult.cmdStatus,
@@ -766,12 +765,12 @@ write_ops::UpdateCommandReply processUpdate(OperationContext* opCtx,
         appendPossibleWriteConcernErrorToReply(commitResult.wcError,
                                                &reply->getWriteCommandReplyBase());
         if (!commitResult.cmdStatus.isOK()) {
-            if (commitResult.cmdStatus == ErrorCodes::UnsatisfiableWriteConcern) {
+            if (ErrorCodes::isA<ErrorCategory::WriteConcernError>(commitResult.cmdStatus)) {
                 // On single-write-shard commits, the transaction API will abort the transaction and
-                // return a CommitResult with cmdStatus=UnsatisfiableWriteConcern if any of the
-                // read-only shards fail to commit with the user requested write concern. This
-                // happens before any commits to the write shards are performed, so none of the
-                // changes are actually made durable.
+                // return a CommitResult with one of the WriteConcernErrors if any of the read-only
+                // shards fail to commit with the user requested write concern. This happens before
+                // any commits to the write shards are performed, so none of the changes are
+                // actually made durable.
                 reply->setNModified(0);
                 reply->setN(0);
             }
@@ -789,6 +788,16 @@ write_ops::UpdateCommandReply processUpdate(OperationContext* opCtx,
 
 namespace {
 
+template <class T>
+FLEEdgePrfBlock toFLEEdgePrfBlock(const T& ts, const FLEEdgePrfBlock* prev = nullptr) {
+    FLEEdgePrfBlock blk;
+    blk.esc = ts.getEscDerivedToken().asPrfBlock();
+    if (prev && blk.esc == prev->esc) {
+        blk.paddingIndex = prev->paddingIndex + 1;
+    }
+    return blk;
+}
+
 void processFieldsForInsertV2(FLEQueryInterface* queryImpl,
                               const NamespaceString& edcNss,
                               std::vector<EDCServerPayloadInfo>& serverPayload,
@@ -802,7 +811,7 @@ void processFieldsForInsertV2(FLEQueryInterface* queryImpl,
     const NamespaceString nssEsc =
         NamespaceStringUtil::deserialize(edcNss.dbName(), efc.getEscCollection().value());
 
-    uint32_t totalTokens = 0;
+    size_t totalTokens = 0;
 
     std::vector<std::vector<FLEEdgePrfBlock>> tokensSets;
     tokensSets.reserve(serverPayload.size());
@@ -813,29 +822,50 @@ void processFieldsForInsertV2(FLEQueryInterface* queryImpl,
         if (payload.isRangePayload()) {
             const auto& edgeTokenSet = payload.payload.getEdgeTokenSet().get();
 
-            std::vector<FLEEdgePrfBlock> tokens;
+            tokensSets.push_back({});
+            auto& tokens = tokensSets.back();
             tokens.reserve(edgeTokenSet.size());
 
             for (const auto& et : edgeTokenSet) {
-                FLEEdgePrfBlock block;
-                block.esc = et.getEscDerivedToken().asPrfBlock();
-                tokens.push_back(block);
-                totalTokens++;
+                tokens.emplace_back(toFLEEdgePrfBlock(et));
             }
-
-            tokensSets.emplace_back(tokens);
+            totalTokens += edgeTokenSet.size();
         } else if (payload.isTextSearchPayload()) {
             uassert(9783803,
                     "Cannot insert an encrypted field with text search query type unless "
                     "featureFlagQETextSearchPreview is enabled",
                     gFeatureFlagQETextSearchPreview.isEnabledUseLastLTSFCVWhenUninitialized(
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
-            // TODO: SERVER-97841 implement text search inserts
-            uasserted(9783804, "Cannot insert an encrypted field with text search query yet");
+
+            const auto& tsts = payload.payload.getTextSearchTokenSets().get();
+
+            tokensSets.push_back({});
+            auto& tokens = tokensSets.back();
+            size_t tokenCount = payload.getTotalTextSearchTokenSetCount();
+            tokens.reserve(tokenCount);
+
+            // The order of appending tokens below is important
+            tokens.emplace_back(toFLEEdgePrfBlock(tsts.getExactTokenSet()));
+
+            // identical tokens are guaranteed to be next to each other in the array
+            FLEEdgePrfBlock* prev = nullptr;
+            for (const auto& ts : tsts.getSubstringTokenSets()) {
+                prev = &tokens.emplace_back(toFLEEdgePrfBlock(ts, prev));
+            }
+
+            prev = nullptr;
+            for (const auto& ts : tsts.getSuffixTokenSets()) {
+                prev = &tokens.emplace_back(toFLEEdgePrfBlock(ts, prev));
+            }
+
+            prev = nullptr;
+            for (const auto& ts : tsts.getPrefixTokenSets()) {
+                prev = &tokens.emplace_back(toFLEEdgePrfBlock(ts, prev));
+            }
+            dassert(tokens.size() == tokenCount);
+            totalTokens += tokenCount;
         } else {
-            FLEEdgePrfBlock block;
-            block.esc = payload.payload.getEscDerivedToken().asPrfBlock();
-            tokensSets.push_back({block});
+            tokensSets.push_back({toFLEEdgePrfBlock(payload.payload)});
             totalTokens++;
         }
     }
@@ -857,11 +887,16 @@ void processFieldsForInsertV2(FLEQueryInterface* queryImpl,
                 "Mismatch in the number of expected counts for a token",
                 countInfos.size() == tokensSets[i].size());
 
-        for (auto const& countInfo : countInfos) {
-            serverPayload[i].counts.push_back(countInfo.count);
+        // each countInfo is returned from getTags with the "count" resulting from emuBinary,
+        // the "tagTokenData" which is the "tag" token derived from the ESC data & cf token,
+        for (size_t tokenIndex = 0; tokenIndex < countInfos.size(); tokenIndex++) {
+            const auto& countInfo = countInfos.at(tokenIndex);
+            auto count = countInfo.count + tokensSets[i][tokenIndex].paddingIndex;
+
+            serverPayload[i].counts.push_back(count);
 
             escDocuments.push_back(ESCCollection::generateNonAnchorDocument(
-                ESCTwiceDerivedTagToken(countInfo.tagTokenData), countInfo.count));
+                ESCTwiceDerivedTagToken(countInfo.tagTokenData), count));
         }
     }
 
@@ -875,13 +910,28 @@ void processFieldsForInsertV2(FLEQueryInterface* queryImpl,
     ecocDocuments.reserve(totalTokens);
 
     for (auto& payload : serverPayload) {
-        const bool isRangePayload = payload.payload.getEdgeTokenSet().has_value();
-        if (isRangePayload) {
+        if (payload.isRangePayload()) {
             const auto& edgeTokenSet = payload.payload.getEdgeTokenSet().get();
 
             for (const auto& et : edgeTokenSet) {
                 ecocDocuments.push_back(
                     et.getEncryptedTokens().generateDocument(payload.fieldPathName));
+            }
+        } else if (payload.isTextSearchPayload()) {
+            const auto& tsts = payload.payload.getTextSearchTokenSets().get();
+            ecocDocuments.push_back(tsts.getExactTokenSet().getEncryptedTokens().generateDocument(
+                payload.fieldPathName));
+            for (const auto& ts : tsts.getSubstringTokenSets()) {
+                ecocDocuments.push_back(
+                    ts.getEncryptedTokens().generateDocument(payload.fieldPathName));
+            }
+            for (const auto& ts : tsts.getSuffixTokenSets()) {
+                ecocDocuments.push_back(
+                    ts.getEncryptedTokens().generateDocument(payload.fieldPathName));
+            }
+            for (const auto& ts : tsts.getPrefixTokenSets()) {
+                ecocDocuments.push_back(
+                    ts.getEncryptedTokens().generateDocument(payload.fieldPathName));
             }
         } else {
             ecocDocuments.push_back(
@@ -981,7 +1031,8 @@ StatusWith<std::pair<ReplyType, OpMsgRequest>> processFindAndModifyRequest(
     OperationContext* opCtx,
     const write_ops::FindAndModifyCommandRequest& findAndModifyRequest,
     GetTxnCallback getTxns,
-    ProcessFindAndModifyCallback<ReplyType> processCallback) {
+    ProcessFindAndModifyCallback<ReplyType> processCallback,
+    ErrorWithWriteConcernErrorCallback wceCallback) {
 
     {
         stdx::lock_guard<Client> lk(*opCtx->getClient());
@@ -1043,8 +1094,15 @@ StatusWith<std::pair<ReplyType, OpMsgRequest>> processFindAndModifyRequest(
         return swResult.getStatus();
     } else if (!swResult.getValue().getEffectiveStatus().isOK()) {
         auto& commitResult = swResult.getValue();
-        addWriteConcernErrorInfoToReply(commitResult.wcError, reply.get());
-        if (!commitResult.cmdStatus.isOK()) {
+
+        if (commitResult.cmdStatus.isOK()) {
+            // commit encountered a write concern error, but succeeded with the write
+            addWriteConcernErrorInfoToReply(commitResult.wcError, reply.get());
+        } else {
+            // commit encountered an error, and maybe a write concern error as well
+            if (commitResult.wcError.isValid(nullptr) && wceCallback) {
+                wceCallback(commitResult.wcError);
+            }
             return commitResult.cmdStatus;
         }
     }
@@ -1057,14 +1115,16 @@ processFindAndModifyRequest<write_ops::FindAndModifyCommandReply>(
     OperationContext* opCtx,
     const write_ops::FindAndModifyCommandRequest& findAndModifyRequest,
     GetTxnCallback getTxns,
-    ProcessFindAndModifyCallback<write_ops::FindAndModifyCommandReply> processCallback);
+    ProcessFindAndModifyCallback<write_ops::FindAndModifyCommandReply> processCallback,
+    ErrorWithWriteConcernErrorCallback wceCallback);
 
 template StatusWith<std::pair<write_ops::FindAndModifyCommandRequest, OpMsgRequest>>
 processFindAndModifyRequest<write_ops::FindAndModifyCommandRequest>(
     OperationContext* opCtx,
     const write_ops::FindAndModifyCommandRequest& findAndModifyRequest,
     GetTxnCallback getTxns,
-    ProcessFindAndModifyCallback<write_ops::FindAndModifyCommandRequest> processCallback);
+    ProcessFindAndModifyCallback<write_ops::FindAndModifyCommandRequest> processCallback,
+    ErrorWithWriteConcernErrorCallback wceCallback);
 
 StatusWith<write_ops::InsertCommandReply> processInsert(
     FLEQueryInterface* queryImpl,
@@ -1617,8 +1677,16 @@ FLEBatchResult processFLEFindAndModify(OperationContext* opCtx,
         return FLEBatchResult::kNotProcessed;
     }
 
+    // This callback ensures that any write concern errors are set in the reply in the event
+    // that processFindAndModifyRequest returned a non-OK status, which is then thrown.
+    auto onErrorWithWCE = [&result](const WriteConcernErrorDetail& wce) {
+        if (!result.hasField(kWriteConcernErrorFieldName)) {
+            result.append(kWriteConcernErrorFieldName, wce.toBSON());
+        }
+    };
+
     auto swReply = processFindAndModifyRequest<write_ops::FindAndModifyCommandReply>(
-        opCtx, request, &getTransactionWithRetriesForMongoS);
+        opCtx, request, &getTransactionWithRetriesForMongoS, processFindAndModify, onErrorWithWCE);
 
     auto reply = uassertStatusOK(swReply).first;
 
@@ -1658,36 +1726,6 @@ BSONObj FLEQueryInterfaceImpl::getById(const NamespaceString& nss, BSONElement e
                 docs.size() == 1);
         return docs[0];
     }
-}
-
-uint64_t FLEQueryInterfaceImpl::countDocuments(const NamespaceString& nss) {
-    // Since count() does not work in a transaction, call count() by bypassing the transaction api
-    // Allow the thread to be killable. If interrupted, the call to runCommand will fail with the
-    // interruption.
-    auto client = _service->makeClient("SEP-int-fle-crud");
-
-    AlternativeClientRegion clientRegion(client);
-    auto opCtx = cc().makeOperationContext();
-    auto as = AuthorizationSession::get(cc());
-    as->grantInternalAuthorization();
-
-    CountCommandRequest ccr(nss);
-    auto opMsgRequest = ccr.serialize();
-
-    DBDirectClient directClient(opCtx.get());
-    auto uniqueReply = directClient.runCommand(opMsgRequest);
-
-    auto reply = uniqueReply->getCommandReply();
-
-    auto status = getStatusFromWriteCommandReply(reply);
-    uassertStatusOK(status);
-
-    int64_t signedDocCount = reply.getIntField("n"_sd);
-    if (signedDocCount < 0) {
-        signedDocCount = 0;
-    }
-
-    return static_cast<uint64_t>(signedDocCount);
 }
 
 QECountInfoQueryTypeEnum queryTypeTranslation(FLEQueryInterface::TagQueryType type) {
@@ -1975,11 +2013,6 @@ BSONObj FLETagNoTXNQuery::getById(const NamespaceString& nss, BSONElement elemen
     invariant(false);
     return {};
 };
-
-uint64_t FLETagNoTXNQuery::countDocuments(const NamespaceString& nss) {
-    invariant(false);
-    return 0;
-}
 
 std::vector<std::vector<FLEEdgeCountInfo>> FLETagNoTXNQuery::getTags(
     const NamespaceString& nss,

@@ -56,9 +56,7 @@
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/platform/decimal128.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -219,17 +217,14 @@ TEST_F(ExpressionNaryTest, ValidateFieldPathExpressionDependency) {
 }
 
 TEST_F(ExpressionNaryTest, ValidateObjectExpressionDependency) {
-    BSONObj spec = BSON("" << BSON("a"
-                                   << "$x"
-                                   << "q"
-                                   << "$r"));
+    BSONObj spec = BSON("" << BSON("a" << "$x"
+                                       << "q"
+                                       << "$r"));
     BSONElement specElement = spec.firstElement();
     VariablesParseState vps = expCtx.variablesParseState;
     _notAssociativeNorCommutative->addOperand(
         Expression::parseObject(&expCtx, specElement.Obj(), vps));
-    assertDependencies(_notAssociativeNorCommutative,
-                       BSON_ARRAY("r"
-                                  << "x"));
+    assertDependencies(_notAssociativeNorCommutative, BSON_ARRAY("r" << "x"));
 }
 
 TEST_F(ExpressionNaryTest, SerializationToBsonObj) {
@@ -748,11 +743,9 @@ TEST_F(ExpressionNaryTest, FlattenInnerOperandsOptimizationOnCommutativeAndAssoc
     boost::intrusive_ptr<Expression> optimized = _associativeAndCommutative->optimize();
     ASSERT(_associativeAndCommutative == optimized);
 
-    BSONArray expectedContent = BSON_ARRAY("$path3"
-                                           << "$path1"
-                                           << "$path2"
-                                           << BSON_ARRAY(200 << 201 << BSON_ARRAY(100 << 101)
-                                                             << 99));
+    BSONArray expectedContent =
+        BSON_ARRAY("$path3" << "$path1"
+                            << "$path2" << BSON_ARRAY(200 << 201 << BSON_ARRAY(100 << 101) << 99));
     assertContents(_associativeAndCommutative, expectedContent);
 }
 

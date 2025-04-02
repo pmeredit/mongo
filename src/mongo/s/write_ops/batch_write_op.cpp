@@ -58,6 +58,7 @@
 #include "mongo/db/pipeline/legacy_runtime_constants_gen.h"
 #include "mongo/db/query/write_ops/write_ops.h"
 #include "mongo/db/query/write_ops/write_ops_gen.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/s/collection_uuid_mismatch.h"
@@ -69,6 +70,7 @@
 #include "mongo/util/transitional_tools_do_not_use/vector_spooling.h"
 #include "mongo/util/uuid.h"
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 namespace mongo {
 namespace {
 
@@ -105,6 +107,11 @@ bool wasShardAlreadyTargetedWithDifferentShardVersion(
                 // And because we have targeted this shardId for this namespace before, this implies
                 // a shard is already targeted under a different endpoint/shardVersion, necessitates
                 // a new batch.
+                LOGV2_DEBUG(9986802,
+                            4,
+                            "New batch required as this shard was already targeted with a "
+                            "different shard version",
+                            "shard"_attr = write->endpoint.shardName);
                 return true;
             }
         }
@@ -124,6 +131,10 @@ bool isNewBatchRequiredOrdered(
     // If this write targets a different shard, it needs to go in a different batch.
     for (auto&& write : writes) {
         if (batchMap.find(write->endpoint.shardName) == batchMap.end()) {
+            LOGV2_DEBUG(9986803,
+                        5,
+                        "New batch required as this write targets a different shard",
+                        "shard"_attr = write->endpoint.shardName);
             return true;
         }
     }
@@ -229,6 +240,11 @@ void populateCollectionUUIDMismatch(OperationContext* opCtx,
     if (error->getStatus() != ErrorCodes::CollectionUUIDMismatch) {
         return;
     }
+
+    LOGV2_DEBUG(9986812,
+                4,
+                "Encountered collection uuid mismatch when processing errors",
+                "error"_attr = error->getStatus());
 
     auto info = error->getStatus().extraInfo<CollectionUUIDMismatchInfo>();
     if (info->actualCollection()) {
@@ -358,6 +374,7 @@ StatusWith<WriteType> targetWriteOps(OperationContext* opCtx,
         }
 
         const auto& targeter = getTargeterFn(writeOp);
+
         std::vector<std::unique_ptr<TargetedWrite>> writes;
         auto targetStatus = [&] {
             try {
@@ -374,6 +391,8 @@ StatusWith<WriteType> targetWriteOps(OperationContext* opCtx,
 
         if (!targetStatus.isOK()) {
             write_ops::WriteError targetError(0, targetStatus);
+            LOGV2_DEBUG(
+                9986811, 4, "Encountered targeting error", "error"_attr = targetError.getStatus());
 
             auto cancelBatches = [&]() {
                 for (TargetedBatchMap::iterator it = batchMap.begin(); it != batchMap.end();) {
@@ -386,6 +405,10 @@ StatusWith<WriteType> targetWriteOps(OperationContext* opCtx,
 
                     it = batchMap.erase(it);
                 }
+                LOGV2_DEBUG(9986805,
+                            4,
+                            "Canceled batches due to targeting error",
+                            "error"_attr = targetError.getStatus());
                 dassert(batchMap.empty());
             };
 
@@ -446,6 +469,7 @@ StatusWith<WriteType> targetWriteOps(OperationContext* opCtx,
 
         if (wouldMakeBatchesTooBig(writes, batchMap)) {
             invariant(!batchMap.empty());
+            LOGV2_DEBUG(9986804, 5, "Making a new batch to avoid making batch size too large");
             writeOp.resetWriteToReady(opCtx);
             break;
         }
@@ -536,6 +560,7 @@ StatusWith<WriteType> targetWriteOps(OperationContext* opCtx,
 
             batchIt->second->addWrite(std::move(write), estWriteSizeBytes);
         }
+        LOGV2_DEBUG(9986807, 5, "Targeting complete for child batch to shard");
 
         // Relinquish ownership of TargetedWrites, now the TargetedBatches own them
         writes.clear();
@@ -719,7 +744,8 @@ BatchedCommandRequest BatchWriteOp::buildBatchRequest(
             _clientRequest.getWriteCommandRequestBase().getEncryptionInformation());
 
         if (targeter.isTrackedTimeSeriesBucketsNamespace() &&
-            !_clientRequest.getNS().isTimeseriesBucketsCollection()) {
+            !_clientRequest.getNS().isTimeseriesBucketsCollection() &&
+            !isRawDataOperation(_opCtx)) {
             wcb.setIsTimeseriesNamespace(true);
         }
 
@@ -831,7 +857,7 @@ void BatchWriteOp::noteBatchResponse(const TargetedWriteBatch& targetedBatch,
     write_ops::WriteError* lastError = nullptr;
     for (auto&& write : targetedBatch.getWrites()) {
         WriteOp& writeOp = _writeOps[write->writeOpRef.first];
-        invariant(writeOp.getWriteState() == WriteOpState_Pending);
+        invariant(writeOp.getWriteState() == WriteOpState_Pending, writeOp.getWriteStateAsString());
 
         // See if we have an error for the write
         write_ops::WriteError* writeError = nullptr;

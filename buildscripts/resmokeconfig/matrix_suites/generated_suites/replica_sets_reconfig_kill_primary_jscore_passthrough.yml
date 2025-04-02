@@ -78,12 +78,12 @@ selector:
     - jstests/core/**/profile3.js
     - jstests/core/**/profile_findandmodify.js
     - jstests/core/**/query/top/top.js
-    - jstests/core/views/views_stats.js
+    - jstests/core/catalog/views/views_stats.js
     - jstests/core/**/crud_api.js
     - jstests/core/**/find_and_modify.js
-    - jstests/core/**/find_and_modify2.js
+    - jstests/core/**/find_and_modify_fields.js
     - jstests/core/**/find_and_modify_pipeline_update.js
-    - jstests/core/**/find_and_modify_server6865.js
+    - jstests/core/**/find_and_modify_positional_new_remove.js
     - jstests/core/**/project_with_collation.js
     - jstests/core/**/query/comment_field.js
     - jstests/core/**/query/exhaust.js
@@ -98,14 +98,14 @@ selector:
     - jstests/core/**/benchrun_pipeline_updates.js
     - jstests/core/**/list_collections_filter.js
     - jstests/core/**/query/top/top.js
-    - jstests/core/**/drop3.js
+    - jstests/core/ddl/drop_collection_cursors.js
     - jstests/core/**/list_collections_filter.js
     - jstests/core/**/explain_large_bounds.js
     - jstests/core/**/query/collation/collation.js
     - jstests/core/**/geo_s2ordering.js
     - jstests/fle2/**/*.js
     - src/mongo/db/modules/*/jstests/fle2/**/*.js
-    - jstests/core/mixed_version_replica_set.js
+    - jstests/core/testing/mixed_version_replica_set.js
   exclude_with_any_tags:
     - assumes_standalone_mongod
     - requires_getmore

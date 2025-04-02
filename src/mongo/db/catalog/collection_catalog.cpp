@@ -73,9 +73,6 @@
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_tag.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/rwmutex.h"
 #include "mongo/stdx/condition_variable.h"
@@ -100,6 +97,8 @@ static constexpr auto kDelayEntireCommitFailpointField = "pauseEntireCommitMilli
 // given namespace.
 MONGO_FAIL_POINT_DEFINE(hangBeforePublishingCatalogUpdates);
 
+MONGO_FAIL_POINT_DEFINE(setMinVisibleForAllCollectionsToOldestOnStartup);
+
 /**
  * If a collection is initially created with an untimestamped write, but later DDL operations
  * (including drop) on this collection are timestamped, set this decoration to 'true' for
@@ -112,6 +111,115 @@ MONGO_FAIL_POINT_DEFINE(hangBeforePublishingCatalogUpdates);
 const SharedCollectionDecorations::Decoration<AtomicWord<bool>>
     historicalIDTrackerAllowsMixedModeWrites =
         SharedCollectionDecorations::declareDecoration<AtomicWord<bool>>();
+
+namespace catalog {
+void initializeCollectionCatalog(OperationContext* opCtx, StorageEngine* engine) {
+    initializeCollectionCatalog(opCtx, engine, engine->getEngine()->getRecoveryTimestamp());
+}
+
+void initializeCollectionCatalog(OperationContext* opCtx,
+                                 StorageEngine* engine,
+                                 boost::optional<Timestamp> stableTs) {
+    // Use the stable timestamp as minValid. We know for a fact that the collection exist at
+    // this point and is in sync. If we use an earlier timestamp than replication rollback we
+    // may be out-of-order for the collection catalog managing this namespace.
+    const Timestamp minValidTs = stableTs ? *stableTs : Timestamp::min();
+    CollectionCatalog::write(opCtx, [&minValidTs](CollectionCatalog& catalog) {
+        // Let the CollectionCatalog know that we are maintaining timestamps from minValidTs
+        catalog.catalogIdTracker().rollback(minValidTs);
+    });
+
+    bool setMinVisibleToOldestFailpointSet = false;
+    if (MONGO_unlikely(setMinVisibleForAllCollectionsToOldestOnStartup.shouldFail())) {
+        // Failpoint is intended to apply to all collections. Additionally, we want to leverage
+        // nTimes to execute the failpoint for a single 'initializeCollectionCatalog' call.
+        LOGV2(9106700, "setMinVisibleForAllCollectionsToOldestOnStartup failpoint is set");
+        setMinVisibleToOldestFailpointSet = true;
+    }
+
+    std::vector<DurableCatalog::EntryIdentifier> catalogEntries =
+        engine->getDurableCatalog()->getAllCatalogEntries(opCtx);
+    for (DurableCatalog::EntryIdentifier entry : catalogEntries) {
+        // If there's no recovery timestamp, every collection is available.
+        auto collectionMinValidTs = minValidTs;
+        if (MONGO_unlikely(stableTs && setMinVisibleToOldestFailpointSet)) {
+            // This failpoint is useful for tests which want to exercise atClusterTime reads across
+            // server starts (e.g. resharding). It is only safe for tests which can guarantee the
+            // collection always exists for the atClusterTime value(s) and have not changed (i.e. no
+            // DDL operations have run on them).
+            //
+            // Despite its name, the setMinVisibleForAllCollectionsToOldestOnStartup failpoint
+            // controls the minValidTs in MongoDB Server versions with a point-in-time
+            // CollectionCatalog but had controlled the minVisibleTs in older MongoDB Server
+            // versions. We haven't renamed it to avoid issues in multiversion testing.
+            auto shouldSetMinVisibleToOldest = [&]() {
+                // We only do this for collections that existed at the oldest timestamp or after
+                // startup when we aren't sure if it existed or not.
+                const auto catalog = CollectionCatalog::latest(opCtx);
+                const auto& tracker = catalog->catalogIdTracker();
+                auto oldestTs = engine->getEngine()->getOldestTimestamp();
+                auto lookup = tracker.lookup(entry.nss, oldestTs);
+                return lookup.result !=
+                    HistoricalCatalogIdTracker::LookupResult::Existence::kNotExists;
+            }();
+
+            if (shouldSetMinVisibleToOldest) {
+                auto oldestTs = engine->getEngine()->getOldestTimestamp();
+                if (collectionMinValidTs > oldestTs)
+                    collectionMinValidTs = oldestTs;
+            }
+        }
+
+        initCollectionObject(opCtx,
+                             engine,
+                             entry.catalogId,
+                             entry.nss,
+                             storageGlobalParams.repair,
+                             collectionMinValidTs);
+    }
+}
+
+void initCollectionObject(OperationContext* opCtx,
+                          StorageEngine* engine,
+                          RecordId catalogId,
+                          const NamespaceString& nss,
+                          bool forRepair,
+                          Timestamp minValidTs) {
+    auto catalog = engine->getDurableCatalog();
+    const auto catalogEntry = catalog->getParsedCatalogEntry(opCtx, catalogId);
+    const auto md = catalogEntry->metadata;
+    uassert(ErrorCodes::MustDowngrade,
+            str::stream() << "Collection does not have UUID in KVCatalog. Collection: "
+                          << nss.toStringForErrorMsg(),
+            md->options.uuid);
+
+    auto ident = catalog->getEntry(catalogId).ident;
+
+    std::unique_ptr<RecordStore> rs;
+    if (forRepair) {
+        // Using a NULL rs since we don't want to open this record store before it has been
+        // repaired. This also ensures that if we try to use it, it will blow up.
+        rs = nullptr;
+    } else {
+        rs = engine->getEngine()->getRecordStore(opCtx, nss, ident, md->options);
+        invariant(rs);
+    }
+
+    auto collectionFactory = Collection::Factory::get(getGlobalServiceContext());
+    auto collection = collectionFactory->make(opCtx, nss, catalogId, md, std::move(rs));
+
+    CollectionCatalog::write(opCtx, [&](CollectionCatalog& catalog) {
+        catalog.registerCollection(opCtx, std::move(collection), /*commitTime*/ minValidTs);
+    });
+}
+
+std::vector<DatabaseName> listDatabases(boost::optional<TenantId> tenantId) {
+    auto res = tenantId
+        ? CollectionCatalog::latest(getGlobalServiceContext())->getAllDbNamesForTenant(tenantId)
+        : CollectionCatalog::latest(getGlobalServiceContext())->getAllDbNames();
+    return res;
+}
+}  // namespace catalog
 
 namespace {
 constexpr auto kNumDurableCatalogScansDueToMissingMapping = "numScansDueToMissingMapping"_sd;
@@ -382,7 +490,7 @@ public:
         });
     }
 
-    void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) override {
+    void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) noexcept override {
         boost::container::small_vector<CollectionCatalog::CatalogWriteFn, kNumStaticActions>
             writeJobs;
 
@@ -517,7 +625,7 @@ public:
         }
     }
 
-    void rollback(OperationContext* opCtx) override {
+    void rollback(OperationContext* opCtx) noexcept override {
         auto entries = _uncommittedCatalogUpdates.releaseEntries();
 
         // Skip rollback logic if we failed to preCommit this transaction. We must make sure we
@@ -921,7 +1029,7 @@ void CollectionCatalog::reloadViews(OperationContext* opCtx, const DatabaseName&
     PublishCatalogUpdates::ensureRegisteredWithRecoveryUnit(opCtx, uncommittedCatalogUpdates);
 }
 
-const Collection* CollectionCatalog::establishConsistentCollection(
+ConsistentCollection CollectionCatalog::establishConsistentCollection(
     OperationContext* opCtx,
     const NamespaceStringOrUUID& nssOrUUID,
     boost::optional<Timestamp> readTimestamp) const {
@@ -940,36 +1048,35 @@ const Collection* CollectionCatalog::establishConsistentCollection(
         if (coll && coll->usesCappedSnapshots() && !CappedSnapshots::get(opCtx).getSnapshot(coll)) {
             CappedSnapshots::get(opCtx).establish(opCtx, coll, /*isNewCollection=*/true);
         }
-        return coll;
+        return ConsistentCollection{opCtx, coll};
     }
 
-    return lookupCollectionByNamespaceOrUUID(opCtx, nssOrUUID);
+    auto coll = lookupCollectionByNamespaceOrUUID(opCtx, nssOrUUID);
+    return ConsistentCollection{opCtx, coll};
 }
 
-std::vector<const Collection*> CollectionCatalog::establishConsistentCollections(
+std::vector<ConsistentCollection> CollectionCatalog::establishConsistentCollections(
     OperationContext* opCtx, const DatabaseName& dbName) const {
-    std::vector<const Collection*> result;
+    std::vector<ConsistentCollection> result;
     stdx::unordered_set<const Collection*> visitedCollections;
-    auto appendIfUnique = [&result, &visitedCollections](const Collection* col) {
-        auto [_, isNewCollection] = visitedCollections.emplace(col);
-        if (col && isNewCollection) {
-            result.push_back(col);
+    auto appendIfUnique = [&result, &visitedCollections](ConsistentCollection coll) {
+        auto [_, isNewCollection] = visitedCollections.emplace(coll.get());
+        if (coll && isNewCollection) {
+            result.emplace_back(std::move(coll));
         }
     };
 
     // We iterate both already committed and uncommitted changes and validate them with
     // the storage snapshot.
     for (const auto& coll : range(dbName)) {
-        const Collection* currentCollection =
-            establishConsistentCollection(opCtx, coll->ns(), boost::none);
-        appendIfUnique(currentCollection);
+        auto currentCollection = establishConsistentCollection(opCtx, coll->ns(), boost::none);
+        appendIfUnique(std::move(currentCollection));
     }
 
     for (auto const& [ns, coll] : _pendingCommitNamespaces) {
         if (ns.dbName() == dbName) {
-            const Collection* currentCollection =
-                establishConsistentCollection(opCtx, ns, boost::none);
-            appendIfUnique(currentCollection);
+            auto currentCollection = establishConsistentCollection(opCtx, ns, boost::none);
+            appendIfUnique(std::move(currentCollection));
         }
     }
 

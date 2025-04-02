@@ -73,8 +73,6 @@
 #include "mongo/db/write_concern_options.h"
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/balancer_configuration.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
@@ -227,15 +225,12 @@ std::pair<std::vector<BSONObj>, std::vector<BSONObj>> makeChunkAndTagUpdatesForR
     // Both the chunks and tags updates share the base of this $set modifier.
     auto extendMinAndMaxModifier = BSON(
         "min"
-        << BSON("$arrayToObject" << BSON("$concatArrays" << BSON_ARRAY(BSON("$objectToArray"
-                                                                            << "$min")
-                                                                       << literalMinObject)))
+        << BSON("$arrayToObject" << BSON("$concatArrays" << BSON_ARRAY(
+                                             BSON("$objectToArray" << "$min") << literalMinObject)))
         << "max"
         << BSON("$let" << BSON(
                     "vars"
-                    << BSON("maxAsArray" << BSON("$objectToArray"
-                                                 << "$max"))
-                    << "in"
+                    << BSON("maxAsArray" << BSON("$objectToArray" << "$max")) << "in"
                     << BSON("$arrayToObject" << BSON(
                                 "$concatArrays" << BSON_ARRAY(
                                     "$$maxAsArray"
@@ -434,9 +429,9 @@ void ShardingCatalogManager::configureCollectionBalancing(
     boost::optional<int32_t> chunkSizeMB,
     boost::optional<bool> defragmentCollection,
     boost::optional<bool> enableAutoMerger,
-    boost::optional<bool> noBalance) {
+    boost::optional<bool> enableBalancing) {
 
-    if (!chunkSizeMB && !defragmentCollection && !enableAutoMerger && !noBalance) {
+    if (!chunkSizeMB && !defragmentCollection && !enableAutoMerger && !enableBalancing) {
         // No-op in case no supported parameter has been specified.
         // This allows not breaking backwards compatibility as command
         // options may be added/removed over time.
@@ -493,8 +488,8 @@ void ShardingCatalogManager::configureCollectionBalancing(
                                     enableAutoMerger.value());
             updatedFields++;
         }
-        if (noBalance) {
-            setClauseBuilder.append(CollectionType::kNoBalanceFieldName, noBalance.value());
+        if (enableBalancing) {
+            setClauseBuilder.append(CollectionType::kNoBalanceFieldName, !enableBalancing.value());
             updatedFields++;
         }
     }

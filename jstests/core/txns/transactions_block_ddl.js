@@ -4,7 +4,10 @@
 //   # The test runs commands that are not allowed with security token: endSession.
 //   not_allowed_with_signed_security_token,
 //   uses_rename,
-//   uses_transactions
+//   uses_transactions,
+//   # This test relies on mapOnEachShardNode, which forces a new connection to all
+//   # nodes. This function can race with initial sync and fail to open the conn.
+//   incompatible_with_initial_sync
 // ]
 
 import {FixtureHelpers} from "jstests/libs/fixture_helpers.js";
@@ -122,10 +125,24 @@ testSuccessOnTxnCommit(dbName, dropDatabaseCmd, {
     ]
 });
 
-// TODO(SERVER-90070): Unblock the renames on mongos and for RS endpoint when the timeout test no
-// longer executes the rename.
-if (!FixtureHelpers.isMongos(db) && !TestData.testingReplicaSetEndpoint) {
+{
     jsTestLog("Testing that 'renameCollection' within databases blocks on transactions");
+    function undoTimedOutRenameIfNeeded(originalFrom, originalTo) {
+        // In sharded clusters, the deadline expiration of a DDL command causes the user request to
+        // be aborted, but the event won't be propagated to the shard that is currently processing
+        // it: as a matter of fact, the execution of the user request may be resumed and completed
+        // once the conflicting transaction gets committed.
+        // This behavior can cause unexpected failures when running subsequent commands: to remove
+        // them, we restore the initial state through a specular request.
+        if (FixtureHelpers.isMongos(db) || TestData.testingReplicaSetEndpoint) {
+            assert.commandWorkedOrFailedWithCode(testDB.adminCommand({
+                renameCollection: originalTo,
+                to: originalFrom,
+                writeConcern: {w: "majority"}
+            }),
+                                                 [ErrorCodes.NamespaceNotFound]);
+        }
+    }
     assert.commandWorked(testDB.runCommand({drop: otherCollName, writeConcern: {w: "majority"}}));
     const renameCollectionCmdSameDB = {
         renameCollection: sessionColl.getFullName(),
@@ -133,6 +150,8 @@ if (!FixtureHelpers.isMongos(db) && !TestData.testingReplicaSetEndpoint) {
         writeConcern: {w: "majority"}
     };
     testTimeout("admin", renameCollectionCmdSameDB);
+    undoTimedOutRenameIfNeeded(renameCollectionCmdSameDB.renameCollection,
+                               renameCollectionCmdSameDB.to);
     testSuccessOnTxnCommit("admin", renameCollectionCmdSameDB, {
         $or: [
             {"command._shardsvrRenameCollectionParticipant": collName},
@@ -145,18 +164,28 @@ if (!FixtureHelpers.isMongos(db) && !TestData.testingReplicaSetEndpoint) {
         ]
     });
 
-    // TODO(SERVER-90070): This test should remain blocked on mongos as on sharded cluster the
-    // primary shard for database can land on different shards and rename across different primary
-    // shards is not allowed.
     jsTestLog("Testing that 'renameCollection' across databases blocks on transactions");
-    assert.commandWorked(testDB.getSiblingDB(otherDBName)
-                             .runCommand({drop: otherCollName, writeConcern: {w: "majority"}}));
+    if (FixtureHelpers.isMongos(db)) {
+        // Ensure that the two databases are assigned to the same primary shard to ensure that
+        // renameCollection will succeed.
+        assert.commandWorked(testDB.getSiblingDB(otherDBName).dropDatabase());
+        assert.commandWorked(db.adminCommand({
+            enableSharding: sessionDB.getName(),
+            primaryShard: sessionDB.getDatabasePrimaryShardId()
+        }));
+    } else {
+        assert.commandWorked(testDB.getSiblingDB(otherDBName)
+                                 .runCommand({drop: otherCollName, writeConcern: {w: "majority"}}));
+    }
+
     const renameCollectionCmdDifferentDB = {
         renameCollection: sessionColl.getFullName(),
         to: otherDBName + "." + otherCollName,
         writeConcern: {w: "majority"}
     };
     testTimeout("admin", renameCollectionCmdDifferentDB);
+    undoTimedOutRenameIfNeeded(renameCollectionCmdDifferentDB.renameCollection,
+                               renameCollectionCmdDifferentDB.to);
     testSuccessOnTxnCommit("admin", renameCollectionCmdDifferentDB, {
         $or: [
             {"command._shardsvrRenameCollectionParticipant": collName},

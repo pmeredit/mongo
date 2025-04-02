@@ -33,13 +33,7 @@
 #include <string>
 #include <vector>
 
-#include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/query/ce/histogram_common.h"
-#include "mongo/db/query/optimizer/syntax/expr.h"
-#include "mongo/db/query/optimizer/syntax/syntax.h"
-#include "mongo/db/query/stats/ce_histogram.h"
-#include "mongo/db/query/stats/scalar_histogram.h"
 #include "mongo/db/query/stats/value_utils.h"
 
 namespace mongo::stats {
@@ -53,19 +47,7 @@ size_t getActualCard(OperationContext* opCtx,
                      const std::string& query);
 
 /**
-    Given a vector of values, create a histogram reflection the distribution of the vector
-    with the supplied number of buckets.
-*/
-ScalarHistogram makeHistogram(std::vector<SBEValue>& randData, size_t nBuckets);
-
-/**
     Serialize a vector of values.
 */
 std::string printValueArray(const std::vector<SBEValue>& values);
-
-/**
-    Plot a set of statistics as stored in CEHistogram.
-*/
-std::string plotArrayEstimator(const CEHistogram& estimator, const std::string& header);
-
 }  // namespace mongo::stats

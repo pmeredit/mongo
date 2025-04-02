@@ -70,20 +70,21 @@
 #include "mongo/db/s/collection_sharding_state.h"
 #include "mongo/db/s/database_sharding_state.h"
 #include "mongo/db/s/shard_authoritative_catalog_gen.h"
+#include "mongo/db/s/shard_catalog_operations.h"
 #include "mongo/db/s/sharding_recovery_service.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/write_concern.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/reply_interface.h"
 #include "mongo/rpc/unique_message.h"
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/s/catalog/type_collection_gen.h"
+#include "mongo/s/catalog/type_database_gen.h"
 #include "mongo/s/catalog/type_index_catalog_gen.h"
+#include "mongo/s/sharding_feature_flags_gen.h"
 #include "mongo/s/write_ops/batched_command_response.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
@@ -97,14 +98,20 @@
 namespace mongo {
 
 namespace {
+MONGO_FAIL_POINT_DEFINE(skipShardCatalogRecovery);
+
 const StringData kShardingIndexCatalogEntriesFieldName = "indexes"_sd;
 const auto serviceDecorator = ServiceContext::declareDecoration<ShardingRecoveryService>();
+const auto kViewsPermittedDontSkipRSTL =
+    AutoGetCollection::Options{}
+        .viewMode(auto_get_collection::ViewMode::kViewsPermitted)
+        .globalLockSkipOptions({{.skipRSTLLock = false}});  // Make sure we don't skip the RSTL
 
 AggregateCommandRequest makeCollectionsAndIndexesAggregation(OperationContext* opCtx) {
-    StringMap<ResolvedNamespace> resolvedNamespaces;
-    resolvedNamespaces[NamespaceString::kShardCollectionCatalogNamespace.coll()] = {
+    ResolvedNamespaceMap resolvedNamespaces;
+    resolvedNamespaces[NamespaceString::kShardCollectionCatalogNamespace] = {
         NamespaceString::kShardCollectionCatalogNamespace, std::vector<BSONObj>()};
-    resolvedNamespaces[NamespaceString::kShardIndexCatalogNamespace.coll()] = {
+    resolvedNamespaces[NamespaceString::kShardIndexCatalogNamespace] = {
         NamespaceString::kShardIndexCatalogNamespace, std::vector<BSONObj>()};
 
     auto expCtx = ExpressionContextBuilder{}
@@ -174,7 +181,7 @@ void ShardingRecoveryService::FilteringMetadataClearer::operator()(
         AutoGetDb autoDb(opCtx, nssBeingReleased.dbName(), MODE_IX);
         auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(
             opCtx, nssBeingReleased.dbName());
-        scopedDss->clearDbInfo(opCtx);
+        scopedDss->clearDbInfo_DEPRECATED(opCtx);
         return;
     }
 
@@ -208,7 +215,8 @@ void ShardingRecoveryService::acquireRecoverableCriticalSectionBlockWrites(
     OperationContext* opCtx,
     const NamespaceString& nss,
     const BSONObj& reason,
-    const WriteConcernOptions& writeConcern) {
+    const WriteConcernOptions& writeConcern,
+    bool clearDbInfo) {
     LOGV2_DEBUG(5656600,
                 3,
                 "Acquiring recoverable critical section blocking writes",
@@ -239,11 +247,8 @@ void ShardingRecoveryService::acquireRecoverableCriticalSectionBlockWrites(
                 dbLock.emplace(opCtx, nss.dbName(), MODE_IX);
             }
 
-            collLock.emplace(opCtx,
-                             nss,
-                             MODE_S,
-                             AutoGetCollection::Options{}.viewMode(
-                                 auto_get_collection::ViewMode::kViewsPermitted));
+            // The DBDirectClient below might acquire locks, make sure we don't skip the RSTL here.
+            collLock.emplace(opCtx, nss, MODE_S, kViewsPermittedDontSkipRSTL);
         }
 
         DBDirectClient dbClient(opCtx);
@@ -280,6 +285,12 @@ void ShardingRecoveryService::acquireRecoverableCriticalSectionBlockWrites(
             return;
         }
 
+        // TODO(SERVER-100328): remove after 9.0 is branched.
+        // If the storage snapshot is reused between the 'find' above and the 'insert' below, the
+        // operation may unnecessarily fail if a collMod is run on the
+        // kCollectionCriticalSectionsNamespace during FCV upgrade.
+        shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
+
         // The collection critical section is not taken, try to acquire it.
 
         // The following code will try to add a doc to config.criticalCollectionSections:
@@ -288,6 +299,7 @@ void ShardingRecoveryService::acquireRecoverableCriticalSectionBlockWrites(
         // - Otherwise this call will fail and the CS won't be taken (neither persisted nor
         // in-mem)
         CollectionCriticalSectionDocument newDoc(nss, reason, false /* blockReads */);
+        newDoc.setClearDbInfo(clearDbInfo);
 
         const auto commandResponse = dbClient.runCommand([&] {
             write_ops::InsertCommandRequest insertOp(
@@ -349,11 +361,8 @@ void ShardingRecoveryService::promoteRecoverableCriticalSectionToBlockAlsoReads(
         if (nss.isDbOnly()) {
             dbLock.emplace(opCtx, nss.dbName(), MODE_X);
         } else {
-            collLock.emplace(opCtx,
-                             nss,
-                             MODE_X,
-                             AutoGetCollection::Options{}.viewMode(
-                                 auto_get_collection::ViewMode::kViewsPermitted));
+            // The DBDirectClient below might acquire locks, make sure we don't skip the RSTL here.
+            collLock.emplace(opCtx, nss, MODE_X, kViewsPermittedDontSkipRSTL);
         }
 
         DBDirectClient dbClient(opCtx);
@@ -396,6 +405,12 @@ void ShardingRecoveryService::promoteRecoverableCriticalSectionToBlockAlsoReads(
                         "writeConcern"_attr = writeConcern);
             return;
         }
+
+        // TODO(SERVER-100328): remove after 9.0 is branched.
+        // If the storage snapshot is reused between the 'find' above and the 'update' below, the
+        // operation may unnecessarily fail when a collMod is run on the
+        // kCollectionCriticalSectionsNamespace during FCV upgrade.
+        shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
 
         // The CS is in the catch-up phase, try to advance it to the commit phase.
 
@@ -477,11 +492,8 @@ void ShardingRecoveryService::releaseRecoverableCriticalSection(
         if (nss.isDbOnly()) {
             dbLock.emplace(opCtx, nss.dbName(), MODE_X);
         } else {
-            collLock.emplace(opCtx,
-                             nss,
-                             MODE_X,
-                             AutoGetCollection::Options{}.viewMode(
-                                 auto_get_collection::ViewMode::kViewsPermitted));
+            // The DBDirectClient below might acquire locks, make sure we don't skip the RSTL here.
+            collLock.emplace(opCtx, nss, MODE_X, kViewsPermittedDontSkipRSTL);
         }
 
         DBDirectClient dbClient(opCtx);
@@ -533,6 +545,12 @@ void ShardingRecoveryService::releaseRecoverableCriticalSection(
         // try to release it.
 
         beforeReleasingAction(opCtx, nss);
+
+        // TODO(SERVER-100328): remove after 9.0 is branched.
+        // If the storage snapshot is reused between the 'find' above and the 'delete' below, the
+        // operation may unnecessarily fail if a collMod is run on the
+        // kCollectionCriticalSectionsNamespace during FCV upgrade.
+        shard_role_details::getRecoveryUnit(opCtx)->abandonSnapshot();
 
         // The following code will try to remove a doc from config.criticalCollectionSections:
         // - If everything goes well, the shard server op observer will release the in-memory CS
@@ -652,9 +670,38 @@ void ShardingRecoveryService::recoverStates(OperationContext* opCtx,
     }
 }
 
+void ShardingRecoveryService::_reloadShardingState(OperationContext* opCtx) {
+    Lock::GlobalWrite globalLock{opCtx};
+    LOGV2(9813601, "Recovering DatabaseShardingState from the shard catalog");
+
+    const auto allDatabases = DatabaseShardingState::getDatabaseNames(opCtx);
+    for (const auto& dbName : allDatabases) {
+        auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(opCtx, dbName);
+        scopedDss->clearDbInfo(opCtx);
+    }
+
+    const auto dssMetadataCursor = shard_catalog_operations::readAllDatabaseMetadata(opCtx);
+    while (dssMetadataCursor->more()) {
+        const auto dbInfo =
+            DatabaseType::parse(IDLParserContext("DatabaseType"), dssMetadataCursor->next());
+        auto scopedDss =
+            DatabaseShardingState::assertDbLockedAndAcquireExclusive(opCtx, dbInfo.getDbName());
+        scopedDss->setAuthoritativeDbInfo(opCtx, dbInfo);
+    }
+}
+
 void ShardingRecoveryService::onConsistentDataAvailable(OperationContext* opCtx,
                                                         bool isMajority,
                                                         bool isRollback) {
+
+    if (feature_flags::gShardAuthoritativeDbMetadataDDL.isEnabled(
+            VersionContext::getDecoration(opCtx),
+            serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
+        MONGO_likely(!skipShardCatalogRecovery.shouldFail())) {
+        // Has to be called on rollback too. Takes the global lock.
+        _reloadShardingState(opCtx);
+    }
+
     // TODO (SERVER-91505): Determine if we should reload in-memory states on rollback.
     if (isRollback) {
         return;

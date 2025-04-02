@@ -9,17 +9,23 @@
  * collection, dropping and creating a collection, or refining the sharding key.
  */
 
+import {FeatureFlagUtil} from "jstests/libs/feature_flag_util.js";
 import {ShardingTest} from "jstests/libs/shardingtest.js";
-
-// Cannot run the filtering metadata check on tests that run refineCollectionShardKey.
-TestData.skipCheckShardFilteringMetadata = true;
 
 function checkTimestampConsistencyInPersistentMetadata(
     dbName, nss, dbTimestampInConfig, collTimestampInConfig) {
-    // Checking consistency on local shard collection: config.cache.database
-    st.shard0.adminCommand({_flushDatabaseCacheUpdates: dbName, syncFromConfig: true});
-    let dbTimestampInShard =
-        st.shard0.getDB('config').cache.databases.findOne({_id: dbName}).version.timestamp;
+    // Checking consistency on shard catalog.
+    function getDbMetadata() {
+        const isAuthoritativeShardEnabled = FeatureFlagUtil.isPresentAndEnabled(
+            st.s.getDB('admin'), "ShardAuthoritativeDbMetadataDDL");
+        if (!isAuthoritativeShardEnabled) {
+            st.shard0.adminCommand({_flushDatabaseCacheUpdates: dbName, syncFromConfig: true});
+            return st.shard0.getDB('config').cache.databases.findOne({_id: dbName});
+        }
+        return st.shard0.getDB('config').shard.catalog.databases.findOne({_id: dbName});
+    }
+
+    const dbTimestampInShard = getDbMetadata().version.timestamp;
     assert.neq(null, dbTimestampInShard);
     assert.eq(timestampCmp(dbTimestampInConfig, dbTimestampInShard), 0);
 

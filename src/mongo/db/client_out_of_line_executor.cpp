@@ -39,9 +39,6 @@
 #include "mongo/db/baton.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/logv2/log_severity_suppressor.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
@@ -67,7 +64,7 @@ public:
 ClientOutOfLineExecutor::ClientOutOfLineExecutor() noexcept
     : _impl{std::make_unique<Impl>()}, _taskQueue{std::make_shared<QueueType>()} {}
 
-ClientOutOfLineExecutor::~ClientOutOfLineExecutor() noexcept {
+ClientOutOfLineExecutor::~ClientOutOfLineExecutor() {
     if (!_requireShutdown.load())
         return;
     invariant(_isShutdown);

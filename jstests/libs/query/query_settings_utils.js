@@ -18,6 +18,7 @@ export class QuerySettingsUtils {
         this._db = db;
         this._adminDB = this._db.getSiblingDB("admin");
         this._collName = collName;
+        this._onSetQuerySettingsHooks = [];
     }
 
     /**
@@ -205,6 +206,9 @@ export class QuerySettingsUtils {
             queryShapeHash =
                 assert.commandWorked(this._db.adminCommand(setQuerySettingsCmd)).queryShapeHash;
             assert.soon(() => (this.getQuerySettings({filter: {queryShapeHash}}).length === 1));
+            for (const hook of this._onSetQuerySettingsHooks) {
+                hook();
+            }
             return runTest();
         } finally {
             if (queryShapeHash) {
@@ -213,6 +217,14 @@ export class QuerySettingsUtils {
                 assert.soon(() => (this.getQuerySettings({filter: {queryShapeHash}}).length === 0));
             }
         }
+    }
+
+    /**
+     * Register a hook to be executed after the "setQuerySettings" command on every
+     * withQuerySettings() invocation.
+     */
+    onSetQuerySettings(hook) {
+        this._onSetQuerySettingsHooks.push(hook);
     }
 
     withoutDollarDB(cmd) {
@@ -263,9 +275,8 @@ export class QuerySettingsUtils {
             this.assertQueryShapeConfiguration(expectedConfiguration);
         }
 
-        const withoutDollarDB = query.aggregate ? {...this.withoutDollarDB(query), cursor: {}}
-                                                : this.withoutDollarDB(query);
-        const explain = assert.commandWorked(this._db.runCommand({explain: withoutDollarDB}));
+        const explainCmd = getExplainCommand(this.withoutDollarDB(query));
+        const explain = assert.commandWorked(this._db.runCommand(explainCmd));
         const engine = getEngine(explain);
         assert.eq(
             engine, expectedEngine, `Expected engine to be ${expectedEngine} but found ${engine}`);
@@ -327,8 +338,9 @@ export class QuerySettingsUtils {
         for (const q of [query, queryPrime, unrelatedQuery]) {
             // With no settings, all queries should succeed.
             assert.commandWorked(db.runCommand(q));
+
             // And so should explaining those queries.
-            assert.commandWorked(db.runCommand({explain: q}));
+            assert.commandWorked(db.runCommand(getExplainCommand(q)));
         }
 
         // Still nothing has been rejected.
@@ -367,7 +379,7 @@ export class QuerySettingsUtils {
 
         for (const q of [query, queryPrime, unrelatedQuery]) {
             // All explains should still succeed.
-            assert.commandWorked(db.runCommand({explain: q}));
+            assert.commandWorked(db.runCommand(getExplainCommand(q)));
         }
 
         // Explains still should not alter the cmd rejected counter.
@@ -380,7 +392,7 @@ export class QuerySettingsUtils {
         // Once again, all queries should succeed.
         for (const q of [query, queryPrime, unrelatedQuery]) {
             assert.commandWorked(db.runCommand(q));
-            assert.commandWorked(db.runCommand({explain: q}));
+            assert.commandWorked(db.runCommand(getExplainCommand(q)));
         }
 
         // Successful, non-rejected queries should not alter the rejected cmd counter.

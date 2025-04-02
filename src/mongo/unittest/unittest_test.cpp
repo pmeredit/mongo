@@ -54,7 +54,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/type_traits.h"
 #include "mongo/unittest/assert.h"
 #include "mongo/unittest/bson_test_util.h"
@@ -316,7 +315,7 @@ TEST_F(UnitTestFormatTest, FormatEnumClass) {
 
 namespace test_extension {
 struct X {
-    friend std::string stringifyForAssert(const X& x) {
+    friend std::string stringify_forTest(const X& x) {
         return "X{" + std::to_string(x.x) + "}";
     }
 

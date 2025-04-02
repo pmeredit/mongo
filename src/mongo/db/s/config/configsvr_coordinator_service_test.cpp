@@ -41,8 +41,7 @@
 #include "mongo/db/s/config/configsvr_coordinator_service.h"
 #include "mongo/db/s/config/set_cluster_parameter_coordinator_document_gen.h"
 #include "mongo/db/s/config/set_user_write_block_mode_coordinator_document_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/future.h"
@@ -87,16 +86,19 @@ TEST_F(ConfigsvrCoordinatorServiceTest, CoordinatorsOfSameTypeCanExist) {
         cid.setSubId("0"_sd);
         coordinatorDoc.setConfigsvrCoordinatorMetadata({cid});
         coordinatorDoc.setParameter(BSON("a" << 1));
+        coordinatorDoc.setCompatibleWithTopologyChange(true);
 
         SetClusterParameterCoordinatorDocument coordinatorDocSameSubId;
         coordinatorDocSameSubId.setConfigsvrCoordinatorMetadata({cid});
         coordinatorDocSameSubId.setParameter(BSON("b" << 2));
+        coordinatorDocSameSubId.setCompatibleWithTopologyChange(true);
 
         SetClusterParameterCoordinatorDocument coordinatorDocDiffSubId;
         ConfigsvrCoordinatorId cid1(ConfigsvrCoordinatorTypeEnum::kSetClusterParameter);
         cid1.setSubId("1"_sd);
         coordinatorDocDiffSubId.setConfigsvrCoordinatorMetadata({cid1});
         coordinatorDocDiffSubId.setParameter(BSON("a" << 1));
+        coordinatorDocDiffSubId.setCompatibleWithTopologyChange(true);
 
         SetUserWriteBlockModeCoordinatorDocument coordinatorDocDiffType;
         ConfigsvrCoordinatorId cid2(ConfigsvrCoordinatorTypeEnum::kSetUserWriteBlockMode);

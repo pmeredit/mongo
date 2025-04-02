@@ -1,3 +1,9 @@
+/**
+ * @tags: [
+ *  featureFlagStreams,
+ * ]
+ */
+
 import {
     documentEq,
 } from "jstests/aggregation/extras/utils.js";
@@ -46,7 +52,6 @@ function _setupAndRunTest(pipeline, srcDir, expectedResultsLen, expectedStartOff
     // function. So disabling eslint for the copyDir invocation
     // mkdir(test2.spRestoreDir);
     mkdir(test2.spRestoreDir);
-    // eslint-disable-next-line
     copyDir(srcDir + "/jstests-tenant/resume_from_checkpoint_test_spid", test2.spRestoreDir);
 
     let ids = test2.getCheckpointIds();

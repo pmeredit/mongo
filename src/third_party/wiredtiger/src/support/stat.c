@@ -1365,11 +1365,19 @@ static const char *const __stats_connection_desc[] = {
   "block-manager: blocks read",
   "block-manager: blocks written",
   "block-manager: bytes read",
+  "block-manager: bytes read for internal pages",
+  "block-manager: bytes read for internal pages before decompression and decryption",
+  "block-manager: bytes read for leaf pages",
+  "block-manager: bytes read for leaf pages before decompression and decryption",
   "block-manager: bytes read via memory map API",
   "block-manager: bytes read via system call API",
   "block-manager: bytes written",
   "block-manager: bytes written by compaction",
   "block-manager: bytes written for checkpoint",
+  "block-manager: bytes written for internal pages after compression and encryption",
+  "block-manager: bytes written for internal pages before compression and encryption",
+  "block-manager: bytes written for leaf pages after compression and encryption",
+  "block-manager: bytes written for leaf pages before compression and encryption",
   "block-manager: bytes written via memory map API",
   "block-manager: bytes written via system call API",
   "block-manager: mapped blocks read",
@@ -1377,6 +1385,7 @@ static const char *const __stats_connection_desc[] = {
   "block-manager: number of times the file was remapped because it changed size via fallocate or "
   "truncate",
   "block-manager: number of times the region was remapped via write",
+  "cache: application requested eviction interrupt",
   "cache: application thread time evicting (usecs)",
   "cache: application threads page read from disk to cache count",
   "cache: application threads page read from disk to cache time (usecs)",
@@ -1567,6 +1576,8 @@ static const char *const __stats_connection_desc[] = {
   "cache: tracked dirty pages in the cache",
   "cache: uncommitted truncate blocked page eviction",
   "cache: unmodified pages evicted",
+  "cache: updates in uncommitted txn - bytes",
+  "cache: updates in uncommitted txn - count",
   "capacity: background fsync file handles considered",
   "capacity: background fsync file handles synced",
   "capacity: background fsync time (msecs)",
@@ -1771,8 +1782,18 @@ static const char *const __stats_connection_desc[] = {
   "data-handle: connection sweeps skipped due to checkpoint gathering handles",
   "data-handle: session dhandles swept",
   "data-handle: session sweep attempts",
-  "live-restore: live restore state",
-  "live-restore: the number of files remaining for live restore completion",
+  "live-restore: number of bytes copied from the source to the destination",
+  "live-restore: number of files remaining for migration completion",
+  "live-restore: number of reads from the source database",
+  "live-restore: source read latency histogram (bucket 1) - 0-10ms",
+  "live-restore: source read latency histogram (bucket 2) - 10-49ms",
+  "live-restore: source read latency histogram (bucket 3) - 50-99ms",
+  "live-restore: source read latency histogram (bucket 4) - 100-249ms",
+  "live-restore: source read latency histogram (bucket 5) - 250-499ms",
+  "live-restore: source read latency histogram (bucket 6) - 500-999ms",
+  "live-restore: source read latency histogram (bucket 7) - 1000ms+",
+  "live-restore: source read latency histogram total (msecs)",
+  "live-restore: state",
   "lock: btree page lock acquisitions",
   "lock: btree page lock application thread wait time (usecs)",
   "lock: btree page lock internal thread wait time (usecs)",
@@ -1971,11 +1992,11 @@ static const char *const __stats_connection_desc[] = {
   "thread-state: active filesystem read calls",
   "thread-state: active filesystem write calls",
   "thread-yield: application thread operations waiting for cache",
-  "thread-yield: application thread operations waiting for cache eviction while idle",
+  "thread-yield: application thread operations waiting for interruptible cache eviction",
   "thread-yield: application thread operations waiting for mandatory cache eviction",
   "thread-yield: application thread snapshot refreshed for eviction",
   "thread-yield: application thread time waiting for cache (usecs)",
-  "thread-yield: application thread time waiting for cache eviction while idle (usecs)",
+  "thread-yield: application thread time waiting for interruptible cache eviction (usecs)",
   "thread-yield: application thread time waiting for mandatory cache eviction (usecs)",
   "thread-yield: connection close blocked waiting for transaction state stabilization",
   "thread-yield: data handle lock yielded",
@@ -2141,17 +2162,26 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
     stats->block_read = 0;
     stats->block_write = 0;
     stats->block_byte_read = 0;
+    stats->block_byte_read_intl = 0;
+    stats->block_byte_read_intl_disk = 0;
+    stats->block_byte_read_leaf = 0;
+    stats->block_byte_read_leaf_disk = 0;
     stats->block_byte_read_mmap = 0;
     stats->block_byte_read_syscall = 0;
     stats->block_byte_write = 0;
     stats->block_byte_write_compact = 0;
     stats->block_byte_write_checkpoint = 0;
+    stats->block_byte_write_intl_disk = 0;
+    stats->block_byte_write_intl = 0;
+    stats->block_byte_write_leaf_disk = 0;
+    stats->block_byte_write_leaf = 0;
     stats->block_byte_write_mmap = 0;
     stats->block_byte_write_syscall = 0;
     stats->block_map_read = 0;
     stats->block_byte_map_read = 0;
     stats->block_remap_file_resize = 0;
     stats->block_remap_file_write = 0;
+    stats->eviction_interupted_by_app = 0;
     stats->eviction_app_time = 0;
     stats->cache_read_app_count = 0;
     stats->cache_read_app_time = 0;
@@ -2324,6 +2354,8 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
     /* not clearing cache_pages_dirty */
     stats->cache_eviction_blocked_uncommitted_truncate = 0;
     stats->cache_eviction_clean = 0;
+    /* not clearing cache_updates_txn_uncommitted_bytes */
+    /* not clearing cache_updates_txn_uncommitted_count */
     stats->fsync_all_fh_total = 0;
     stats->fsync_all_fh = 0;
     /* not clearing fsync_all_time */
@@ -2526,8 +2558,18 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
     stats->dh_sweep_skip_ckpt = 0;
     stats->dh_session_handles = 0;
     stats->dh_session_sweeps = 0;
-    /* not clearing live_restore_state */
+    stats->live_restore_bytes_copied = 0;
     /* not clearing live_restore_work_remaining */
+    stats->live_restore_source_read_count = 0;
+    stats->live_restore_hist_source_read_latency_lt10 = 0;
+    stats->live_restore_hist_source_read_latency_lt50 = 0;
+    stats->live_restore_hist_source_read_latency_lt100 = 0;
+    stats->live_restore_hist_source_read_latency_lt250 = 0;
+    stats->live_restore_hist_source_read_latency_lt500 = 0;
+    stats->live_restore_hist_source_read_latency_lt1000 = 0;
+    stats->live_restore_hist_source_read_latency_gt1000 = 0;
+    stats->live_restore_hist_source_read_latency_total_msecs = 0;
+    /* not clearing live_restore_state */
     stats->lock_btree_page_count = 0;
     stats->lock_btree_page_wait_application = 0;
     stats->lock_btree_page_wait_internal = 0;
@@ -2724,12 +2766,12 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
     /* not clearing thread_read_active */
     /* not clearing thread_write_active */
     stats->application_cache_ops = 0;
-    stats->application_cache_idle_ops = 0;
-    stats->application_cache_busy_ops = 0;
+    stats->application_cache_interruptible_ops = 0;
+    stats->application_cache_uninterruptible_ops = 0;
     stats->application_evict_snapshot_refreshed = 0;
     stats->application_cache_time = 0;
-    stats->application_cache_idle_time = 0;
-    stats->application_cache_busy_time = 0;
+    stats->application_cache_interruptible_time = 0;
+    stats->application_cache_uninterruptible_time = 0;
     stats->txn_release_blocked = 0;
     stats->dhandle_lock_blocked = 0;
     stats->page_index_slot_ref_blocked = 0;
@@ -2870,17 +2912,26 @@ __wt_stat_connection_aggregate(WT_CONNECTION_STATS **from, WT_CONNECTION_STATS *
     to->block_read += WT_STAT_CONN_READ(from, block_read);
     to->block_write += WT_STAT_CONN_READ(from, block_write);
     to->block_byte_read += WT_STAT_CONN_READ(from, block_byte_read);
+    to->block_byte_read_intl += WT_STAT_CONN_READ(from, block_byte_read_intl);
+    to->block_byte_read_intl_disk += WT_STAT_CONN_READ(from, block_byte_read_intl_disk);
+    to->block_byte_read_leaf += WT_STAT_CONN_READ(from, block_byte_read_leaf);
+    to->block_byte_read_leaf_disk += WT_STAT_CONN_READ(from, block_byte_read_leaf_disk);
     to->block_byte_read_mmap += WT_STAT_CONN_READ(from, block_byte_read_mmap);
     to->block_byte_read_syscall += WT_STAT_CONN_READ(from, block_byte_read_syscall);
     to->block_byte_write += WT_STAT_CONN_READ(from, block_byte_write);
     to->block_byte_write_compact += WT_STAT_CONN_READ(from, block_byte_write_compact);
     to->block_byte_write_checkpoint += WT_STAT_CONN_READ(from, block_byte_write_checkpoint);
+    to->block_byte_write_intl_disk += WT_STAT_CONN_READ(from, block_byte_write_intl_disk);
+    to->block_byte_write_intl += WT_STAT_CONN_READ(from, block_byte_write_intl);
+    to->block_byte_write_leaf_disk += WT_STAT_CONN_READ(from, block_byte_write_leaf_disk);
+    to->block_byte_write_leaf += WT_STAT_CONN_READ(from, block_byte_write_leaf);
     to->block_byte_write_mmap += WT_STAT_CONN_READ(from, block_byte_write_mmap);
     to->block_byte_write_syscall += WT_STAT_CONN_READ(from, block_byte_write_syscall);
     to->block_map_read += WT_STAT_CONN_READ(from, block_map_read);
     to->block_byte_map_read += WT_STAT_CONN_READ(from, block_byte_map_read);
     to->block_remap_file_resize += WT_STAT_CONN_READ(from, block_remap_file_resize);
     to->block_remap_file_write += WT_STAT_CONN_READ(from, block_remap_file_write);
+    to->eviction_interupted_by_app += WT_STAT_CONN_READ(from, eviction_interupted_by_app);
     to->eviction_app_time += WT_STAT_CONN_READ(from, eviction_app_time);
     to->cache_read_app_count += WT_STAT_CONN_READ(from, cache_read_app_count);
     to->cache_read_app_time += WT_STAT_CONN_READ(from, cache_read_app_time);
@@ -3100,6 +3151,10 @@ __wt_stat_connection_aggregate(WT_CONNECTION_STATS **from, WT_CONNECTION_STATS *
     to->cache_eviction_blocked_uncommitted_truncate +=
       WT_STAT_CONN_READ(from, cache_eviction_blocked_uncommitted_truncate);
     to->cache_eviction_clean += WT_STAT_CONN_READ(from, cache_eviction_clean);
+    to->cache_updates_txn_uncommitted_bytes +=
+      WT_STAT_CONN_READ(from, cache_updates_txn_uncommitted_bytes);
+    to->cache_updates_txn_uncommitted_count +=
+      WT_STAT_CONN_READ(from, cache_updates_txn_uncommitted_count);
     to->fsync_all_fh_total += WT_STAT_CONN_READ(from, fsync_all_fh_total);
     to->fsync_all_fh += WT_STAT_CONN_READ(from, fsync_all_fh);
     to->fsync_all_time += WT_STAT_CONN_READ(from, fsync_all_time);
@@ -3324,8 +3379,26 @@ __wt_stat_connection_aggregate(WT_CONNECTION_STATS **from, WT_CONNECTION_STATS *
     to->dh_sweep_skip_ckpt += WT_STAT_CONN_READ(from, dh_sweep_skip_ckpt);
     to->dh_session_handles += WT_STAT_CONN_READ(from, dh_session_handles);
     to->dh_session_sweeps += WT_STAT_CONN_READ(from, dh_session_sweeps);
-    to->live_restore_state += WT_STAT_CONN_READ(from, live_restore_state);
+    to->live_restore_bytes_copied += WT_STAT_CONN_READ(from, live_restore_bytes_copied);
     to->live_restore_work_remaining += WT_STAT_CONN_READ(from, live_restore_work_remaining);
+    to->live_restore_source_read_count += WT_STAT_CONN_READ(from, live_restore_source_read_count);
+    to->live_restore_hist_source_read_latency_lt10 +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_lt10);
+    to->live_restore_hist_source_read_latency_lt50 +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_lt50);
+    to->live_restore_hist_source_read_latency_lt100 +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_lt100);
+    to->live_restore_hist_source_read_latency_lt250 +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_lt250);
+    to->live_restore_hist_source_read_latency_lt500 +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_lt500);
+    to->live_restore_hist_source_read_latency_lt1000 +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_lt1000);
+    to->live_restore_hist_source_read_latency_gt1000 +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_gt1000);
+    to->live_restore_hist_source_read_latency_total_msecs +=
+      WT_STAT_CONN_READ(from, live_restore_hist_source_read_latency_total_msecs);
+    to->live_restore_state += WT_STAT_CONN_READ(from, live_restore_state);
     to->lock_btree_page_count += WT_STAT_CONN_READ(from, lock_btree_page_count);
     to->lock_btree_page_wait_application +=
       WT_STAT_CONN_READ(from, lock_btree_page_wait_application);
@@ -3553,13 +3626,17 @@ __wt_stat_connection_aggregate(WT_CONNECTION_STATS **from, WT_CONNECTION_STATS *
     to->thread_read_active += WT_STAT_CONN_READ(from, thread_read_active);
     to->thread_write_active += WT_STAT_CONN_READ(from, thread_write_active);
     to->application_cache_ops += WT_STAT_CONN_READ(from, application_cache_ops);
-    to->application_cache_idle_ops += WT_STAT_CONN_READ(from, application_cache_idle_ops);
-    to->application_cache_busy_ops += WT_STAT_CONN_READ(from, application_cache_busy_ops);
+    to->application_cache_interruptible_ops +=
+      WT_STAT_CONN_READ(from, application_cache_interruptible_ops);
+    to->application_cache_uninterruptible_ops +=
+      WT_STAT_CONN_READ(from, application_cache_uninterruptible_ops);
     to->application_evict_snapshot_refreshed +=
       WT_STAT_CONN_READ(from, application_evict_snapshot_refreshed);
     to->application_cache_time += WT_STAT_CONN_READ(from, application_cache_time);
-    to->application_cache_idle_time += WT_STAT_CONN_READ(from, application_cache_idle_time);
-    to->application_cache_busy_time += WT_STAT_CONN_READ(from, application_cache_busy_time);
+    to->application_cache_interruptible_time +=
+      WT_STAT_CONN_READ(from, application_cache_interruptible_time);
+    to->application_cache_uninterruptible_time +=
+      WT_STAT_CONN_READ(from, application_cache_uninterruptible_time);
     to->txn_release_blocked += WT_STAT_CONN_READ(from, txn_release_blocked);
     to->dhandle_lock_blocked += WT_STAT_CONN_READ(from, dhandle_lock_blocked);
     to->page_index_slot_ref_blocked += WT_STAT_CONN_READ(from, page_index_slot_ref_blocked);
@@ -3642,11 +3719,12 @@ static const char *const __stats_session_desc[] = {
   "session: bytes written from cache",
   "session: dhandle lock wait time (usecs)",
   "session: dirty bytes in this txn",
+  "session: number of updates in this txn",
   "session: page read from disk to cache time (usecs)",
   "session: page write from cache to disk time (usecs)",
   "session: schema lock wait time (usecs)",
   "session: time waiting for cache (usecs)",
-  "session: time waiting for cache eviction while idle (usecs)",
+  "session: time waiting for cache interruptible eviction (usecs)",
   "session: time waiting for mandatory cache eviction (usecs)",
 };
 
@@ -3670,11 +3748,12 @@ __wt_stat_session_clear_single(WT_SESSION_STATS *stats)
     stats->bytes_read = 0;
     stats->bytes_write = 0;
     stats->lock_dhandle_wait = 0;
-    stats->txn_bytes_dirty = 0;
+    /* not clearing txn_bytes_dirty */
+    /* not clearing txn_updates */
     stats->read_time = 0;
     stats->write_time = 0;
     stats->lock_schema_wait = 0;
     stats->cache_time = 0;
-    stats->cache_time_idle = 0;
-    stats->cache_time_busy = 0;
+    stats->cache_time_interruptible = 0;
+    stats->cache_time_mandatory = 0;
 }

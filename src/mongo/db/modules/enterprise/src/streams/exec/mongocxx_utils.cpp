@@ -3,6 +3,8 @@
  */
 
 
+#include "streams/exec/mongocxx_utils.h"
+
 #include <boost/algorithm/string/replace.hpp>
 #include <bsoncxx/json.hpp>
 #include <exception>
@@ -18,7 +20,6 @@
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
 #include "streams/exec/context.h"
-#include "streams/exec/mongocxx_utils.h"
 #include "streams/util/exception.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
@@ -194,13 +195,19 @@ mongocxx::options::client MongoCxxClientOptions::toMongoCxxClientOptions() const
     return clientOptions;
 }
 
-bsoncxx::document::value callHello(mongocxx::database& db) {
+bsoncxx::document::value callHello(mongocxx::database& db, const Context* const context) {
     int numRetries = 3;
     for (int i = 0; i < numRetries - 1; i++) {
         try {
             auto response = db.run_command(make_document(kvp("hello", "1")));
             return response;
-        } catch (const mongocxx::operation_exception&) {
+        } catch (const mongocxx::operation_exception& e) {
+            LOGV2_INFO(10162904,
+                       "hello operation failed. Re-attempting",
+                       "context"_attr = context->toBSON(),
+                       "code"_attr = int(e.code().value()),
+                       "exception"_attr = e.what());
+
             // We have to wait at least 500ms (i.e. the value of
             // MONGOC_TOPOLOGY_MIN_HEARTBEAT_FREQUENCY_MS) Otherwise, we will self inflict a "No
             // servers yet eligible for rescan" error which is due to trying to re-scan too soon.
@@ -326,7 +333,6 @@ std::unique_ptr<mongocxx::uri> makeMongocxxUri(const std::string& uri) {
 boost::optional<write_ops::WriteError> getWriteErrorFromRawServerError(
     const mongocxx::operation_exception& ex) {
     using namespace mongo::write_ops;
-    using namespace fmt::literals;
     const auto& rawServerError = ex.raw_server_error();
     if (!rawServerError || rawServerError->find(kWriteErrorsFieldName) == rawServerError->end()) {
         return boost::none;
@@ -366,10 +372,12 @@ boost::optional<write_ops::WriteError> getWriteErrorFromRawServerError(
     for (auto& writeErrorElem : writeErrorsVec) {
         writeErrors.insert(WriteError::parse(writeErrorElem.embeddedObject()));
     }
-    logAndUassert(ErrorCodes::InternalError,
-                  "bulk_write_exception::raw_server_error() contains duplicate entries in the "
-                  "'{}' field"_format(kWriteErrorsFieldName),
-                  writeErrors.size() == writeErrorsVec.size());
+    logAndUassert(
+        ErrorCodes::InternalError,
+        fmt::format("bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                    "'{}' field",
+                    kWriteErrorsFieldName),
+        writeErrors.size() == writeErrorsVec.size());
 
     // Since we apply the writes in ordered manner there should only be 1 failed write and all the
     // writes before it should have succeeded.
@@ -386,10 +394,13 @@ boost::optional<write_ops::WriteError> getWriteErrorFromRawServerError(
         for (auto& upsertedItem : upsertedVec) {
             upsertedIndexes.insert(upsertedItem[Upserted::kIndexFieldName].Int());
         }
-        logAndUassert(ErrorCodes::InternalError,
-                      "bulk_write_exception::raw_server_error() contains duplicate entries in the "
-                      "'{}' field"_format(UpdateCommandReply::kUpsertedFieldName),
-                      upsertedIndexes.size() == upsertedVec.size());
+        logAndUassert(
+            ErrorCodes::InternalError,
+            fmt::format(
+                "bulk_write_exception::raw_server_error() contains duplicate entries in the "
+                "'{}' field",
+                UpdateCommandReply::kUpsertedFieldName),
+            upsertedIndexes.size() == upsertedVec.size());
         logAndUassert(ErrorCodes::InternalError,
                       str::stream()
                           << "unexpected number of upserted indexes (" << upsertedIndexes.size()

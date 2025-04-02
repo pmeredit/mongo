@@ -43,11 +43,8 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/bson/timestamp.h"
-#include "mongo/bson/util/builder.h"
-#include "mongo/bson/util/builder_fwd.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/database_name.h"
-#include "mongo/db/feature_flag.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/index_names.h"
 #include "mongo/db/operation_context.h"
@@ -58,13 +55,9 @@
 #include "mongo/db/storage/record_data.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/recovery_unit.h"
-#include "mongo/db/storage/storage_engine_interface.h"
-#include "mongo/db/storage/storage_options.h"
-#include "mongo/db/storage/storage_parameters_gen.h"
 #include "mongo/db/transaction_resources.h"
+#include "mongo/db/version_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/namespace_string_util.h"
 #include "mongo/util/str.h"
@@ -72,70 +65,13 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 namespace mongo {
-namespace {
-// Does not escape letters, digits, '.', or '_'.
-// Otherwise escapes to a '.' followed by a zero-filled 2- or 3-digit decimal number.
-// Note that this escape table does not produce a 1:1 mapping to and from dbname, and
-// collisions are possible.
-// For example:
-//     "db.123", "db\0143", and "db\073" all escape to "db.123".
-//       {'d','b','1','2','3'} => "d" + "b" + "." + "1" + "2" + "3" => "db.123"
-//       {'d','b','\x0c','3'}  => "d" + "b" + ".12" + "3"           => "db.123"
-//       {'d','b','\x3b'}      => "d" + "b" + ".123"                => "db.123"
-constexpr std::array<StringData, 256> escapeTable = {
-    ".00"_sd,  ".01"_sd,  ".02"_sd,  ".03"_sd,  ".04"_sd,  ".05"_sd,  ".06"_sd,  ".07"_sd,
-    ".08"_sd,  ".09"_sd,  ".10"_sd,  ".11"_sd,  ".12"_sd,  ".13"_sd,  ".14"_sd,  ".15"_sd,
-    ".16"_sd,  ".17"_sd,  ".18"_sd,  ".19"_sd,  ".20"_sd,  ".21"_sd,  ".22"_sd,  ".23"_sd,
-    ".24"_sd,  ".25"_sd,  ".26"_sd,  ".27"_sd,  ".28"_sd,  ".29"_sd,  ".30"_sd,  ".31"_sd,
-    ".32"_sd,  ".33"_sd,  ".34"_sd,  ".35"_sd,  ".36"_sd,  ".37"_sd,  ".38"_sd,  ".39"_sd,
-    ".40"_sd,  ".41"_sd,  ".42"_sd,  ".43"_sd,  ".44"_sd,  ".45"_sd,  "."_sd,    ".47"_sd,
-    "0"_sd,    "1"_sd,    "2"_sd,    "3"_sd,    "4"_sd,    "5"_sd,    "6"_sd,    "7"_sd,
-    "8"_sd,    "9"_sd,    ".58"_sd,  ".59"_sd,  ".60"_sd,  ".61"_sd,  ".62"_sd,  ".63"_sd,
-    ".64"_sd,  "A"_sd,    "B"_sd,    "C"_sd,    "D"_sd,    "E"_sd,    "F"_sd,    "G"_sd,
-    "H"_sd,    "I"_sd,    "J"_sd,    "K"_sd,    "L"_sd,    "M"_sd,    "N"_sd,    "O"_sd,
-    "P"_sd,    "Q"_sd,    "R"_sd,    "S"_sd,    "T"_sd,    "U"_sd,    "V"_sd,    "W"_sd,
-    "X"_sd,    "Y"_sd,    "Z"_sd,    ".91"_sd,  ".92"_sd,  ".93"_sd,  ".94"_sd,  "_"_sd,
-    ".96"_sd,  "a"_sd,    "b"_sd,    "c"_sd,    "d"_sd,    "e"_sd,    "f"_sd,    "g"_sd,
-    "h"_sd,    "i"_sd,    "j"_sd,    "k"_sd,    "l"_sd,    "m"_sd,    "n"_sd,    "o"_sd,
-    "p"_sd,    "q"_sd,    "r"_sd,    "s"_sd,    "t"_sd,    "u"_sd,    "v"_sd,    "w"_sd,
-    "x"_sd,    "y"_sd,    "z"_sd,    ".123"_sd, ".124"_sd, ".125"_sd, ".126"_sd, ".127"_sd,
-    ".128"_sd, ".129"_sd, ".130"_sd, ".131"_sd, ".132"_sd, ".133"_sd, ".134"_sd, ".135"_sd,
-    ".136"_sd, ".137"_sd, ".138"_sd, ".139"_sd, ".140"_sd, ".141"_sd, ".142"_sd, ".143"_sd,
-    ".144"_sd, ".145"_sd, ".146"_sd, ".147"_sd, ".148"_sd, ".149"_sd, ".150"_sd, ".151"_sd,
-    ".152"_sd, ".153"_sd, ".154"_sd, ".155"_sd, ".156"_sd, ".157"_sd, ".158"_sd, ".159"_sd,
-    ".160"_sd, ".161"_sd, ".162"_sd, ".163"_sd, ".164"_sd, ".165"_sd, ".166"_sd, ".167"_sd,
-    ".168"_sd, ".169"_sd, ".170"_sd, ".171"_sd, ".172"_sd, ".173"_sd, ".174"_sd, ".175"_sd,
-    ".176"_sd, ".177"_sd, ".178"_sd, ".179"_sd, ".180"_sd, ".181"_sd, ".182"_sd, ".183"_sd,
-    ".184"_sd, ".185"_sd, ".186"_sd, ".187"_sd, ".188"_sd, ".189"_sd, ".190"_sd, ".191"_sd,
-    ".192"_sd, ".193"_sd, ".194"_sd, ".195"_sd, ".196"_sd, ".197"_sd, ".198"_sd, ".199"_sd,
-    ".200"_sd, ".201"_sd, ".202"_sd, ".203"_sd, ".204"_sd, ".205"_sd, ".206"_sd, ".207"_sd,
-    ".208"_sd, ".209"_sd, ".210"_sd, ".211"_sd, ".212"_sd, ".213"_sd, ".214"_sd, ".215"_sd,
-    ".216"_sd, ".217"_sd, ".218"_sd, ".219"_sd, ".220"_sd, ".221"_sd, ".222"_sd, ".223"_sd,
-    ".224"_sd, ".225"_sd, ".226"_sd, ".227"_sd, ".228"_sd, ".229"_sd, ".230"_sd, ".231"_sd,
-    ".232"_sd, ".233"_sd, ".234"_sd, ".235"_sd, ".236"_sd, ".237"_sd, ".238"_sd, ".239"_sd,
-    ".240"_sd, ".241"_sd, ".242"_sd, ".243"_sd, ".244"_sd, ".245"_sd, ".246"_sd, ".247"_sd,
-    ".248"_sd, ".249"_sd, ".250"_sd, ".251"_sd, ".252"_sd, ".253"_sd, ".254"_sd, ".255"_sd};
-
-std::string escapeDbName(const DatabaseName& dbName) {
-    std::string escaped;
-    const auto db = DatabaseNameUtil::serialize(dbName, SerializationContext::stateCatalog());
-    escaped.reserve(db.size());
-    for (unsigned char c : db) {
-        StringData ce = escapeTable[c];
-        escaped.append(ce.begin(), ce.end());
-    }
-    return escaped;
-}
-
-}  // namespace
-
 class DurableCatalog::AddIdentChange : public RecoveryUnit::Change {
 public:
     AddIdentChange(DurableCatalog* catalog, RecordId catalogId)
         : _catalog(catalog), _catalogId(std::move(catalogId)) {}
 
-    void commit(OperationContext* opCtx, boost::optional<Timestamp>) override {}
-    void rollback(OperationContext* opCtx) override {
+    void commit(OperationContext* opCtx, boost::optional<Timestamp>) noexcept override {}
+    void rollback(OperationContext* opCtx) noexcept override {
         stdx::lock_guard<stdx::mutex> lk(_catalog->_catalogIdToEntryMapLock);
         _catalog->_catalogIdToEntryMap.erase(_catalogId);
     }
@@ -148,56 +84,11 @@ private:
 DurableCatalog::DurableCatalog(RecordStore* rs,
                                bool directoryPerDb,
                                bool directoryForIndexes,
-                               StorageEngineInterface* engine)
+                               KVEngine* engine)
     : _rs(rs),
       _directoryPerDb(directoryPerDb),
       _directoryForIndexes(directoryForIndexes),
-      _rand(_newRand()),
-      _next(0),
       _engine(engine) {}
-
-bool DurableCatalog::_hasEntryCollidingWithRand(WithLock) const {
-    stdx::lock_guard<stdx::mutex> lk(_catalogIdToEntryMapLock);
-    for (auto it = _catalogIdToEntryMap.begin(); it != _catalogIdToEntryMap.end(); ++it) {
-        if (StringData(it->second.ident).endsWith(_rand))
-            return true;
-    }
-    return false;
-}
-
-std::string DurableCatalog::_newInternalIdent(StringData identStem) {
-    stdx::lock_guard<stdx::mutex> lk(_randLock);
-    StringBuilder buf;
-    buf << ident::getInternalIdentPrefix();
-    buf << identStem;
-    buf << _next++ << '-' << _rand;
-    return buf.str();
-}
-
-std::string DurableCatalog::_newRand() {
-    return str::stream() << SecureRandom().nextUInt64();
-}
-
-std::string DurableCatalog::getFilesystemPathForDb(const DatabaseName& dbName) const {
-    if (_directoryPerDb) {
-        return storageGlobalParams.dbpath + '/' + escapeDbName(dbName);
-    } else {
-        return storageGlobalParams.dbpath;
-    }
-}
-
-std::string DurableCatalog::generateUniqueIdent(NamespaceString nss, const char* kind) {
-    // If this changes to not put _rand at the end, _hasEntryCollidingWithRand will need fixing.
-    stdx::lock_guard<stdx::mutex> lk(_randLock);
-    StringBuilder buf;
-    if (_directoryPerDb) {
-        buf << escapeDbName(nss.dbName()) << '/';
-    }
-    buf << kind;
-    buf << (_directoryForIndexes ? '/' : '-');
-    buf << _next++ << '-' << _rand;
-    return buf.str();
-}
 
 void DurableCatalog::init(OperationContext* opCtx) {
     // No locking needed since called single threaded.
@@ -215,12 +106,6 @@ void DurableCatalog::init(OperationContext* opCtx) {
         auto nss = NamespaceStringUtil::parseFromStringExpectTenantIdInMultitenancyMode(
             obj["ns"].String());
         _catalogIdToEntryMap[record->id] = EntryIdentifier(record->id, ident, nss);
-    }
-
-    // In the unlikely event that we have used this _rand before generate a new one.
-    stdx::lock_guard<stdx::mutex> lk(_randLock);
-    while (_hasEntryCollidingWithRand(lk)) {
-        _rand = _newRand();
     }
 }
 
@@ -309,10 +194,11 @@ NamespaceString DurableCatalog::getNSSFromCatalog(OperationContext* opCtx,
 }
 
 StatusWith<DurableCatalog::EntryIdentifier> DurableCatalog::_addEntry(
-    OperationContext* opCtx, NamespaceString nss, const CollectionOptions& options) {
+    OperationContext* opCtx,
+    NamespaceString nss,
+    const std::string& ident,
+    const CollectionOptions& options) {
     invariant(shard_role_details::getLocker(opCtx)->isDbLockedForMode(nss.dbName(), MODE_IX));
-
-    auto ident = generateUniqueIdent(nss, "collection");
 
     BSONObj obj;
     {
@@ -328,10 +214,6 @@ StatusWith<DurableCatalog::EntryIdentifier> DurableCatalog::_addEntry(
             // to false by default as mixed-schema data is only possible in versions 5.1 and
             // earlier.
             md.timeseriesBucketsMayHaveMixedSchemaData = false;
-            if (feature_flags::gTSBucketingParametersUnchanged.isEnabled(
-                    serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-                md.timeseriesBucketingParametersHaveChanged = false;
-            }
         }
         b.append("md", md.toBSON());
         obj = b.obj();
@@ -437,7 +319,6 @@ std::shared_ptr<BSONCollectionCatalogEntry::MetaData> DurableCatalog::_parseMeta
 void DurableCatalog::putMetaData(OperationContext* opCtx,
                                  const RecordId& catalogId,
                                  BSONCollectionCatalogEntry::MetaData& md) {
-    NamespaceString nss(md.nss);
     BSONObj obj = [&] {
         auto cursor = _rs->getCursor(opCtx);
         auto entryObj = _findEntry(*cursor, catalogId);
@@ -468,8 +349,15 @@ void DurableCatalog::putMetaData(OperationContext* opCtx,
                 newIdentMap.append(e);
                 continue;
             }
-            // missing, create new
-            newIdentMap.append(name, generateUniqueIdent(nss, "index"));
+
+            // The index in 'md.indexes' is missing a corresponding 'idxIdent' - which indicates
+            // there is a new index to track in the catalog, and the catlog must generate an ident
+            // to associate with it.
+            //
+            // TODO SERVER-102875: Compute the ident for a new index outside the DurableCatalog.
+            newIdentMap.append(name,
+                               ident::generateNewIndexIdent(
+                                   md.nss.dbName(), _directoryPerDb, _directoryForIndexes));
         }
         b.append("idxIdent", newIdentMap.obj());
 
@@ -577,12 +465,12 @@ StatusWith<std::string> DurableCatalog::newOrphanedIdent(OperationContext* opCtx
 StatusWith<std::pair<RecordId, std::unique_ptr<RecordStore>>> DurableCatalog::createCollection(
     OperationContext* opCtx,
     const NamespaceString& nss,
-    const CollectionOptions& options,
-    bool allocateDefaultSpace) {
+    const std::string& ident,
+    const CollectionOptions& options) {
     invariant(shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(nss, MODE_IX));
     invariant(nss.coll().size() > 0);
 
-    StatusWith<EntryIdentifier> swEntry = _addEntry(opCtx, nss, options);
+    StatusWith<EntryIdentifier> swEntry = _addEntry(opCtx, nss, ident, options);
     if (!swEntry.isOK())
         return swEntry.getStatus();
     EntryIdentifier& entry = swEntry.getValue();
@@ -596,7 +484,7 @@ StatusWith<std::pair<RecordId, std::unique_ptr<RecordStore>>> DurableCatalog::cr
         }
         return KeyFormat::Long;
     }();
-    Status status = _engine->getEngine()->createRecordStore(nss, entry.ident, options, keyFormat);
+    Status status = _engine->createRecordStore(nss, entry.ident, options, keyFormat);
     if (!status.isOK())
         return status;
 
@@ -604,10 +492,10 @@ StatusWith<std::pair<RecordId, std::unique_ptr<RecordStore>>> DurableCatalog::cr
     shard_role_details::getRecoveryUnit(opCtx)->onRollback(
         [ru, catalog = this, ident = entry.ident](OperationContext*) {
             // Intentionally ignoring failure
-            catalog->_engine->getEngine()->dropIdent(ru, ident, /*identHasSizeInfo=*/true).ignore();
+            catalog->_engine->dropIdent(ru, ident, /*identHasSizeInfo=*/true).ignore();
         });
 
-    auto rs = _engine->getEngine()->getRecordStore(opCtx, nss, entry.ident, options);
+    auto rs = _engine->getRecordStore(opCtx, nss, entry.ident, options);
     invariant(rs);
 
     return std::pair<RecordId, std::unique_ptr<RecordStore>>(entry.catalogId, std::move(rs));
@@ -620,16 +508,17 @@ Status DurableCatalog::createIndex(OperationContext* opCtx,
                                    const IndexDescriptor* spec) {
     std::string ident = getIndexIdent(opCtx, catalogId, spec->indexName());
 
-    auto kvEngine = _engine->getEngine();
-    Status status = kvEngine->createSortedDataInterface(
-        *shard_role_details::getRecoveryUnit(opCtx), nss, collOptions, ident, spec);
+    Status status = _engine->createSortedDataInterface(*shard_role_details::getRecoveryUnit(opCtx),
+                                                       nss,
+                                                       collOptions,
+                                                       ident,
+                                                       spec->toIndexConfig());
     if (status.isOK()) {
         shard_role_details::getRecoveryUnit(opCtx)->onRollback(
             [this, ident, recoveryUnit = shard_role_details::getRecoveryUnit(opCtx)](
                 OperationContext*) {
                 // Intentionally ignoring failure.
-                auto kvEngine = _engine->getEngine();
-                kvEngine->dropIdent(recoveryUnit, ident, /*identHasSizeInfo=*/false).ignore();
+                _engine->dropIdent(recoveryUnit, ident, /*identHasSizeInfo=*/false).ignore();
             });
     }
     return status;
@@ -640,7 +529,9 @@ StatusWith<DurableCatalog::ImportResult> DurableCatalog::importCollection(
     const NamespaceString& nss,
     const BSONObj& metadata,
     const BSONObj& storageMetadata,
-    const ImportOptions& importOptions) {
+    bool generateNewUUID,
+    bool panicOnCorruptWtMetadata,
+    bool repair) {
     invariant(shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(nss, MODE_X));
     invariant(nss.coll().size() > 0);
 
@@ -654,8 +545,7 @@ StatusWith<DurableCatalog::ImportResult> DurableCatalog::importCollection(
             metadata.hasField("ident"));
 
     const auto& catalogEntry = [&] {
-        if (importOptions.importCollectionUUIDOption ==
-            ImportOptions::ImportCollectionUUIDOption::kGenerateNew) {
+        if (generateNewUUID) {
             // Generate a new UUID for the collection.
             md.options.uuid = UUID::gen();
             BSONObjBuilder catalogEntryBuilder;
@@ -668,35 +558,10 @@ StatusWith<DurableCatalog::ImportResult> DurableCatalog::importCollection(
         return metadata;
     }();
 
-    // Before importing the idents belonging to the collection and indexes, change '_rand' if there
-    // will be a conflict.
     std::set<std::string> indexIdents;
-    {
-        const std::string collectionIdent = catalogEntry["ident"].String();
-
-        if (!catalogEntry["idxIdent"].eoo()) {
-            for (const auto& indexIdent : catalogEntry["idxIdent"].Obj()) {
-                indexIdents.insert(indexIdent.String());
-            }
-        }
-
-        auto identsToImportConflict = [&](WithLock) -> bool {
-            if (StringData(collectionIdent).endsWith(_rand)) {
-                return true;
-            }
-
-            for (const std::string& ident : indexIdents) {
-                if (StringData(ident).endsWith(_rand)) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        stdx::lock_guard<stdx::mutex> lk(_randLock);
-        while (!importOptions.skipIdentCollisionCheck &&
-               (_hasEntryCollidingWithRand(lk) || identsToImportConflict(lk))) {
-            _rand = _newRand();
+    if (auto&& idxIdent = catalogEntry["idxIdent"]) {
+        for (auto&& indexIdent : idxIdent.Obj()) {
+            indexIdents.insert(indexIdent.String());
         }
     }
 
@@ -707,30 +572,32 @@ StatusWith<DurableCatalog::ImportResult> DurableCatalog::importCollection(
 
     shard_role_details::getRecoveryUnit(opCtx)->onRollback(
         [catalog = this, ident = entry.ident, indexIdents = indexIdents](OperationContext* opCtx) {
-            catalog->_engine->getEngine()->dropIdentForImport(
+            catalog->_engine->dropIdentForImport(
                 *opCtx, *shard_role_details::getRecoveryUnit(opCtx), ident);
             for (const auto& indexIdent : indexIdents) {
-                catalog->_engine->getEngine()->dropIdentForImport(
+                catalog->_engine->dropIdentForImport(
                     *opCtx, *shard_role_details::getRecoveryUnit(opCtx), indexIdent);
             }
         });
 
-    auto kvEngine = _engine->getEngine();
-    Status status = kvEngine->importRecordStore(entry.ident, storageMetadata, importOptions);
+    Status status =
+        _engine->importRecordStore(entry.ident, storageMetadata, panicOnCorruptWtMetadata, repair);
+
     if (!status.isOK())
         return status;
 
-    for (const std::string& indexIdent : indexIdents) {
-        status = kvEngine->importSortedDataInterface(*shard_role_details::getRecoveryUnit(opCtx),
-                                                     indexIdent,
-                                                     storageMetadata,
-                                                     importOptions);
+    for (const auto& indexIdent : indexIdents) {
+        status = _engine->importSortedDataInterface(*shard_role_details::getRecoveryUnit(opCtx),
+                                                    indexIdent,
+                                                    storageMetadata,
+                                                    panicOnCorruptWtMetadata,
+                                                    repair);
         if (!status.isOK()) {
             return status;
         }
     }
 
-    auto rs = _engine->getEngine()->getRecordStore(opCtx, nss, entry.ident, md.options);
+    auto rs = _engine->getRecordStore(opCtx, nss, entry.ident, md.options);
     invariant(rs);
 
     return DurableCatalog::ImportResult(entry.catalogId, std::move(rs), md.options.uuid.value());
@@ -796,13 +663,16 @@ Status DurableCatalog::dropAndRecreateIndexIdentForResume(OperationContext* opCt
                                                           const CollectionOptions& collOptions,
                                                           const IndexDescriptor* spec,
                                                           StringData ident) {
-    auto status = _engine->getEngine()->dropSortedDataInterface(
-        *shard_role_details::getRecoveryUnit(opCtx), ident);
+    auto status =
+        _engine->dropSortedDataInterface(*shard_role_details::getRecoveryUnit(opCtx), ident);
     if (!status.isOK())
         return status;
 
-    status = _engine->getEngine()->createSortedDataInterface(
-        *shard_role_details::getRecoveryUnit(opCtx), nss, collOptions, ident, spec);
+    status = _engine->createSortedDataInterface(*shard_role_details::getRecoveryUnit(opCtx),
+                                                nss,
+                                                collOptions,
+                                                ident,
+                                                spec->toIndexConfig());
 
     return status;
 }

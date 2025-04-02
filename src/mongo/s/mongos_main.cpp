@@ -76,8 +76,8 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/process_health/fault_manager.h"
 #include "mongo/db/profile_filter_impl.h"
-#include "mongo/db/query/query_settings/query_settings_manager.h"
-#include "mongo/db/query/query_settings/query_settings_utils.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
+#include "mongo/db/query/search/mongot_options.h"
 #include "mongo/db/query/search/search_task_executors.h"
 #include "mongo/db/read_write_concern_defaults.h"
 #include "mongo/db/server_options.h"
@@ -99,10 +99,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/cluster_server_parameter_refresher.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_options.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/metadata/egress_metadata_hook_list.h"
@@ -174,7 +170,6 @@
 #include "mongo/util/version/releases.h"
 
 #ifdef MONGO_CONFIG_GRPC
-#include "mongo/db/query/search/mongot_options.h"
 #include "mongo/transport/grpc/grpc_feature_flag_gen.h"
 #endif
 
@@ -540,6 +535,13 @@ void cleanupTask(const ShutdownTaskArgs& shutdownArgs) {
             Grid::get(serviceContext)->catalogCache()->shutDownAndJoin();
         }
 
+        {
+            TimeElapsedBuilderScopedTimer scopedTimer(serviceContext->getFastClockSource(),
+                                                      "Shutting down the search task executors",
+                                                      &shutdownTimeElapsedBuilder);
+            executor::shutdownSearchExecutorsIfNeeded(serviceContext);
+        }
+
         // Finish shutting down the TransportLayers
         if (auto tlm = serviceContext->getTransportLayerManager()) {
             TimeElapsedBuilderScopedTimer scopedTimer(serviceContext->getFastClockSource(),
@@ -606,11 +608,10 @@ Status initializeSharding(
     // List of hooks which will be called by the ShardRegistry when it discovers a shard has been
     // removed.
     std::vector<ShardRegistry::ShardRemovalHook> shardRemovalHooks = {
-        // Invalidate appropriate entries in the catalog cache when a shard is removed. It's safe to
-        // capture the catalog cache pointer since the Grid (and therefore CatalogCache and
-        // ShardRegistry) are never destroyed.
+        // It's safe to capture the CatalogCache pointer since the Grid (and therefore CatalogCache
+        // and ShardRegistry) are never destroyed.
         [catCache = catalogCache.get()](const ShardId& removedShard) {
-            catCache->invalidateEntriesThatReferenceShard(removedShard);
+            catCache->advanceTimeInStoreForEntriesThatReferenceShard(removedShard);
         }};
 
     if (!mongosGlobalParams.configdbs) {
@@ -724,7 +725,7 @@ ServiceContext::ConstructorActionRegisterer registerWireSpec{
 
         WireSpec::getWireSpec(service).initialize(std::move(spec));
     }};
-}
+}  // namespace
 
 void logMongosStartupTimeElapsedStatistics(ServiceContext* serviceContext,
                                            Date_t beginRunMongosServer,
@@ -795,15 +796,19 @@ ExitCode runMongosServer(ServiceContext* serviceContext) {
         }
 
         bool useEgressGRPC = false;
-#ifdef MONGO_CONFIG_GRPC
         if (globalMongotParams.useGRPC) {
+#ifdef MONGO_CONFIG_GRPC
             uassert(9925000,
                     "Egress GRPC for search is not enabled",
-                    feature_flags::gEgressGrpcForSearch.isEnabledUseLatestFCVWhenUninitialized(
-                        serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+                    feature_flags::gEgressGrpcForSearch.isEnabled());
             useEgressGRPC = true;
-        }
+#else
+            LOGV2_ERROR(
+                10049100,
+                "useGRPCForSearch is only supported on Linux platforms built with TLS support.");
+            quickExit(ExitCode::badOptions);
 #endif
+        }
 
         TimeElapsedBuilderScopedTimer scopedTimer(serviceContext->getFastClockSource(),
                                                   "Set up transport layer listener",
@@ -838,16 +843,7 @@ ExitCode runMongosServer(ServiceContext* serviceContext) {
     ReadWriteConcernDefaults::create(serviceContext->getService(ClusterRole::RouterServer),
                                      readWriteConcernDefaultsCacheLookupMongoS);
     ChangeStreamOptionsManager::create(serviceContext);
-    query_settings::QuerySettingsManager::create(
-        serviceContext,
-        [](OperationContext* opCtx) {
-            // QuerySettingsManager modifies a cluster-wide parameter and thus a refresh of the
-            // parameter after that modification should observe results of preceeding writes.
-            const bool kEnsureReadYourWritesConsistency = true;
-            uassertStatusOK(ClusterServerParameterRefresher::get(opCtx)->refreshParameters(
-                opCtx, kEnsureReadYourWritesConsistency));
-        },
-        query_settings::utils::sanitizeQuerySettingsHints);
+    query_settings::initializeForRouter(serviceContext);
 
     auto opCtxHolder = tc->makeOperationContext();
     auto const opCtx = opCtxHolder.get();

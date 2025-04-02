@@ -623,7 +623,11 @@ error_codes:
 
   - {code: 363, name: RetryableTransactionInProgress}
 
-  - {code: 365, name: TemporarilyUnavailable}
+  - {
+      code: 365,
+      name: TemporarilyUnavailable,
+      categories: [SystemOverloadedError],
+    }
 
   - {code: 366, name: WouldChangeOwningShardDeletedNoDocument}
 
@@ -829,6 +833,27 @@ error_codes:
       name: StreamProcessorHTTPSConnectionError,
       categories: [StreamProcessorUserError, StreamProcessorRetryableError],
     }
+  - {
+      code: 440,
+      name: StreamProcessorExternalFunctionConnectionError,
+      categories: [StreamProcessorUserError, StreamProcessorRetryableError],
+    }
+  - {
+      code: 441,
+      name: ErrorWithWriteConcernError,
+      extra: ErrorWithWriteConcernErrorInfo,
+    }
+  - {code: 442, name: RetryMultiPlanning}
+  - {
+      code: 443,
+      name: StreamProcessorS3ConnectionError,
+      categories: [StreamProcessorUserError, StreamProcessorRetryableError],
+    }
+  - {
+      code: 444,
+      name: StreamProcessorS3Error,
+      categories: [StreamProcessorUserError],
+    }
 
   # Error codes 4000-8999 are reserved.
 
@@ -909,6 +934,7 @@ error_codes:
       name: IDLUnknownFieldPossibleMongocryptd,
       categories: [IDLParseError],
     }
+
   # The following is for rewriting errors returned by a remote server while running a retriable
   # command so that the error is not passed through to other servers in a cluster. See SERVER-91331
   # for an example of using this error code.
@@ -931,3 +957,23 @@ error_codes:
       categories: [PlannerEstimationError],
     }
   - {code: 9751903, name: CEFailure, categories: [PlannerEstimationError]}
+  - {
+      code: 9737301,
+      name: UnsupportedCbrNode,
+      categories: [PlannerEstimationError],
+    }
+
+  # The following is for remove shard commit commands which fail due to draining not yet being
+  # complete.
+  - {
+      code: 1003141,
+      name: RemoveShardDrainingInProgress,
+      extra: RemoveShardDrainingInfo,
+    }
+  - {
+      code: 10045600,
+      name: InterruptedDueToFCVChange,
+      categories: [Interruption, RetriableError],
+    }
+
+  - {code: 10171600, name: ReadThroughCacheTimeMonotonicityViolation}

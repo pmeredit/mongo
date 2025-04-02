@@ -4,7 +4,10 @@
 
 #pragma once
 
+#include <memory>
+
 #include "mongo/bson/bsonobj.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/net/http_client_mock.h"
 #include "mongo/util/uuid.h"
 #include "streams/exec/constants.h"
@@ -14,6 +17,7 @@
 #include "streams/exec/mongodb_process_interface.h"
 #include "streams/exec/operator_dag.h"
 #include "streams/exec/stages_gen.h"
+#include "streams/util/metrics.h"
 
 namespace mongo {
 class ConcurrentMemoryAggregator;
@@ -54,10 +58,10 @@ mongo::BSONObj getTestSourceSpec();
 std::vector<mongo::BSONObj> parseBsonVector(std::string json);
 
 // Returns a connections map with a Kafka where isTest = true.
-mongo::stdx::unordered_map<std::string, mongo::Connection> testKafkaConnectionRegistry();
+std::unique_ptr<ConnectionCollection> testKafkaConnections();
 
 // Returns a connections map with an in-memory source connection.
-mongo::stdx::unordered_map<std::string, mongo::Connection> testInMemoryConnectionRegistry();
+std::vector<mongo::Connection> testInMemoryConnections();
 
 // Returns a $source syntax BSONObj that will use a KafkaConsumer with FakeKafkaPartitionConsumers.
 mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
@@ -65,12 +69,6 @@ mongo::BSONObj testKafkaSourceSpec(int partitionCount = 1);
 // Returns a cloned BSON object with the metadata fields removed (e.g. `_ts` and
 // `_stream_meta`) for easier comparison checks.
 mongo::BSONObj sanitizeDoc(const mongo::BSONObj& obj);
-
-std::shared_ptr<MongoDBProcessInterface> makeMongoDBProcessInterface(
-    mongo::ServiceContext* serviceContext,
-    const std::string& uri,
-    const std::string& database,
-    const std::string& collection);
 
 std::shared_ptr<OperatorDag> makeDagFromBson(const std::vector<mongo::BSONObj>& bsonPipeline,
                                              std::unique_ptr<Context>& context,
@@ -105,57 +103,62 @@ public:
         return _callbackGauges;
     }
 
-    void visit(Counter* counter,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _counters[getProcessorIdLabel(labels)][name] = counter;
+    const auto& histograms() {
+        return _histograms;
     }
 
-    void visit(Gauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _gauges[getProcessorIdLabel(labels)][name] = gauge;
+    void visit(Counter* counter) {
+        _counters[getProcessorIdLabel(counter->getLabels())][counter->getName()]
+                 [getLabelsAsStrs(counter->getLabels())] = counter;
     }
 
-    void visit(IntGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _intGauges[getProcessorIdLabel(labels)][name] = gauge;
+    void visit(Gauge* gauge) {
+        _gauges[getProcessorIdLabel(gauge->getLabels())][gauge->getName()]
+               [getLabelsAsStrs(gauge->getLabels())] = gauge;
     }
 
-    void visit(CallbackGauge* gauge,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {
-        _callbackGauges[getProcessorIdLabel(labels)][name] = gauge;
+    void visit(IntGauge* gauge) {
+        _intGauges[getProcessorIdLabel(gauge->getLabels())][gauge->getName()]
+                  [getLabelsAsStrs(gauge->getLabels())] = gauge;
     }
 
-    void visit(Histogram* histogram,
-               const std::string& name,
-               const std::string& description,
-               const MetricManager::LabelsVec& labels) {}
+    void visit(CallbackGauge* gauge) {
+        _callbackGauges[getProcessorIdLabel(gauge->getLabels())][gauge->getName()]
+                       [getLabelsAsStrs(gauge->getLabels())] = gauge;
+    }
+
+    void visit(Histogram* histogram) {
+        _histograms[getProcessorIdLabel(histogram->getLabels())][histogram->getName()]
+                   [getLabelsAsStrs(histogram->getLabels())] = histogram;
+    }
 
 private:
-    std::string getProcessorIdLabel(const MetricManager::LabelsVec& labels) {
+    std::string getProcessorIdLabel(const Metric::LabelsVec& labels) {
         auto result = std::find_if(labels.begin(), labels.end(), [](const auto& l) {
             return l.first == kProcessorIdLabelKey;
         });
-        invariant(result != labels.end());
+
+        if (result == labels.end()) {
+            return "";
+        }
         return result->second;
     }
 
+    std::string getLabelsAsStrs(const Metric::LabelsVec& labels);
+
     using ProcessorId = std::string;
     using MetricName = std::string;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, Counter*>>
-        _counters;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, Gauge*>> _gauges;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, IntGauge*>>
-        _intGauges;
-    mongo::stdx::unordered_map<ProcessorId, mongo::stdx::unordered_map<MetricName, CallbackGauge*>>
-        _callbackGauges;
+
+    template <typename T>
+    using MetricMap = mongo::stdx::unordered_map<
+        ProcessorId,
+        mongo::stdx::unordered_map<MetricName, mongo::stdx::unordered_map<std::string, T*>>>;
+
+    MetricMap<Counter> _counters;
+    MetricMap<Gauge> _gauges;
+    MetricMap<IntGauge> _intGauges;
+    MetricMap<CallbackGauge> _callbackGauges;
+    MetricMap<Histogram> _histograms;
 };
 
 // StubbableMockHttpClient composes MockHttpClient in order to add custom functionality to

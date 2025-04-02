@@ -67,8 +67,7 @@
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/storage/key_string/key_string.h"
 #include "mongo/db/storage/write_unit_of_work.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/uuid.h"
 
 namespace mongo::sbe {
@@ -777,7 +776,7 @@ TEST_F(LookupStageBuilderTest, ThreeComponentAsPathExtendingExistingObjectOnTwoL
 }
 
 TEST_F(LookupStageBuilderTest, ThreeComponentAsPathReplacingSingleValueInExistingObject) {
-    insertDocuments({fromjson("{_id: 0, one: {a: 1, two: {b: 2, three: 3}}}}")},
+    insertDocuments({fromjson("{_id: 0, one: {a: 1, two: {b: 2, three: 3}}}")},
                     {fromjson("{_id: 0}")});
 
     assertReturnedDocuments("_id",

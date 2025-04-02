@@ -12,3 +12,32 @@ Commands to create this SSL CA/broker key setup:
 To test against the authenticatede Kafka SASL/SSL listeners with kcat (adjust path as necessary):
 
 # kafkacat -L -b localhost:9093 -X security.protocol=SASL_SSL -X sasl.mechanisms=PLAIN -X sasl.username="kafka" -X sasl.password="kafka" -X ssl.ca.location="/home/ubuntu/mongo/src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem"
+
+# Setup the truststore for mTLS
+
+# create client private key
+# openssl genrsa -out client.key 2048
+# Passing the '-aes256' arg will prompt you to create a password for the key. The password for client-with-password.key is 'mongo123'.
+# openssl genrsa -aes256 -out client-with-password.key 2048
+
+# create cert signing request for client cert
+# openssl req -new -key client.key -out client.csr -subj "/CN=client.example.com"
+
+# sign client cert with cert authority
+# openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 3650 -sha256
+
+# create the truststore
+# keytool -importcert -file ca.crt -alias CARoot -keystore client.truststore.jks -storepass truststorepassword
+
+# save the password to a file
+# echo -n "truststorepassword" > client_truststore_creds
+
+# you can verify this worked by checking the truststore
+# keytool -list -v -keystore client.truststore.jks -storepass truststorepassword
+
+# authenticate using the client's cert
+kafkacat -L -b localhost:9094 -X security.protocol=SSL \
+    -X ssl.ca.location="/home/ubuntu/mongo/src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/ca.pem" \
+    -X ssl.certificate.location="/home/ubuntu/mongo/src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/client-with-password.crt" \
+    -X ssl.key.location="/home/ubuntu/mongo/src/mongo/db/modules/enterprise/jstests/streams_kafka/lib/certs/client-with-password.key" \
+    -X ssl.key.password="mongo123"

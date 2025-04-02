@@ -3,6 +3,9 @@
  */
 #include "streams/exec/sort_operator.h"
 
+#include <algorithm>
+#include <memory>
+
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
@@ -13,8 +16,6 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/util.h"
 #include "streams/exec/window_aware_operator.h"
-#include <algorithm>
-#include <memory>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -158,12 +159,11 @@ void SortOperator::doRestoreWindowState(Window* window, Document record) {
     auto processor = sortState->processor.get();
     auto& sortKeyGenerator = sortState->sortKeyGenerator;
     auto sortRecord = record.getField(WindowOperatorCheckpointRecord::kSortRecordFieldName);
-    CHECKPOINT_RECOVERY_ASSERT(
-        8289701,
-        _operatorId,
-        fmt::format("{kSortRecordFieldName} field missing from checkpoint restore record",
-                    WindowOperatorCheckpointRecord::kSortRecordFieldName),
-        !sortRecord.missing() && sortRecord.getType() == BSONType::Object);
+    CHECKPOINT_RECOVERY_ASSERT(8289701,
+                               _operatorId,
+                               fmt::format("{} field missing from checkpoint restore record",
+                                           WindowOperatorCheckpointRecord::kSortRecordFieldName),
+                               !sortRecord.missing() && sortRecord.getType() == BSONType::Object);
     mongo::Document doc(sortRecord.getDocument());
     Value sortKey = sortKeyGenerator->computeSortKeyFromDocument(doc);
     processor->add(sortKey, std::move(doc));

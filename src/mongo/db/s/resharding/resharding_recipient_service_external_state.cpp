@@ -46,8 +46,6 @@
 #include "mongo/db/server_options.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/type_index_catalog_gen.h"
 #include "mongo/s/catalog_cache.h"
@@ -107,32 +105,11 @@ void ReshardingRecipientService::RecipientStateMachineExternalState::
                                                       std::move(indexes),
                                                       std::move(idIndex),
                                                       std::move(collOptions)};
-    if (resharding::gFeatureFlagReshardingImprovements.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        // The indexSpecs are cleared here so we don't create those indexes when creating temp
-        // collections. These indexes will be fetched and built during building-index stage.
-        collOptionsAndIndexes.indexSpecs = {};
-    }
+    // The indexSpecs are cleared here so we don't create those indexes when creating temp
+    // collections. These indexes will be fetched and built during building-index stage.
+    collOptionsAndIndexes.indexSpecs = {};
     MigrationDestinationManager::cloneCollectionIndexesAndOptions(
         opCtx, metadata.getTempReshardingNss(), collOptionsAndIndexes);
-
-    if (feature_flags::gGlobalIndexesShardingCatalog.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
-        auto optSii = getCollectionIndexInfoWithRefresh(opCtx, metadata.getTempReshardingNss());
-
-        if (optSii) {
-            std::vector<IndexCatalogType> indexes;
-            optSii->forEachIndex([&](const auto& index) {
-                indexes.push_back(index);
-                return true;
-            });
-            replaceCollectionShardingIndexCatalog(opCtx,
-                                                  metadata.getTempReshardingNss(),
-                                                  metadata.getReshardingUUID(),
-                                                  optSii->getCollectionIndexes().indexVersion(),
-                                                  indexes);
-        }
-    }
 
     AutoGetCollection autoColl(opCtx, metadata.getTempReshardingNss(), MODE_IX);
     CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
@@ -167,7 +144,7 @@ CollectionRoutingInfo RecipientStateMachineExternalStateImpl::getTrackedCollecti
     uassert(ErrorCodes::NamespaceNotFound,
             str::stream() << "Expected collection " << nss.toStringForErrorMsg()
                           << " to be tracked",
-            cri.cm.hasRoutingTable());
+            cri.hasRoutingTable());
     return cri;
 }
 
@@ -194,13 +171,9 @@ RecipientStateMachineExternalStateImpl::getCollectionOptions(
     StringData reason,
     const ShardId& fromShardId) {
     // Load the collection options from the specified shard for the database.
-    return _withShardVersionRetry(opCtx, nss, reason, [&] {
-        const auto nssOrUUID = NamespaceStringOrUUID{nss.dbName(), uuid};
-        const auto dbInfo = uassertStatusOK(
-            Grid::get(opCtx)->catalogCache()->getDatabase(opCtx, nssOrUUID.dbName()));
-        return MigrationDestinationManager::getCollectionOptions(
-            opCtx, nssOrUUID, fromShardId, dbInfo->getVersion(), afterClusterTime);
-    });
+    const auto nssOrUUID = NamespaceStringOrUUID{nss.dbName(), uuid};
+    return MigrationDestinationManager::getCollectionOptions(
+        opCtx, nssOrUUID, fromShardId, boost::none, afterClusterTime);
 }
 
 MigrationDestinationManager::IndexesAndIdIndex
@@ -216,18 +189,11 @@ RecipientStateMachineExternalStateImpl::getCollectionIndexes(OperationContext* o
         return MigrationDestinationManager::getCollectionIndexes(
             opCtx,
             nss,
-            cri.cm.getMinKeyShardIdWithSimpleCollation(),
+            cri.getChunkManager().getMinKeyShardIdWithSimpleCollation(),
             cri,
             afterClusterTime,
             expandSimpleCollation);
     });
-}
-
-boost::optional<ShardingIndexesCatalogCache>
-RecipientStateMachineExternalStateImpl::getCollectionIndexInfoWithRefresh(
-    OperationContext* opCtx, const NamespaceString& nss) {
-    auto catalogCache = Grid::get(opCtx)->catalogCache();
-    return uassertStatusOK(catalogCache->getCollectionIndexInfoWithRefresh(opCtx, nss));
 }
 
 void RecipientStateMachineExternalStateImpl::withShardVersionRetry(

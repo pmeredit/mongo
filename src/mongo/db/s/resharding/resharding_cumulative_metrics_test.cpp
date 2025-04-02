@@ -46,9 +46,8 @@
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log_attr.h"
 #include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
 
@@ -595,7 +594,6 @@ TEST_F(ReshardingCumulativeMetricsTest,
 }
 
 TEST_F(ReshardingCumulativeMetricsTest, ReportContainsRunCount) {
-    RAIIServerParameterControllerForTest controller("featureFlagReshardingImprovements", true);
     using Role = ShardingDataTransformMetrics::Role;
     ObserverMock coordinator{Date_t::fromMillisSinceEpoch(200), 400, 300, Role::kCoordinator};
     auto ignore = _reshardingCumulativeMetrics->registerInstanceMetrics(&coordinator);
@@ -622,7 +620,6 @@ TEST_F(ReshardingCumulativeMetricsTest, ReportContainsRunCount) {
 
 
 TEST_F(ReshardingCumulativeMetricsTest, ReportContainsSucceededCount) {
-    RAIIServerParameterControllerForTest controller("featureFlagReshardingImprovements", true);
     using Role = ShardingDataTransformMetrics::Role;
     ObserverMock coordinator{Date_t::fromMillisSinceEpoch(200), 400, 300, Role::kCoordinator};
     auto ignore = _cumulativeMetrics->registerInstanceMetrics(&coordinator);
@@ -648,7 +645,6 @@ TEST_F(ReshardingCumulativeMetricsTest, ReportContainsSucceededCount) {
 }
 
 TEST_F(ReshardingCumulativeMetricsTest, ReportContainsFailedCount) {
-    RAIIServerParameterControllerForTest controller("featureFlagReshardingImprovements", true);
     using Role = ShardingDataTransformMetrics::Role;
     ObserverMock coordinator{Date_t::fromMillisSinceEpoch(200), 400, 300, Role::kCoordinator};
     auto ignore = _reshardingCumulativeMetrics->registerInstanceMetrics(&coordinator);
@@ -674,7 +670,6 @@ TEST_F(ReshardingCumulativeMetricsTest, ReportContainsFailedCount) {
 }
 
 TEST_F(ReshardingCumulativeMetricsTest, ReportContainsCanceledCount) {
-    RAIIServerParameterControllerForTest controller("featureFlagReshardingImprovements", true);
     using Role = ShardingDataTransformMetrics::Role;
     ObserverMock coordinator{Date_t::fromMillisSinceEpoch(200), 400, 300, Role::kCoordinator};
     auto ignore = _reshardingCumulativeMetrics->registerInstanceMetrics(&coordinator);

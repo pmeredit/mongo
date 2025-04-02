@@ -31,9 +31,8 @@
 
 #include "mongo/db/storage/wiredtiger/wiredtiger_connection.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_error_util.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_global_options_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
@@ -70,6 +69,7 @@ WiredTigerSession::WiredTigerSession(WiredTigerConnection* connection,
       _idleExpireTime(Date_t::min()) {}
 
 WiredTigerSession::~WiredTigerSession() {
+    detachOperationContext();
     if (_session) {
         invariantWTOK(_session->close(_session, nullptr), nullptr);
     }
@@ -133,7 +133,7 @@ WT_CURSOR* WiredTigerSession::getNewCursor(const std::string& uri, const char* c
 }
 
 void WiredTigerSession::releaseCursor(uint64_t id, WT_CURSOR* cursor, std::string config) {
-    // When releasing the cursor, we would want to check if the connection is already in shutdown
+    // When cleaning up a cursor, we would want to check if the connection is already in shutdown
     // and prevent the race condition that the shutdown starts after the check.
     WiredTigerConnection::BlockShutdown blockShutdown(_connection);
 
@@ -163,6 +163,16 @@ void WiredTigerSession::releaseCursor(uint64_t id, WT_CURSOR* cursor, std::strin
 }
 
 void WiredTigerSession::closeCursor(WT_CURSOR* cursor) {
+    // When cleaning up a cursor, we would want to check if the connection is already in shutdown
+    // and prevent the race condition that the shutdown starts after the check.
+    WiredTigerConnection::BlockShutdown blockShutdown(_connection);
+
+    // Avoids the cursor already being destroyed during the shutdown. Also, avoids releasing a
+    // cursor from an earlier epoch.
+    if (_connection->isShuttingDown() || _getEpoch() < _connection->_epoch.load()) {
+        return;
+    }
+
     invariant(_session);
     invariant(cursor);
     _cursorsOut--;
@@ -209,6 +219,24 @@ void WiredTigerSession::resetSessionConfiguration() {
         invariantWTOK(reconfigure(undoConfigString.c_str()), *this);
     }
     _undoConfigStrings.clear();
+}
+
+void WiredTigerSession::attachOperationContext(OperationContext& opCtx) {
+    invariant(_session);
+    invariant(!_session->app_private);
+    _session->app_private = &opCtx;
+}
+
+void WiredTigerSession::detachOperationContext() {
+    if (_session) {
+        _session->app_private = nullptr;
+    }
+}
+
+WiredTigerSession::GetLastError WiredTigerSession::getLastError() {
+    GetLastError getLastError;
+    this->get_last_error(&getLastError.err, &getLastError.sub_level_err, &getLastError.err_msg);
+    return getLastError;
 }
 
 }  // namespace mongo

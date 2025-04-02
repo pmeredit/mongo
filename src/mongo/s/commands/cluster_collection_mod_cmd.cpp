@@ -61,9 +61,6 @@
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/async_requests_sender.h"
 #include "mongo/s/catalog_cache.h"
 #include "mongo/s/client/shard.h"
@@ -83,7 +80,6 @@ namespace mongo {
 namespace {
 
 constexpr auto kRawFieldName = "raw"_sd;
-constexpr auto kWriteConcernErrorFieldName = "writeConcernError"_sd;
 constexpr auto kTopologyVersionFieldName = "topologyVersion"_sd;
 
 class CollectionModCmd : public BasicCommandWithRequestParser<CollectionModCmd> {

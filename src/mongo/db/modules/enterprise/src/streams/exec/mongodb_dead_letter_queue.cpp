@@ -2,7 +2,11 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/mongodb_dead_letter_queue.h"
+
 #include <chrono>
+#include <exception>
+#include <mongocxx/exception/exception.hpp>
 
 #include "mongo/base/status.h"
 #include "mongo/platform/basic.h"
@@ -11,11 +15,8 @@
 #include "streams/exec/log_util.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
-#include "streams/exec/mongodb_dead_letter_queue.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/util/metric_manager.h"
-#include <exception>
-#include <mongocxx/exception/exception.hpp>
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
@@ -49,7 +50,6 @@ MongoDBDeadLetterQueue::MongoDBDeadLetterQueue(Context* context,
     mongocxx::write_concern writeConcern;
     writeConcern.journal(true);
     writeConcern.acknowledge_level(mongocxx::write_concern::level::k_majority);
-    // TODO(SERVER-76564): Handle timeouts, adjust this value.
     writeConcern.majority(/*timeout*/ stdx::chrono::milliseconds(60 * 1000));
     _insertOptions = mongocxx::options::insert().write_concern(std::move(writeConcern));
 
@@ -65,7 +65,7 @@ int MongoDBDeadLetterQueue::doAddMessage(BSONObj msg) {
 }
 
 void MongoDBDeadLetterQueue::registerMetrics(MetricManager* metricManager) {
-    MetricManager::LabelsVec labels = getDefaultMetricLabels(_context);
+    Metric::LabelsVec labels = getDefaultMetricLabels(_context);
 
     DeadLetterQueue::registerMetrics(metricManager);
     labels.push_back(std::make_pair("kind", "mongodb"));
@@ -83,7 +83,7 @@ void MongoDBDeadLetterQueue::doStart() {
     dassert(!_consumerThread.joinable());
     dassert(!_consumerThreadRunning);
     _consumerThread = stdx::thread([this]() {
-        auto status = runMongocxxNoThrow([this]() { callHello(*_database); },
+        auto status = runMongocxxNoThrow([this]() { callHello(*_database, _context); },
                                          _context,
                                          ErrorCodes::Error{8191500},
                                          _errorPrefix,

@@ -60,11 +60,16 @@ public:
         return _resultsMerger.next(getOpCtx());
     }
 
+    Status releaseMemory() final {
+        auto res = _resultsMerger.releaseMemory();
+        return res;
+    }
+
     void kill(OperationContext* opCtx) final {
         _resultsMerger.kill(opCtx);
     }
 
-    bool remotesExhausted() final {
+    bool remotesExhausted() const final {
         return _resultsMerger.remotesExhausted();
     }
 

@@ -34,8 +34,6 @@
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/expression_visitor.h"
 #include "mongo/db/matcher/expression_where_base.h"
-#include "mongo/db/matcher/match_details.h"
-#include "mongo/db/matcher/matchable.h"
 
 namespace mongo {
 
@@ -48,8 +46,6 @@ namespace mongo {
 class WhereNoOpMatchExpression final : public WhereMatchExpressionBase {
 public:
     explicit WhereNoOpMatchExpression(WhereParams params);
-
-    bool matches(const MatchableDocument* doc, MatchDetails* details = nullptr) const final;
 
     std::unique_ptr<MatchExpression> clone() const final;
 

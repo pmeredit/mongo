@@ -1,6 +1,7 @@
 """Unit tests for clang_tidy.py and apply_clang_tidy_fixes.py."""
 
 import os
+import platform
 import sys
 import tempfile
 import unittest
@@ -11,11 +12,14 @@ import yaml
 sys.path.append("buildscripts")
 import apply_clang_tidy_fixes
 from clang_tidy import _clang_tidy_executor, _combine_errors
+from mongo_toolchain import get_mongo_toolchain
 
 
 @unittest.skipIf(
-    sys.platform == "win32" or sys.platform == "darwin",
-    reason="clang_tidy.py is only run on linux",
+    sys.platform == "win32"
+    or sys.platform == "darwin"
+    or platform.machine().lower() in {"ppc64le", "s390x"},
+    reason="clang_tidy.py is only run on linux x86_64 or linux arm64",
 )
 class TestClangTidy(unittest.TestCase):
     def setUp(self):
@@ -42,7 +46,8 @@ void f(std::string s);
         self.fixes_dir = os.path.join(self.tempdir.name, "fixes")
         os.mkdir(self.fixes_dir)
 
-        self.clang_tidy_binary = "/opt/mongodbtoolchain/v4/bin/clang-tidy"
+        toolchain = get_mongo_toolchain()
+        self.clang_tidy_binary = toolchain.get_tool_path("clang-tidy")
         clang_tidy_cfg = "Checks: 'performance-unnecessary-value-param'"
         self.clang_tidy_cfg = yaml.safe_load(clang_tidy_cfg)
 
@@ -103,3 +108,7 @@ void f(std::string s);
                 header.read(),
                 "The clang-tidy fix should not have been applied.",
             )
+
+
+if __name__ == "__main__":
+    unittest.main()

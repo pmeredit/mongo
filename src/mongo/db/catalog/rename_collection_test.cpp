@@ -80,9 +80,8 @@
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/str.h"
@@ -516,7 +515,7 @@ void _createIndexOnEmptyCollection(OperationContext* opCtx,
                                 << nss.toStringForErrorMsg() << " because collection "
                                 << nss.toStringForErrorMsg() << " does not exist.";
 
-        auto indexInfoObj = BSON("v" << int(IndexDescriptor::kLatestIndexVersion) << "key"
+        auto indexInfoObj = BSON("v" << int(IndexConfig::kLatestIndexVersion) << "key"
                                      << BSON("a" << 1) << "name" << indexName);
 
         WriteUnitOfWork wuow(opCtx);

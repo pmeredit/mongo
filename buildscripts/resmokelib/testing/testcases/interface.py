@@ -23,7 +23,7 @@ def make_test_case(test_kind, *args, **kwargs) -> "TestCase":
     return _TEST_CASES[test_kind](*args, **kwargs)
 
 
-class TestCase(unittest.TestCase, metaclass=registry.make_registry_metaclass(_TEST_CASES)):  # pylint: disable=invalid-metaclass
+class TestCase(unittest.TestCase, metaclass=registry.make_registry_metaclass(_TEST_CASES)):
     """A test case to execute."""
 
     REGISTERED_NAME = registry.LEAVE_UNREGISTERED
@@ -101,7 +101,7 @@ class TestCase(unittest.TestCase, metaclass=registry.make_registry_metaclass(_TE
         self.logger = self._original_logger
         self._original_logger = None
 
-    def configure(self, fixture: "fixture.Fixture", *args, **kwargs):  # pylint: disable=unused-argument
+    def configure(self, fixture: "fixture.Fixture", *args, **kwargs):
         """Store 'fixture' as an attribute for later use during execution."""
         if self.is_configured:
             raise RuntimeError("configure can only be called once")
@@ -153,7 +153,16 @@ class ProcessTestCase(TestCase):
 
     def as_command(self):
         """Return the command invocation used to run the test."""
-        return self._make_process().as_command()
+        try:
+            proc = self._make_process()
+            return proc.as_command()
+        except:
+            self.logger.exception(
+                "Encountered an error getting command for %s %s", self.test_kind, self.basename()
+            )
+            raise self.failureException(
+                "%s failed when building process command" % (self.short_description(),)
+            )
 
     def _execute(self, process: "process.Process"):
         """Run the specified process."""

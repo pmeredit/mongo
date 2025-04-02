@@ -2,18 +2,19 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/output_sampler.h"
+
 #include <fmt/format.h>
 
-#include "mongo/bson/json.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/output_sampler.h"
 #include "streams/exec/planner.h"
 #include "streams/exec/stages_gen.h"
 #include "streams/exec/tests/test_utils.h"
+#include "streams/exec/util.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {
@@ -38,7 +39,7 @@ protected:
 TEST_F(OutputSamplerTest, Basic) {
     std::vector<BSONObj> rawPipeline{getTestSourceSpec(), getTestMemorySinkSpec()};
 
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Planner planner(_context.get(), {});
     std::unique_ptr<OperatorDag> dag = planner.plan(rawPipeline);
     dag->start();

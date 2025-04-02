@@ -40,7 +40,7 @@
 #include "mongo/db/read_concern.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/transaction_resources.h"
-#include "mongo/rpc/metadata/impersonated_user_metadata.h"
+#include "mongo/rpc/metadata/audit_metadata.h"
 #include "mongo/s/write_ops/batched_command_request.h"
 
 namespace mongo {
@@ -208,7 +208,6 @@ private:
 
 template <typename B>
 DocumentSource::GetNextResult DocumentSourceWriter<B>::doGetNext() {
-    using namespace fmt::literals;
     if (_done) {
         return GetNextResult::makeEOF();
     }
@@ -233,15 +232,15 @@ DocumentSource::GetNextResult DocumentSourceWriter<B>::doGetNext() {
             _initialized = true;
         }
 
-        // While most metadata attached to a command is limited to less than a KB, Impersonation
-        // metadata may grow to an arbitrary size.
+        // While most metadata attached to a command is limited to less than a KB, Audit metadata
+        // may grow to an arbitrary size.
         //
-        // Ask the active Client how much impersonation metadata we'll use for it, add in our own
-        // estimate of write header size, and assume that the rest can fit in the space reserved by
-        // BSONObjMaxUserSize's overhead plus the value from the server parameter:
+        // Ask the active Client how much Audit metadata we'll use for it, add in
+        // our own estimate of write header size, and assume that the rest can fit in the space
+        // reserved by BSONObjMaxUserSize's overhead plus the value from the server parameter:
         // internalQueryDocumentSourceWriterBatchExtraReservedBytes.
         const auto estimatedMetadataSizeBytes =
-            rpc::estimateImpersonatedUserMetadataSize(pExpCtx->getOperationContext());
+            rpc::estimateAuditMetadataSize(pExpCtx->getOperationContext());
 
         BatchedCommandRequest batchWrite = makeBatchedWriteRequest();
         const auto writeHeaderSize = estimateWriteHeaderSize(batchWrite);
@@ -249,8 +248,9 @@ DocumentSource::GetNextResult DocumentSourceWriter<B>::doGetNext() {
             internalQueryDocumentSourceWriterBatchExtraReservedBytes.load();
 
         uassert(7637800,
-                "Unable to proceed with write while metadata size ({}KB) exceeds {}KB"_format(
-                    initialRequestSize / 1024, BSONObjMaxUserSize / 1024),
+                fmt::format("Unable to proceed with write while metadata size ({}KB) exceeds {}KB",
+                            initialRequestSize / 1024,
+                            BSONObjMaxUserSize / 1024),
                 initialRequestSize <= BSONObjMaxUserSize);
 
         const auto maxBatchSizeBytes = BSONObjMaxUserSize - initialRequestSize;

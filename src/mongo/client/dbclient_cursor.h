@@ -49,7 +49,7 @@
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/repl/optime.h"
 #include "mongo/rpc/message.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 
 namespace mongo {
@@ -62,18 +62,28 @@ class AggregateCommandRequest;
 /**
  * The internal client's cursor representation for find or agg cursors. The cursor is iterated by
  * the caller using the 'more()' and 'next()' methods. Any necessary getMore requests are
- * constructed and issued internally.
+ * constructed and issued internally. The cursor is killed when the object is destroyed unless:
+ * - The caller set 'keepCursorOpen' to true. The cursor is expected to be killed by the caller when
+ *   it is no longer needed.
+ * - The client used to created the cursor has been interrupted.
+ * - The last command (find, aggregate or getMore) returned an error that indicated the cursor is no
+ *   longer open on the server side.
  */
 class DBClientCursor {
     DBClientCursor(const DBClientCursor&) = delete;
     DBClientCursor& operator=(const DBClientCursor&) = delete;
 
 public:
+    /**
+     * Constructs a 'DBClientCursor' that will be opened by issuing the aggregate command described
+     * by 'aggRequest'.
+     */
     static StatusWith<std::unique_ptr<DBClientCursor>> fromAggregationRequest(
         DBClientBase* client,
         const AggregateCommandRequest& aggRequest,
         bool secondaryOk,
-        bool useExhaust);
+        bool useExhaust,
+        bool keepCursorOpen = false);
 
     /**
      * Constructs a 'DBClientCursor' that will be opened by issuing the find command described by
@@ -82,7 +92,8 @@ public:
     DBClientCursor(DBClientBase* client,
                    FindCommandRequest findRequest,
                    const ReadPreferenceSetting& readPref,
-                   bool isExhaust);
+                   bool isExhaust,
+                   bool keepCursorOpen = false);
 
     /**
      * Constructs a 'DBClientCursor' from a pre-existing cursor id.
@@ -93,7 +104,8 @@ public:
                    bool isExhaust,
                    std::vector<BSONObj> initialBatch = {},
                    boost::optional<Timestamp> operationTime = boost::none,
-                   boost::optional<BSONObj> postBatchResumeToken = boost::none);
+                   boost::optional<BSONObj> postBatchResumeToken = boost::none,
+                   bool keepCursorOpen = false);
 
     virtual ~DBClientCursor();
 
@@ -170,6 +182,10 @@ public:
      */
     bool isDead() const {
         return _cursorId == 0;
+    }
+
+    bool wasError() const {
+        return _wasError;
     }
 
     bool isInitialized() const {
@@ -340,6 +356,8 @@ private:
     boost::optional<repl::OpTime> _lastKnownCommittedOpTime;
     boost::optional<Timestamp> _operationTime;
     boost::optional<BSONObj> _postBatchResumeToken;
+    // If set to true, the cursor will not be killed when the 'DBClientCursor' is destroyed.
+    const bool _keepCursorOpen;
 };
 
 }  // namespace mongo

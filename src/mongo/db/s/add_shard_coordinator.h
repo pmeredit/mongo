@@ -29,9 +29,11 @@
 
 #pragma once
 
+#include "mongo/client/remote_command_targeter.h"
 #include "mongo/db/s/add_shard_coordinator_document_gen.h"
 #include "mongo/db/s/sharding_ddl_coordinator.h"
 #include "mongo/db/s/sharding_ddl_coordinator_service.h"
+#include "mongo/db/s/topology_change_helpers.h"
 
 namespace mongo {
 class AddShardCoordinator final
@@ -46,9 +48,19 @@ public:
 
     ~AddShardCoordinator() override = default;
 
-    void checkIfOptionsConflict(const BSONObj& stateDoc) const override {}
+    void checkIfOptionsConflict(const BSONObj& stateDoc) const override;
 
     const std::string& getResult(OperationContext* opCtx) const;
+
+    bool canAlwaysStartWhenUserWritesAreDisabled() const override;
+
+    static std::shared_ptr<AddShardCoordinator> create(OperationContext* opCtx,
+                                                       const mongo::ConnectionString& target,
+                                                       boost::optional<std::string> name,
+                                                       bool isConfigShard);
+
+protected:
+    bool _mustAlwaysMakeProgress() override;
 
 private:
     StringData serializePhase(const Phase& phase) const override {
@@ -58,10 +70,49 @@ private:
     ExecutorFuture<void> _runImpl(std::shared_ptr<executor::ScopedTaskExecutor> executor,
                                   const CancellationToken& token) noexcept override;
 
+    ExecutorFuture<void> _cleanupOnAbort(std::shared_ptr<executor::ScopedTaskExecutor> executor,
+                                         const CancellationToken& token,
+                                         const Status& status) noexcept override;
+
     void _verifyInput() const;
+
+    void _checkExistingDataOnShard(OperationContext* opCtx,
+                                   RemoteCommandTargeter& targeter,
+                                   std::shared_ptr<executor::TaskExecutor> executor) const;
+
+    RemoteCommandTargeter& _getTargeter(OperationContext* opCtx);
+
+    void _runWithRetries(std::function<void()>&& function,
+                         std::shared_ptr<executor::ScopedTaskExecutor> executor,
+                         const CancellationToken& token);
+
+    boost::optional<std::function<OperationSessionInfo(OperationContext*)>> _osiGenerator();
+
+    void _standardizeClusterParameters(OperationContext* opCt,
+                                       std::shared_ptr<executor::ScopedTaskExecutor> executor);
+
+    bool _isFirstShard(OperationContext* opCtx);
+
+    void _setFCVOnReplicaSet(OperationContext* opCtx,
+                             mongo::ServerGlobalParams::FCVSnapshot::FCV fcv,
+                             std::shared_ptr<executor::TaskExecutor> executor);
+
+    void _blockUserWrites(OperationContext* opCtx,
+                          std::shared_ptr<executor::TaskExecutor> executor);
+
+    void _restoreUserWrites(OperationContext* opCtx,
+                            std::shared_ptr<executor::TaskExecutor> executor);
+
+    topology_change_helpers::UserWriteBlockingLevel _getUserWritesBlockFromReplicaSet(
+        OperationContext* opCtx, std::shared_ptr<executor::TaskExecutor> executor);
+
+    void _dropSessionsCollection(OperationContext* opCtx,
+                                 std::shared_ptr<executor::TaskExecutor> executor);
 
     // Set on successful completion of the coordinator.
     boost::optional<std::string> _result;
+
+    std::unique_ptr<Shard> _shardConnection;
 };
 
 }  // namespace mongo

@@ -3,6 +3,7 @@
  */
 
 #include "streams/exec/log_dead_letter_queue.h"
+
 #include "mongo/logv2/log.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"

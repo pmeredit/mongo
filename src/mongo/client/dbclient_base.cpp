@@ -67,8 +67,6 @@
 #include "mongo/db/wire_version.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/factory.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/metadata.h"
@@ -474,12 +472,14 @@ bool DBClientBase::createCollection(const NamespaceString& nss,
     return runCommand(nss.dbName(), b.done(), *info);
 }
 
-list<BSONObj> DBClientBase::getCollectionInfos(const DatabaseName& dbName, const BSONObj& filter) {
+list<BSONObj> DBClientBase::getCollectionInfos(const DatabaseName& dbName,
+                                               const BSONObj& filter,
+                                               bool secondaryOk) {
     list<BSONObj> infos;
     BSONObj cmdObj = BSON("listCollections" << 1 << "filter" << filter << "cursor" << BSONObj());
 
     BSONObj res;
-    if (runCommand(dbName, cmdObj, res, QueryOption_SecondaryOk)) {
+    if (runCommand(dbName, cmdObj, res, secondaryOk ? QueryOption_SecondaryOk : 0)) {
         BSONObj cursorObj = res["cursor"].Obj();
         BSONObj collections = cursorObj["firstBatch"].Obj();
         BSONObjIterator it(collections);

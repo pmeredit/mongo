@@ -138,7 +138,6 @@ mongo_cc_library(
         "//src/mongo/executor:connection_pool_executor",
         "//src/mongo/util:alarm",
         "//src/mongo/util:dns_query",
-        "//src/mongo/util:fail_point",
         "//src/mongo/util/concurrency:thread_pool",
         "//src/mongo/util/net:network",
     ],
@@ -310,6 +309,8 @@ mongo_cc_binary(
         "//src/mongo/base:secure_allocator",
         "//src/mongo/client:native_sasl_client",
         "//src/mongo/db:log_process_details",
+        # UBSAN builds needs the RTTI info for WhereMatchExpression, that is defined in this project.
+        "//src/mongo/db/matcher:expressions_mongod_only",
         "//src/mongo/db:service_context_non_d",
         "//src/mongo/db/modules/enterprise/src/util:report_tool",
         "//src/mongo/util:dns_query",

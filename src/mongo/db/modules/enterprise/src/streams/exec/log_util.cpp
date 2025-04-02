@@ -4,6 +4,9 @@
 
 #include "streams/exec/log_util.h"
 
+#include <string>
+#include <vector>
+
 #include "mongo/logv2/log.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
@@ -13,8 +16,8 @@
 namespace streams {
 
 // Get default labels for a specific streamProcessor's metrics.
-MetricManager::LabelsVec getDefaultMetricLabels(Context* context) {
-    MetricManager::LabelsVec labels;
+Metric::LabelsVec getDefaultMetricLabels(Context* context) {
+    Metric::LabelsVec labels;
     labels.push_back(std::make_pair(kTenantIdLabelKey, context->tenantId));
     labels.push_back(std::make_pair(kProcessorIdLabelKey, context->streamProcessorId));
     labels.push_back(std::make_pair(kProcessorNameLabelKey, context->streamName));
@@ -42,6 +45,12 @@ std::string stopReasonToString(StopReason stopReason) {
         default:
             return "Unknown";
     }
+}
+
+mongo::BSONObj toBSON(const LoggingContext& loggingContext) {
+    return BSON("streamProcessorName" << loggingContext.streamProcessorName << "streamProcessorId"
+                                      << loggingContext.streamProcessorId << "tenantId"
+                                      << loggingContext.tenantId);
 }
 
 }  // namespace streams

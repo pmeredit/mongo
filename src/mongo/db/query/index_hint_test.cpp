@@ -31,9 +31,7 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/query/index_hint.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -63,8 +61,7 @@ TEST(IndexHint, BadHintType) {
 }
 
 TEST(IndexHint, ShouldRejectHintAsArray) {
-    BSONObj arrayHint = BSON("hint" << BSON_ARRAY("invalid"
-                                                  << "hint"));
+    BSONObj arrayHint = BSON("hint" << BSON_ARRAY("invalid" << "hint"));
     ASSERT_THROWS_CODE(
         IndexHint::parse(arrayHint.firstElement()), AssertionException, ErrorCodes::FailedToParse);
 }

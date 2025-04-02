@@ -66,7 +66,6 @@
 
 namespace mongo {
 namespace {
-using namespace fmt::literals;
 
 class ShardsvrChangePrimaryCommand final : public TypedCommand<ShardsvrChangePrimaryCommand> {
 public:
@@ -86,13 +85,13 @@ public:
 
             uassert(
                 ErrorCodes::InvalidNamespace,
-                "invalid database {}"_format(dbNss.toStringForErrorMsg()),
+                fmt::format("invalid database {}", dbNss.toStringForErrorMsg()),
                 DatabaseName::isValid(dbNss.dbName(), DatabaseName::DollarInDbNameBehavior::Allow));
 
-            uassert(
-                ErrorCodes::InvalidOptions,
-                "cannot change primary of internal database {}"_format(dbNss.toStringForErrorMsg()),
-                !dbNss.isOnInternalDb());
+            uassert(ErrorCodes::InvalidOptions,
+                    fmt::format("cannot change primary of internal database {}",
+                                dbNss.toStringForErrorMsg()),
+                    !dbNss.isOnInternalDb());
 
             sharding_ddl_util::assertDataMovementAllowed();
 
@@ -102,11 +101,20 @@ public:
             const auto coordinatorFuture = [&] {
                 FixedFCVRegion fcvRegion(opCtx);
 
+                // The Operation FCV is currently propagated only for DDL operations,
+                // which cannot be nested. Therefore, the VersionContext shouldn't have
+                // been initialized yet.
+                invariant(!VersionContext::getDecoration(opCtx).isInitialized());
+                const auto authoritativeMetadataAccessLevel =
+                    sharding_ddl_util::getGrantedAuthoritativeMetadataAccessLevel(
+                        VersionContext::getDecoration(opCtx), fcvRegion->acquireFCVSnapshot());
+
                 // TODO (SERVER-76436): Remove once 8.0 becomes last LTS.
                 uassert(
                     ErrorCodes::IllegalOperation,
                     "Cannot run changePrimary with featureFlagBalanceUnshardedCollections disabled",
                     feature_flags::gBalanceUnshardedCollections.isEnabled(
+                        VersionContext::getDecoration(opCtx),
                         serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
 
                 auto shardRegistry = Grid::get(opCtx)->shardRegistry();
@@ -116,13 +124,14 @@ public:
                 shardRegistry->reload(opCtx);
                 const auto toShard = uassertStatusOKWithContext(
                     shardRegistry->getShard(opCtx, toShardId),
-                    "requested primary shard {} does not exist"_format(toShardId.toString()));
+                    fmt::format("requested primary shard {} does not exist", toShardId.toString()));
 
                 auto coordinatorDoc = [&] {
                     MovePrimaryCoordinatorDocument doc;
                     doc.setShardingDDLCoordinatorMetadata(
                         {{dbNss, DDLCoordinatorTypeEnum::kMovePrimary}});
                     doc.setToShardId(toShard->getId());
+                    doc.setAuthoritativeMetadataAccessLevel(authoritativeMetadataAccessLevel);
                     return doc.toBSON();
                 }();
 

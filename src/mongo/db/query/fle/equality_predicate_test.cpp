@@ -52,9 +52,7 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/query/fle/encrypted_predicate_test_fixtures.h"
 #include "mongo/db/query/fle/equality_predicate.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 
@@ -174,13 +172,11 @@ TEST_F(EqualityPredicateRewriteTest, Equality_NoFFP_Expr) {
 
 TEST_F(EqualityPredicateRewriteTest, In_NoFFP_Match) {
     auto input = makeInExpr("name",
-                            BSON_ARRAY("harry"
-                                       << "ron"
-                                       << "hermione"));
+                            BSON_ARRAY("harry" << "ron"
+                                               << "hermione"));
     auto expected = makeInExpr("name",
-                               BSON_ARRAY("harry"
-                                          << "ron"
-                                          << "hermione"));
+                               BSON_ARRAY("harry" << "ron"
+                                                  << "hermione"));
 
     auto result = _predicate.rewrite(input.get());
     ASSERT(result == nullptr);

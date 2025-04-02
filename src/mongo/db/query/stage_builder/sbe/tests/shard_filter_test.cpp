@@ -53,8 +53,7 @@
 #include "mongo/db/query/stage_builder/sbe/builder.h"
 #include "mongo/db/query/stage_builder/sbe/gen_helpers.h"
 #include "mongo/db/query/stage_builder/sbe/tests/sbe_builder_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -287,11 +286,9 @@ TEST_F(SbeShardKeyExpressionTest, NestedShardKeyPattern) {
 }
 
 TEST_F(SbeShardKeyExpressionTest, HashedShardKeyPattern) {
-    runShardKeyExpressionTest(BSON("a"
-                                   << "hashed"),
-                              {BSON("a" << 10 << "b" << 20),
-                               BSON("b" << 20),
-                               BSON("a" << BSON("b" << 20))});
+    runShardKeyExpressionTest(
+        BSON("a" << "hashed"),
+        {BSON("a" << 10 << "b" << 20), BSON("b" << 20), BSON("a" << BSON("b" << 20))});
 }
 
 }  // namespace mongo

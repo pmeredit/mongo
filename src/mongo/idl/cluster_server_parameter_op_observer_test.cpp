@@ -61,10 +61,7 @@
 #include "mongo/idl/cluster_server_parameter_test_gen.h"
 #include "mongo/idl/cluster_server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kControl
@@ -370,20 +367,14 @@ TEST_F(ClusterServerParameterOpObserverTest, OnInsertRecord) {
 
     // Unknown CSP record fails
     assertFailsOnlyCPNamespace(
-        [this](const auto& nss) {
-            doInserts(nss,
-                      {BSON("_id"
-                            << "ignored")});
-        },
-        boost::none);
+        [this](const auto& nss) { doInserts(nss, {BSON("_id" << "ignored")}); }, boost::none);
 
     // Unknown CSP and not unknown CSP fails, multi-insert.
     assertFailsOnlyCPNamespace(
         [this](const auto& nss) {
-            doInserts(nss,
-                      {makeClusterParametersDoc(LogicalTime(), 456, "yellow"),
-                       BSON("_id"
-                            << "ignored")});
+            doInserts(
+                nss,
+                {makeClusterParametersDoc(LogicalTime(), 456, "yellow"), BSON("_id" << "ignored")});
         },
         boost::none);
 

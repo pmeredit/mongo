@@ -69,9 +69,7 @@
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
 #include "mongo/s/write_ops/batched_command_response.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/uuid.h"
 
@@ -339,8 +337,7 @@ TEST_F(UpdateRetryTest, Success) {
 
     BSONObj objToUpdate = BSON("_id" << 1 << "Value"
                                      << "TestValue");
-    BSONObj updateExpr = BSON("$set" << BSON("Value"
-                                             << "NewTestValue"));
+    BSONObj updateExpr = BSON("$set" << BSON("Value" << "NewTestValue"));
 
     auto future = launchAsync([&] {
         auto status =
@@ -373,8 +370,7 @@ TEST_F(UpdateRetryTest, NotWritablePrimaryErrorReturnedPersistently) {
 
     BSONObj objToUpdate = BSON("_id" << 1 << "Value"
                                      << "TestValue");
-    BSONObj updateExpr = BSON("$set" << BSON("Value"
-                                             << "NewTestValue"));
+    BSONObj updateExpr = BSON("$set" << BSON("Value" << "NewTestValue"));
 
     auto future = launchAsync([&] {
         auto status =
@@ -404,8 +400,7 @@ TEST_F(UpdateRetryTest, NotWritablePrimaryReturnedFromTargeter) {
 
     BSONObj objToUpdate = BSON("_id" << 1 << "Value"
                                      << "TestValue");
-    BSONObj updateExpr = BSON("$set" << BSON("Value"
-                                             << "NewTestValue"));
+    BSONObj updateExpr = BSON("$set" << BSON("Value" << "NewTestValue"));
 
     auto future = launchAsync([&] {
         auto status =
@@ -435,8 +430,7 @@ TEST_F(UpdateRetryTest, NotWritablePrimaryOnceSuccessAfterRetry) {
 
     BSONObj objToUpdate = BSON("_id" << 1 << "Value"
                                      << "TestValue");
-    BSONObj updateExpr = BSON("$set" << BSON("Value"
-                                             << "NewTestValue"));
+    BSONObj updateExpr = BSON("$set" << BSON("Value" << "NewTestValue"));
 
     auto future = launchAsync([&] {
         ASSERT_OK(
@@ -481,8 +475,7 @@ TEST_F(UpdateRetryTest, OperationInterruptedDueToPrimaryStepDown) {
 
     BSONObj objToUpdate = BSON("_id" << 1 << "Value"
                                      << "TestValue");
-    BSONObj updateExpr = BSON("$set" << BSON("Value"
-                                             << "NewTestValue"));
+    BSONObj updateExpr = BSON("$set" << BSON("Value" << "NewTestValue"));
 
     auto future = launchAsync([&] {
         auto status =
@@ -528,8 +521,7 @@ TEST_F(UpdateRetryTest, WriteConcernFailure) {
 
     BSONObj objToUpdate = BSON("_id" << 1 << "Value"
                                      << "TestValue");
-    BSONObj updateExpr = BSON("$set" << BSON("Value"
-                                             << "NewTestValue"));
+    BSONObj updateExpr = BSON("$set" << BSON("Value" << "NewTestValue"));
 
     auto future = launchAsync([&] {
         auto status =

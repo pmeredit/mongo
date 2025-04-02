@@ -1,0 +1,254 @@
+/**
+ * Utility functions for explain() results of search + non-search queries run on a view.
+ */
+
+import {
+    getAggPlanStages,
+} from "jstests/libs/query/analyze_plan.js";
+import {
+    checkSbeRestrictedOrFullyEnabled,
+} from "jstests/libs/query/sbe_util.js";
+import {
+    validateMongotStageExplainExecutionStats,
+    verifyShardsPartExplainOutput
+} from "jstests/with_mongot/common_utils.js";
+
+function assertIdLookupContainsViewPipeline(explainStages, viewPipeline) {
+    assert(explainStages[1].hasOwnProperty("$_internalSearchIdLookup"));
+    assert(explainStages[1]["$_internalSearchIdLookup"].hasOwnProperty("subPipeline"));
+    let idLookupFullSubPipe = explainStages[1]["$_internalSearchIdLookup"]["subPipeline"];
+    // The _idLookup subPipeline should be a $match on _id followed by the view stages.
+    let idLookupStage = {"$match": {"_id": {"$eq": "_id placeholder"}}};
+    assert.eq(idLookupFullSubPipe[0], idLookupStage);
+    // Make sure that idLookup subpipeline contains all of the view stages.
+    let idLookupViewStages = idLookupFullSubPipe.slice(-(idLookupFullSubPipe.length - 1));
+    assert.eq(idLookupViewStages.length, viewPipeline.length);
+    for (let i = 0; i < idLookupViewStages.length; i++) {
+        let stageName = Object.keys(viewPipeline[i])[0];
+        assert(idLookupViewStages[i].hasOwnProperty(stageName));
+    }
+}
+
+export function assertToplevelAggContainsView(explainStages, viewPipeline) {
+    for (let i = 0; i < viewPipeline.length; i++) {
+        let stageName = Object.keys(viewPipeline[i])[0];
+        assert(explainStages[i].hasOwnProperty(stageName));
+    }
+}
+
+/**
+ * If the top-level aggregation contains a mongot stage, it asserts that the view transforms are
+ * contained in _idLookup's subpipeline.  If the top-level aggregation doesn't have a mongot stage,
+ * it asserts that the view stages were applied to the beginning of the top-level pipeline.
+ * @param {Array} explainOutput The explain obj containing a list of stages returned from explain().
+ * @param {Array} userPipeline The request/query that was run on the view.
+ * @param {Object} viewPipeline The pipeline used to define the view.
+ */
+function assertViewAppliedCorrectlyInExplainStages(explainOutput, userPipeline, viewPipeline) {
+    if (userPipeline[0].hasOwnProperty("$search") ||
+        userPipeline[0].hasOwnProperty("$vectorSearch")) {
+        // The view pipeline is pushed down to a desugared stage, $_internalSearchdLookup. Therefore
+        // we inspect the stages (which represent the fully desugared pipeline from the user) to
+        // ensure the view was successfully pushed down.
+        return assertIdLookupContainsViewPipeline(explainOutput.stages, viewPipeline);
+    }
+    // Whereas view transforms for mongot queries happen after desugaring, regular queries apply the
+    // view transforms during query expansion. For this reason, we can just inspect the explain's
+    // command obj, which represents the expanded query (eg the query after
+    // ResolvedView::asExpandedViewAggregation() was called). This also makes it easier to keep
+    // explain checks simpler/more consistent between variants that run with SBE turned on and SBE
+    // turned off, as SBE greatly changes how the stages are portrayed.
+    return assertToplevelAggContainsView(explainOutput, viewPipeline);
+}
+
+/**
+ * This helper is intended for inspecting $search and $vectorSearch explain outputs. $searchMeta is
+ * excluded because such queries should not invoke view pipelines. The reasoning being that results
+ * provide meta data on the enriched collection, they don't have/display the enriched fields
+ * themselves. Furthermore, on an implementation level, $searchMeta doesn't desugar to
+ * $_internalSearchIdLookup (which performs view transforms for other mongot operators).
+ */
+export function assertViewAppliedCorrectly(explainOutput, userPipeline, viewPipeline) {
+    if (explainOutput.hasOwnProperty("splitPipeline")) {
+        // This is a mongot query on a mongot-indexed view over a sharded collection.
+        Object.keys(explainOutput.shards).forEach((shardKey) => {
+            assertViewAppliedCorrectlyInExplainStages(
+                explainOutput.shards[shardKey], userPipeline, viewPipeline);
+        });
+        return;
+    }
+    // A mongot query on a mongot-indexed view on non-sharded collection.
+    assertViewAppliedCorrectlyInExplainStages(explainOutput, userPipeline, viewPipeline);
+}
+/**
+ * This helper inspects explain.stages to ensure the view pipeline wasn't applied to the final
+ * execution pipeline.
+ */
+export function assertViewNotApplied(explainOutput, viewPipeline) {
+    if (explainOutput.hasOwnProperty("splitPipeline")) {
+        Object.keys(explainOutput.shards).forEach((shardKey) => {
+            /**
+             * Assert that the view pipeline wasn't pushed down to $_internalSearchIdLookup by
+             * ensuring there is no $_internalSearchIdLookup stage.
+             */
+            assertViewNotApplied(explainOutput.shards[shardKey], viewPipeline);
+        });
+        return;
+    }
+    /**
+     * Assert that the view pipeline wasn't pushed down to $_internalSearchIdLookup by ensuring
+     * there is no $_internalSearchIdLookup stage.
+     */
+    assert(!explainOutput.stages[1].hasOwnProperty("$_internalSearchIdLookup"));
+    /**
+     * If a view pipeline isn't pushed down to idLookup, there is a risk it was appened to the user
+     * pipeline (as is the case for non-search queries on views). It's important to call out that
+     * this check investigates the most basic case for non-search queries on views, where the view
+     * pipeline isn't desugared and none of the view stages are pushed down or otherwise rearranged
+     * during optimization.
+     */
+    assert.neq(explainOutput.stages.slice(0, viewPipeline.length), viewPipeline);
+}
+
+export function extractUnionWithSubPipelineExplainOutput(explainStages) {
+    for (const stage of explainStages) {
+        // Found the $unionWith stage in the explain output.
+        if (stage["$unionWith"]) {
+            return {"stages": stage["$unionWith"].pipeline};
+        }
+    }
+}
+/**
+ * As the name attempts to suggest, this functions assumes the user ran a top-level $search
+ * aggregation joined via $unionWith with another $search sub-level aggregation. It asserts that the
+ * top-level $search explain contains the outerViewPipeline in its _idLookup and similarly, it
+ * asserts that the $unionWith $search subpipeline contains the innerView pipeline in its idLookup.
+ */
+export function assertUnionWithSearchPipelinesApplyViews(
+    explain, outerViewPipeline, innerViewPipeline) {
+    // This will assert that the top-level search has the view correctly pushed down to idLookup.
+    assertIdLookupContainsViewPipeline(explain.stages, outerViewPipeline);
+    let unionWithSubPipeExplain = extractUnionWithSubPipelineExplainOutput(explain.stages);
+    // Make sure the $unionWith.search subpipeline has the view correctly pushed down to idLookup.
+    assertIdLookupContainsViewPipeline(unionWithSubPipeExplain.stages, innerViewPipeline);
+}
+
+/**
+ * This function checks that the explain output for $search queries from an e2e test contains the
+ * information that it should.
+ * @param {Object} explainOutput the results from running coll.explain().aggregate([[$search: ....],
+ *     ...])
+ * @param {string} stageType ex. "$_internalSearchMongotRemote" , "$_internalSearchIdLookup "
+ * @param {string} verbosity The verbosity of explain. "nReturned" and "executionTimeMillisEstimate"
+ *     will not be checked for 'queryPlanner' verbosity "
+ * @param {NumberLong} nReturned not needed if verbosity is 'queryPlanner'. For a sharded scenario,
+ *     this should be the total returned across all shards.
+ */
+export function verifyE2ESearchExplainOutput(
+    {explainOutput, stageType, verbosity, nReturned = null}) {
+    if (explainOutput.hasOwnProperty("splitPipeline") && explainOutput["splitPipeline"] !== null) {
+        // We check metadata and protocol version for sharded $search.
+        verifyShardsPartExplainOutput({result: explainOutput, searchType: "$search"});
+    }
+    let totalNReturned = 0;
+    let stages = getAggPlanStages(explainOutput, stageType);
+    assert(stages.length > 0,
+           "There should be at least one stage corresponding to " + stageType +
+               " in the explain output. " + tojson(explainOutput));
+    // In a sharded scenario, there may be multiple stages. For an unsharded scenario, there is
+    // only one stage.
+    for (let stage of stages) {
+        if (verbosity != "queryPlanner") {
+            assert(stage.hasOwnProperty("nReturned"));
+            assert(stage.hasOwnProperty("executionTimeMillisEstimate"));
+            totalNReturned += stage["nReturned"];
+        }
+        // Non $_internalSearchIdLookup stages must contain an explain object.
+        if (stageType != "$_internalSearchIdLookup") {
+            const explainStage = stage[stageType];
+            assert(explainStage.hasOwnProperty("explain"), explainStage);
+        }
+    }
+    if (verbosity != "queryPlanner") {
+        assert.eq(totalNReturned, nReturned);
+    }
+}
+
+/**
+ * This function checks that the explain output for $searchMeta queries from an e2e test contains
+ * the information that it should.
+ * @param {Object} explainOutput the results from running coll.explain().aggregate([[$searchMeta:
+ *     ....], ...])
+ * @param {NumberLong} numFacetBucketsAndCount The number of documents mongot returns for the query
+ *     in the sharded scenario. This should be the number of facet buckets involved in the query and
+ *     one more for count.
+ * @param {string} verbosity The verbosity of explain. "nReturned" and "executionTimeMillisEstimate"
+ *     will not be checked for 'queryPlanner' verbosity "
+ */
+export function verifyE2ESearchMetaExplainOutput(
+    {explainOutput, numFacetBucketsAndCount, verbosity}) {
+    // In an unsharded scenario, $searchMeta returns one document with all of the facet values.
+    let nReturned = 1;
+    if (explainOutput.hasOwnProperty("splitPipeline") && explainOutput["splitPipeline"] !== null) {
+        // We check metadata and protocol version for sharded $search.
+        verifyShardsPartExplainOutput({result: explainOutput, searchType: "$searchMeta"});
+        // In the sharded scenario, $searchMeta returns one document per facet bucket + count, as it
+        // needs to be merged in the merging pipeline.
+        nReturned = numFacetBucketsAndCount;
+    }
+    let stages = getAggPlanStages(explainOutput, "$searchMeta");
+    for (let stage of stages) {
+        validateMongotStageExplainExecutionStats({
+            stage: stage,
+            stageType: "$searchMeta",
+            nReturned: nReturned,
+            verbosity: verbosity,
+            isE2E: true
+        });
+    }
+}
+
+/**
+ * Generates an array of random values from [-1, 1). Useful for explain when the actual documents
+ * and scoring for $vectorSearch does not matter.
+ *
+ * @param {*} n length of array
+ * @returns array of random values from [-1, 1]
+ */
+export function generateRandomVectorEmbedding(n) {
+    // Generates array of random values from [-1, 1)
+    let embedding = Array.from({length: n}, function() {
+        return Math.random() * 2 - 1;
+    });
+    return embedding;
+}
+
+/**
+ * This function checks that the explain output for $vectorSearch queries from an e2e test contains
+ * the information that it should.
+ *
+ * In the sharded scenario, make sure the collection has enough documents to return the limit for
+ * each shard.
+ * @param {Object} explainOutput the results from running coll.explain().aggregate([[$vectorSearch:
+ *     ....], ...])
+ * @param {string} stageType ex. "$vectorSearch", $_internalSearchMongotRemote" ,
+ * @param {NumberLong} limit The limit for the $vectorSearch query. In a sharded scenario, this
+ *     applies per shard.
+ * @param {string} verbosity The verbosity of explain. "nReturned" and "executionTimeMillisEstimate"
+ *     will not be checked for 'queryPlanner' verbosity "
+ */
+export function verifyE2EVectorSearchExplainOutput({explainOutput, stageType, limit, verbosity}) {
+    let stages = getAggPlanStages(explainOutput, stageType);
+    // For $vectorSearch, the limit in the query is applied per shard. This means that nReturned for
+    // each shard should match the limit. We don't need to differentiate between the sharded and
+    // unsharded scenario.
+    for (let stage of stages) {
+        validateMongotStageExplainExecutionStats({
+            stage: stage,
+            stageType: stageType,
+            nReturned: limit,
+            verbosity: verbosity,
+            isE2E: true
+        });
+    }
+}

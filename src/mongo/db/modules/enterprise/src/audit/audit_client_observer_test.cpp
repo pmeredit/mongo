@@ -37,6 +37,12 @@ void enableAuditing() {
     ASSERT_EQ(am->isEnabled(), true);
 }
 
+int findFreePort() {
+    asio::io_service service;
+    asio::ip::tcp::acceptor acceptor(service, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), 0));
+    return acceptor.local_endpoint().port();
+}
+
 class AuditUserAttrsTest : public AuthorizationSessionTestFixture {
 protected:
     explicit AuditUserAttrsTest(Options options = makeOptions())
@@ -62,9 +68,6 @@ using namespace transport;
 
 // Constants representing where the TransportLayer is actually listening.
 constexpr auto kTestHostName = "127.0.0.1"_sd;
-constexpr auto kTestMainPort = 22000;
-constexpr auto kTestRouterPort = 22001;
-constexpr auto kTestLoadBalancerPort = 22002;
 
 // Constant representing a proxy protocol header.
 constexpr auto kProxyProtocolHeader = "PROXY TCP4 10.122.9.63 54.225.237.121 1000 3000\r\n"_sd;
@@ -96,8 +99,9 @@ protected:
         params.noUnixSocket = true;
         params.bind_ips = {kTestHostName.toString()};
         AsioTransportLayer::Options opts(&params);
-        opts.port = kTestMainPort;
-        opts.loadBalancerPort = kTestLoadBalancerPort;
+
+        _testLoadBalancerPort = findFreePort();
+        opts.loadBalancerPort = _testLoadBalancerPort;
 
         auto sessionManager = std::make_unique<test::MockSessionManager>();
         _sessionManager = sessionManager.get();
@@ -114,6 +118,7 @@ protected:
         getServiceContext()->registerClientObserver(std::make_unique<AuditClientObserver>());
 
         _threadPool.startup();
+        _testMainPort = _tla->listenerPort();
     }
 
     ~AuditClientAttrsTestFixture() override {
@@ -127,13 +132,15 @@ protected:
                                      const rpc::AuditClientAttrs& oldAttrs) {
         ASSERT_EQ(newAttrs.getLocal().toString(), oldAttrs.getLocal().toString());
         ASSERT_EQ(newAttrs.getRemote().toString(), oldAttrs.getRemote().toString());
-        ASSERT_EQ(newAttrs.getProxiedEndpoints(), oldAttrs.getProxiedEndpoints());
+        ASSERT_EQ(newAttrs.getProxies(), oldAttrs.getProxies());
     }
 
 protected:
     std::unique_ptr<AsioTransportLayer> _tla;
     test::MockSessionManager* _sessionManager;
     ThreadPool _threadPool;
+    int _testMainPort;
+    int _testLoadBalancerPort;
 
 private:
     std::shared_ptr<void> _disableTfo = tfo::setConfigForTest(0, 0, 0, 1024, Status::OK());
@@ -153,8 +160,8 @@ TEST_F(AuditUserAttrsTest, basicAuditUserAttrsCheck) {
     auto opCtx2 = newClient->makeOperationContext();
     auto auditAttrs = rpc::AuditUserAttrs::get(opCtx2.get());
 
-    ASSERT_EQ(auditAttrs->userName.getUser(), "user1");
-    ASSERT_EQ(auditAttrs->roleNames.size(), 0);
+    ASSERT_EQ(auditAttrs->getUser().getUser(), "user1");
+    ASSERT_EQ(auditAttrs->getRoles().size(), 0);
 }
 
 TEST_F(AuditAttrsCommunityTest, basicAuditAttrsCommunityCheck) {
@@ -169,9 +176,11 @@ TEST_F(AuditAttrsCommunityTest, basicAuditAttrsCommunityCheck) {
     auto auditClientAttrs = rpc::AuditClientAttrs::get(newClient.get());
 
     // community version does not have AuditManager and thus should not have observer setting up the
-    // auditUserAttrs or auditClientAttrs decorations
-    ASSERT_FALSE(auditUserAttrs);
+    // auditClientAttrs decoration. auditUserAttrs should still exist and be empty.
     ASSERT_FALSE(auditClientAttrs);
+    ASSERT(auditUserAttrs);
+    ASSERT_EQ(auditUserAttrs->getUser().getUser(), "user1");
+    ASSERT_EQ(auditUserAttrs->getRoles().size(), 0);
 }
 
 TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
@@ -181,10 +190,10 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
     _sessionManager->setOnStartSession([&](test::SessionThread& st) {
         // Check that the session contains the expected values.
         ASSERT_EQ(st.session()->local().host(), kTestHostName);
-        ASSERT_EQ(st.session()->local().port(), kTestMainPort);
+        ASSERT_EQ(st.session()->local().port(), _testMainPort);
         ASSERT_TRUE(st.session()->local().isLocalHost());
         ASSERT_FALSE(st.session()->isFromRouterPort());
-        ASSERT_FALSE(st.session()->isFromLoadBalancer());
+        ASSERT_FALSE(st.session()->isConnectedToLoadBalancerPort());
         ASSERT_FALSE(st.session()->getProxiedDstEndpoint());
 
         // Check that auditClientAttrs exists on the newly-created client and matches the values on
@@ -199,7 +208,7 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
         ASSERT_EQ(auditClientAttrs->getRemote().toString(), st.session()->remote().toString());
         ASSERT_EQ(auditClientAttrs->getRemote().toString(),
                   st.session()->getSourceRemoteEndpoint().toString());
-        ASSERT_EQ(auditClientAttrs->getProxiedEndpoints(), std::vector<HostAndPort>{});
+        ASSERT_EQ(auditClientAttrs->getProxies(), std::vector<HostAndPort>{});
 
         // Propagate AuditClientAttrs to another thread via ForwardableOperationMetadata.
         auto onBackgroundThreadComplete = std::make_shared<Notification<void>>();
@@ -234,7 +243,7 @@ TEST_F(AuditClientAttrsTestFixture, directAuditClientAttrs) {
 
     // Connect to the main port that _tla is listening on.
     auto swSession = _tla->connect(
-        {kTestHostName.toString(), kTestMainPort}, ConnectSSLMode::kDisableSSL, Seconds{10}, {});
+        {kTestHostName.toString(), _testMainPort}, ConnectSSLMode::kDisableSSL, Seconds{10}, {});
     ASSERT_OK(swSession);
 
     onStartSession->get();
@@ -248,10 +257,10 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
     _sessionManager->setOnStartSession([&](test::SessionThread& st) {
         // Check that the session contains the expected values.
         ASSERT_EQ(st.session()->local().host(), kTestHostName);
-        ASSERT_EQ(st.session()->local().port(), kTestLoadBalancerPort);
+        ASSERT_EQ(st.session()->local().port(), _testLoadBalancerPort);
         ASSERT_TRUE(st.session()->local().isLocalHost());
         ASSERT_FALSE(st.session()->isFromRouterPort());
-        ASSERT_TRUE(st.session()->isFromLoadBalancer());
+        ASSERT_TRUE(st.session()->isConnectedToLoadBalancerPort());
         ASSERT_TRUE(st.session()->getProxiedDstEndpoint());
 
         // Check that auditClientAttrs exists on the newly-created client and matches the values
@@ -266,7 +275,7 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
         ASSERT_NE(auditClientAttrs->getRemote().toString(), st.session()->remote().toString());
         ASSERT_EQ(auditClientAttrs->getRemote().toString(),
                   st.session()->getSourceRemoteEndpoint().toString());
-        ASSERT_EQ(auditClientAttrs->getProxiedEndpoints(),
+        ASSERT_EQ(auditClientAttrs->getProxies(),
                   std::vector<HostAndPort>{st.session()->getProxiedDstEndpoint().value()});
 
         // Propagate AuditClientAttrs to another thread via ForwardableOperationMetadata.
@@ -307,7 +316,7 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
     asio::ip::tcp::socket sock{ctx};
     std::error_code ec;
     ec = sock.connect(asio::ip::tcp::endpoint(asio::ip::make_address(kTestHostName.toString()),
-                                              kTestLoadBalancerPort),
+                                              _testLoadBalancerPort),
                       ec);
     ASSERT_FALSE(ec) << errorMessage(ec);
 
@@ -317,6 +326,124 @@ TEST_F(AuditClientAttrsTestFixture, loadBalancedAuditClientAttrs) {
     onStartSession->get();
 }
 
-}  // namespace
+TEST_F(AuditClientAttrsTestFixture, SerializationAndDeserialization) {
+    const HostAndPort local("127.0.0.1", 27017);
+    const HostAndPort remote("192.168.1.1", 12345);
+    std::vector<HostAndPort> proxies = {HostAndPort("10.0.0.1", 8080),
+                                        HostAndPort("10.0.0.2", 8080)};
 
+    rpc::AuditClientAttrs attrs(local, remote, proxies, false /* isImpersonating */);
+    BSONObj serialized = attrs.toBSON();
+    ASSERT_EQ(serialized["local"].str(), local.toString());
+    ASSERT_EQ(serialized["remote"].str(), remote.toString());
+
+    BSONElement proxiesElement = serialized["proxies"];
+    ASSERT_TRUE(proxiesElement.isABSONObj());
+    auto proxiesArr = proxiesElement.Array();
+
+    ASSERT_EQ(proxiesArr.size(), proxies.size());
+    for (size_t i = 0; i < proxiesArr.size(); ++i) {
+        ASSERT_EQ(proxiesArr[i].str(), proxies[i].toString());
+    }
+
+    auto parsed = rpc::AuditClientAttrs(serialized);
+
+    ASSERT_EQ(parsed.getLocal(), attrs.getLocal());
+    ASSERT_EQ(parsed.getRemote(), attrs.getRemote());
+    ASSERT_EQ(parsed.getProxies(), attrs.getProxies());
+}
+
+TEST_F(AuditClientAttrsTestFixture, SerializationValidation) {
+    BSONObj missingLocal = BSON("remote" << "192.168.1.1:12345"
+                                         << "proxies" << BSONArray() << "isImpersonating" << false);
+    ASSERT_THROWS_CODE_AND_WHAT(
+        rpc::AuditClientAttrs(missingLocal),
+        AssertionException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'AuditClientAttrsBase.local' is missing but a required field");
+
+    BSONObj missingRemote = BSON("local" << "127.0.0.1:27017"
+                                         << "proxies" << BSONArray() << "isImpersonating" << false);
+    ASSERT_THROWS_CODE_AND_WHAT(
+        rpc::AuditClientAttrs(missingRemote),
+        AssertionException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'AuditClientAttrsBase.remote' is missing but a required field");
+
+    BSONObj missingProxies = BSON("local" << "127.0.0.1:27017"
+                                          << "remote"
+                                          << "192.168.1.1:12345"
+                                          << "isImpersonating" << false);
+    ASSERT_THROWS_CODE_AND_WHAT(
+        rpc::AuditClientAttrs(missingProxies),
+        AssertionException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'AuditClientAttrsBase.proxies' is missing but a required field");
+
+    BSONObj missingIsImpersonating = BSON("local" << "127.0.0.1:27017"
+                                                  << "remote"
+                                                  << "192.168.1.1:12345"
+                                                  << "proxies" << BSONArray());
+    ASSERT_THROWS_CODE_AND_WHAT(
+        rpc::AuditClientAttrs(missingIsImpersonating),
+        AssertionException,
+        ErrorCodes::IDLFailedToParse,
+        "BSON field 'AuditClientAttrsBase.isImpersonating' is missing but a required field");
+
+    BSONObj invalidLocalType =
+        BSON("local" << 12345 << "remote"
+                     << "192.168.1.1:12345"
+                     << "proxies" << BSONArray() << "isImpersonating" << false);
+    ASSERT_THROWS_CODE(
+        rpc::AuditClientAttrs(invalidLocalType), AssertionException, ErrorCodes::TypeMismatch);
+
+    BSONObj invalidHostPort =
+        BSON("local" << "invalid:host:port"
+                     << "remote"
+                     << "192.168.1.1:12345"
+                     << "proxies" << BSONArray() << "isImpersonating" << false);
+    ASSERT_THROWS_CODE(
+        rpc::AuditClientAttrs(invalidHostPort), AssertionException, ErrorCodes::FailedToParse);
+
+    BSONArrayBuilder proxiesArr;
+    proxiesArr.append("10.0.0.1:8080");
+    proxiesArr.append(12345);  // Invalid type
+    BSONObj invalidProxyElement =
+        BSON("local" << "127.0.0.1:27017"
+                     << "remote"
+                     << "192.168.1.1:12345"
+                     << "proxies" << proxiesArr.arr() << "isImpersonating" << false);
+    ASSERT_THROWS_CODE(
+        rpc::AuditClientAttrs(invalidProxyElement), AssertionException, ErrorCodes::TypeMismatch);
+
+    BSONObjBuilder duplicateBuilder;
+    duplicateBuilder.append("local", "127.0.0.1:27017");
+    duplicateBuilder.append("local", "127.0.0.1:27018");  // Duplicate
+    duplicateBuilder.append("remote", "192.168.1.1:12345");
+    duplicateBuilder.append("isImpersonating", false);
+    duplicateBuilder.appendArray("proxies", BSONArray());
+    ASSERT_THROWS_CODE_AND_WHAT(rpc::AuditClientAttrs(duplicateBuilder.obj()),
+                                AssertionException,
+                                ErrorCodes::IDLDuplicateField,
+                                "BSON field 'AuditClientAttrsBase.local' is a duplicate field");
+}
+
+TEST_F(AuditClientAttrsTestFixture, EmptyProxies) {
+    const HostAndPort local("127.0.0.1", 27017);
+    const HostAndPort remote("192.168.1.1", 12345);
+    std::vector<HostAndPort> emptyProxies;
+
+    rpc::AuditClientAttrs attrs(local, remote, emptyProxies, false /* isImpersonating */);
+    BSONObj serialized = attrs.toBSON();
+
+    ASSERT_TRUE(serialized.hasField("proxies"));
+    auto proxiesElem = serialized["proxies"];
+    ASSERT_EQ(proxiesElem.type(), BSONType::Array);
+    ASSERT_EQ(proxiesElem.Array().size(), 0);
+
+    auto parsed = rpc::AuditClientAttrs(serialized);
+    ASSERT_EQ(parsed.getProxies().size(), 0);
+}
+
+}  // namespace
 }  // namespace mongo::audit

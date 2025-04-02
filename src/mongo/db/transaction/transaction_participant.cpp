@@ -113,8 +113,6 @@
 #include "mongo/db/write_concern_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/shard_version.h"
 #include "mongo/s/would_change_owning_shard_exception.h"
@@ -135,7 +133,6 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 namespace mongo {
-using namespace fmt::literals;
 namespace {
 
 // Failpoint which will pause an operation just after allocating a point-in-time storage engine
@@ -629,7 +626,7 @@ void TransactionParticipant::performNoopWrite(OperationContext* opCtx, StringDat
     {
         AutoGetOplogFastPath oplogWrite(opCtx, OplogAccessMode::kWrite);
         uassert(ErrorCodes::NotWritablePrimary,
-                "Not primary when performing noop write for {}"_format(msg),
+                fmt::format("Not primary when performing noop write for {}", msg),
                 replCoord->canAcceptWritesForDatabase(opCtx, DatabaseName::kAdmin));
 
         writeConflictRetry(
@@ -930,6 +927,8 @@ void TransactionParticipant::Participant::_continueMultiDocumentTransaction(
     uassert(ErrorCodes::NoSuchTransaction,
             str::stream()
                 << "Given transaction number " << txnNumberAndRetryCounter.getTxnNumber()
+                << " on session " << _sessionId() << " using txnRetryCounter "
+                << txnNumberAndRetryCounter.getTxnRetryCounter()
                 << " does not match any in-progress transactions. The active transaction number is "
                 << o().activeTxnNumberAndRetryCounter.getTxnNumber(),
             txnNumberAndRetryCounter.getTxnNumber() ==
@@ -1257,8 +1256,9 @@ void TransactionParticipant::Participant::_setReadSnapshot(
         const auto readTimestamp = readConcernArgs.getArgsAtClusterTime()->asTimestamp();
         const auto ruTs = shard_role_details::getRecoveryUnit(opCtx)->getPointInTimeReadTimestamp();
         invariant(readTimestamp == ruTs,
-                  "readTimestamp: {}, pointInTime: {}"_format(readTimestamp.toString(),
-                                                              ruTs ? ruTs->toString() : "none"));
+                  fmt::format("readTimestamp: {}, pointInTime: {}",
+                              readTimestamp.toString(),
+                              ruTs ? ruTs->toString() : "none"));
 
         stdx::lock_guard<Client> lk(*opCtx->getClient());
         o(lk).transactionMetricsObserver.onChooseReadTimestamp(readTimestamp);
@@ -1302,9 +1302,9 @@ TransactionParticipant::OplogSlotReserver::OplogSlotReserver(OperationContext* o
     wuow.release();
 
     // We must lock the Client to change the Locker on the OperationContext.
-    stdx::lock_guard<Client> lk(*opCtx->getClient());
+    ClientLock lk(opCtx->getClient());
     // Save the RecoveryUnit from the new transaction and replace it with an empty one.
-    _recoveryUnit = shard_role_details::releaseAndReplaceRecoveryUnit(opCtx);
+    _recoveryUnit = shard_role_details::releaseAndReplaceRecoveryUnit(opCtx, lk);
     // The recovery unit is detached from the OperationContext, but keep the OperationContext in the
     // case we need to run rollback handlers.
     if (_recoveryUnit) {
@@ -1372,7 +1372,7 @@ TransactionParticipant::TxnResources::TxnResources(ClientLock& clientLock,
     invariant(!(stashStyle == StashStyle::kSecondary &&
                 shard_role_details::getLocker(opCtx)->hasMaxLockTimeout()));
 
-    _recoveryUnit = shard_role_details::releaseAndReplaceRecoveryUnit(opCtx);
+    _recoveryUnit = shard_role_details::releaseAndReplaceRecoveryUnit(opCtx, clientLock);
     // The recovery unit is detached from the OperationContext, but keep the OperationContext in the
     // case we need to run rollback handlers.
     if (_recoveryUnit) {
@@ -1446,7 +1446,7 @@ void TransactionParticipant::TxnResources::release(OperationContext* opCtx) {
     shard_role_details::getLocker(opCtx)->updateThreadIdToCurrentThread();
 
     auto oldState = shard_role_details::setRecoveryUnit(
-        opCtx, std::move(_recoveryUnit), WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
+        opCtx, std::move(_recoveryUnit), WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork, lk);
     invariant(oldState == WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
               str::stream() << "RecoveryUnit state was " << oldState);
 
@@ -1462,8 +1462,8 @@ void TransactionParticipant::TxnResources::release(OperationContext* opCtx) {
     readConcernArgs = _readConcernArgs;
 }
 
-void TransactionParticipant::TxnResources::setNoEvictionAfterRollback() {
-    _recoveryUnit->setNoEvictionAfterRollback();
+void TransactionParticipant::TxnResources::setNoEvictionAfterCommitOrRollback() {
+    _recoveryUnit->setNoEvictionAfterCommitOrRollback();
 }
 
 TransactionParticipant::SideTransactionBlock::SideTransactionBlock(OperationContext* opCtx)
@@ -1484,8 +1484,8 @@ TransactionParticipant::SideTransactionBlock::SideTransactionBlock(OperationCont
     // Release recovery unit, saving the recovery unit off to the side, keeping open the storage
     // transaction.
     {
-        stdx::lock_guard<Client> lk(*opCtx->getClient());
-        _recoveryUnit = shard_role_details::releaseAndReplaceRecoveryUnit(_opCtx);
+        ClientLock clientLock(_opCtx->getClient());
+        _recoveryUnit = shard_role_details::releaseAndReplaceRecoveryUnit(_opCtx, clientLock);
     }
 }
 
@@ -1499,9 +1499,12 @@ TransactionParticipant::SideTransactionBlock::~SideTransactionBlock() {
 
     // Restore recovery unit.
     {
-        stdx::lock_guard<Client> lk(*_opCtx->getClient());
+        ClientLock lk(_opCtx->getClient());
         auto oldState = shard_role_details::setRecoveryUnit(
-            _opCtx, std::move(_recoveryUnit), WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
+            _opCtx,
+            std::move(_recoveryUnit),
+            WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
+            lk);
         invariant(oldState == WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
                   str::stream() << "RecoveryUnit state was " << oldState);
     }
@@ -1633,6 +1636,23 @@ void TransactionParticipant::Participant::unstashTransactionResources(
                               << _sessionId()
                               << " to run a retryable write but it corresponds to a transaction",
                 o().txnState.isInRetryableWriteMode());
+    }
+
+    if (cmdName == "abortTransaction" &&
+        (o().txnState.isAbortedWithoutPrepare() || o().txnState.isInProgress() ||
+         o().txnState.isCommitted())) {
+        // Explicitly set lastOp so that the abort for an internal transaction waits for write
+        // concern in the service entry point. This is used by internal transactions (via the
+        // cleanup abort) to ensure that the speculative snapshot the transaction was operating on
+        // has been replicated to secondaries.
+        //
+        // Note that setLastOpToSystemLastOpTime() requires us to not be in a write unit of work,
+        // and so it must be set before we set the write unit of work later in this function.
+        //
+        // We also want to wait to make sure a commit transaction entry has been replicated to
+        // secondaries before officially telling the client that the transaction has already been
+        // committed when we try to abort.
+        repl::ReplClientInfo::forClient(opCtx->getClient()).setLastOpToSystemLastOpTime(opCtx);
     }
 
     // If this is not a multi-document transaction, there is nothing to unstash.
@@ -2203,12 +2223,12 @@ void TransactionParticipant::Participant::_commitStorageTransaction(OperationCon
     // writes.
     {
         ClientLock clientLock(opCtx->getClient());
-        CurOp::get(opCtx)->updateStorageMetricsOnRecoveryUnitChange(clientLock);
         shard_role_details::setRecoveryUnit(
             opCtx,
             std::unique_ptr<RecoveryUnit>(
                 opCtx->getServiceContext()->getStorageEngine()->newRecoveryUnit()),
-            WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
+            WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
+            clientLock);
     }
 
 
@@ -2345,12 +2365,19 @@ bool TransactionParticipant::Observer::expiredAsOf(Date_t when) const {
         o().transactionExpireDate < when;
 }
 
-void TransactionParticipant::Participant::abortTransaction(OperationContext* opCtx) {
+Microseconds TransactionParticipant::Observer::getDuration(TickSource* tickSource) const {
+    return o().transactionMetricsObserver.getSingleTransactionStats().getDuration(
+        tickSource, tickSource->getTicks());
+}
+
+void TransactionParticipant::Participant::abortTransaction(OperationContext* opCtx, Status status) {
     if (_isInternalSessionForRetryableWrite() && o().txnState.isCommitted()) {
         // An error occurred while retrying an committed retryable internal transaction should
         // not modify the state of the committed transaction.
         return;
     }
+
+    p().overwrittenStatus = status;
     // Normally, absence of a transaction resource stash indicates an inactive transaction.
     // However, in the case of a failed "unstash", an active transaction may exist without a stash
     // and be killed externally.  In that case, the opCtx will not have a transaction number.
@@ -2577,8 +2604,8 @@ void TransactionParticipant::Participant::_abortTransactionOnSession(OperationCo
 
     stdx::unique_lock<Client> lk(*opCtx->getClient());
     if (o().txnResourceStash &&
-        shard_role_details::getRecoveryUnit(opCtx)->getNoEvictionAfterRollback()) {
-        o(lk).txnResourceStash->setNoEvictionAfterRollback();
+        shard_role_details::getRecoveryUnit(opCtx)->getNoEvictionAfterCommitOrRollback()) {
+        o(lk).txnResourceStash->setNoEvictionAfterCommitOrRollback();
     }
 
     _resetRetryableWriteState(lk);
@@ -2613,12 +2640,12 @@ void TransactionParticipant::Participant::_cleanUpTxnResourceOnOpCtx(
     // transactional settings such as a read timestamp.
     {
         ClientLock clientLock(opCtx->getClient());
-        CurOp::get(opCtx)->updateStorageMetricsOnRecoveryUnitChange(clientLock);
         shard_role_details::setRecoveryUnit(
             opCtx,
             std::unique_ptr<RecoveryUnit>(
                 opCtx->getServiceContext()->getStorageEngine()->newRecoveryUnit()),
-            WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork);
+            WriteUnitOfWork::RecoveryUnitState::kNotInUnitOfWork,
+            clientLock);
     }
 
 
@@ -2629,6 +2656,9 @@ void TransactionParticipant::Participant::_cleanUpTxnResourceOnOpCtx(
 void TransactionParticipant::Participant::_checkIsCommandValidWithTxnState(
     const TxnNumberAndRetryCounter& requestTxnNumberAndRetryCounter,
     const std::string& cmdName) const {
+    uassertStatusOK(
+        p().overwrittenStatus.withContext(requestTxnNumberAndRetryCounter.toBSON().toString()));
+
     uassert(ErrorCodes::NoSuchTransaction,
             str::stream() << "Transaction with " << requestTxnNumberAndRetryCounter.toBSON()
                           << " has been aborted.",
@@ -2837,95 +2867,13 @@ void TransactionParticipant::Observer::_reportTransactionStats(
         builder, readConcernArgs, tickSource, tickSource->getTicks());
 }
 
-std::string TransactionParticipant::Participant::_transactionInfoForLog(
-    OperationContext* opCtx,
-    const SingleThreadedLockStats* lockStats,
-    TerminationCause terminationCause,
-    APIParameters apiParameters,
-    repl::ReadConcernArgs readConcernArgs) const {
-    invariant(lockStats);
-
-    StringBuilder s;
-
-    // User specified transaction parameters.
-    BSONObjBuilder parametersBuilder;
-
-    BSONObjBuilder lsidBuilder(parametersBuilder.subobjStart("lsid"));
-    _sessionId().serialize(&lsidBuilder);
-    lsidBuilder.doneFast();
-
-    parametersBuilder.append("txnNumber", o().activeTxnNumberAndRetryCounter.getTxnNumber());
-    parametersBuilder.append("txnRetryCounter",
-                             *o().activeTxnNumberAndRetryCounter.getTxnRetryCounter());
-    parametersBuilder.append("autocommit", p().autoCommit ? *p().autoCommit : true);
-    apiParameters.appendInfo(&parametersBuilder);
-    readConcernArgs.appendInfo(&parametersBuilder);
-
-    s << "parameters:" << parametersBuilder.obj().toString() << ",";
-
-    const auto& singleTransactionStats = o().transactionMetricsObserver.getSingleTransactionStats();
-
-    s << " readTimestamp:" << singleTransactionStats.getReadTimestamp().toString() << ",";
-
-    s << singleTransactionStats.getOpDebug()->additiveMetrics.report();
-
-    s << " prepareReadConflicts:"
-      << singleTransactionStats.getTransactionStorageMetrics().prepareReadConflicts.loadRelaxed();
-
-    std::string terminationCauseString =
-        terminationCause == TerminationCause::kCommitted ? "committed" : "aborted";
-    s << " terminationCause:" << terminationCauseString;
-
-    auto tickSource = opCtx->getServiceContext()->getTickSource();
-    auto curTick = tickSource->getTicks();
-
-    s << " timeActiveMicros:"
-      << durationCount<Microseconds>(
-             singleTransactionStats.getTimeActiveMicros(tickSource, curTick));
-    s << " timeInactiveMicros:"
-      << durationCount<Microseconds>(
-             singleTransactionStats.getTimeInactiveMicros(tickSource, curTick));
-
-    // Number of yields is always 0 in multi-document transactions, but it is included mainly to
-    // match the format with other slow operation logging messages.
-    s << " numYields:" << 0;
-    // Aggregate lock statistics.
-
-    BSONObjBuilder locks;
-    lockStats->report(&locks);
-    s << " locks:" << locks.obj().toString();
-
-    if (singleTransactionStats.getOpDebug()->storageStats)
-        s << " storage:" << singleTransactionStats.getOpDebug()->storageStats->toBSON().toString();
-
-    // It is possible for a slow transaction to have aborted in the prepared state if an
-    // exception was thrown before prepareTransaction succeeds.
-    const auto totalPreparedDuration = durationCount<Microseconds>(
-        singleTransactionStats.getPreparedDuration(tickSource, curTick));
-    const bool txnWasPrepared = totalPreparedDuration > 0;
-    s << " wasPrepared:" << txnWasPrepared;
-    if (txnWasPrepared) {
-        s << " totalPreparedDurationMicros:" << totalPreparedDuration;
-        s << " prepareOpTime:" << o().prepareOpTime.toString();
-    }
-
-    s << " queues:" << singleTransactionStats.getQueueStats().toBson().toString();
-
-    // Total duration of the transaction.
-    s << ", "
-      << duration_cast<Milliseconds>(singleTransactionStats.getDuration(tickSource, curTick));
-
-    return s.str();
-}
-
-
 void TransactionParticipant::Participant::_transactionInfoForLog(
     OperationContext* opCtx,
     const SingleThreadedLockStats* lockStats,
     TerminationCause terminationCause,
     APIParameters apiParameters,
     repl::ReadConcernArgs readConcernArgs,
-    logv2::DynamicAttributes* pAttrs) const {
+    logv2::DynamicAttributes& attrs) const {
     invariant(lockStats);
 
     // User specified transaction parameters.
@@ -2942,142 +2890,56 @@ void TransactionParticipant::Participant::_transactionInfoForLog(
     apiParameters.appendInfo(&parametersBuilder);
     readConcernArgs.appendInfo(&parametersBuilder);
 
-    pAttrs->add("parameters", parametersBuilder.obj());
+    attrs.add("parameters", parametersBuilder.obj());
 
     const auto& singleTransactionStats = o().transactionMetricsObserver.getSingleTransactionStats();
 
-    pAttrs->addDeepCopy("readTimestamp", singleTransactionStats.getReadTimestamp().toString());
+    attrs.addDeepCopy("readTimestamp", singleTransactionStats.getReadTimestamp().toString());
 
-    singleTransactionStats.getOpDebug()->additiveMetrics.report(pAttrs);
+    singleTransactionStats.getOpDebug()->additiveMetrics.report(&attrs);
 
-    pAttrs->add(
+    attrs.add(
         "prepareReadConflicts",
         singleTransactionStats.getTransactionStorageMetrics().prepareReadConflicts.loadRelaxed());
 
     StringData terminationCauseString =
         terminationCause == TerminationCause::kCommitted ? "committed" : "aborted";
-    pAttrs->add("terminationCause", terminationCauseString);
+    attrs.add("terminationCause", terminationCauseString);
 
-    auto tickSource = opCtx->getServiceContext()->getTickSource();
-    auto curTick = tickSource->getTicks();
+    const auto tickSource = opCtx->getServiceContext()->getTickSource();
+    const auto curTick = tickSource->getTicks();
 
-    pAttrs->add("timeActive", singleTransactionStats.getTimeActiveMicros(tickSource, curTick));
-    pAttrs->add("timeInactive", singleTransactionStats.getTimeInactiveMicros(tickSource, curTick));
+    attrs.add("timeActive", singleTransactionStats.getTimeActiveMicros(tickSource, curTick));
+    attrs.add("timeInactive", singleTransactionStats.getTimeInactiveMicros(tickSource, curTick));
 
     // Number of yields is always 0 in multi-document transactions, but it is included mainly to
     // match the format with other slow operation logging messages.
-    pAttrs->add("numYields", 0);
+    attrs.add("numYields", 0);
     // Aggregate lock statistics.
 
     BSONObjBuilder locks;
     lockStats->report(&locks);
-    pAttrs->add("locks", locks.obj());
+    attrs.add("locks", locks.obj());
 
     if (singleTransactionStats.getOpDebug()->storageStats)
-        pAttrs->add("storage", singleTransactionStats.getOpDebug()->storageStats->toBSON());
+        attrs.add("storage", singleTransactionStats.getOpDebug()->storageStats->toBSON());
 
     // It is possible for a slow transaction to have aborted in the prepared state if an
     // exception was thrown before prepareTransaction succeeds.
     const auto totalPreparedDuration = durationCount<Microseconds>(
         singleTransactionStats.getPreparedDuration(tickSource, curTick));
     const bool txnWasPrepared = totalPreparedDuration > 0;
-    pAttrs->add("wasPrepared", txnWasPrepared);
+    attrs.add("wasPrepared", txnWasPrepared);
     if (txnWasPrepared) {
-        pAttrs->add("totalPreparedDuration", Microseconds(totalPreparedDuration));
-        pAttrs->add("prepareOpTime", o().prepareOpTime);
+        attrs.add("totalPreparedDuration", Microseconds(totalPreparedDuration));
+        attrs.add("prepareOpTime", o().prepareOpTime);
     }
 
-    pAttrs->add("queues", singleTransactionStats.getQueueStats().toBson());
+    attrs.add("queues", singleTransactionStats.getQueueStats().toBson());
 
     // Total duration of the transaction.
-    pAttrs->add(
-        "duration",
-        duration_cast<Milliseconds>(singleTransactionStats.getDuration(tickSource, curTick)));
-}
-
-// Needs to be kept in sync with _transactionInfoForLog
-BSONObj TransactionParticipant::Participant::_transactionInfoBSONForLog(
-    OperationContext* opCtx,
-    const SingleThreadedLockStats* lockStats,
-    TerminationCause terminationCause,
-    APIParameters apiParameters,
-    repl::ReadConcernArgs readConcernArgs) const {
-    invariant(lockStats);
-
-    // User specified transaction parameters.
-    BSONObjBuilder parametersBuilder;
-
-    BSONObjBuilder lsidBuilder(parametersBuilder.subobjStart("lsid"));
-    _sessionId().serialize(&lsidBuilder);
-    lsidBuilder.doneFast();
-
-    parametersBuilder.append("txnNumber", o().activeTxnNumberAndRetryCounter.getTxnNumber());
-    parametersBuilder.append("autocommit", p().autoCommit ? *p().autoCommit : true);
-    apiParameters.appendInfo(&parametersBuilder);
-    readConcernArgs.appendInfo(&parametersBuilder);
-
-    BSONObjBuilder logLine;
-    {
-        BSONObjBuilder attrs = logLine.subobjStart("attr");
-        attrs.append("parameters", parametersBuilder.obj());
-
-        const auto& singleTransactionStats =
-            o().transactionMetricsObserver.getSingleTransactionStats();
-
-        attrs.append("readTimestamp", singleTransactionStats.getReadTimestamp().toString());
-
-        attrs.appendElements(singleTransactionStats.getOpDebug()->additiveMetrics.reportBSON());
-
-        attrs.append(
-            "prepareReadConflicts",
-            singleTransactionStats.getTransactionStorageMetrics().prepareReadConflicts.load());
-
-        StringData terminationCauseString =
-            terminationCause == TerminationCause::kCommitted ? "committed" : "aborted";
-        attrs.append("terminationCause", terminationCauseString);
-
-        auto tickSource = opCtx->getServiceContext()->getTickSource();
-        auto curTick = tickSource->getTicks();
-
-        attrs.append("timeActiveMicros",
-                     durationCount<Microseconds>(
-                         singleTransactionStats.getTimeActiveMicros(tickSource, curTick)));
-        attrs.append("timeInactiveMicros",
-                     durationCount<Microseconds>(
-                         singleTransactionStats.getTimeInactiveMicros(tickSource, curTick)));
-
-        // Number of yields is always 0 in multi-document transactions, but it is included mainly to
-        // match the format with other slow operation logging messages.
-        attrs.append("numYields", 0);
-        // Aggregate lock statistics.
-
-        BSONObjBuilder locks;
-        lockStats->report(&locks);
-        attrs.append("locks", locks.obj());
-
-        if (singleTransactionStats.getOpDebug()->storageStats)
-            attrs.append("storage", singleTransactionStats.getOpDebug()->storageStats->toBSON());
-
-        // It is possible for a slow transaction to have aborted in the prepared state if an
-        // exception was thrown before prepareTransaction succeeds.
-        const auto totalPreparedDuration = durationCount<Microseconds>(
-            singleTransactionStats.getPreparedDuration(tickSource, curTick));
-        const bool txnWasPrepared = totalPreparedDuration > 0;
-        attrs.append("wasPrepared", txnWasPrepared);
-        if (txnWasPrepared) {
-            attrs.append("totalPreparedDurationMicros", totalPreparedDuration);
-            attrs.append("prepareOpTime", o().prepareOpTime.toBSON());
-        }
-
-        attrs.append("queues", singleTransactionStats.getQueueStats().toBson());
-
-        // Total duration of the transaction.
-        attrs.append(
-            "durationMillis",
-            duration_cast<Milliseconds>(singleTransactionStats.getDuration(tickSource, curTick))
-                .count());
-    }
-    return logLine.obj();
+    attrs.add("duration",
+              duration_cast<Milliseconds>(singleTransactionStats.getDuration(tickSource, curTick)));
 }
 
 void TransactionParticipant::Participant::_logSlowTransaction(
@@ -3098,10 +2960,10 @@ void TransactionParticipant::Participant::_logSlowTransaction(
                                         opDuration,
                                         Milliseconds(serverGlobalParams.slowMS.load()))
                 .first) {
-            logv2::DynamicAttributes attr;
+            logv2::DynamicAttributes attrs;
             _transactionInfoForLog(
-                opCtx, lockStats, terminationCause, apiParameters, readConcernArgs, &attr);
-            LOGV2_OPTIONS(51802, {logv2::LogComponent::kTransaction}, "transaction", attr);
+                opCtx, lockStats, terminationCause, apiParameters, readConcernArgs, attrs);
+            LOGV2_OPTIONS(51802, {logv2::LogComponent::kTransaction}, "transaction", attrs);
         }
     }
 }
@@ -3693,6 +3555,75 @@ boost::optional<repl::OpTime> TransactionParticipant::Participant::_checkStateme
 
     return it->second;
 }
+
+namespace {
+template <typename Name, typename Value>
+requires(!std::is_unsigned_v<Value>)
+void mapLogv2ToBSON(BSONObjBuilder& builder, const Name& name, const Value& value) {
+    builder.append(name, value);
+}
+
+template <typename Name, typename Period>
+void mapLogv2ToBSON(BSONObjBuilder& builder, const Name& name, const Duration<Period>& duration) {
+    builder.append(fmt::format("{}{}", name, Duration<Period>::mongoUnitSuffix()),
+                   duration.count());
+}
+
+template <typename Name>
+void mapLogv2ToBSON(BSONObjBuilder& builder, const Name& name, const bool value) {
+    builder.append(name, value);
+}
+
+template <typename Name, typename Integer>
+requires std::is_unsigned_v<Integer>
+void mapLogv2ToBSON(BSONObjBuilder& builder, const Name& name, std::add_const_t<Integer> integer) {
+    builder.append(name, static_cast<std::make_signed_t<Integer>>(integer));
+}
+
+template <typename Name>
+void mapLogv2ToBSON(BSONObjBuilder& builder,
+                    const Name& name,
+                    const logv2::CustomAttributeValue& value) {
+    if (value.BSONSerialize) {
+        BSONObjBuilder sub = builder.subobjStart(name);
+        value.BSONSerialize(sub);
+        sub.done();
+    } else if (value.toBSONArray) {
+        builder.append(name, value.toBSONArray());
+    } else if (value.BSONAppend) {
+        value.BSONAppend(builder, name);
+    } else if (value.stringSerialize) {
+        fmt::memory_buffer out;
+        value.stringSerialize(out);
+        builder.append(name, StringData{out.data(), out.size()});
+    } else if (value.toString) {
+        builder.append(name, value.toString());
+    } else {
+        // NOTE: hitting this failure indicates we did not correctly handle all cases produced by
+        // construction logic in `attribute_storage.h` that construct CustomAttributeValue instances
+        MONGO_UNREACHABLE;
+    }
+}
+}  // namespace
+
+BSONObj TransactionParticipant::Participant::getTransactionInfoForLogForTest(
+    OperationContext* opCtx,
+    const SingleThreadedLockStats* lockStats,
+    bool committed,
+    const APIParameters& apiParameters,
+    const repl::ReadConcernArgs& readConcernArgs) const {
+
+    TerminationCause terminationCause =
+        committed ? TerminationCause::kCommitted : TerminationCause::kAborted;
+    logv2::DynamicAttributes attrs;
+    _transactionInfoForLog(
+        opCtx, lockStats, terminationCause, apiParameters, readConcernArgs, attrs);
+    BSONObjBuilder builder;
+    logv2::TypeErasedAttributeStorage(attrs).apply(
+        [&](const auto& name, const auto& value) { mapLogv2ToBSON(builder, name, value); });
+    return builder.obj();
+}
+
 
 void TransactionParticipant::Participant::addCommittedStmtIds(
     OperationContext* opCtx,

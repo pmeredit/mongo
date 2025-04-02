@@ -35,6 +35,15 @@ The contexts on these fields may vary depending on the type on connection.
 | Unix (named)     | `{ unix: <socketPath> }`                  | `{ unix: "/var/run/mongod.sock" }`   | Localhost connection via Unix domain socket.                         |
 | Unix (anonymous) | `{ unix: "anonymous" }`                   | `{ unix: "anonymous" }`              | Localhost connection via anonymous Unix domain socket.               |
 
+`intermediates` is an array describing all endpoints that a given action travels through between `remote` and `local`. For an audit log emitted on a mongos, replica set primary, or standalone node with a client connected directly to it, `intermediates` will
+be empty. If the client connects via a load balancer, then `remote` will contain the origin client IP/port while `intermediates`
+will contain the load balancer's IP/port. For an audit log emitted on a shard, `intermediates` will typically contain the IP/port
+of the mongos that intercepted the client's action. If the client also happened to connect to the mongos via a load balancer, then
+`intermediates` on the shard will contain both the mongos and the load balancer IP/port. The order of `intermediates` entries being:
+
+1. The first entry (index [0]) will contain the mongos.
+2. The second entry (index [1]) will contain the load balancer.
+
 ### Authentication
 
 Although the `users` field is an array type, and pluralized, authentication in the server has been restricted to a single user at a time since MongoDB 5.0,

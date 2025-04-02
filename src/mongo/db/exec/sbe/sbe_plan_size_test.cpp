@@ -71,8 +71,7 @@
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/query/stage_types.h"
 #include "mongo/db/storage/key_string/key_string.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/id_generator.h"
 #include "mongo/util/uuid.h"
 
@@ -285,6 +284,25 @@ TEST_F(PlanSizeTest, Scan) {
                                        nullptr /* yieldPolicy */,
                                        kEmptyPlanNodeId /* nodeId */,
                                        ScanCallbacks());
+    assertPlanSize(*stage);
+}
+
+TEST_F(PlanSizeTest, ParallelScan) {
+    auto collUuid = UUID::parse("00000000-0000-0000-0000-000000000000").getValue();
+    auto stage =
+        makeS<sbe::ParallelScanStage>(collUuid,
+                                      DatabaseName(),
+                                      generateSlotId() /* recordSlot */,
+                                      generateSlotId() /* recordIdSlot */,
+                                      generateSlotId() /* snapshotIdSlot */,
+                                      generateSlotId() /* indexIdSlot */,
+                                      generateSlotId() /* indexKeySlot */,
+                                      generateSlotId() /* indexKeyPatternSlot */,
+                                      std::vector<std::string>{"field"} /* scanFieldNames */,
+                                      mockSV() /* scanFieldSlots */,
+                                      nullptr /* yieldPolicy */,
+                                      kEmptyPlanNodeId /* nodeId */,
+                                      ScanCallbacks());
     assertPlanSize(*stage);
 }
 

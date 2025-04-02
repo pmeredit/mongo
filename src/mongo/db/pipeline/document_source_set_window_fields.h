@@ -48,6 +48,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/db/memory_tracking/memory_usage_tracker.h"
 #include "mongo/db/pipeline/accumulation_statement.h"
 #include "mongo/db/pipeline/accumulator.h"
 #include "mongo/db/pipeline/dependencies.h"
@@ -67,7 +68,6 @@
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/db/query/sort_pattern.h"
 #include "mongo/util/intrusive_counter.h"
-#include "mongo/util/memory_usage_tracker.h"
 #include "mongo/util/string_map.h"
 
 namespace mongo {
@@ -117,7 +117,7 @@ public:
           // TODO SERVER-98563 I think we can remove the sortBy here in favor of {$meta: "sortKey"}
           // also.
           _iterator(expCtx.get(), pSource, &_memoryTracker, std::move(partitionBy), _sortBy),
-          _sbeCompatibility(sbeCompatibility){};
+          _sbeCompatibility(sbeCompatibility) {};
 
     GetModPathsReturn getModifiedPaths() const final {
         OrderedPathSet outputPaths;

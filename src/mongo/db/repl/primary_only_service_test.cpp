@@ -61,10 +61,8 @@
 #include "mongo/rpc/metadata/metadata_hook.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/future.h"
@@ -799,11 +797,10 @@ TEST_F(PrimaryOnlyServiceTest, ReportServerStatusInfo) {
         BSONObjBuilder resultBuilder;
         _registry->reportServiceInfoForServerStatus(&resultBuilder);
 
-        ASSERT_BSONOBJ_EQ(
-            BSON("primaryOnlyServices" << BSON("TestService" << BSON("state"
-                                                                     << "rebuilding"
+        ASSERT_BSONOBJ_EQ(BSON("primaryOnlyServices"
+                               << BSON("TestService" << BSON("state" << "rebuilding"
                                                                      << "numInstances" << 0))),
-            resultBuilder.obj());
+                          resultBuilder.obj());
     }
 
     // Make sure the instance doesn't complete.
@@ -818,11 +815,10 @@ TEST_F(PrimaryOnlyServiceTest, ReportServerStatusInfo) {
         BSONObjBuilder resultBuilder;
         _registry->reportServiceInfoForServerStatus(&resultBuilder);
 
-        ASSERT_BSONOBJ_EQ(
-            BSON("primaryOnlyServices" << BSON("TestService" << BSON("state"
-                                                                     << "running"
+        ASSERT_BSONOBJ_EQ(BSON("primaryOnlyServices"
+                               << BSON("TestService" << BSON("state" << "running"
                                                                      << "numInstances" << 1))),
-            resultBuilder.obj());
+                          resultBuilder.obj());
     }
 
     auto instance2 =
@@ -832,11 +828,10 @@ TEST_F(PrimaryOnlyServiceTest, ReportServerStatusInfo) {
         BSONObjBuilder resultBuilder;
         _registry->reportServiceInfoForServerStatus(&resultBuilder);
 
-        ASSERT_BSONOBJ_EQ(
-            BSON("primaryOnlyServices" << BSON("TestService" << BSON("state"
-                                                                     << "running"
+        ASSERT_BSONOBJ_EQ(BSON("primaryOnlyServices"
+                               << BSON("TestService" << BSON("state" << "running"
                                                                      << "numInstances" << 2))),
-            resultBuilder.obj());
+                          resultBuilder.obj());
     }
 
     TestServiceHangDuringInitialization.setMode(FailPoint::off);

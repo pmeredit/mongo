@@ -19,7 +19,6 @@
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
@@ -40,29 +39,29 @@ public:
         boost::filesystem::remove_all(dbpath);
         boost::filesystem::create_directory(dbpath);
 
-        std::string engineConfig = inMemoryGlobalOptions.engineConfig;
-        engineConfig += ",file_manager=(close_idle_time=0),checkpoint=(wait=0,log_size=0)";
 
-        size_t cacheMB = WiredTigerUtil::getCacheSizeMB(inMemoryGlobalOptions.inMemorySizeGB);
+        WiredTigerKVEngine::WiredTigerConfig wtConfig = getWiredTigerConfigFromStartupOptions();
+        wtConfig.cacheSizeMB = WiredTigerUtil::getCacheSizeMB(inMemoryGlobalOptions.inMemorySizeGB);
+        wtConfig.extraOpenOptions = inMemoryGlobalOptions.engineConfig;
+        wtConfig.extraOpenOptions +=
+            ",file_manager=(close_idle_time=0),checkpoint=(wait=0,log_size=0)";
+        wtConfig.inMemory = true;
+        wtConfig.logEnabled = false;
         const bool ephemeral = true;
         const bool repair = false;
-        auto kv = std::make_unique<WiredTigerKVEngine>(
-            getCanonicalName().toString(),
-            dbpath.string(),
-            getGlobalServiceContext()->getFastClockSource(),
-            engineConfig,
-            cacheMB,
-            // inMemory configurations ignore the maxCacheOverflowFileSize
-            // so leave as 0 (unbounded)
-            0,
-            ephemeral,
-            repair);
+        auto kv =
+            std::make_unique<WiredTigerKVEngine>(getCanonicalName().toString(),
+                                                 dbpath.string(),
+                                                 getGlobalServiceContext()->getFastClockSource(),
+                                                 std::move(wtConfig),
+                                                 ephemeral,
+                                                 repair);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
 
         // We're using a WT-based engine; register the ServerStatusSection for it.
         *ServerStatusSectionBuilder<WiredTigerServerStatusSection>(
-             std::string{kWiredTigerEngineName})
+             std::string{WiredTigerServerStatusSection::kServerStatusSectionName})
              .forShard();
 
         StorageEngineOptions options;

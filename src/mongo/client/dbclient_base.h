@@ -58,7 +58,6 @@
 #include "mongo/config.h"  // IWYU pragma: keep
 #include "mongo/db/database_name.h"
 #include "mongo/db/dbmessage.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/query/find_command.h"
 #include "mongo/db/repl/read_concern_gen.h"
@@ -122,6 +121,8 @@ public:
     virtual std::string toString() const = 0;
 
     virtual std::string getServerAddress() const = 0;
+
+    virtual std::string getLocalAddress() const = 0;
 
     /**
      * Reconnect if needed and allowed.
@@ -379,7 +380,8 @@ public:
      * }
      */
     std::list<BSONObj> getCollectionInfos(const DatabaseName& dbName,
-                                          const BSONObj& filter = BSONObj());
+                                          const BSONObj& filter = BSONObj(),
+                                          bool secondaryOk = true);
 
     /**
      * Drops an entire database.

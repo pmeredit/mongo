@@ -57,9 +57,8 @@
 #include "mongo/db/tenant_id.h"
 #include "mongo/transport/session.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/admission_context.h"
 #include "mongo/util/duration.h"
@@ -1336,6 +1335,27 @@ DEATH_TEST_F(LockerTest, SaveAndRestoreGlobalRecursivelyIsFatal, "7033800") {
     // Should invariant
     locker.saveLockStateAndUnlock(&lockInfo);
 }
+
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+DEATH_TEST_F(LockerTest, LockOrderingViolationCrashesTheServer, "9915000") {
+    Lock::ResourceMutex mutexA{"Lock A"};
+    Lock::ResourceMutex mutexB{"Lock B"};
+
+    auto opCtx = makeOperationContext();
+
+    Locker locker(opCtx->getServiceContext());
+
+    {
+        // Establish lock ordering dependency.
+        Lock::ResourceLock lockA{opCtx.get(), mutexA.getRid(), MODE_X};
+        Lock::ResourceLock lockB{opCtx.get(), mutexB.getRid(), MODE_X};
+    }
+
+    // We now flip the lock acquisition ordering. This should crash the server
+    Lock::ResourceLock lockB{opCtx.get(), mutexB.getRid(), MODE_X};
+    Lock::ResourceLock lockA{opCtx.get(), mutexA.getRid(), MODE_X};
+}
+#endif
 
 }  // namespace
 }  // namespace mongo

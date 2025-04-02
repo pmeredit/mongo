@@ -4,6 +4,7 @@
 import argparse
 import logging
 import os
+import subprocess
 import sys
 from typing import List
 
@@ -16,11 +17,8 @@ MONGO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(os.path.realpath(__f
 if __name__ == "__main__" and __package__ is None:
     sys.path.append(MONGO_DIR)
 
-# pylint: disable=wrong-import-position
 from buildscripts.linter import pyrightlinter, runner
 from buildscripts.linter.filediff import gather_changed_files_for_lint
-
-# pylint: enable=wrong-import-position
 
 
 def is_interesting_file(filename: str) -> bool:
@@ -92,6 +90,12 @@ def main():
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     structlog.configure(logger_factory=structlog.stdlib.LoggerFactory())
+
+    # Use the nodejs binary from the bazel's npm repository
+    subprocess.run(["bazel", "build", "//:eslint", "--config=local"], env=os.environ, check=True)
+    os.environ["PATH"] = (
+        "bazel-bin/eslint_/eslint.runfiles/nodejs_linux_arm64/bin/nodejs/bin/" + os.pathsep
+    ) + os.environ["PATH"]
 
     args.func(args.paths if hasattr(args, "paths") else [])
 

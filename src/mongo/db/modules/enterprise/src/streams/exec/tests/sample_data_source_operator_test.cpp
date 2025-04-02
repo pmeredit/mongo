@@ -1,11 +1,13 @@
 /**
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
-#include "mongo/unittest/assert.h"
+#include "streams/exec/sample_data_source_operator.h"
+
+#include "mongo/db/pipeline/aggregation_context_fixture.h"
+#include "mongo/unittest/unittest.h"
 #include "streams/exec/exec_internal_gen.h"
 #include "streams/exec/in_memory_sink_operator.h"
 #include "streams/exec/message.h"
-#include "streams/exec/sample_data_source_operator.h"
 #include "streams/exec/tests/test_utils.h"
 
 namespace streams {

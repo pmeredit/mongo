@@ -37,10 +37,8 @@
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 // IWYU pragma: no_include "ext/alloc_traits.h"
 #include <algorithm>
-#include <bitset>
 #include <exception>
 #include <iterator>
-#include <ostream>
 #include <string>
 #include <utility>
 
@@ -55,7 +53,6 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/change_stream_helpers.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_source_change_stream_gen.h"
 #include "mongo/db/pipeline/document_source_match.h"
 #include "mongo/db/pipeline/document_source_merge.h"
 #include "mongo/db/pipeline/document_source_out.h"
@@ -67,7 +64,6 @@
 #include "mongo/db/pipeline/search/search_helper_bson_obj.h"
 #include "mongo/db/pipeline/stage_constraints.h"
 #include "mongo/db/pipeline/transformer_interface.h"
-#include "mongo/db/query/bson/dotted_path_support.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/views/resolved_view.h"
@@ -183,15 +179,10 @@ void validateTopLevelPipeline(const Pipeline& pipeline) {
 MONGO_FAIL_POINT_DEFINE(disablePipelineOptimization);
 
 using boost::intrusive_ptr;
-using std::ostringstream;
-using std::string;
-using std::vector;
 
-using ChangeStreamRequirement = StageConstraints::ChangeStreamRequirement;
 using HostTypeRequirement = StageConstraints::HostTypeRequirement;
 using PositionRequirement = StageConstraints::PositionRequirement;
 using DiskUseRequirement = StageConstraints::DiskUseRequirement;
-using FacetRequirement = StageConstraints::FacetRequirement;
 using StreamType = StageConstraints::StreamType;
 
 constexpr MatchExpressionParser::AllowedFeatureSet Pipeline::kAllowedMatcherFeatures;
@@ -393,7 +384,7 @@ void Pipeline::optimizeEachStage(SourceContainer* container) {
         // We should have our final number of stages. Optimize each individually.
         for (auto&& source : *container) {
             if (auto out = source->optimize()) {
-                optimizedSources.push_back(out);
+                optimizedSources.push_back(std::move(out));
             }
         }
         container->swap(optimizedSources);
@@ -416,8 +407,8 @@ bool Pipeline::aggHasWriteStage(const BSONObj& cmd) {
             return false;
         }
 
-        if (stage.Obj().hasField(DocumentSourceOut::kStageName) ||
-            stage.Obj().hasField(DocumentSourceMerge::kStageName)) {
+        if (auto obj = stage.Obj(); obj.hasField(DocumentSourceOut::kStageName) ||
+            obj.hasField(DocumentSourceMerge::kStageName)) {
             return true;
         }
     }
@@ -485,7 +476,7 @@ void Pipeline::forceSpill() {
     }
 }
 
-bool Pipeline::usedDisk() {
+bool Pipeline::usedDisk() const {
     return std::any_of(
         _sources.begin(), _sources.end(), [](const auto& stage) { return stage->usedDisk(); });
 }
@@ -523,7 +514,7 @@ void Pipeline::unparameterize() {
     }
 }
 
-bool Pipeline::canParameterize() {
+bool Pipeline::canParameterize() const {
     if (!_sources.empty()) {
         // First stage must be a DocumentSourceMatch.
         return _sources.begin()->get()->getSourceName() == DocumentSourceMatch::kStageName;
@@ -596,20 +587,21 @@ stdx::unordered_set<NamespaceString> Pipeline::getInvolvedCollections() const {
     return collectionNames;
 }
 
-vector<Value> Pipeline::serializeContainer(const SourceContainer& container,
-                                           boost::optional<const SerializationOptions&> opts) {
-    vector<Value> serializedSources;
+std::vector<Value> Pipeline::serializeContainer(const SourceContainer& container,
+                                                boost::optional<const SerializationOptions&> opts) {
+    std::vector<Value> serializedSources;
     for (auto&& source : container) {
         source->serializeToArray(serializedSources, opts ? opts.get() : SerializationOptions());
     }
     return serializedSources;
 }
 
-vector<Value> Pipeline::serialize(boost::optional<const SerializationOptions&> opts) const {
+std::vector<Value> Pipeline::serialize(boost::optional<const SerializationOptions&> opts) const {
     return serializeContainer(_sources, opts);
 }
 
-vector<BSONObj> Pipeline::serializeToBson(boost::optional<const SerializationOptions&> opts) const {
+std::vector<BSONObj> Pipeline::serializeToBson(
+    boost::optional<const SerializationOptions&> opts) const {
     const auto serialized = serialize(opts);
     std::vector<BSONObj> asBson;
     asBson.reserve(serialized.size());
@@ -651,8 +643,8 @@ boost::optional<Document> Pipeline::getNext() {
                               : boost::optional<Document>{nextResult.releaseDocument()};
 }
 
-vector<Value> Pipeline::writeExplainOps(const SerializationOptions& opts) const {
-    vector<Value> array;
+std::vector<Value> Pipeline::writeExplainOps(const SerializationOptions& opts) const {
+    std::vector<Value> array;
     for (auto&& stage : _sources) {
         auto beforeSize = array.size();
         stage->serializeToArray(array, opts);
@@ -689,24 +681,29 @@ void Pipeline::addVariableRefs(std::set<Variables::Id>* refs) const {
 }
 
 DepsTracker Pipeline::getDependencies(
-    boost::optional<QueryMetadataBitSet> unavailableMetadata) const {
-    return getDependenciesForContainer(getContext(), _sources, unavailableMetadata);
+    DepsTracker::MetadataDependencyValidation availableMetadata) const {
+    return getDependenciesForContainer(getContext(), _sources, availableMetadata);
 }
 
 DepsTracker Pipeline::getDependenciesForContainer(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const SourceContainer& container,
-    boost::optional<QueryMetadataBitSet> unavailableMetadata) {
-    // If 'unavailableMetadata' was not specified, we assume all metadata is available. This allows
-    // us to call 'deps.setNeedsMetadata()' without throwing.
-    DepsTracker deps(unavailableMetadata.get_value_or(DepsTracker::kNoMetadata));
+    DepsTracker::MetadataDependencyValidation availableMetadata) {
+    DepsTracker deps(availableMetadata);
 
     OrderedPathSet generatedPaths;
     bool hasUnsupportedStage = false;
+
+    // knowAllFields / knowAllMeta means we have determined all the field / metadata dependencies of
+    // the pipeline, and further stages will not affect that result.
     bool knowAllFields = false;
     bool knowAllMeta = false;
+
+    // It's important to iterate through the stages left-to-right so that metadata validation is
+    // done correctly. A stage anywhere in the pipeline may setMetadataAvailable(), but
+    // references to that metadata are only valid downstream of the metadata-generating stage.
     for (auto&& source : container) {
-        DepsTracker localDeps(deps.getUnavailableMetadata());
+        DepsTracker localDeps(deps.getAvailableMetadata());
         DepsTracker::State status = source->getDependencies(&localDeps);
 
         deps.needRandomGenerator |= localDeps.needRandomGenerator;
@@ -719,7 +716,9 @@ DepsTracker Pipeline::getDependenciesForContainer(
         }
 
         // If we ever saw an unsupported stage, don't bother continuing to track field and metadata
-        // deps: we already have to assume the pipeline depends on everything.
+        // deps: we already have to assume the pipeline depends on everything. We should keep
+        // tracking available metadata (by setMetadataAvailable()) so that requests to read metadata
+        // (by setNeedsMetadata()) can be validated correctly.
         if (!hasUnsupportedStage && !knowAllFields) {
             for (const auto& field : localDeps.fields) {
                 // If a field was generated within the pipeline, we don't need to count it as a
@@ -750,8 +749,12 @@ DepsTracker Pipeline::getDependenciesForContainer(
             }
         }
 
+        // This stage may have generated more available metadata; add to set of all available
+        // metadata in the pipeline so we can correctly validate if downstream stages want to access
+        // the metadata.
+        deps.setMetadataAvailable(localDeps.getAvailableMetadata());
         if (!hasUnsupportedStage && !knowAllMeta) {
-            deps.requestMetadata(localDeps.metadataDeps());
+            deps.setNeedsMetadata(localDeps.metadataDeps());
             knowAllMeta = status & DepsTracker::State::EXHAUSTIVE_META;
         }
     }
@@ -759,19 +762,45 @@ DepsTracker Pipeline::getDependenciesForContainer(
     if (!knowAllFields)
         deps.needWholeDocument = true;  // don't know all fields we need
 
-    if (!deps.getUnavailableMetadata()[DocumentMetadataFields::kTextScore]) {
+    if (expCtx->getNeedsMerge() && !knowAllMeta) {
         // There is a text score available. If we are the first half of a split pipeline, then we
         // have to assume future stages might depend on the textScore (unless we've encountered a
         // stage that doesn't preserve metadata).
-        if (expCtx->getNeedsMerge() && !knowAllMeta) {
-            deps.setNeedsMetadata(DocumentMetadataFields::kTextScore, true);
+
+        // TODO SERVER-100404: This would be more correct if we did the same for all meta fields
+        // like deps.setNeedsMetadata(deps.getAvailableMetadata()).
+        if (deps.getAvailableMetadata()[DocumentMetadataFields::kTextScore]) {
+            deps.setNeedsMetadata(DocumentMetadataFields::kTextScore);
         }
-    } else {
-        // There is no text score available, so we don't need to ask for it.
-        deps.setNeedsMetadata(DocumentMetadataFields::kTextScore, false);
     }
 
     return deps;
+}
+
+// TODO SERVER-100902 Split $meta validation out of DepsTracker.
+void Pipeline::validateMetaDependencies(QueryMetadataBitSet availableMetadata) const {
+    // TODO SERVER-35424 / SERVER-99965 Right now we don't validate geo near metadata here, so
+    // we mark it as available. We should implement better dependency tracking for $geoNear.
+    availableMetadata |= DepsTracker::kAllGeoNearData;
+
+    DepsTracker deps(availableMetadata);
+    for (auto&& source : _sources) {
+        // Calls to setNeedsMetadata() inside the per-stage implementations of getDependencies() may
+        // trigger a uassert if the metadata requested is not available to that stage. That is where
+        // validation occurs.
+        DepsTracker::State status = source->getDependencies(&deps);
+        auto mayDestroyMetadata = status & DepsTracker::State::EXHAUSTIVE_META;
+        if (mayDestroyMetadata) {
+            // TODO SERVER-100443 Right now this only actually clears "score" and "scoreDetails",
+            // but we should reset all fields to be validated in downstream stages.
+            deps.clearMetadataAvailable();
+        }
+    }
+}
+
+bool Pipeline::generatesMetadataType(DocumentMetadataFields::MetaType type) const {
+    DepsTracker deps = getDependencies(DepsTracker::kNoMetadata);
+    return deps.getAvailableMetadata()[type];
 }
 
 Status Pipeline::canRunOnRouter() const {
@@ -830,7 +859,7 @@ boost::intrusive_ptr<DocumentSource> Pipeline::popBack() {
     if (_sources.empty()) {
         return nullptr;
     }
-    auto targetStage = _sources.back();
+    auto targetStage = std::move(_sources.back());
     _sources.pop_back();
     return targetStage;
 }
@@ -839,7 +868,7 @@ boost::intrusive_ptr<DocumentSource> Pipeline::popFront() {
     if (_sources.empty()) {
         return nullptr;
     }
-    auto targetStage = _sources.front();
+    auto targetStage = std::move(_sources.front());
     _sources.pop_front();
     stitch();
     return targetStage;
@@ -858,7 +887,7 @@ boost::intrusive_ptr<DocumentSource> Pipeline::popFrontWithNameAndCriteria(
     if (_sources.empty() || _sources.front()->getSourceName() != targetStageName) {
         return nullptr;
     }
-    auto targetStage = _sources.front();
+    const auto& targetStage = _sources.front();
 
     if (predicate && !predicate(targetStage.get())) {
         return nullptr;
@@ -1008,6 +1037,11 @@ std::unique_ptr<Pipeline, PipelineDeleter> Pipeline::makePipelineFromViewDefinit
 
     if (search_helper_bson_obj::isMongotPipeline(currentPipeline) &&
         subPipelineExpCtx->isFeatureFlagMongotIndexedViewsEnabled()) {
+        // TODO SERVER-100355 Re-enable running subpipelines on a mongot-indexed view (with
+        // viewPipelineHelperForSearch).
+        uasserted(ErrorCodes::QueryFeatureNotAllowed,
+                  "$search, $searchMeta, and $vectorSearch queries on a view in a subpipeline is "
+                  "not supported");
         return Pipeline::viewPipelineHelperForSearch(
             subPipelineExpCtx, resolvedNs, currentPipeline, opts, originalNs);
     }

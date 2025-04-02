@@ -76,6 +76,7 @@ mongo_cc_library(
         "extract/mfbt/lz4/xxhash.c",
         "extract/mozglue/misc/AutoProfilerLabel.cpp",
         "extract/mozglue/misc/AwakeTimeStamp.cpp",
+        "extract/mozglue/misc/Debug.cpp",
         "extract/mozglue/misc/MmapFaultHandler.cpp",
         "extract/mozglue/misc/Printf.cpp",
         "extract/mozglue/misc/SIMD.cpp",
@@ -248,10 +249,6 @@ mongo_cc_library(
             # and they just clutter the output logs
             "-Wno-unused-variable",
             "-Wno-implicit-fallthrough",
-
-            # TODO(SERVER-77205): Review and Possibly Remove '-Wno-deprecated'
-            #                     after Mozjs Update
-            "-Wno-deprecated",
             # Bazel doesn't differentiate between compile flags for C and C++.
             # This leads to errors where certain flags are invalid under C
             # compilation.
@@ -290,6 +287,15 @@ mongo_cc_library(
             "__Wno_invalid_offsetof__",
         ],
     }),
+    exec_properties = select({
+        "@platforms//cpu:x86_64": {
+            "Pool": "large_mem_x86_64",
+        },
+        "@platforms//cpu:aarch64": {
+            "Pool": "large_memory_arm64",
+        },
+        "//conditions:default": {},
+    }),
     features = select({
         "@platforms//os:linux": ["no_invalid_offsetof_warning"],
         "//conditions:default": [],
@@ -303,6 +309,9 @@ mongo_cc_library(
     ] + PLATFORM_INCLUDES,
     linkopts = select({
         "@platforms//os:macos": ["-Wl,-undefined,dynamic_lookup"],
+        "@platforms//os:windows": [
+            "ntdll.lib",
+        ],
         "//conditions:default": [""],
     }),
     local_defines = [

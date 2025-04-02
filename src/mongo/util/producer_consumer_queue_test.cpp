@@ -43,8 +43,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/duration.h"
@@ -117,24 +116,24 @@ private:
 template <bool requiresMultiProducer, bool requiresMultiConsumer, typename Callback>
 std::enable_if_t<!requiresMultiProducer && !requiresMultiConsumer> runCallbackWithPerms(
     Callback&& cb) {
-    std::forward<Callback>(cb)(std::true_type{}, std::true_type{});
-    std::forward<Callback>(cb)(std::true_type{}, std::false_type{});
-    std::forward<Callback>(cb)(std::false_type{}, std::true_type{});
-    std::forward<Callback>(cb)(std::false_type{}, std::false_type{});
+    cb(std::true_type{}, std::true_type{});
+    cb(std::true_type{}, std::false_type{});
+    cb(std::false_type{}, std::true_type{});
+    cb(std::false_type{}, std::false_type{});
 }
 
 template <bool requiresMultiProducer, bool requiresMultiConsumer, typename Callback>
 std::enable_if_t<requiresMultiProducer && !requiresMultiConsumer> runCallbackWithPerms(
     Callback&& cb) {
-    std::forward<Callback>(cb)(std::true_type{}, std::true_type{});
-    std::forward<Callback>(cb)(std::true_type{}, std::false_type{});
+    cb(std::true_type{}, std::true_type{});
+    cb(std::true_type{}, std::false_type{});
 }
 
 template <bool requiresMultiProducer, bool requiresMultiConsumer, typename Callback>
 std::enable_if_t<!requiresMultiProducer && requiresMultiConsumer> runCallbackWithPerms(
     Callback&& cb) {
-    std::forward<Callback>(cb)(std::true_type{}, std::true_type{});
-    std::forward<Callback>(cb)(std::false_type{}, std::true_type{});
+    cb(std::true_type{}, std::true_type{});
+    cb(std::false_type{}, std::true_type{});
 }
 
 template <bool requiresMultiProducer, bool requiresMultiConsumer, typename Callback>
@@ -234,7 +233,7 @@ private:
         __VA_ARGS__(name##CB{});                \
     }                                           \
     template <typename Helper>                  \
-    void name##CB::operator()(Helper&& helper)
+    void name##CB::operator()(Helper && helper)
 
 PRODUCER_CONSUMER_QUEUE_TEST(basicPushPop, runPermutations<false, false>) {
     typename Helper::template ProducerConsumerQueue<MoveOnly> pcq{};

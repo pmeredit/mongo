@@ -50,9 +50,7 @@
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/query/bson/dotted_path_support.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -580,9 +578,7 @@ TEST(ExtractAllElementsAlongPath, DoesExpandMultiplePositionalPathSpecifications
     dps::extractAllElementsAlongPath(
         obj, "a.1.0.b", actualElements, expandArrayOnTrailingField, &actualArrayComponents);
 
-    assertBSONElementSetsAreEqual({BSON(""
-                                        << "(1, 0)")},
-                                  actualElements);
+    assertBSONElementSetsAreEqual({BSON("" << "(1, 0)")}, actualElements);
     assertArrayComponentsAreEqual(MultikeyComponents{}, actualArrayComponents);
 }
 
@@ -608,11 +604,7 @@ TEST(ExtractAllElementsAlongPath, DoesExpandArrayFoundAfterPositionalSpecificati
     dps::extractAllElementsAlongPath(
         obj, "a.1.b", actualElements, expandArrayOnTrailingField, &actualArrayComponents);
 
-    assertBSONElementSetsAreEqual({BSON(""
-                                        << "(1, 0)"),
-                                   BSON(""
-                                        << "(1, 1)")},
-                                  actualElements);
+    assertBSONElementSetsAreEqual({BSON("" << "(1, 0)"), BSON("" << "(1, 1)")}, actualElements);
     assertArrayComponentsAreEqual({1U}, actualArrayComponents);
 }
 
@@ -725,9 +717,7 @@ TEST(ExtractElementAtPathOrArrayAlongPath, FieldWithDotsDontHideNestedObjects) {
     dps::extractAllElementsAlongPath(
         obj, "b.c", actualElements, expandArrayOnTrailingField, &actualArrayComponents);
 
-    assertBSONElementSetsAreEqual({BSON("c"
-                                        << "foo")},
-                                  actualElements);
+    assertBSONElementSetsAreEqual({BSON("c" << "foo")}, actualElements);
     assertArrayComponentsAreEqual(MultikeyComponents{}, actualArrayComponents);
 }
 

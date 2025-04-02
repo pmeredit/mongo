@@ -14,12 +14,9 @@ from evergreen.api import EvergreenApi, RetryingEvergreenApi
 if __name__ == "__main__" and __package__ is None:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# pylint: disable=wrong-import-position
 from buildscripts.util.cmdutils import enable_logging
 from buildscripts.util.fileops import read_yaml_file
 from buildscripts.util.taskname import remove_gen_suffix
-
-# pylint: enable=wrong-import-position
 
 LOGGER = structlog.getLogger(__name__)
 
@@ -80,10 +77,11 @@ def activate_task(expansions: EvgExpansions, evg_api: EvergreenApi) -> None:
                     try:
                         evg_api.configure_task(task.task_id, activated=True)
                     except Exception:
-                        LOGGER.warning(
+                        LOGGER.error(
                             "Could not activate task",
                             task_id=task.task_id,
                             task_name=task.display_name,
+                            exc_info=True,
                         )
                         tasks_not_activated.append(task.task_id)
 
@@ -95,8 +93,11 @@ def activate_task(expansions: EvgExpansions, evg_api: EvergreenApi) -> None:
                 try:
                     evg_api.configure_task(task.task_id, activated=True)
                 except Exception:
-                    LOGGER.warning(
-                        "Could not activate task", task_id=task.task_id, task_name=task.display_name
+                    LOGGER.error(
+                        "Could not activate task",
+                        task_id=task.task_id,
+                        task_name=task.display_name,
+                        exc_info=True,
                     )
                     tasks_not_activated.append(task.task_id)
     if len(tasks_not_activated) > 0:
@@ -135,10 +136,10 @@ def main(expansion_file: str, evergreen_config: str, verbose: bool) -> None:
     """
     enable_logging(verbose)
     expansions = EvgExpansions.from_yaml_file(expansion_file)
-    evg_api = RetryingEvergreenApi.get_api(config_file=evergreen_config)
+    evg_api = RetryingEvergreenApi.get_api(config_file=evergreen_config, log_on_error=True)
 
     activate_task(expansions, evg_api)
 
 
 if __name__ == "__main__":
-    main()  # pylint: disable=no-value-for-parameter
+    main()

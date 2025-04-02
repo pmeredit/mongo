@@ -2,6 +2,8 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
+#include "streams/exec/window_aware_operator.h"
+
 #include <fmt/format.h>
 
 #include "mongo/bson/bsonobj.h"
@@ -14,8 +16,6 @@
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "streams/exec/checkpoint_data_gen.h"
@@ -32,7 +32,6 @@
 #include "streams/exec/tests/in_memory_checkpoint_storage.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
-#include "streams/exec/window_aware_operator.h"
 #include "streams/util/metric_manager.h"
 
 namespace streams {

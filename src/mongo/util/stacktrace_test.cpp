@@ -33,6 +33,7 @@
 // IWYU pragma: no_include "bits/types/stack_t.h"
 #include <fmt/format.h>
 #include <fmt/printf.h>  // IWYU pragma: keep
+#include <fmt/ranges.h>  // IWYU pragma: keep
 // IWYU pragma: no_include "syscall.h"
 // IWYU pragma: no_include "cxxabi.h"
 #include <algorithm>
@@ -62,17 +63,11 @@
 #include "mongo/bson/json.h"
 #include "mongo/config.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_truncation.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/assert_that.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/unittest/matcher.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/concurrency/idle_thread_block.h"
 #include "mongo/util/pcre.h"
 #include "mongo/util/signal_handlers_synchronous.h"
@@ -117,7 +112,6 @@ MONGO_COMPILER_NOINLINE int recurseWithLinkage(RecursionParam& p, std::uint64_t 
 
 namespace {
 
-using namespace fmt::literals;
 using namespace std::literals::chrono_literals;
 
 constexpr bool kSuperVerbose = 0;  // Devel instrumentation
@@ -489,8 +483,9 @@ public:
               "tid"_attr = ostr(stdx::this_thread::get_id()),
               "sig"_attr = sig);
         char storage;
-        LOGV2(
-            23388, "Local var", "var"_attr = "{:X}"_format(reinterpret_cast<uintptr_t>(&storage)));
+        LOGV2(23388,
+              "Local var",
+              "var"_attr = fmt::format("{:X}", reinterpret_cast<uintptr_t>(&storage)));
     }
 
     static void tryHandler(sigAction_t* handler) {
@@ -501,8 +496,8 @@ public:
         std::fill(buf->begin(), buf->end(), kSentinel);
         LOGV2(24157,
               "sigaltstack buf",
-              "size"_attr = "{:X}"_format(buf->size()),
-              "data"_attr = "{:X}"_format(reinterpret_cast<uintptr_t>(buf->data())));
+              "size"_attr = fmt::format("{:X}", buf->size()),
+              "data"_attr = fmt::format("{:X}", reinterpret_cast<uintptr_t>(buf->data())));
         stdx::thread thr([&] {
             LOGV2(23389, "Thread running", "tid"_attr = ostr(stdx::this_thread::get_id()));
             {
@@ -720,8 +715,7 @@ TEST_F(PrintAllThreadStacksTest, WithDeadThreads) {
         bool missingBacktrace = !obj.hasElement("backtrace");
         ASSERT_EQ(witer->blocks, missingBacktrace);
     }
-    ASSERT(mustSee.empty()) << format(FMT_STRING("tids missing from report: {}"),
-                                      fmt::join(mustSee, ","));
+    ASSERT(mustSee.empty()) << fmt::format("tids missing from report: {}", fmt::join(mustSee, ","));
 }
 
 TEST_F(PrintAllThreadStacksTest, Go_2_Threads) {
@@ -825,7 +819,7 @@ TEST(StackTrace, BacktraceThroughLibc) {
         LOGV2(23392,
               "Frame",
               "i"_attr = i,
-              "frame"_attr = "{:X}"_format(reinterpret_cast<uintptr_t>(capture.arr[i])));
+              "frame"_attr = fmt::format("{:X}", reinterpret_cast<uintptr_t>(capture.arr[i])));
     }
 }
 #endif  // mongo stacktrace backend

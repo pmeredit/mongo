@@ -39,15 +39,13 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/uuid.h"
 
 namespace mongo {
 namespace {
 
-using namespace fmt::literals;
 
 TEST(BSONElement, BinDataToString) {
     BSONObjBuilder builder;
@@ -100,7 +98,7 @@ std::string vecStr(std::vector<uint8_t> v) {
     std::string r = "[";
     StringData sep;
     for (const uint8_t& b : v) {
-        r += "{}{:02x}"_format(sep, (unsigned)b);
+        r += fmt::format("{}{:02x}", sep, (unsigned)b);
         sep = ","_sd;
     }
     r += "]";
@@ -300,10 +298,7 @@ TEST(BSONElement, IsNaN) {
     ASSERT_FALSE(BSON("" << Decimal128{"9223372036854775808.5"}).firstElement().isNaN());
     ASSERT_FALSE(BSON("" << Decimal128{"-9223372036854775809.99"}).firstElement().isNaN());
     ASSERT_FALSE(BSON("" << 12345LL).firstElement().isNaN());
-    ASSERT_FALSE(BSON(""
-                      << "foo")
-                     .firstElement()
-                     .isNaN());
+    ASSERT_FALSE(BSON("" << "foo").firstElement().isNaN());
 }
 
 TEST(BSONElementIntegerParseTest, ParseIntegerElementToNonNegativeLongRejectsNegative) {
@@ -334,14 +329,12 @@ TEST(BSONElementIntegerParseTest, ParseIntegerElementToLongRejectsTooLargeNegati
 }
 
 TEST(BSONElementIntegerParseTest, ParseIntegerElementToNonNegativeLongRejectsString) {
-    BSONObj query = BSON(""
-                         << "1");
+    BSONObj query = BSON("" << "1");
     ASSERT_NOT_OK(query.firstElement().parseIntegerElementToNonNegativeLong());
 }
 
 TEST(BSONElementIntegerParseTest, ParseIntegerElementToLongRejectsString) {
-    BSONObj query = BSON(""
-                         << "1");
+    BSONObj query = BSON("" << "1");
     ASSERT_NOT_OK(query.firstElement().parseIntegerElementToLong());
 }
 

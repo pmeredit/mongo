@@ -60,6 +60,10 @@ namespace admission {
 class TicketHolderManager;
 }
 
+namespace locker_internals {
+class LockOrderingsSet;
+}
+
 /**
  * Interface for acquiring locks. One of those objects will have to be instantiated for each
  * request (transaction).
@@ -779,6 +783,64 @@ protected:
 
     // When true, fatally assert when a lock acquisition or ticket acquisition is attempted.
     bool _assertOnLockAttempt = false;
+
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+    // Pointer to the global lock orderings set. This is only used in debug builds to prevent lock
+    // ordering cycles.
+    locker_internals::LockOrderingsSet* _lockOrderingsSet;
+#endif
+};
+
+/**
+ * For use as general mutex or readers/writers lock, outside the general multi-granularity model. A
+ * ResourceMutex is not affected by yielding and two phase locking semantics inside WUOWs.
+ *
+ * Lock with ResourceLock, SharedLock or ExclusiveLock. Uses same fairness as other LockManager
+ * locks.
+ */
+class ResourceMutex {
+public:
+    ResourceMutex(std::string resourceLabel);
+
+    /**
+     * Each instantiation of this class allocates a new ResourceId.
+     */
+    ResourceId getRid() const {
+        return _rid;
+    }
+
+    bool isExclusivelyLocked(Locker* locker);
+
+    bool isAtLeastReadLocked(Locker* locker);
+
+private:
+    const ResourceId _rid;
+};
+
+/**
+ *
+ * NOTE FOR DEVELOPERS: ANY NEW USAGE OF THIS CLASS SHOULD BE ACCOMPANIED BY A TODO AND A
+ * SERVER-XXXXX TICKET TO INVESTIGATE ITS SAFETY.
+ *
+ * An RAII class that disables runtime lock ordering checks. Users of this class should be
+ * incredibly conservative in using this. The presence of this class implies that a deadlock may
+ * occur in that part of the codebase.
+ */
+class DisableLockerRuntimeOrderingChecks {
+    // We only do things in debug builds, release builds are essentially no-ops
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+public:
+    DisableLockerRuntimeOrderingChecks(OperationContext* opCtx);
+    ~DisableLockerRuntimeOrderingChecks();
+
+private:
+    OperationContext* _opCtx;
+    bool _oldValue;
+#else
+public:
+    DisableLockerRuntimeOrderingChecks(OperationContext* opCtx) {};
+    ~DisableLockerRuntimeOrderingChecks() {};
+#endif
 };
 
 /**

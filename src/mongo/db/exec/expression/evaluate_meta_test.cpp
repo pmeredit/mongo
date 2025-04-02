@@ -35,8 +35,7 @@
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace expression_evaluation_test {
@@ -159,8 +158,7 @@ TEST(ExpressionMetaTest, ExpressionMetaSearchScoreDetails) {
     auto expressionMeta =
         ExpressionMeta::parse(&expCtx, expr.firstElement(), expCtx.variablesParseState);
 
-    auto details = BSON("scoreDetails"
-                        << "foo");
+    auto details = BSON("scoreDetails" << "foo");
     MutableDocument doc;
     doc.metadata().setSearchScoreDetails(details);
     Value val = expressionMeta->evaluate(doc.freeze(), &expCtx.variables);

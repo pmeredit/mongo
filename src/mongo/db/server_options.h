@@ -46,7 +46,7 @@
 #include "mongo/logv2/log_format.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/process_id.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/net/cidr.h"
 #include "mongo/util/version/releases.h"
 #include "mongo/util/versioned_value.h"
@@ -73,7 +73,6 @@ struct ServerGlobalParams {
         ShardServerPort = 27018,
         ConfigServerPort = 27019,
         CryptDServerPort = 27020,
-// TODO: SERVER-80343 Remove this ifdef once gRPC is compiled on all variants
 #ifdef MONGO_CONFIG_GRPC
         DefaultGRPCServerPort = 27021,
 #endif
@@ -131,7 +130,7 @@ struct ServerGlobalParams {
     std::string timeZoneInfoPath;  // Path to time zone info directory, or empty if none.
 
     std::string logpath;  // Path to log file, if logging to a file; otherwise, empty.
-    logv2::LogTimestampFormat logTimestampFormat = logv2::LogTimestampFormat::kISO8601Local;
+    logv2::LogTimestampFormat logTimestampFormat = logv2::LogTimestampFormat::kISO8601UTC;
 
     bool logAppend = false;         // True if logging to a file in append mode.
     bool logRenameOnRotate = true;  // True if logging should rename log files on rotate
@@ -162,7 +161,6 @@ struct ServerGlobalParams {
     // True if the current binary version is an LTS Version.
     static constexpr bool kIsLTSBinaryVersion = false;
 
-// TODO: SERVER-80343 Remove this ifdef once gRPC is compiled on all variants
 #ifdef MONGO_CONFIG_GRPC
     int grpcPort = DefaultGRPCServerPort;
     int grpcServerMaxThreads = 1000;

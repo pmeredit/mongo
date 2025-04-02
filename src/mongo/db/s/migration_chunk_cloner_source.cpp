@@ -85,9 +85,6 @@
 #include "mongo/executor/task_executor_pool.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -108,8 +105,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 const char kRecvChunkStatus[] = "_recvChunkStatus";
 const char kRecvChunkCommit[] = "_recvChunkCommit";
@@ -197,7 +192,7 @@ LogTransactionOperationsForShardingHandler::LogTransactionOperationsForShardingH
       _prepareOrCommitOpTime(std::move(prepareOrCommitOpTime)) {}
 
 void LogTransactionOperationsForShardingHandler::commit(OperationContext* opCtx,
-                                                        boost::optional<Timestamp>) {
+                                                        boost::optional<Timestamp>) noexcept {
     std::set<NamespaceString> namespacesTouchedByTransaction;
 
     // Inform the session migration subsystem that a transaction has committed for the given
@@ -238,8 +233,6 @@ void LogTransactionOperationsForShardingHandler::commit(OperationContext* opCtx,
         const auto& nss = stmt.getNss();
         auto opCtx = cc().getOperationContext();
 
-        // TODO (SERVER-71444): Fix to be interruptible or document exception.
-        UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
         const auto scopedCss =
             CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
 
@@ -286,7 +279,7 @@ void LogTransactionOperationsForShardingHandler::commit(OperationContext* opCtx,
                 // tell whether post image doc will fall within the chunk range. If it turns out
                 // both preImage and postImage doc don't fall into the chunk range, it is not wrong
                 // for this op to be added to session migration, but it will result in wasted work
-                // and unneccesary extra oplog storage on the destination.
+                // and unnecessary extra oplog storage on the destination.
                 cloner->_deferProcessingForXferMod(preImageDocKey);
             }
         } else {
@@ -1519,9 +1512,8 @@ LogInsertForShardingHandler::LogInsertForShardingHandler(NamespaceString nss,
                                                          repl::OpTime opTime)
     : _nss(std::move(nss)), _doc(doc.getOwned()), _opTime(std::move(opTime)) {}
 
-void LogInsertForShardingHandler::commit(OperationContext* opCtx, boost::optional<Timestamp>) {
-    // TODO (SERVER-71444): Fix to be interruptible or document exception.
-    UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
+void LogInsertForShardingHandler::commit(OperationContext* opCtx,
+                                         boost::optional<Timestamp>) noexcept {
     const auto scopedCss =
         CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, _nss);
 
@@ -1539,9 +1531,8 @@ LogUpdateForShardingHandler::LogUpdateForShardingHandler(NamespaceString nss,
       _postImageDoc(postImageDoc.getOwned()),
       _opTime(std::move(opTime)) {}
 
-void LogUpdateForShardingHandler::commit(OperationContext* opCtx, boost::optional<Timestamp>) {
-    // TODO (SERVER-71444): Fix to be interruptible or document exception.
-    UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
+void LogUpdateForShardingHandler::commit(OperationContext* opCtx,
+                                         boost::optional<Timestamp>) noexcept {
     const auto scopedCss =
         CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, _nss);
 
@@ -1555,9 +1546,8 @@ LogDeleteForShardingHandler::LogDeleteForShardingHandler(NamespaceString nss,
                                                          repl::OpTime opTime)
     : _nss(std::move(nss)), _documentKey(std::move(documentKey)), _opTime(std::move(opTime)) {}
 
-void LogDeleteForShardingHandler::commit(OperationContext* opCtx, boost::optional<Timestamp>) {
-    // TODO (SERVER-71444): Fix to be interruptible or document exception.
-    UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
+void LogDeleteForShardingHandler::commit(OperationContext* opCtx,
+                                         boost::optional<Timestamp>) noexcept {
     const auto scopedCss =
         CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, _nss);
 
@@ -1571,11 +1561,8 @@ LogRetryableApplyOpsForShardingHandler::LogRetryableApplyOpsForShardingHandler(
     : _namespaces(std::move(namespaces)), _opTimes(std::move(opTimes)) {}
 
 void LogRetryableApplyOpsForShardingHandler::commit(OperationContext* opCtx,
-                                                    boost::optional<Timestamp>) {
+                                                    boost::optional<Timestamp>) noexcept {
     for (const auto& nss : _namespaces) {
-        // TODO (SERVER-71444): Fix to be interruptible or document exception.
-        UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
-
         // For vectored inserts an applyOps entry will only affect a single namespace that is still
         // under a WUOW, so we should be holding an IX lock on it. Other affected namespaces should
         // be skipped since they were handled already in one of LogInsertForShardingHandler,

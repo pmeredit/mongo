@@ -43,8 +43,7 @@
 #include "mongo/db/query/query_planner_params.h"
 #include "mongo/db/query/query_planner_test_fixture.h"
 #include "mongo/stdx/type_traits.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace {
 
@@ -53,8 +52,7 @@ using namespace mongo;
 TEST_F(QueryPlannerTest, Basic2DNonNear) {
     // 2d can answer: within poly, within center, within centersphere, within box.
     // And it can use an index (or not) for each of them.  As such, 2 solns expected.
-    addIndex(BSON("a"
-                  << "2d"));
+    addIndex(BSON("a" << "2d"));
 
     // Polygon
     runQuery(fromjson("{a : { $within: { $polygon : [[0,0], [2,0], [4,0]] } }}"));
@@ -85,8 +83,7 @@ TEST_F(QueryPlannerTest, Basic2DNonNear) {
 
 TEST_F(QueryPlannerTest, Basic2DSphereCompound) {
     addIndex(BSON("a" << 1 << "b" << 1));
-    addIndex(BSON("loc"
-                  << "2dsphere"));
+    addIndex(BSON("loc" << "2dsphere"));
 
     runQuery(
         fromjson("{loc:{$near:{$geometry:{type:'Point',"
@@ -99,9 +96,8 @@ TEST_F(QueryPlannerTest, Basic2DSphereCompound) {
 }
 
 TEST_F(QueryPlannerTest, Basic2DCompound) {
-    addIndex(BSON("loc"
-                  << "2d"
-                  << "a" << 1));
+    addIndex(BSON("loc" << "2d"
+                        << "a" << 1));
 
     runQuery(
         fromjson("{ loc: { $geoWithin: { $box : [[0, 0],[10, 10]] } },"
@@ -123,9 +119,7 @@ TEST_F(QueryPlannerTest, Basic2DCompound) {
 TEST_F(QueryPlannerTest, Multikey2DSphereCompound) {
     // true means multikey
     addIndex(BSON("a" << 1 << "b" << 1), true);
-    addIndex(BSON("loc"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("loc" << "2dsphere"), true);
 
     runQuery(
         fromjson("{loc:{$near:{$geometry:{type:'Point',"
@@ -139,8 +133,7 @@ TEST_F(QueryPlannerTest, Multikey2DSphereCompound) {
 
 TEST_F(QueryPlannerTest, Basic2DSphereNonNear) {
     // 2dsphere can do: within+geometry, intersects+geometry
-    addIndex(BSON("a"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
 
     runQuery(
         fromjson("{a: {$geoIntersects: {$geometry: {type: 'Point',"
@@ -160,9 +153,7 @@ TEST_F(QueryPlannerTest, Basic2DSphereNonNear) {
 TEST_F(QueryPlannerTest, Multikey2DSphereNonNear) {
     // 2dsphere can do: within+geometry, intersects+geometry
     // true means multikey
-    addIndex(BSON("a"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("a" << "2dsphere"), true);
 
     runQuery(
         fromjson("{a: {$geoIntersects: {$geometry: {type: 'Point',"
@@ -181,8 +172,7 @@ TEST_F(QueryPlannerTest, Multikey2DSphereNonNear) {
 
 TEST_F(QueryPlannerTest, Basic2DGeoNear) {
     // Can only do near + old point.
-    addIndex(BSON("a"
-                  << "2d"));
+    addIndex(BSON("a" << "2d"));
     runQuery(fromjson("{a: {$near: [0,0], $maxDistance:0.3 }}"));
     assertNumSolutions(1U);
     assertSolutionExists("{geoNear2d: {a: '2d'}}");
@@ -190,8 +180,7 @@ TEST_F(QueryPlannerTest, Basic2DGeoNear) {
 
 TEST_F(QueryPlannerTest, Basic2DSphereGeoNear) {
     // Can do nearSphere + old point, near + new point.
-    addIndex(BSON("a"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
 
     runQuery(fromjson("{a: {$nearSphere: [0,0], $maxDistance: 0.31 }}"));
     ASSERT_EQUALS(getNumSolutions(), 1U);
@@ -211,9 +200,7 @@ TEST_F(QueryPlannerTest, Basic2DSphereGeoNear) {
 TEST_F(QueryPlannerTest, Multikey2DSphereGeoNear) {
     // Can do nearSphere + old point, near + new point.
     // true means multikey
-    addIndex(BSON("a"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("a" << "2dsphere"), true);
 
     runQuery(fromjson("{a: {$nearSphere: [0,0], $maxDistance: 0.31 }}"));
     ASSERT_EQUALS(getNumSolutions(), 1U);
@@ -256,9 +243,8 @@ TEST_F(QueryPlannerTest, Multikey2DSphereGeoNearReverseCompound) {
 }
 
 TEST_F(QueryPlannerTest, 2DNonNearContainedOr) {
-    addIndex(BSON("a"
-                  << "2d"
-                  << "x" << 1));
+    addIndex(BSON("a" << "2d"
+                      << "x" << 1));
     addIndex(BSON("y" << 1));
     runQuery(
         fromjson("{$and: [{x: 1}, {$or: [{a: {$within: {$polygon: [[0, 0], [0, 1], [1, 0], [0, "
@@ -271,7 +257,7 @@ TEST_F(QueryPlannerTest, 2DNonNearContainedOr) {
         "node: {ixscan: {pattern: {a: '2d', x: 1}, filter: {x: 1}}}}},"
         "{ixscan: {pattern: {y: 1}, bounds: {y: [[1, 1, true, true]]}}}"
         "]}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, 2DSphereV1NonNearContainedOr) {
@@ -296,7 +282,7 @@ TEST_F(QueryPlannerTest, 2DSphereV1NonNearContainedOr) {
         "0], [0, 1], [1, 0], [0, 0]]]}}}}, {y: 1}]}, node: "
         "{ixscan: {pattern: {x: 1, a: '2dsphere'}, bounds: {x: [[1, 1, true, true]], a: "
         "[['MinKey', 'MaxKey', true, true]]}}}}}");
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, 2DSphereV2NonNearContainedOr) {
@@ -309,7 +295,7 @@ TEST_F(QueryPlannerTest, 2DSphereV2NonNearContainedOr) {
                  "coordinates: [[[0, 0], [0, 1], [1, 0], [0, 0]]]}}}}, {y: 1}]}]}"));
 
     assertNumSolutions(1U);
-    assertSolutionExists("{cscan: {dir: 1}}}}");
+    assertSolutionExists("{cscan: {dir: 1}}");
 }
 
 TEST_F(QueryPlannerTest, NearNoIndex) {
@@ -318,8 +304,7 @@ TEST_F(QueryPlannerTest, NearNoIndex) {
 }
 
 TEST_F(QueryPlannerTest, NearEmptyPath) {
-    addIndex(BSON(""
-                  << "2dsphere"));
+    addIndex(BSON("" << "2dsphere"));
     runInvalidQuery(fromjson("{'': {$near: {$geometry: {type: 'Point', coordinates: [0, 0]}}}}"));
 }
 
@@ -346,8 +331,7 @@ TEST_F(QueryPlannerTest, TwoDSphereNoGeoPredMultikey) {
 
 // SERVER-14723
 TEST_F(QueryPlannerTest, GeoNearMultipleRelevantIndicesButOnlyOneCompatible) {
-    addIndex(BSON("a"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
     addIndex(BSON("b" << 1 << "a"
                       << "2dsphere"));
 
@@ -364,10 +348,8 @@ TEST_F(QueryPlannerTest, GeoNearMultipleRelevantIndicesButOnlyOneCompatible) {
 
 // SERVER-3984, $or 2d index
 TEST_F(QueryPlannerTest, Or2DNonNear) {
-    addIndex(BSON("a"
-                  << "2d"));
-    addIndex(BSON("b"
-                  << "2d"));
+    addIndex(BSON("a" << "2d"));
+    addIndex(BSON("b" << "2d"));
     runQuery(
         fromjson("{$or: [ {a : { $within : { $polygon : [[0,0], [2,0], [4,0]] } }},"
                  " {b : { $within : { $center : [[ 5, 5 ], 7 ] } }} ]}"));
@@ -381,8 +363,7 @@ TEST_F(QueryPlannerTest, Or2DNonNear) {
 
 // SERVER-3984, $or 2d index
 TEST_F(QueryPlannerTest, Or2DSameFieldNonNear) {
-    addIndex(BSON("a"
-                  << "2d"));
+    addIndex(BSON("a" << "2d"));
     runQuery(
         fromjson("{$or: [ {a : { $within : { $polygon : [[0,0], [2,0], [4,0]] } }},"
                  " {a : { $within : { $center : [[ 5, 5 ], 7 ] } }} ]}"));
@@ -394,10 +375,8 @@ TEST_F(QueryPlannerTest, Or2DSameFieldNonNear) {
 
 // SERVER-3984, $or 2dsphere index
 TEST_F(QueryPlannerTest, Or2DSphereNonNear) {
-    addIndex(BSON("a"
-                  << "2dsphere"));
-    addIndex(BSON("b"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
+    addIndex(BSON("b" << "2dsphere"));
     runQuery(fromjson(
         "{$or: [ {a: {$geoIntersects: {$geometry: {type: 'Point', coordinates: [10.0, 10.0]}}}},"
         " {b: {$geoWithin: { $centerSphere: [[ 10, 20 ], 0.01 ] } }} ]}"));
@@ -412,12 +391,8 @@ TEST_F(QueryPlannerTest, Or2DSphereNonNear) {
 // SERVER-3984, $or 2dsphere index
 TEST_F(QueryPlannerTest, Or2DSphereNonNearMultikey) {
     // true means multikey
-    addIndex(BSON("a"
-                  << "2dsphere"),
-             true);
-    addIndex(BSON("b"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("a" << "2dsphere"), true);
+    addIndex(BSON("b" << "2dsphere"), true);
     runQuery(
         fromjson("{$or: [ {a: {$geoIntersects: {$geometry: "
                  "{type: 'Point', coordinates: [10.0, 10.0]}}}},"
@@ -432,8 +407,7 @@ TEST_F(QueryPlannerTest, Or2DSphereNonNearMultikey) {
 }
 
 TEST_F(QueryPlannerTest, And2DSameFieldNonNear) {
-    addIndex(BSON("a"
-                  << "2d"));
+    addIndex(BSON("a" << "2d"));
     runQuery(
         fromjson("{$and: [ {a : { $within : { $polygon : [[0,0], [2,0], [4,0]] } }},"
                  " {a : { $within : { $center : [[ 5, 5 ], 7 ] } }} ]}"));
@@ -446,8 +420,7 @@ TEST_F(QueryPlannerTest, And2DSameFieldNonNear) {
 }
 
 TEST_F(QueryPlannerTest, And2DWith2DNearSameField) {
-    addIndex(BSON("a"
-                  << "2d"));
+    addIndex(BSON("a" << "2d"));
     runQuery(
         fromjson("{$and: [ {a : { $within : { $polygon : [[0,0], [2,0], [4,0]] } }},"
                  " {a : { $near : [ 5, 5 ] } } ]}"));
@@ -459,9 +432,7 @@ TEST_F(QueryPlannerTest, And2DWith2DNearSameField) {
 
 TEST_F(QueryPlannerTest, And2DWith2DNearSameFieldMultikey) {
     const bool multikey = true;
-    addIndex(BSON("geo"
-                  << "2d"),
-             multikey);
+    addIndex(BSON("geo" << "2d"), multikey);
     runQuery(
         fromjson("{$and: [{geo: {$near: [0, 0]}}, "
                  "{geo: {$within: {$polygon: [[0, 0], [1, 0], [1, 1]]}}}]}"));
@@ -470,12 +441,11 @@ TEST_F(QueryPlannerTest, And2DWith2DNearSameFieldMultikey) {
     assertNumSolutions(1U);
     assertSolutionExists(
         "{fetch: {filter: {geo: {$within: {$polygon: [[0, 0], [1, 0], [1, 1]]}}}, "
-        "node: {geoNear2d: {geo: '2d'}}}}}");
+        "node: {geoNear2d: {geo: '2d'}}}}");
 }
 
 TEST_F(QueryPlannerTest, And2DSphereSameFieldNonNear) {
-    addIndex(BSON("a"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
     runQuery(
         fromjson("{$and: [ {a: {$geoIntersects: {$geometry: "
                  "{type: 'Point', coordinates: [3.0, 1.0]}}}},"
@@ -491,9 +461,7 @@ TEST_F(QueryPlannerTest, And2DSphereSameFieldNonNear) {
 
 TEST_F(QueryPlannerTest, And2DSphereSameFieldNonNearMultikey) {
     // true means multikey
-    addIndex(BSON("a"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("a" << "2dsphere"), true);
     runQuery(
         fromjson("{$and: [ {a: {$geoIntersects: {$geometry: "
                  "{type: 'Point', coordinates: [3.0, 1.0]}}}},"
@@ -506,8 +474,7 @@ TEST_F(QueryPlannerTest, And2DSphereSameFieldNonNearMultikey) {
 }
 
 TEST_F(QueryPlannerTest, And2DSphereWithNearSameField) {
-    addIndex(BSON("a"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
     runQuery(
         fromjson("{$and: [{a: {$geoIntersects: {$geometry: "
                  "{type: 'Point', coordinates: [3.0, 1.0]}}}},"
@@ -516,14 +483,12 @@ TEST_F(QueryPlannerTest, And2DSphereWithNearSameField) {
 
     // GEO_NEAR must use the index, and GEO predicate becomes a filter.
     assertNumSolutions(1U);
-    assertSolutionExists("{fetch: {node: {geoNear2dsphere: {pattern: {a: '2dsphere'}}}}}}");
+    assertSolutionExists("{fetch: {node: {geoNear2dsphere: {pattern: {a: '2dsphere'}}}}}");
 }
 
 TEST_F(QueryPlannerTest, And2DSphereWithNearSameFieldMultikey) {
     // true means multikey
-    addIndex(BSON("a"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("a" << "2dsphere"), true);
     runQuery(
         fromjson("{$and: [{a: {$geoIntersects: {$geometry: "
                  "{type: 'Point', coordinates: [3.0, 1.0]}}}},"
@@ -538,8 +503,7 @@ TEST_F(QueryPlannerTest, And2DSphereWithNearSameFieldMultikey) {
 }
 
 TEST_F(QueryPlannerTest, Or2DSphereSameFieldNonNear) {
-    addIndex(BSON("a"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
     runQuery(
         fromjson("{$or: [ {a: {$geoIntersects: {$geometry: "
                  "{type: 'Point', coordinates: [3.0, 1.0]}}}},"
@@ -553,9 +517,7 @@ TEST_F(QueryPlannerTest, Or2DSphereSameFieldNonNear) {
 
 TEST_F(QueryPlannerTest, Or2DSphereSameFieldNonNearMultikey) {
     // true means multikey
-    addIndex(BSON("a"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("a" << "2dsphere"), true);
     runQuery(
         fromjson("{$or: [ {a: {$geoIntersects: {$geometry: "
                  "{type: 'Point', coordinates: [3.0, 1.0]}}}},"
@@ -676,9 +638,8 @@ TEST_F(QueryPlannerTest, CompoundMultikey2DSphereNearCompoundTest) {
 
 TEST_F(QueryPlannerTest, CompoundMultikey2DNear) {
     // true means multikey
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1),
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1),
              true);
     runQuery(fromjson("{a: {$near: [0, 0]}, b: {$gte: 0}}"));
 
@@ -715,7 +676,7 @@ TEST_F(QueryPlannerTest, CompoundGeoNoGeoPredicateMultikey) {
     ASSERT_EQUALS(getNumSolutions(), 2U);
     assertSolutionExists(
         "{sort: {pattern: {creationDate: 1}, limit: 0, type: 'simple', node: "
-        "{cscan: {dir: 1}}}}}}");
+        "{cscan: {dir: 1}}}}");
     assertSolutionExists(
         "{sort: {pattern: {creationDate: 1}, limit: 0, type: 'simple', node: {fetch: {node: "
         "{ixscan: {pattern: {creationDate: 1, 'foo.bar': '2dsphere'}}}}}}}");
@@ -760,8 +721,7 @@ TEST_F(QueryPlannerTest, SortOnGeoQueryMultikey) {
 //
 
 TEST_F(QueryPlannerTest, CantUseNonCompoundGeoIndexToProvideSort) {
-    addIndex(BSON("x"
-                  << "2dsphere"));
+    addIndex(BSON("x" << "2dsphere"));
     runQuerySortProj(BSONObj(), BSON("x" << 1), BSONObj());
 
     ASSERT_EQUALS(getNumSolutions(), 1U);
@@ -771,8 +731,7 @@ TEST_F(QueryPlannerTest, CantUseNonCompoundGeoIndexToProvideSort) {
 }
 
 TEST_F(QueryPlannerTest, CantUseNonCompoundGeoIndexToProvideSortWithIndexablePred) {
-    addIndex(BSON("x"
-                  << "2dsphere"));
+    addIndex(BSON("x" << "2dsphere"));
     runQuerySortProj(fromjson("{x: {$geoIntersects: {$geometry: {type: 'Point',"
                               "                                  coordinates: [0, 0]}}}}"),
                      BSON("x" << 1),
@@ -825,8 +784,7 @@ TEST_F(QueryPlannerTest, CanUseCompoundGeoIndexToProvideSortWithGeoPred) {
 // Can only do near + old point.
 //
 TEST_F(QueryPlannerTest, Negation2DGeoNear) {
-    addIndex(BSON("a"
-                  << "2d"));
+    addIndex(BSON("a" << "2d"));
     runQuery(fromjson("{$and: [{a: {$near: [0, 0], $maxDistance: 0.3}}, {b: {$ne: 1}}]}"));
     assertNumSolutions(1U);
     assertSolutionExists("{fetch: {node: { geoNear2d: {a: '2d'} } } }");
@@ -838,8 +796,7 @@ TEST_F(QueryPlannerTest, Negation2DGeoNear) {
 //
 TEST_F(QueryPlannerTest, Negation2DSphereGeoNear) {
     // Can do nearSphere + old point, near + new point.
-    addIndex(BSON("a"
-                  << "2dsphere"));
+    addIndex(BSON("a" << "2dsphere"));
 
     runQuery(
         fromjson("{$and: [{a: {$nearSphere: [0,0], $maxDistance: 0.31}}, "
@@ -867,9 +824,7 @@ TEST_F(QueryPlannerTest, Negation2DSphereGeoNear) {
 TEST_F(QueryPlannerTest, Negation2DSphereGeoNearMultikey) {
     // Can do nearSphere + old point, near + new point.
     // true means multikey
-    addIndex(BSON("a"
-                  << "2dsphere"),
-             true);
+    addIndex(BSON("a" << "2dsphere"), true);
 
     runQuery(
         fromjson("{$and: [{a: {$nearSphere: [0,0], $maxDistance: 0.31}}, "
@@ -1167,9 +1122,8 @@ TEST_F(QueryPlannerGeo2dsphereTest, CanCompoundBoundsWhenSharedPrefixIsNotMultik
 TEST_F(QueryPlannerGeo2dsphereTest,
        CanCompoundBoundsWhenSharedPrefixIsNotMultikeyAndFirstFieldIsGeo) {
     MultikeyPaths multikeyPaths{{1U}, {1U}, {1U}};
-    addIndex(BSON("a.geo"
-                  << "2dsphere"
-                  << "a.b" << 1 << "a.c" << 1),
+    addIndex(BSON("a.geo" << "2dsphere"
+                          << "a.b" << 1 << "a.c" << 1),
              multikeyPaths);
     runQuery(fromjson("{'a.geo': {$nearSphere: [0, 0]}, 'a.b': 2, 'a.c': 3}"));
 
@@ -1197,9 +1151,8 @@ TEST_F(QueryPlannerGeo2dsphereTest, CannotCompoundBoundsWhenSharedPrefixIsMultik
 TEST_F(QueryPlannerGeo2dsphereTest,
        CannotCompoundBoundsWhenSharedPrefixIsMultikeyAndFirstFieldIsGeo) {
     MultikeyPaths multikeyPaths{{0U}, {0U}, {0U}};
-    addIndex(BSON("a.geo"
-                  << "2dsphere"
-                  << "a.b" << 1 << "a.c" << 1),
+    addIndex(BSON("a.geo" << "2dsphere"
+                          << "a.b" << 1 << "a.c" << 1),
              multikeyPaths);
     runQuery(fromjson("{'a.geo': {$nearSphere: [0, 0]}, 'a.b': 2, 'a.c': 3}"));
 
@@ -1228,9 +1181,8 @@ TEST_F(QueryPlannerGeo2dsphereTest, CanCompoundBoundsWhenSharedPrefixIsMultikeyB
 TEST_F(QueryPlannerGeo2dsphereTest,
        CannotCompoundBoundsWhenSharedPrefixIsMultikeyButHasElemMatchAndFirstFieldIsGeo) {
     MultikeyPaths multikeyPaths{{0U}, {0U}, {0U}};
-    addIndex(BSON("a.geo"
-                  << "2dsphere"
-                  << "a.b" << 1 << "a.c" << 1),
+    addIndex(BSON("a.geo" << "2dsphere"
+                          << "a.b" << 1 << "a.c" << 1),
              multikeyPaths);
     runQuery(fromjson("{'a.geo': {$nearSphere: [0, 0]}, a: {$elemMatch: {b: 2, c: 3}}}"));
 
@@ -1260,9 +1212,8 @@ TEST_F(QueryPlannerGeo2dsphereTest, CannotCompoundBoundsWhenSharedPrefixInsideEl
 TEST_F(QueryPlannerGeo2dsphereTest,
        CannotCompoundBoundsWhenSharedPrefixInsideElemMatchIsMultikeyAndFirstFieldIsGeo) {
     MultikeyPaths multikeyPaths{{0U, 1U}, {0U, 1U}, {0U, 1U}};
-    addIndex(BSON("a.b.geo"
-                  << "2dsphere"
-                  << "a.b.c" << 1 << "a.b.d" << 1),
+    addIndex(BSON("a.b.geo" << "2dsphere"
+                            << "a.b.c" << 1 << "a.b.d" << 1),
              multikeyPaths);
     runQuery(fromjson("{'a.b.geo': {$nearSphere: [0, 0]}, a: {$elemMatch: {'b.c': 2, 'b.d': 3}}}"));
 
@@ -1277,9 +1228,7 @@ TEST_F(QueryPlannerGeo2dsphereTest,
 
 TEST_F(QueryPlannerGeo2dsphereTest, CanIntersectBoundsOn2dsphereFieldWhenItIsNotMultikey) {
     MultikeyPaths multikeyPaths{MultikeyComponents{}};
-    addIndex(BSON("geo"
-                  << "2dsphere"),
-             multikeyPaths);
+    addIndex(BSON("geo" << "2dsphere"), multikeyPaths);
     runQuery(
         fromjson("{$and: [{geo: {$nearSphere: [0, 0]}}, "
                  "{geo: {$geoIntersects: {$geometry: {type: 'Point', coordinates: [0, 0]}}}}]}"));
@@ -1288,14 +1237,12 @@ TEST_F(QueryPlannerGeo2dsphereTest, CanIntersectBoundsOn2dsphereFieldWhenItIsNot
     assertSolutionExists(
         "{fetch: {filter: {geo: {$geoIntersects: "
         "{$geometry: {type: 'Point', coordinates: [0, 0]}}}}, "
-        "node: {geoNear2dsphere: {pattern: {geo: '2dsphere'}}}}}}");
+        "node: {geoNear2dsphere: {pattern: {geo: '2dsphere'}}}}}");
 }
 
 TEST_F(QueryPlannerGeo2dsphereTest, CannotIntersectBoundsOn2dsphereFieldWhenItIsMultikey) {
     MultikeyPaths multikeyPaths{{0U}};
-    addIndex(BSON("geo"
-                  << "2dsphere"),
-             multikeyPaths);
+    addIndex(BSON("geo" << "2dsphere"), multikeyPaths);
     runQuery(
         fromjson("{$and: [{geo: {$nearSphere: [0, 0]}}, "
                  "{geo: {$geoIntersects: {$geometry: {type: 'Point', coordinates: [0, 0]}}}}]}"));
@@ -1305,7 +1252,7 @@ TEST_F(QueryPlannerGeo2dsphereTest, CannotIntersectBoundsOn2dsphereFieldWhenItIs
         "{fetch: {filter: {geo: {$geoIntersects: "
         "{$geometry: {type: 'Point', coordinates: [0, 0]}}}}, "
         "node: {geoNear2dsphere: {pattern: {geo: '2dsphere'}, "
-        "bounds: {geo: [['MinKey', 'MaxKey', true, true]]}}}}}}");
+        "bounds: {geo: [['MinKey', 'MaxKey', true, true]]}}}}}");
 }
 
 //
@@ -1400,10 +1347,9 @@ TEST_F(QueryPlanner2dsphereVersionTest, TwoDSphereSparseCantUse) {
 // We can use the index here as we have a geo pred.
 TEST_F(QueryPlanner2dsphereVersionTest, TwoDSphereSparseOnePred) {
     std::vector<int> versions{2, 3};
-    std::vector<BSONObj> keyPatterns = {BSON("geo"
-                                             << "2dsphere")};
+    std::vector<BSONObj> keyPatterns = {BSON("geo" << "2dsphere")};
     BSONObj predicate =
-        fromjson("{geo : { $geoWithin : { $centerSphere : [[ 10, 20 ], 0.01 ] } }}}");
+        fromjson("{geo : { $geoWithin : { $centerSphere : [[ 10, 20 ], 0.01 ] } }}");
 
     testMultiple2dsphereIndexVersions(versions, keyPatterns, predicate, 2U);
 }
@@ -1426,7 +1372,7 @@ TEST_F(QueryPlanner2dsphereVersionTest, TwoDSphereSparseTwoPreds) {
     // One geo pred so we can use the index.
     {
         BSONObj predicate =
-            fromjson("{nonGeo: 7, geo : { $geoWithin : { $centerSphere : [[ 10, 20 ], 0.01] } }}}");
+            fromjson("{nonGeo: 7, geo : { $geoWithin : { $centerSphere : [[ 10, 20 ], 0.01] } }}");
         testMultiple2dsphereIndexVersions(versions, keyPatterns, predicate, 2U);
     }
 
@@ -1441,9 +1387,8 @@ TEST_F(QueryPlanner2dsphereVersionTest, TwoDSphereSparseTwoPreds) {
 
 TEST_F(QueryPlanner2dsphereVersionTest, TwoDNearCompound) {
     std::vector<int> versions{2, 3};
-    std::vector<BSONObj> keyPatterns = {BSON("geo"
-                                             << "2dsphere"
-                                             << "nongeo" << 1)};
+    std::vector<BSONObj> keyPatterns = {BSON("geo" << "2dsphere"
+                                                   << "nongeo" << 1)};
     BSONObj predicate = fromjson("{geo: {$nearSphere: [-71.34895, 42.46037]}}");
     testMultiple2dsphereIndexVersions(versions, keyPatterns, predicate, 1U);
 }
@@ -1452,12 +1397,10 @@ TEST_F(QueryPlanner2dsphereVersionTest, TwoDSphereSparseBelowOr) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
 
     std::vector<int> versions{2, 3};
-    std::vector<BSONObj> keyPatterns = {BSON("geo1"
-                                             << "2dsphere"
-                                             << "a" << 1 << "b" << 1),
-                                        BSON("geo2"
-                                             << "2dsphere"
-                                             << "a" << 1 << "b" << 1)};
+    std::vector<BSONObj> keyPatterns = {BSON("geo1" << "2dsphere"
+                                                    << "a" << 1 << "b" << 1),
+                                        BSON("geo2" << "2dsphere"
+                                                    << "a" << 1 << "b" << 1)};
 
     BSONObj predicate = fromjson(
         "{a: 4, b: 5, $or: ["
@@ -1477,9 +1420,8 @@ TEST_F(QueryPlanner2dsphereVersionTest, TwoDSphereSparseBelowElemMatch) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
 
     std::vector<int> versions{2, 3};
-    std::vector<BSONObj> keyPatterns = {BSON("a.b"
-                                             << "2dsphere"
-                                             << "a.c" << 1)};
+    std::vector<BSONObj> keyPatterns = {BSON("a.b" << "2dsphere"
+                                                   << "a.c" << 1)};
 
     BSONObj predicate = fromjson(
         "{a: {$elemMatch: {b: {$geoWithin: {$centerSphere: [[10,20], 0.01]}},"
@@ -1600,9 +1542,8 @@ TEST_F(QueryPlanner2dsphereVersionTest, NegationWithoutGeoPredCannotUseGeoIndex)
 TEST_F(QueryPlannerTest, 2dInexactFetchPredicateOverTrailingFieldHandledCorrectly) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
 
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1));
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1));
 
     runQuery(fromjson("{a: {$geoWithin: {$center: [[0, 0], 1]}}, b: {$exists: true}}"));
     assertNumSolutions(1U);
@@ -1615,9 +1556,8 @@ TEST_F(QueryPlannerTest, 2dInexactFetchPredicateOverTrailingFieldHandledCorrectl
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
 
     const bool multikey = true;
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1),
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1),
              multikey);
 
     runQuery(fromjson("{a: {$geoWithin: {$center: [[0, 0], 1]}}, b: {$exists: true}}"));
@@ -1630,9 +1570,8 @@ TEST_F(QueryPlannerTest, 2dInexactFetchPredicateOverTrailingFieldHandledCorrectl
 TEST_F(QueryPlannerTest, 2dNearInexactFetchPredicateOverTrailingFieldHandledCorrectly) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
 
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1));
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1));
 
     runQuery(fromjson("{a: {$near: [0, 0]}, b: {$exists: true}}"));
     assertNumSolutions(1U);
@@ -1644,9 +1583,8 @@ TEST_F(QueryPlannerTest, 2dNearInexactFetchPredicateOverTrailingFieldMultikey) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
 
     const bool multikey = true;
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1),
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1),
              multikey);
 
     runQuery(fromjson("{a: {$near: [0, 0]}, b: {$exists: true}}"));
@@ -1657,23 +1595,21 @@ TEST_F(QueryPlannerTest, 2dNearInexactFetchPredicateOverTrailingFieldMultikey) {
 
 TEST_F(QueryPlannerTest, 2dNearWithInternalExprEqOverTrailingField) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1));
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1));
 
     // Normally $_internalExpr would be accompanied by a $expr expression. In this case we omit
     // that, since we're just trying to ensure that the filter on 'b' can get pushed into the
     // geoNear2d stage.
     runQuery(fromjson("{a: {$near: [0, 0]}, b: {$_internalExprEq: 1}}"));
     assertNumSolutions(1U);
-    assertSolutionExists("{geoNear2d: {a: '2d', b: 1}}}}");
+    assertSolutionExists("{geoNear2d: {a: '2d', b: 1}}");
 }
 
 TEST_F(QueryPlannerTest, 2dNearWithExprEqOverTrailingFieldMultikey) {
     const bool multikey = true;
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1),
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1),
              multikey);
 
     runQuery(fromjson("{$and: [{$expr: {$eq: ['$b', 1]}}, {a: {$near: [0, 0]}}]}"));
@@ -1685,9 +1621,8 @@ TEST_F(QueryPlannerTest, 2dNearWithExprEqOverTrailingFieldMultikey) {
 
 TEST_F(QueryPlannerTest, 2dGeoWithinWithInternalExprEqOverTrailingField) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1));
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1));
 
     runQuery(
         fromjson("{a: {$within: {$polygon: [[0,0], [2,0], [4,0]]}}, b: {$_internalExprEq: 2}}"));
@@ -1742,9 +1677,8 @@ TEST_F(QueryPlannerTest, 2dsphereNonNearWithInternalExprEqOverLeadingFieldMultik
 
 TEST_F(QueryPlannerTest, 2dsphereNonNearWithInternalExprEqOverTrailingField) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
-    addIndex(BSON("a"
-                  << "2dsphere"
-                  << "b" << 1));
+    addIndex(BSON("a" << "2dsphere"
+                      << "b" << 1));
 
     runQuery(
         fromjson("{b: {$_internalExprEq: 0}, a: {$geoWithin: {$centerSphere: [[0, 0], 10]}}}"));
@@ -1763,9 +1697,8 @@ TEST_F(QueryPlannerTest, 2dsphereNonNearWithInternalExprEqOverTrailingField) {
 TEST_F(QueryPlannerTest, 2dsphereNonNearWithInternalExprEqOverTrailingFieldMultikey) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
     const bool multikey = true;
-    addIndex(BSON("a"
-                  << "2dsphere"
-                  << "b" << 1),
+    addIndex(BSON("a" << "2dsphere"
+                      << "b" << 1),
              multikey);
 
     runQuery(fromjson(
@@ -1785,9 +1718,7 @@ TEST_F(QueryPlannerTest, 2dsphereNonNearWithInternalExprEqOverTrailingFieldMulti
 
 TEST_F(QueryPlannerTest, 2dsphereBucketWithInternalBucketGeoWithin) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
-    addIndex(BSON("data.a"
-                  << "2dsphere_bucket"),
-             false);
+    addIndex(BSON("data.a" << "2dsphere_bucket"), false);
 
     runQuery(
         fromjson("{$_internalBucketGeoWithin: {withinRegion: {$centerSphere: [[0, 0], 10]}, field: "
@@ -1807,9 +1738,7 @@ TEST_F(QueryPlannerTest, 2dsphereBucketWithInternalBucketGeoWithin) {
 
 TEST_F(QueryPlannerTest, 2dsphereBucketWithInternalBucketGeoWithin2dGeneratesCollScan) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
-    addIndex(BSON("data.a"
-                  << "2dsphere_bucket"),
-             false);
+    addIndex(BSON("data.a" << "2dsphere_bucket"), false);
 
     // This query should not produce bounds.
     runInvalidQuery(
@@ -1822,9 +1751,8 @@ TEST_F(QueryPlannerTest, 2dWithinPredicateOverTrailingFieldElemMatchMultikey) {
     params.mainCollectionInfo.options = QueryPlannerParams::NO_TABLE_SCAN;
 
     const bool multikey = true;
-    addIndex(BSON("a"
-                  << "2d"
-                  << "b" << 1),
+    addIndex(BSON("a" << "2d"
+                      << "b" << 1),
              multikey);
 
     runQuery(fromjson("{a: {$geoWithin: {$center: [[0, 0], 1]}}, b: {$elemMatch: {c: 1}}}"));

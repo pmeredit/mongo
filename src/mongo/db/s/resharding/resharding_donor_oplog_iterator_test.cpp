@@ -59,10 +59,8 @@
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/future_impl.h"
@@ -74,8 +72,6 @@
 
 namespace mongo {
 namespace {
-
-using namespace fmt::literals;
 
 const ReshardingDonorOplogId kResumeFromBeginning{Timestamp::min(), Timestamp::min()};
 
@@ -118,8 +114,7 @@ public:
 
     repl::MutableOplogEntry makeFinalOplog(Timestamp ts) {
         ReshardingDonorOplogId oplogId(ts, ts);
-        const BSONObj oField(BSON("msg"
-                                  << "Created temporary resharding collection"));
+        const BSONObj oField(BSON("msg" << "Created temporary resharding collection"));
         const BSONObj o2Field(
             BSON("type" << resharding::kReshardFinalOpLogType << "reshardingUUID" << UUID::gen()));
         return makeOplog(_crudNss, _uuid, repl::OpTypeEnum::kNoop, oField, o2Field, oplogId);
@@ -127,8 +122,7 @@ public:
 
     repl::MutableOplogEntry makeProgressMarkOplogEntry(Timestamp ts) {
         ReshardingDonorOplogId oplogId(ts, ts);
-        const BSONObj oField(BSON("msg"
-                                  << "Latest oplog ts from donor's cursor response"));
+        const BSONObj oField(BSON("msg" << "Latest oplog ts from donor's cursor response"));
         const BSONObj o2Field(BSON("type" << resharding::kReshardProgressMark));
         return makeOplog(_crudNss, _uuid, repl::OpTypeEnum::kNoop, oField, o2Field, oplogId);
     }
@@ -203,7 +197,7 @@ public:
 private:
     const NamespaceString _oplogNss = NamespaceString::createNamespaceString_forTest(
         DatabaseName::kConfig,
-        "{}xxx.yyy"_format(NamespaceString::kReshardingLocalOplogBufferPrefix));
+        fmt::format("{}xxx.yyy", NamespaceString::kReshardingLocalOplogBufferPrefix));
     const NamespaceString _crudNss = NamespaceString::createNamespaceString_forTest("test.foo");
     const UUID _uuid{UUID::gen()};
 

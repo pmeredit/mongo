@@ -4,7 +4,7 @@
  * exist in the index. The healthlog entry contains a list of all missing index keys.
  *
  * @tags: [
- *   requires_fcv_81
+ *   requires_fcv_80
  * ]
  */
 
@@ -243,14 +243,12 @@ function testSecondaryOnly(collOpts) {
     checkHealthLog(secondary.getDB("local").system.healthlog, errQuery, 1);
 }
 
-[{},
- {clusteredIndex: {key: {_id: 1}, unique: true}}]
-    .forEach(collOpts => {
-        testMultipleMissingKeys(collOpts);
-        testMultipleDocsOneInconsistency(collOpts);
-        testNoInconsistencies(collOpts);
-        testPrimaryOnly(collOpts);
-        testSecondaryOnly(collOpts);
-    });
+[{}, {clusteredIndex: {key: {_id: 1}, unique: true}}].forEach(collOpts => {
+    testMultipleMissingKeys(collOpts);
+    testMultipleDocsOneInconsistency(collOpts);
+    testNoInconsistencies(collOpts);
+    testPrimaryOnly(collOpts);
+    testSecondaryOnly(collOpts);
+});
 
 replSet.stopSet();

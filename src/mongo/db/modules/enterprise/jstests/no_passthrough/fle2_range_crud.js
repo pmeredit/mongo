@@ -147,23 +147,23 @@ const double_unbounded_domain_tests = {
 };
 
 // precision = 0 (integers only)
-// domain size = 53 bits (all integers b/w -2^52 and 2^52-1
+// domain size = 52 bits (all integers b/w -2^51 and 2^51-1)
 const double_integer_domain_tests = {
-    bitlen: 53,
+    bitlen: 52,
     startValue: 1,
     stepCount: 11,
     stepFunc: nextDoublePrc0,
     tests: [
-        {min: -4503599627370496, max: 4503599627370495, precision: 0, sparsity: 1, edges: 48},
+        {min: -2251799813685248, max: 2251799813685247, precision: 0, sparsity: 1, edges: 47},
         {
-            min: -4503599627370496,
-            max: 4503599627370495,
+            min: -2251799813685248,
+            max: 2251799813685247,
             precision: 0,
             sparsity: 1,
             trimFactor: 17,
-            edges: 37
+            edges: 36
         },
-        {min: -4503599627370496, max: 4503599627370495, precision: 0, edges: 25},
+        {min: -2251799813685248, max: 2251799813685247, precision: 0, edges: 24},
     ]
 };
 

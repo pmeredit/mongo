@@ -56,18 +56,15 @@
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/session/logical_session_id.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/stdx/future.h"  // IWYU pragma: keep
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/transport/session.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/barrier.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/join_thread.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/future.h"
@@ -201,24 +198,6 @@ TEST_F(OperationContextTest, OpCtxGroup) {
         opCtx.discard();
         ASSERT(opCtx.opCtx() == nullptr);
         ASSERT_TRUE(group2.isEmpty());
-    }
-
-    OperationContextGroup group3;
-    OperationContextGroup group4;
-    {
-        auto serviceCtx = ServiceContext::make();
-        auto client = serviceCtx->getService()->makeClient("OperationContextTest");
-        auto opCtx1 = group3.makeOperationContext(*client);
-        auto p1 = opCtx1.opCtx();
-        auto opCtx2 = group4.take(std::move(opCtx1));
-        ASSERT_EQ(p1, opCtx2.opCtx());
-        ASSERT(opCtx1.opCtx() == nullptr);  // NOLINT(bugprone-use-after-move)
-        ASSERT_TRUE(group3.isEmpty());
-        ASSERT_FALSE(group4.isEmpty());
-        group3.interrupt(ErrorCodes::InternalError);
-        ASSERT_TRUE(opCtx2->checkForInterruptNoAssert().isOK());
-        group4.interrupt(ErrorCodes::InternalError);
-        ASSERT_FALSE(opCtx2->checkForInterruptNoAssert().isOK());
     }
 }
 
@@ -387,6 +366,22 @@ TEST_F(OperationDeadlineTests,
 
     // Should be canceled now.
     ASSERT_TRUE(cancelToken.isCanceled());
+}
+
+TEST_F(OperationDeadlineTests, InterruptLatency) {
+    auto tickSource = checked_cast<TickSourceMock<>*>(getServiceContext()->getTickSource());
+    auto opCtx = client->makeOperationContext();
+
+    tickSource->advance(Milliseconds(5));
+    ASSERT_EQ(0, opCtx->getKillTime());
+
+    opCtx->markKilled();
+    ASSERT_NE(opCtx->getKillTime(), 0);
+    ASSERT_EQ(tickSource->getTicks(), opCtx->getKillTime());
+    tickSource->advance(Milliseconds(8));
+
+    ASSERT_EQ(tickSource->ticksTo<Milliseconds>(tickSource->getTicks() - opCtx->getKillTime()),
+              Milliseconds(8));
 }
 
 template <typename D>

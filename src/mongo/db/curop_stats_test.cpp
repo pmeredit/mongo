@@ -32,11 +32,10 @@
 #include "mongo/db/curop.h"
 #include "mongo/db/prepare_conflict_tracker.h"
 #include "mongo/db/service_context_test_fixture.h"
+#include "mongo/db/storage/recovery_unit_noop.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/tick_source_mock.h"
 namespace mongo {
 
@@ -352,7 +351,6 @@ TEST_F(CurOpStatsTest, CheckWorkingMillisWithBlockedTimeAtStart) {
 }
 
 TEST_F(CurOpStatsTest, MultipleUnstashingAndStashingTransaction) {
-    // Initialize two operation contexts.
     auto serviceContext = getGlobalServiceContext();
     auto client1 = serviceContext->getService()->makeClient("client1");
     auto opCtx1 = client1->makeOperationContext();
@@ -491,9 +489,8 @@ TEST_F(CurOpStatsTest, CheckAdmissionQueueStats) {
     BSONObj currentQueue = bsonObj.getObjectField("currentQueue");
     BSONObj queueStats = bsonObj.getObjectField("queues");
 
-    auto expectedCurrentQueue = BSON("name"
-                                     << "execution"
-                                     << "timeQueuedMicros" << 5000);
+    auto expectedCurrentQueue = BSON("name" << "execution"
+                                            << "timeQueuedMicros" << 5000);
     auto expectedQueueStats =
         BSON("execution" << BSON("admissions" << 7 << "totalTimeQueuedMicros" << 5000
                                               << "isHoldingTicket" << false)

@@ -89,8 +89,7 @@
 #include "mongo/s/catalog/type_tags.h"
 #include "mongo/s/chunk_version.h"
 #include "mongo/s/database_version.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/scopeguard.h"
@@ -205,8 +204,7 @@ TEST_F(ConfigInitializationTest, InitClusterMultipleVersionDocs) {
 
     ASSERT_OK(insertToConfigCollection(operationContext(),
                                        NamespaceString::kConfigVersionNamespace,
-                                       BSON("_id"
-                                            << "a second document")));
+                                       BSON("_id" << "a second document")));
 
     ASSERT_EQ(ErrorCodes::TooManyMatchingDocuments,
               ShardingCatalogManager::get(operationContext())

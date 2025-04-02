@@ -33,6 +33,7 @@
 
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/server_parameter.h"
+#include "mongo/db/shard_role.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 
 namespace mongo {
@@ -45,6 +46,43 @@ class OperationContext;
  */
 namespace timeseries {
 
+/**
+ * This function is a wrapper of `acquireCollection`.
+ *
+ * It returns a pair where the first element is the resulting collection acquisition.
+ *
+ * The second element is a boolean indicating if the acquisition has been made after translating the
+ * namespace to the underlying timeseries system buckets collection. This boolean will be set to
+ * true only for existing legacy timeseries collection (view + buckets).
+ *
+ * MODE_IS acquisition requests are implicitly converted to `maybeLockFree`.
+ *
+ * TODO SERVER-101784 remove this function once 9.0 becomes last LTS. By then only viewless
+ * timeseries collection will exist.
+ */
+std::pair<CollectionAcquisition, bool> acquireCollectionWithBucketsLookup(
+    OperationContext* opCtx, CollectionAcquisitionRequest acquisitionReq, LockMode mode);
+
+struct TimeseriesLookupInfo {
+    // If the namespace refer to a timeseries collection
+    bool isTimeseries;
+    // If the namespace was translated from view to system.buckets collection
+    bool wasNssTranslated;
+    // The namespace of the target buckets collection
+    NamespaceString targetNss;
+};
+
+/**
+ * Returns timeseries information about the given namespace timeseries.
+ *
+ * Throws if this is a time-series collection but the timeseries options are not valid.
+ *
+ * TODO SERVER-101784 simplify this function once 9.0 becomes last LTS, considering that we will not
+ * need to take into account legacy timeseries collection.
+ */
+TimeseriesLookupInfo lookupTimeseriesCollection(OperationContext* opCtx,
+                                                const NamespaceStringOrUUID& nssOrUUID,
+                                                bool skipSystemBucketLookup);
 /**
  * Returns a copy of the time-series options for namespace 'nss', if 'nss' refers to a time-series
  * collection. Otherwise returns boost::none.

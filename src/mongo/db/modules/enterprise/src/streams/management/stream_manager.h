@@ -3,13 +3,13 @@
  */
 #pragma once
 
+#include <aws/core/Aws.h>
 #include <boost/optional.hpp>
 #include <memory>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/concurrent_memory_aggregator.h"
 #include "mongo/util/periodic_runner.h"
 #include "mongo/util/processinfo.h"
 #include "streams/commands/stream_ops_gen.h"
@@ -24,6 +24,7 @@
 #include "streams/exec/source_buffer_manager.h"
 #include "streams/exec/stream_processor_feature_flags.h"
 #include "streams/management/container_stats.h"
+#include "streams/util/concurrent_memory_aggregator.h"
 #include "streams/util/metric_manager.h"
 
 namespace mongo {
@@ -56,6 +57,8 @@ public:
         // this limit is exceeded, all stream processors under this stream manager will be killed.
         int64_t memoryLimitBytes{static_cast<int64_t>(
             (mongo::ProcessInfo::getMemSizeMB() * 1024 * 1024) - kMemoryLimitBufferSpaceBytes)};
+        // region is the region mongostream is running in
+        std::string region{};
     };
 
     // Encapsulates a batch of sampled output records.
@@ -110,6 +113,12 @@ public:
     // metrics
     mongo::GetMetricsReply getExternalMetrics();
 
+    // Causes a stack trace of all threads to be logged.
+    // This internally uses the mongod stack tracing functionality which currently has some issues.
+    // So this feature should only be used as a last means resort. Please see SERVER-90755 for more
+    // details.
+    void dumpStackTraces();
+
     // Stops all the running streamProcessors and shuts down the StreamManager.
     // Called while processing a SIGTERM from Kubernetes in the Atlas Stream Processing service.
     void shutdown();
@@ -122,9 +131,15 @@ public:
     mongo::UpdateFeatureFlagsReply updateFeatureFlags(
         const mongo::UpdateFeatureFlagsCommand& request);
 
+    // Updates connection information at the SP level
+    mongo::UpdateConnectionReply updateConnection(const mongo::UpdateConnectionCommand& request);
+
     // Gets feature flags for the tenant or stream processor (used by js tests.)
     mongo::GetFeatureFlagsReply testOnlyGetFeatureFlags(
         const mongo::GetFeatureFlagsCommand& request);
+
+    // Ensures the AWS SDK is initialized for use.
+    void initAWSSDK();
 
 private:
     friend class StreamManagerTest;
@@ -269,6 +284,8 @@ private:
     std::unique_ptr<MetricManager> _metricManager;
     // The mutex that protects calls to startStreamProcessor.
     mongo::stdx::mutex _mutex;
+    // signaled after a listStreamProcessors request is processed
+    mongo::stdx::condition_variable _cvListCalled;
     // The thread-safe concurrency monitor shared across all checkpoint coordinators/executors
     std::shared_ptr<ConcurrentCheckpointController> _concurrentCheckpointController;
     // The callback that `_memoryAggregator` invokes when the memory usage increases.
@@ -294,6 +311,9 @@ private:
     // Set to true when stopAll is called. When true the client can't call startStreamProcessor.
     bool _shutdown{false};
     ContainerStats _containerStats;
+
+    bool _awsSDKInitCompleted{false};
+    Aws::SDKOptions _awsSDKOptions;
 };
 
 // Get the global StreamManager instance.

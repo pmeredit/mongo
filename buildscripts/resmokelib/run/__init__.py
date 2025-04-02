@@ -148,7 +148,7 @@ class TestRunner(Subcommand):
                     ):
                         tag_docs[tag_name] = doc
 
-                    if suite_name in config.SUITE_FILES:  # pylint: disable=unsupported-membership-test
+                    if suite_name in config.SUITE_FILES:
                         out_tag_names.append(tag_name)
 
         if config.SUITE_FILES == [config.DEFAULTS["suite_files"]]:
@@ -494,7 +494,9 @@ class TestRunner(Subcommand):
 
         # We don't need to return the resmoke invocation if we aren't running on evergreen.
         if not config.EVERGREEN_TASK_ID:
-            print("Skipping local invocation because evergreen task id was not provided.")
+            self._resmoke_logger.info(
+                "Skipping local invocation because evergreen task id was not provided."
+            )
             return
 
         evg_conf = parse_evergreen_file(config.EVERGREEN_PROJECT_CONFIG_PATH)
@@ -872,7 +874,7 @@ class TestRunner(Subcommand):
                 }
             )
             return True
-        except:  # pylint: disable=bare-except
+        except:
             self._exec_logger.exception(
                 "Encountered an error when running %ss of suite %s.",
                 suite.test_kind,
@@ -910,7 +912,6 @@ class TestRunner(Subcommand):
         )
         random.shuffle(suite.tests)
 
-    # pylint: disable=inconsistent-return-statements
     def _get_suites(self) -> List[Suite]:
         """Return the list of suites for this resmoke invocation."""
         try:
@@ -1400,6 +1401,18 @@ class RunPlugin(PluginInterface):
         )
 
         parser.add_argument(
+            "--setShellParameters",
+            dest="mongo_set_parameters",
+            action="append",
+            metavar="{key1: value1, key2: value2, ..., keyN: valueN}",
+            help=(
+                "Passes one or more --setParameter options to all mongo shell processes"
+                " started by resmoke.py. The argument is specified as bracketed YAML -"
+                " i.e. JSON with support for single quoted and unquoted keys."
+            ),
+        )
+
+        parser.add_argument(
             "--numClientsPerFixture",
             type=int,
             dest="num_clients_per_fixture",
@@ -1595,6 +1608,24 @@ class RunPlugin(PluginInterface):
             dest="user_friendly_output",
             metavar="FILE",
             help="Have resmoke redirect all output to FILE. Additionally, stdout will contain lines that typically indicate that the test is making progress, or an error has happened. If `mrlog` is in the path it will be used. `tee` and `egrep` must be in the path.",
+        )
+
+        # TODO-99797: Change the default value or remove this parameter completely when the
+        # depandent tools are ready to accept the new format.
+        parser.add_argument(
+            "--logFormat",
+            dest="log_format",
+            choices=("json", "plain"),
+            default="plain",
+            help="Resmoke output log format. Defaults to '%(default)s'.",
+        )
+
+        parser.add_argument(
+            "--logLevel",
+            dest="log_level",
+            choices=("ERROR", "WARNING", "INFO", "DEBUG"),
+            default="INFO",
+            help="Resmoke output log severity level. Defaults to '%(default)s'.",
         )
 
         parser.add_argument(
@@ -1828,11 +1859,9 @@ class RunPlugin(PluginInterface):
         mongodb_server_options.add_argument(
             "--fuzzMongodConfigs",
             dest="fuzz_mongod_configs",
-            help="Randomly chooses mongod parameters that were not specified. Use 'stress' to fuzz "
-            "all configs including stressful storage configurations that may significantly "
-            "slow down the server. Use 'normal' to only fuzz non-stressful configurations. ",
+            help="Randomly chooses mongod parameters that were not specified.",
             metavar="MODE",
-            choices=("normal", "stress"),
+            choices=("normal"),
         )
 
         mongodb_server_options.add_argument(
@@ -2266,11 +2295,7 @@ def to_local_args(input_args: Optional[List[str]] = None):
         setattr(parsed_args, "suite_files", origin_suite)
 
     # The top-level parser has one subparser that contains all subcommand parsers.
-    command_subparser = [
-        action
-        for action in parser._actions  # pylint: disable=protected-access
-        if action.dest == "command"
-    ][0]
+    command_subparser = [action for action in parser._actions if action.dest == "command"][0]
 
     run_parser = command_subparser.choices.get("run")
 
@@ -2294,9 +2319,9 @@ def to_local_args(input_args: Optional[List[str]] = None):
             return f"'{option_name}={option_value}'"
 
     # Trim the argument namespace of any args we don't want to return.
-    for group in run_parser._action_groups:  # pylint: disable=protected-access
+    for group in run_parser._action_groups:
         arg_dests_visited = set()
-        for action in group._group_actions:  # pylint: disable=protected-access
+        for action in group._group_actions:
             arg_dest = action.dest
             arg_value = getattr(parsed_args, arg_dest, None)
 
@@ -2333,7 +2358,7 @@ def to_local_args(input_args: Optional[List[str]] = None):
                 # These are arguments that take no value.
                 elif action.nargs == 0:
                     other_local_args.append(arg_name)
-                elif isinstance(action, argparse._AppendAction):  # pylint: disable=protected-access
+                elif isinstance(action, argparse._AppendAction):
                     args = [format_option(arg_name, elem) for elem in arg_value]
                     other_local_args.extend(args)
                 else:

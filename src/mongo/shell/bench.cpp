@@ -61,8 +61,6 @@
 #include "mongo/db/repl/read_concern_level.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/scripting/bson_template_evaluator.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/util/pcre.h"
@@ -893,13 +891,13 @@ void BenchRunState::onWorkerFinished() {
 
 namespace {
 void doAuth(DBClientBase& conn, StringData username, StringData password) {
-    using namespace fmt::literals;
     try {
         conn.auth(DatabaseName::kAdmin, username, password);
     } catch (DBException& e) {
         e.addContext(
-            "User {} could not authenticate to admin db, dbmin db access is required to use benchRun with auth enabled"_format(
-                username));
+            fmt::format("User {} could not authenticate to admin db, dbmin db access is required "
+                        "to use benchRun with auth enabled",
+                        username));
         throw;
     }
 }

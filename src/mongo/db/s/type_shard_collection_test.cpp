@@ -41,8 +41,7 @@
 #include "mongo/bson/oid.h"
 #include "mongo/db/s/type_shard_collection.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -51,8 +50,7 @@ namespace {
 
 const NamespaceString kNss = NamespaceString::createNamespaceString_forTest("db.coll");
 const BSONObj kKeyPattern = BSON("a" << 1);
-const BSONObj kDefaultCollation = BSON("locale"
-                                       << "fr_CA");
+const BSONObj kDefaultCollation = BSON("locale" << "fr_CA");
 
 TEST(ShardCollectionType, FromBSONEmptyShardKeyFails) {
     ASSERT_THROWS_CODE(

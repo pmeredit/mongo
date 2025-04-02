@@ -50,7 +50,6 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/transport/transport_layer.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/log_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
@@ -83,9 +82,8 @@ using StartCommandCB = std::function<void(const RemoteCommandResponse&)>;
 
 class NetworkInterfaceIntegrationFixture : public ExecutorIntegrationTestFixture {
 public:
-    void createNet(std::unique_ptr<NetworkConnectionHook> connectHook = nullptr,
-                   ConnectionPool::Options options = {});
-    void startNet(std::unique_ptr<NetworkConnectionHook> connectHook = nullptr);
+    void createNet();
+    void startNet();
     void tearDown() override;
 
     NetworkInterface& net();
@@ -102,6 +100,8 @@ public:
     void resetIsInternalClient(bool isInternalClient);
 
     PseudoRandom* getRandomNumberGenerator();
+
+    ConnectionPool::Options makeDefaultConnectionPoolOptions();
 
     /**
      * Runs a command, returning a future representing its response. When waiting on this future,
@@ -172,6 +172,10 @@ public:
         auto guard = interruptible.makeDeadlineGuard(deadline, ErrorCodes::ExceededTimeLimit);
         return future.get(&interruptible);
     }
+
+protected:
+    virtual std::unique_ptr<NetworkInterface> _makeNet(std::string instanceName,
+                                                       transport::TransportProtocol protocol);
 
 private:
     void _onSchedulingCommand();

@@ -47,8 +47,6 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/future.h"
 #include "mongo/util/time_support.h"
@@ -60,7 +58,7 @@ namespace mongo::insert_listener {
 // An abstract class used to notify on new insert events.
 class Notifier {
 public:
-    virtual ~Notifier(){};
+    virtual ~Notifier() {};
 
     // Performs the necessary work needed for waiting. Should be called prior calling waitUntil().
     virtual void prepareForWait(OperationContext* opCtx) = 0;

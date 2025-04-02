@@ -178,11 +178,18 @@ testInvalidTimeseriesOptions(
     {timeField: "time", metaField: "meta", granularity: 'minutes', bucketMaxSpanSeconds: 3600},
     bucketMaxSpanSecondsError);
 
+// Fails to create a time-series collection with null-embedded timeField or metaField.
+testInvalidTimeseriesOptions({timeField: '\0time'}, ErrorCodes.BadValue);
+testInvalidTimeseriesOptions({timeField: 'time', metaField: 't\0ag'}, ErrorCodes.BadValue);
+
 testCompatibleCreateOptions({expireAfterSeconds: NumberLong(100)});
 testCompatibleCreateOptions({storageEngine: {}}, false);
-testCompatibleCreateOptions({storageEngine: {[TestData.storageEngine]: {}}});
+if (TestData.storageEngine !== undefined)
+    testCompatibleCreateOptions({storageEngine: {[TestData.storageEngine]: {}}});
 testCompatibleCreateOptions({indexOptionDefaults: {}}, false);
-testCompatibleCreateOptions({indexOptionDefaults: {storageEngine: {[TestData.storageEngine]: {}}}});
+if (TestData.storageEngine !== undefined)
+    testCompatibleCreateOptions(
+        {indexOptionDefaults: {storageEngine: {[TestData.storageEngine]: {}}}});
 testCompatibleCreateOptions({collation: {locale: "ja"}});
 testCompatibleCreateOptions({writeConcern: {}}, false);
 testCompatibleCreateOptions({comment: ""}, false);
@@ -193,7 +200,6 @@ testIncompatibleCreateOptions({expireAfterSeconds: NumberLong("46116860184273879
 testIncompatibleCreateOptions({expireAfterSeconds: ""}, ErrorCodes.TypeMismatch);
 testIncompatibleCreateOptions({capped: true, size: 100});
 testIncompatibleCreateOptions({capped: true, max: 100});
-testIncompatibleCreateOptions({autoIndexId: true});
 testIncompatibleCreateOptions({idIndex: {key: {_id: 1}, name: "_id_"}});
 testIncompatibleCreateOptions({validator: {}});
 testIncompatibleCreateOptions({validationLevel: "off"});

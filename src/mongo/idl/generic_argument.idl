@@ -40,8 +40,9 @@ imports:
     - "mongo/db/repl/replication_types.idl"
     - "mongo/db/session/logical_session_id.idl"
     - "mongo/db/vector_clock.idl"
+    - "mongo/db/version_context.idl"
     - "mongo/db/write_concern_options.idl"       
-    - "mongo/rpc/metadata/impersonated_user_metadata.idl"
+    - "mongo/rpc/metadata/audit_metadata.idl"
     - "mongo/s/sharding_types.idl"
     - "mongo/s/gossiped_routing_cache.idl"
 
@@ -148,7 +149,7 @@ structs:
                 optional: true
                 stability: "stable"
             $audit:
-                type: ImpersonatedUserMetadata
+                type: AuditMetadata
                 cpp_name: "dollarAudit"
                 forward_to_shards: false
                 optional: true
@@ -241,6 +242,13 @@ structs:
                 forward_to_shards: true
                 optional: true
                 stability: "internal"
+            versionContext:
+                type: version_context
+                forward_to_shards: false
+                description: "Snapshot of the FCV used by the operation,
+                              which ensures that feature flag checks are stable through its execution."
+                optional: true
+                stability: "internal"
             mayBypassWriteBlocking:
                 type: bool
                 forward_to_shards: false
@@ -260,6 +268,12 @@ structs:
                 type: bool
                 forward_to_shards: true
                 optional: true
+                stability: "internal"
+            rawData:
+                type: optionalBool
+                # Even though we do want this field to be forwarded to shards, we set
+                # forward_to_shards to false because it gets manually appended upon egress.
+                forward_to_shards: false
                 stability: "internal"
 
     GenericReplyFields:

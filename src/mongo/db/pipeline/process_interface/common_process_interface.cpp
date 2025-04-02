@@ -211,9 +211,9 @@ std::vector<BSONObj> CommonProcessInterface::getCurrentOps(
 std::vector<FieldPath> CommonProcessInterface::collectDocumentKeyFieldsActingAsRouter(
     OperationContext* opCtx, const NamespaceString& nss) const {
     const auto criSW = Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss);
-    if (criSW.isOK() && criSW.getValue().cm.isSharded()) {
+    if (criSW.isOK() && criSW.getValue().isSharded()) {
         return shardKeyToDocumentKeyFields(
-            criSW.getValue().cm.getShardKeyPattern().getKeyPatternFields());
+            criSW.getValue().getChunkManager().getShardKeyPattern().getKeyPatternFields());
     } else if (!criSW.isOK() && criSW.getStatus().code() != ErrorCodes::NamespaceNotFound) {
         uassertStatusOK(criSW);
     }
@@ -290,16 +290,17 @@ boost::optional<ShardId> CommonProcessInterface::findOwningShard(OperationContex
     if (swCRI.getStatus().code() == ErrorCodes::NamespaceNotFound) {
         return boost::none;
     }
-    auto [cm, _] = uassertStatusOK(swCRI);
+    const auto cri = uassertStatusOK(swCRI);
 
-    if (cm.hasRoutingTable()) {
+    if (cri.hasRoutingTable()) {
+        const auto& cm = cri.getChunkManager();
         if (cm.isUnsplittable()) {
             return cm.getMinKeyShardIdWithSimpleCollation();
         } else {
             return boost::none;
         }
     } else {
-        return cm.dbPrimary();
+        return cri.getDbPrimaryShardId();
     }
     return boost::none;
 }
@@ -331,7 +332,10 @@ std::vector<DatabaseName> CommonProcessInterface::_getAllDatabasesOnAShardedClus
 }
 
 std::vector<BSONObj> CommonProcessInterface::_runListCollectionsCommandOnAShardedCluster(
-    OperationContext* opCtx, const NamespaceString& nss, bool appendPrimaryShardToTheResponse) {
+    OperationContext* opCtx,
+    const NamespaceString& nss,
+    bool appendPrimaryShardToTheResponse,
+    bool runAgainstPrimary) {
     tassert(9525809, "This method can only run on a sharded cluster", Grid::get(opCtx));
 
     const bool isCollectionless = nss.coll().empty();
@@ -378,9 +382,15 @@ std::vector<BSONObj> CommonProcessInterface::_runListCollectionsCommandOnASharde
             uassertStatusOK(Grid::get(opCtx)->shardRegistry()->getShard(opCtx, cdb->getPrimary()));
         Shard::QueryResponse resultCollections;
 
+        // Some collections (for example temp collections) only exist on the replica set primary so
+        // we may need to change the read preference to locate these.
+        const ReadPreferenceSetting readPreference = runAgainstPrimary
+            ? ReadPreferenceSetting(ReadPreference::PrimaryOnly)
+            : ReadPreferenceSetting::get(opCtx);
+
         resultCollections = uassertStatusOK(shard->runExhaustiveCursorCommand(
             opCtx,
-            ReadPreferenceSetting::get(opCtx),
+            readPreference,
             nss.dbName(),
             listCollectionsCmd.toBSON(),
             opCtx->hasDeadline() ? opCtx->getRemainingMaxTimeMillis() : Milliseconds(-1)));

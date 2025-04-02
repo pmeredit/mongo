@@ -48,8 +48,7 @@
 #include "mongo/db/repl/optime.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/platform/random.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/str.h"
 #include "mongo/util/system_clock_source.h"
@@ -279,18 +278,13 @@ protected:
                         .append("opTime", kOpTime.toBSON())
                         .obj())
             .obj();
-    static inline const auto kBsonHostNames = okBuilder()
-                                                  .append("me", "Me:1234")
-                                                  .appendArray("hosts",
-                                                               BSON_ARRAY("Foo:1234"
-                                                                          << "Bar:1234"))
-                                                  .appendArray("arbiters",
-                                                               BSON_ARRAY("Baz:1234"
-                                                                          << "Buz:1234"))
-                                                  .appendArray("passives",
-                                                               BSON_ARRAY("Biz:1234"
-                                                                          << "Boz:1234"))
-                                                  .obj();
+    static inline const auto kBsonHostNames =
+        okBuilder()
+            .append("me", "Me:1234")
+            .appendArray("hosts", BSON_ARRAY("Foo:1234" << "Bar:1234"))
+            .appendArray("arbiters", BSON_ARRAY("Baz:1234" << "Buz:1234"))
+            .appendArray("passives", BSON_ARRAY("Biz:1234" << "Boz:1234"))
+            .obj();
     static inline const auto kBsonSetVersionName =
         okBuilder().append("setVersion", 1).append("setName", "bar").obj();
     static inline const auto kBsonElectionId = okBuilder().append("electionId", OID::max()).obj();

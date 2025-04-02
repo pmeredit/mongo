@@ -80,6 +80,7 @@
 #include "mongo/db/transaction/transaction_history_iterator.h"
 #include "mongo/db/transaction/transaction_participant.h"
 #include "mongo/executor/remote_command_request.h"
+#include "mongo/logv2/log.h"
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/sharding_catalog_client_mock.h"
@@ -87,12 +88,12 @@
 #include "mongo/s/client/shard.h"
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/uuid.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
 namespace mongo {
 namespace {
@@ -209,18 +210,127 @@ public:
         return _migrationId.value();
     }
 
-    void setUpSessionWithTxn(OperationContext* opCtx,
+    /**
+     * Sets up a retryable write with the given session id and transaction number.
+     */
+    void setUpRetryableWrite(OperationContext* opCtx,
                              const LogicalSessionId& sessionId,
-                             const TxnNumber& txnNum) {
+                             const TxnNumber& txnNumber) {
         opCtx->setLogicalSessionId(sessionId);
-        opCtx->setTxnNumber(txnNum);
+        opCtx->setTxnNumber(txnNumber);
+
         auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
         auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
         auto txnParticipant = TransactionParticipant::get(opCtx);
         txnParticipant.beginOrContinue(opCtx,
-                                       {txnNum},
+                                       {txnNumber},
                                        boost::none /* autocommit */,
                                        TransactionParticipant::TransactionActions::kNone);
+    }
+
+    /**
+     * Sets up an unprepared transaction with the given session id, transaction number and insert
+     * operation, and then leaves it uncommitted.
+     */
+    void setUpTxn(OperationContext* opCtx,
+                  LogicalSessionId sessionId,
+                  TxnNumber txnNumber,
+                  const repl::ReplOperation& insertOperation) {
+        opCtx->setLogicalSessionId(sessionId);
+        opCtx->setTxnNumber(txnNumber);
+        opCtx->setInMultiDocumentTransaction();
+
+        auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
+        auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
+        auto txnParticipant = TransactionParticipant::get(opCtx);
+        txnParticipant.beginOrContinue(opCtx,
+                                       {txnNumber},
+                                       false /* autocommit */,
+                                       TransactionParticipant::TransactionActions::kStart);
+
+        txnParticipant.unstashTransactionResources(opCtx, "insert");
+        txnParticipant.addTransactionOperation(opCtx, insertOperation);
+        txnParticipant.stashTransactionResources(opCtx);
+    }
+
+    /**
+     * Makes the transaction with the given session id, transaction number enter the "prepared"
+     * state, and leaves it uncommitted. Returns the prepare op time.
+     */
+    repl::OpTime prepareTxn(OperationContext* opCtx,
+                            LogicalSessionId sessionId,
+                            TxnNumber txnNumber) {
+        opCtx->setLogicalSessionId(sessionId);
+        opCtx->setTxnNumber(txnNumber);
+        opCtx->setInMultiDocumentTransaction();
+
+        auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
+        auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
+        auto txnParticipant = TransactionParticipant::get(opCtx);
+        txnParticipant.beginOrContinue(opCtx,
+                                       {txnNumber},
+                                       false /* autocommit */,
+                                       TransactionParticipant::TransactionActions::kContinue);
+
+        txnParticipant.unstashTransactionResources(opCtx, "preparedTransaction");
+        // The transaction machinery cannot store an empty locker.
+        {
+            Lock::GlobalLock globalLock(opCtx, MODE_IX);
+        }
+        auto opTime = [opCtx] {
+            TransactionParticipant::SideTransactionBlock sideTxn{opCtx};
+
+            WriteUnitOfWork wuow{opCtx};
+            auto opTime = repl::getNextOpTime(opCtx);
+            wuow.release();
+
+            shard_role_details::getRecoveryUnit(opCtx)->abortUnitOfWork();
+            shard_role_details::getLocker(opCtx)->endWriteUnitOfWork();
+
+            return opTime;
+        }();
+        txnParticipant.prepareTransaction(opCtx, opTime);
+        txnParticipant.stashTransactionResources(opCtx);
+
+        return opTime;
+    }
+
+    /**
+     * Commits the transaction with the given session id and transaction number. If it is a prepared
+     * transaction, the commit timestamp must be provided.
+     */
+    void commitTxn(OperationContext* opCtx,
+                   LogicalSessionId sessionId,
+                   TxnNumber txnNumber,
+                   boost::optional<Timestamp> commitTimestamp = boost::none) {
+        opCtx->setLogicalSessionId(sessionId);
+        opCtx->setTxnNumber(txnNumber);
+        opCtx->setInMultiDocumentTransaction();
+
+        auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
+        auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
+        auto txnParticipant = TransactionParticipant::get(opCtx);
+
+        txnParticipant.beginOrContinue(opCtx,
+                                       {txnNumber},
+                                       false /* autocommit */,
+                                       TransactionParticipant::TransactionActions::kContinue);
+
+        txnParticipant.unstashTransactionResources(opCtx, "commitTransaction");
+
+        if (commitTimestamp) {
+            // Committing a prepared transaction involves asserting that the corresponding prepare
+            // timestamp has been majority committed. We exempt the unitests from this expectation
+            // since this fixture doesn't set up the majority committing machinery.
+            FailPointEnableBlock failPointBlock("skipCommitTxnCheckPrepareMajorityCommitted");
+
+            txnParticipant.commitPreparedTransaction(
+                opCtx, *commitTimestamp, boost::none /* commitOplogEntryOpTime */);
+        } else {
+            txnParticipant.commitUnpreparedTransaction(opCtx);
+        }
+
+        txnParticipant.stashTransactionResources(opCtx);
     }
 
     void checkOplog(const repl::OplogEntry& originalOplog, const repl::OplogEntry& oplogToCheck) {
@@ -329,7 +439,7 @@ public:
         Lock::CollectionLock collLock(operationContext(), nss, MODE_IX);
         CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(operationContext(),
                                                                              nss)
-            ->setFilteringMetadata(operationContext(), CollectionMetadata());
+            ->setFilteringMetadata(operationContext(), CollectionMetadata::UNTRACKED());
     }
 
     CancellationSource _cancellationSource;
@@ -431,7 +541,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OplogEntriesWithSameTxn) {
     finishSessionExpectSuccess(&sessionMigration);
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 3);
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -494,7 +604,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OplogEntriesWithMultiStmtIds) {
     finishSessionExpectSuccess(&sessionMigration);
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 3);
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -563,7 +673,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldOnlyStoreHistoryOfLatestTxn
     finishSessionExpectSuccess(&sessionMigration);
 
     auto opCtx = operationContext();
-    setUpSessionWithTxn(opCtx, sessionId, txnNum);
+    setUpRetryableWrite(opCtx, sessionId, txnNum);
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 3);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
@@ -621,7 +731,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OplogEntriesWithSameTxnInSeparate
 
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 3);
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -695,7 +805,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OplogEntriesWithDifferentSession)
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
 
     {
-        setUpSessionWithTxn(opCtx, sessionId1, 2);
+        setUpRetryableWrite(opCtx, sessionId1, 2);
         auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
         auto txnParticipant = TransactionParticipant::get(opCtx);
 
@@ -712,7 +822,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OplogEntriesWithDifferentSession)
         auto client2 = getServiceContext()->getService()->makeClient("client2");
         AlternativeClientRegion acr(client2);
         auto opCtx2 = cc().makeOperationContext();
-        setUpSessionWithTxn(opCtx2.get(), sessionId2, 42);
+        setUpRetryableWrite(opCtx2.get(), sessionId2, 42);
         auto ocs = mongoDSessionCatalog->checkOutSession(opCtx2.get());
         auto txnParticipant = TransactionParticipant::get(opCtx2.get());
 
@@ -780,7 +890,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldNotNestAlreadyNestedOplog) 
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 2);
 
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -835,7 +945,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldBeAbleToHandlePreImageFindA
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 2);
 
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -932,7 +1042,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldBeAbleToHandleForgedPreImag
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 2);
 
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1026,7 +1136,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldBeAbleToHandlePostImageFind
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 2);
 
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1121,7 +1231,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldBeAbleToHandleForgedPostIma
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 2);
 
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1218,7 +1328,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldBeAbleToHandleFindAndModify
 
     ASSERT_TRUE(SessionCatalogMigrationDestination::State::Done == sessionMigration.getState());
 
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1286,11 +1396,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OlderTxnShouldBeIgnored) {
     newSessionInfo.setSessionId(sessionId);
     newSessionInfo.setTxnNumber(20);
 
-    insertDocWithSessionInfo(newSessionInfo,
-                             kNs,
-                             BSON("_id"
-                                  << "newerSess"),
-                             0);
+    insertDocWithSessionInfo(newSessionInfo, kNs, BSON("_id" << "newerSess"), 0);
 
     SessionCatalogMigrationDestination sessionMigration(
         kNs, kFromShard, migrationId(), _cancellationSource.token());
@@ -1323,7 +1429,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OlderTxnShouldBeIgnored) {
 
     ASSERT_TRUE(SessionCatalogMigrationDestination::State::Done == sessionMigration.getState());
 
-    setUpSessionWithTxn(opCtx, sessionId, 20);
+    setUpRetryableWrite(opCtx, sessionId, 20);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1332,9 +1438,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OlderTxnShouldBeIgnored) {
     TransactionHistoryIterator historyIter(txnParticipant.getLastWriteOpTime());
     ASSERT_TRUE(historyIter.hasNext());
     auto oplog = historyIter.next(opCtx);
-    ASSERT_BSONOBJ_EQ(BSON("_id"
-                           << "newerSess"),
-                      oplog.getObject());
+    ASSERT_BSONOBJ_EQ(BSON("_id" << "newerSess"), oplog.getObject());
 
     ASSERT_FALSE(historyIter.hasNext());
 
@@ -1371,11 +1475,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, NewerTxnWriteShouldNotBeOverwritt
     // Ensure that the previous oplog has been processed before proceeding.
     returnOplog({});
 
-    insertDocWithSessionInfo(newSessionInfo,
-                             kNs,
-                             BSON("_id"
-                                  << "newerSess"),
-                             0);
+    insertDocWithSessionInfo(newSessionInfo, kNs, BSON("_id" << "newerSess"), 0);
 
     auto oplog2 = makeOplogEntry(OpTime(Timestamp(80, 2), 1),  // optime
                                  OpTypeEnum::kInsert,          // op type
@@ -1389,7 +1489,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, NewerTxnWriteShouldNotBeOverwritt
 
     finishSessionExpectSuccess(&sessionMigration);
 
-    setUpSessionWithTxn(opCtx, sessionId, 20);
+    setUpRetryableWrite(opCtx, sessionId, 20);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1397,9 +1497,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, NewerTxnWriteShouldNotBeOverwritt
     TransactionHistoryIterator historyIter(txnParticipant.getLastWriteOpTime());
     ASSERT_TRUE(historyIter.hasNext());
     auto oplog = historyIter.next(opCtx);
-    ASSERT_BSONOBJ_EQ(BSON("_id"
-                           << "newerSess"),
-                      oplog.getObject());
+    ASSERT_BSONOBJ_EQ(BSON("_id" << "newerSess"), oplog.getObject());
 
     checkStatementExecuted(opCtx, 20, 0);
 }
@@ -1560,11 +1658,7 @@ TEST_F(SessionCatalogMigrationDestinationTest,
     // Ensure that the previous oplog has been processed before proceeding.
     returnOplog({});
 
-    insertDocWithSessionInfo(sessionInfo,
-                             kNs,
-                             BSON("_id"
-                                  << "newerSess"),
-                             0);
+    insertDocWithSessionInfo(sessionInfo, kNs, BSON("_id" << "newerSess"), 0);
 
     auto oplog2 = makeOplogEntry(OpTime(Timestamp(80, 2), 1),  // optime
                                  OpTypeEnum::kInsert,          // op type
@@ -1579,7 +1673,7 @@ TEST_F(SessionCatalogMigrationDestinationTest,
     finishSessionExpectSuccess(&sessionMigration);
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 2);
 
-    setUpSessionWithTxn(opCtx, sessionId, 2);
+    setUpRetryableWrite(opCtx, sessionId, 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1590,9 +1684,7 @@ TEST_F(SessionCatalogMigrationDestinationTest,
     checkOplogWithNestedOplog(oplog2, historyIter.next(opCtx));
 
     auto oplog = historyIter.next(opCtx);
-    ASSERT_BSONOBJ_EQ(BSON("_id"
-                           << "newerSess"),
-                      oplog.getObject());
+    ASSERT_BSONOBJ_EQ(BSON("_id" << "newerSess"), oplog.getObject());
 
     ASSERT_TRUE(historyIter.hasNext());
     checkOplogWithNestedOplog(oplog1, historyIter.next(opCtx));
@@ -1894,7 +1986,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, ShouldIgnoreAlreadyExecutedStatem
     finishSessionExpectSuccess(&sessionMigration);
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 3);
 
-    setUpSessionWithTxn(opCtx, sessionId, 19);
+    setUpRetryableWrite(opCtx, sessionId, 19);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1964,7 +2056,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, OplogEntriesWithIncompleteHistory
 
     auto opCtx = operationContext();
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 3);
-    setUpSessionWithTxn(opCtx, *sessionInfo.getSessionId(), 2);
+    setUpRetryableWrite(opCtx, *sessionInfo.getSessionId(), 2);
     auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
     auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
     auto txnParticipant = TransactionParticipant::get(opCtx);
@@ -1992,7 +2084,7 @@ TEST_F(SessionCatalogMigrationDestinationTest,
         // "Start" a new transaction on session 1, so that migrating the entries above will result
         // in TransactionTooOld. This should not preclude the entries for session 2 from getting
         // applied.
-        setUpSessionWithTxn(opCtx, *sessionInfo1.getSessionId(), *sessionInfo1.getTxnNumber());
+        setUpRetryableWrite(opCtx, *sessionInfo1.getSessionId(), *sessionInfo1.getTxnNumber());
         auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
         auto txnParticipant = TransactionParticipant::get(opCtx);
 
@@ -2055,7 +2147,7 @@ TEST_F(SessionCatalogMigrationDestinationTest,
         AlternativeClientRegion acr(c1);
         auto opCtx1 = cc().makeOperationContext();
         auto opCtx = opCtx1.get();
-        setUpSessionWithTxn(opCtx, *sessionInfo1.getSessionId(), 3);
+        setUpRetryableWrite(opCtx, *sessionInfo1.getSessionId(), 3);
         auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
         auto txnParticipant1 = TransactionParticipant::get(opCtx);
         ASSERT(txnParticipant1.getLastWriteOpTime().isNull());
@@ -2067,7 +2159,7 @@ TEST_F(SessionCatalogMigrationDestinationTest,
         AlternativeClientRegion acr(c2);
         auto opCtx2 = cc().makeOperationContext();
         auto opCtx = opCtx2.get();
-        setUpSessionWithTxn(opCtx, *sessionInfo2.getSessionId(), 15);
+        setUpRetryableWrite(opCtx, *sessionInfo2.getSessionId(), 15);
         auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
         auto txnParticipant2 = TransactionParticipant::get(opCtx);
 
@@ -2100,7 +2192,7 @@ TEST_F(SessionCatalogMigrationDestinationTest, MigratingKnownStmtWhileOplogTrunc
         auto c1 = getServiceContext()->getService()->makeClient("c1");
         AlternativeClientRegion acr(c1);
         auto innerOpCtx = cc().makeOperationContext();
-        setUpSessionWithTxn(innerOpCtx.get(), *sessionInfo.getSessionId(), 19);
+        setUpRetryableWrite(innerOpCtx.get(), *sessionInfo.getSessionId(), 19);
         auto ocs = mongoDSessionCatalog->checkOutSession(innerOpCtx.get());
         auto txnParticipant = TransactionParticipant::get(innerOpCtx.get());
         return txnParticipant.getLastWriteOpTime();
@@ -2150,6 +2242,198 @@ TEST_F(SessionCatalogMigrationDestinationTest, MigratingKnownStmtWhileOplogTrunc
     ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 1);
 
     ASSERT_EQ(lastOpTimeBeforeMigrate, getLastWriteOpTime());
+}
+
+TEST_F(SessionCatalogMigrationDestinationTest,
+       IncomingRetryableWriteHasPreparedRetryableInternalTransaction) {
+    auto opCtx = operationContext();
+
+    auto retryableWriteSessionId = makeLogicalSessionIdForTest();
+    TxnNumber retryableWriteTxnNumber = 100;
+
+    auto internalTxnSessionId = makeLogicalSessionIdWithTxnNumberAndUUIDForTest(
+        retryableWriteSessionId, retryableWriteTxnNumber);
+    TxnNumber internalTxnTxnNumber = 1;
+
+    OperationSessionInfo internalTxnSessionInfo;
+    internalTxnSessionInfo.setSessionId(internalTxnSessionId);
+    internalTxnSessionInfo.setTxnNumber(internalTxnTxnNumber);
+    internalTxnSessionInfo.setAutocommit(false);
+    auto oplog1 = makeOplogEntry(OpTime(Timestamp(70, 2), 1),  // optime
+                                 OpTypeEnum::kInsert,          // op type
+                                 BSON("x" << 80),              // o
+                                 boost::none,                  // o2
+                                 internalTxnSessionInfo,       // session info
+                                 Date_t::now(),                // wall clock time
+                                 {30});
+
+    boost::optional<OpTime> prepareOpTime;
+    {
+        auto newClient = getServiceContext()->getService()->makeClient("newClient");
+        AlternativeClientRegion acr(newClient);
+        auto newOpCtx = cc().makeOperationContext();
+
+        auto durableOp1 = oplog1.getDurableReplOperation().toBSON();
+        auto replOp1 = repl::ReplOperation::parse(
+            IDLParserContext("PreparedRetryableInternalTransaction"), durableOp1);
+
+        setUpTxn(newOpCtx.get(), internalTxnSessionId, internalTxnTxnNumber, replOp1);
+        prepareOpTime = prepareTxn(newOpCtx.get(), internalTxnSessionId, internalTxnTxnNumber);
+    }
+
+    SessionCatalogMigrationDestination sessionMigration(
+        kNs, kFromShard, migrationId(), _cancellationSource.token());
+    sessionMigration.start(getServiceContext());
+    sessionMigration.finish();
+
+    OperationSessionInfo retryableWriteSessionInfo;
+    retryableWriteSessionInfo.setSessionId(retryableWriteSessionId);
+    retryableWriteSessionInfo.setTxnNumber(retryableWriteTxnNumber);
+    auto oplog2 = makeOplogEntry(OpTime(Timestamp(80, 2), 1),  // optime
+                                 OpTypeEnum::kInsert,          // op type
+                                 BSON("x" << 80),              // o
+                                 boost::none,                  // o2
+                                 retryableWriteSessionInfo,    // session info
+                                 Date_t::now(),                // wall clock time
+                                 {45});                        // statement ids
+
+    // The incoming retryable write is expected to be blocked on the prepared internal transaction
+    // until it is committed below.
+    returnOplog({oplog2});
+    // Wait a little bit to increase the likelihood that the SessionCatalogMigrationDestination
+    // has been blocked.
+    opCtx->sleepFor(Milliseconds{10});
+
+    {
+        auto newClient = getServiceContext()->getService()->makeClient("newClient");
+        AlternativeClientRegion acr(newClient);
+        commitTxn(opCtx, internalTxnSessionId, internalTxnTxnNumber, prepareOpTime->getTimestamp());
+    }
+
+    // The SessionCatalogMigrationDestination always fetches at least twice to transition from
+    // committing to done.
+    returnOplog({});
+    returnOplog({});
+
+    sessionMigration.join();
+
+    ASSERT_TRUE(SessionCatalogMigrationDestination::State::Done == sessionMigration.getState());
+    ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 1);
+
+    // Verify that the incoming retryable write got stored correctly.
+    setUpRetryableWrite(opCtx, retryableWriteSessionId, retryableWriteTxnNumber);
+    auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
+    auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
+    auto txnParticipant = TransactionParticipant::get(opCtx);
+
+    TransactionHistoryIterator historyIter(txnParticipant.getLastWriteOpTime());
+
+    ASSERT_TRUE(historyIter.hasNext());
+    checkOplogWithNestedOplog(oplog2, historyIter.next(opCtx));
+
+    ASSERT_FALSE(historyIter.hasNext());
+
+    checkStatementExecutedAndCheckOplogEntry(
+        opCtx, retryableWriteTxnNumber, oplog2.getStatementIds().front(), oplog2);
+    // The statement below was executed in the prepared internal transaction which should have
+    // committed successfully.
+    ASSERT(txnParticipant.checkStatementExecuted(opCtx, oplog1.getStatementIds().front()));
+}
+
+TEST_F(SessionCatalogMigrationDestinationTest,
+       IncomingRetryableWriteHasUnpreparedRetryableInternalTransaction) {
+    auto opCtx = operationContext();
+
+    auto retryableWriteSessionId = makeLogicalSessionIdForTest();
+    TxnNumber retryableWriteTxnNumber = 100;
+
+    auto internalTxnSessionId = makeLogicalSessionIdWithTxnNumberAndUUIDForTest(
+        retryableWriteSessionId, retryableWriteTxnNumber);
+    TxnNumber internalTxnTxnNumber = 1;
+
+    OperationSessionInfo internalTxnSessionInfo;
+    internalTxnSessionInfo.setSessionId(internalTxnSessionId);
+    internalTxnSessionInfo.setTxnNumber(internalTxnTxnNumber);
+    internalTxnSessionInfo.setAutocommit(false);
+    auto oplog1 = makeOplogEntry(OpTime(Timestamp(70, 2), 1),  // optime
+                                 OpTypeEnum::kInsert,          // op type
+                                 BSON("x" << 80),              // o
+                                 boost::none,                  // o2
+                                 internalTxnSessionInfo,       // session info
+                                 Date_t::now(),                // wall clock time
+                                 {30});
+
+    {
+        auto newClient = getServiceContext()->getService()->makeClient("newClient");
+        AlternativeClientRegion acr(newClient);
+        auto newOpCtx = cc().makeOperationContext();
+
+        auto durableOp1 = oplog1.getDurableReplOperation().toBSON();
+        auto replOp1 = repl::ReplOperation::parse(
+            IDLParserContext("PreparedRetryableInternalTransaction"), durableOp1);
+
+        setUpTxn(newOpCtx.get(), internalTxnSessionId, internalTxnTxnNumber, replOp1);
+    }
+
+    SessionCatalogMigrationDestination sessionMigration(
+        kNs, kFromShard, migrationId(), _cancellationSource.token());
+    sessionMigration.start(getServiceContext());
+    sessionMigration.finish();
+
+    OperationSessionInfo retryableWriteSessionInfo;
+    retryableWriteSessionInfo.setSessionId(retryableWriteSessionId);
+    retryableWriteSessionInfo.setTxnNumber(retryableWriteTxnNumber);
+    auto oplog2 = makeOplogEntry(OpTime(Timestamp(80, 2), 1),  // optime
+                                 OpTypeEnum::kInsert,          // op type
+                                 BSON("x" << 80),              // o
+                                 boost::none,                  // o2
+                                 retryableWriteSessionInfo,    // session info
+                                 Date_t::now(),                // wall clock time
+                                 {45});                        // statement ids
+
+    // The incoming retryable write is expected to abort the unprepared internal transaction.
+    returnOplog({oplog2});
+
+    // The SessionCatalogMigrationDestination always fetches at least twice to transition from
+    // committing to done.
+    returnOplog({});
+    returnOplog({});
+
+    sessionMigration.join();
+
+    ASSERT_TRUE(SessionCatalogMigrationDestination::State::Done == sessionMigration.getState());
+    ASSERT_EQ(sessionMigration.getSessionOplogEntriesMigrated(), 1);
+
+    // Verify that the incoming retryable write got stored correctly.
+    setUpRetryableWrite(opCtx, retryableWriteSessionId, retryableWriteTxnNumber);
+    auto mongoDSessionCatalog = MongoDSessionCatalog::get(opCtx);
+    auto ocs = mongoDSessionCatalog->checkOutSession(opCtx);
+    auto txnParticipant = TransactionParticipant::get(opCtx);
+
+    TransactionHistoryIterator historyIter(txnParticipant.getLastWriteOpTime());
+
+    ASSERT_TRUE(historyIter.hasNext());
+    checkOplogWithNestedOplog(oplog2, historyIter.next(opCtx));
+
+    ASSERT_FALSE(historyIter.hasNext());
+
+    checkStatementExecutedAndCheckOplogEntry(
+        opCtx, retryableWriteTxnNumber, oplog2.getStatementIds().front(), oplog2);
+    // The statement below was executed in the unprepared internal transaction which should have
+    // been aborted.
+    ASSERT_FALSE(txnParticipant.checkStatementExecuted(opCtx, oplog1.getStatementIds().front()));
+
+    // Check the session back in.
+    ocs.reset();
+
+    // Verify that the internal transaction cannot be continued or committed.
+    {
+        auto newClient = getServiceContext()->getService()->makeClient("newClient");
+        AlternativeClientRegion acr(newClient);
+        ASSERT_THROWS_CODE(commitTxn(opCtx, internalTxnSessionId, internalTxnTxnNumber),
+                           DBException,
+                           ErrorCodes::NoSuchTransaction);
+    }
 }
 
 }  // namespace

@@ -62,6 +62,7 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
+#include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/legacy_runtime_constants_gen.h"
 #include "mongo/db/query/canonical_distinct.h"
 #include "mongo/db/query/canonical_query.h"
@@ -69,17 +70,22 @@
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/db/query/find_command.h"
-#include "mongo/db/query/query_settings/query_settings_utils.h"
+#include "mongo/db/query/query_settings/query_settings_service.h"
 #include "mongo/db/query/query_shape/distinct_cmd_shape.h"
 #include "mongo/db/query/query_shape/query_shape.h"
 #include "mongo/db/query/query_stats/distinct_key.h"
 #include "mongo/db/query/query_stats/query_stats.h"
+#include "mongo/db/query/shard_key_diagnostic_printer.h"
+#include "mongo/db/query/timeseries/timeseries_rewrites.h"
 #include "mongo/db/query/view_response_formatter.h"
+#include "mongo/db/raw_data_operation.h"
 #include "mongo/db/read_concern_support_result.h"
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/read_concern_level.h"
+#include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/tenant_id.h"
+#include "mongo/db/version_context.h"
 #include "mongo/db/views/resolved_view.h"
 #include "mongo/executor/remote_command_response.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -90,6 +96,7 @@
 #include "mongo/s/chunk_manager.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/cluster_commands_helpers.h"
+#include "mongo/s/collection_routing_info_targeter.h"
 #include "mongo/s/commands/query_cmd/cluster_explain.h"
 #include "mongo/s/grid.h"
 #include "mongo/s/query/exec/cluster_cursor_manager.h"
@@ -141,17 +148,23 @@ std::unique_ptr<CanonicalQuery> parseDistinctCmd(
                                        extensionsCallback,
                                        MatchExpressionParser::kAllowAllSpecialFeatures);
 
+    query_shape::DeferredQueryShape deferredShape{[&]() {
+        return shape_helpers::tryMakeShape<query_shape::DistinctCmdShape>(*parsedDistinct, expCtx);
+    }};
+    expCtx->setQuerySettingsIfNotPresent(
+        query_settings::lookupQuerySettingsWithRejectionCheckOnRouter(expCtx, deferredShape, nss));
+
     // We do not collect queryStats on explain for distinct.
     if (feature_flags::gFeatureFlagQueryStatsCountDistinct.isEnabled(
+            VersionContext::getDecoration(opCtx),
             serverGlobalParams.featureCompatibility.acquireFCVSnapshot()) &&
         !verbosity.has_value()) {
         query_stats::registerRequest(opCtx, nss, [&]() {
-            return std::make_unique<query_stats::DistinctKey>(expCtx, *parsedDistinct);
+            uassert(8472506, "Failed computing query shape", deferredShape());
+            return std::make_unique<query_stats::DistinctKey>(
+                expCtx, *parsedDistinct->distinctCommandRequest, std::move(*deferredShape));
         });
     }
-
-    expCtx->setQuerySettingsIfNotPresent(
-        query_settings::lookupQuerySettingsForDistinct(expCtx, *parsedDistinct, nss));
 
     return parsed_distinct_command::parseCanonicalQuery(std::move(expCtx),
                                                         std::move(parsedDistinct));
@@ -174,6 +187,18 @@ BSONObj prepareDistinctForPassthrough(const BSONObj& cmd,
     }
 
     return CommandHelpers::filterCommandRequestForPassthrough(cmd);
+}
+
+BSONObj translateCmdObjForRawData(OperationContext* opCtx,
+                                  const BSONObj& cmdObj,
+                                  NamespaceString& ns) {
+    if (!OptionalBool::parseFromBSON(cmdObj[DistinctCommandRequest::kRawDataFieldName]) ||
+        !CollectionRoutingInfoTargeter{opCtx, ns}.timeseriesNamespaceNeedsRewrite(ns)) {
+        return cmdObj;
+    }
+
+    ns = ns.makeTimeseriesBucketsNamespace();
+    return rewriteCommandForRawDataOperation<DistinctCommandRequest>(cmdObj, ns.coll());
 }
 
 class DistinctCmd : public BasicCommand {
@@ -218,6 +243,10 @@ public:
         return ReadConcernSupportResult::allSupportedAndDefaultPermitted();
     }
 
+    bool supportsRawData() const override {
+        return true;
+    }
+
     Status checkAuthForOperation(OperationContext* opCtx,
                                  const DatabaseName& dbName,
                                  const BSONObj& cmdObj) const override {
@@ -238,10 +267,18 @@ public:
                    const OpMsgRequest& opMsgRequest,
                    ExplainOptions::Verbosity verbosity,
                    rpc::ReplyBuilderInterface* result) const override {
-        const BSONObj& cmdObj = opMsgRequest.body;
-        const NamespaceString nss(parseNs(opMsgRequest.parseDbName(), cmdObj));
+        const BSONObj& originalCmdObj = opMsgRequest.body;
+        NamespaceString nss(parseNs(opMsgRequest.parseDbName(), originalCmdObj));
+        auto cmdObj = translateCmdObjForRawData(opCtx, originalCmdObj, nss);
         auto canonicalQuery = parseDistinctCmd(
             opCtx, nss, cmdObj, ExtensionsCallbackNoop(), nullptr /* defaultCollator */, verbosity);
+
+        // Create an RAII object that prints useful information about the ExpressionContext in the
+        // case of a tassert or crash.
+        ScopedDebugInfo expCtxDiagnostics(
+            "ExpCtxDiagnostics",
+            diagnostic_printers::ExpressionContextPrinter{canonicalQuery->getExpCtx()});
+
         auto targetingQuery = canonicalQuery->getQueryObj();
         auto targetingCollation = canonicalQuery->getFindCommandRequest().getCollation();
 
@@ -250,29 +287,47 @@ public:
 
         std::vector<AsyncRequestsSender::Response> shardResponses;
         auto bodyBuilder = result->getBodyBuilder();
-        try {
-            const auto cri = uassertStatusOK(
-                Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
-            shardResponses = scatterGatherVersionedTargetByRoutingTable(
-                opCtx,
-                nss.dbName(),
-                nss,
-                cri,
-                ClusterExplain::wrapAsExplain(
-                    cmdObj, verbosity, canonicalQuery->getExpCtx()->getQuerySettings().toBSON()),
-                ReadPreferenceSetting::get(opCtx),
-                Shard::RetryPolicy::kIdempotent,
-                targetingQuery,
-                targetingCollation,
-                boost::none /*letParameters*/,
-                boost::none /*runtimeConstants*/);
-        } catch (const ExceptionFor<ErrorCodes::CommandOnShardedViewNotSupportedOnMongod>& ex) {
-            runDistinctOnView(opCtx,
-                              std::move(canonicalQuery),
-                              *ex.extraInfo<ResolvedView>(),
-                              verbosity,
-                              bodyBuilder);
+
+        const auto cri =
+            uassertStatusOK(Grid::get(opCtx)->catalogCache()->getCollectionRoutingInfo(opCtx, nss));
+
+        // Create an RAII object that prints the collection's shard key in the case of a tassert
+        // or crash.
+        ScopedDebugInfo shardKeyDiagnostics(
+            "ShardKeyDiagnostics",
+            diagnostic_printers::ShardKeyDiagnosticPrinter{
+                cri.isSharded() ? cri.getChunkManager().getShardKeyPattern().toBSON() : BSONObj()});
+
+        if (timeseries::isEligibleForViewlessTimeseriesRewrites(opCtx, cri)) {
+            runDistinctAsAgg(opCtx,
+                             std::move(canonicalQuery),
+                             boost::none /* resolvedView */,
+                             verbosity,
+                             bodyBuilder);
             return Status::OK();
+        } else {
+            try {
+                shardResponses = scatterGatherVersionedTargetByRoutingTable(
+                    opCtx,
+                    nss.dbName(),
+                    nss,
+                    cri,
+                    ClusterExplain::wrapAsExplain(
+                        cmdObj,
+                        verbosity,
+                        canonicalQuery->getExpCtx()->getQuerySettings().toBSON()),
+                    ReadPreferenceSetting::get(opCtx),
+                    Shard::RetryPolicy::kIdempotent,
+                    targetingQuery,
+                    targetingCollation,
+                    boost::none /*letParameters*/,
+                    boost::none /*runtimeConstants*/);
+            } catch (const ExceptionFor<ErrorCodes::CommandOnShardedViewNotSupportedOnMongod>& ex) {
+                const auto& resolvedView = *ex.extraInfo<ResolvedView>();
+                runDistinctAsAgg(
+                    opCtx, std::move(canonicalQuery), resolvedView, verbosity, bodyBuilder);
+                return Status::OK();
+            }
         }
 
         long long millisElapsed = timer.millis();
@@ -285,16 +340,17 @@ public:
             shardResponses,
             mongosStageName,
             millisElapsed,
-            cmdObj,
+            originalCmdObj,
             &bodyBuilder);
     }
 
     bool run(OperationContext* opCtx,
              const DatabaseName& dbName,
-             const BSONObj& cmdObj,
+             const BSONObj& originalCmdObj,
              BSONObjBuilder& result) override {
         CommandHelpers::handleMarkKillOnClientDisconnect(opCtx);
-        const NamespaceString nss(parseNs(dbName, cmdObj));
+        NamespaceString nss(parseNs(dbName, originalCmdObj));
+        auto cmdObj = translateCmdObjForRawData(opCtx, originalCmdObj, nss);
         auto canonicalQuery = parseDistinctCmd(opCtx,
                                                nss,
                                                cmdObj,
@@ -303,6 +359,12 @@ public:
                                                boost::none /* verbosity */);
         auto query = canonicalQuery->getQueryObj();
         auto collation = canonicalQuery->getFindCommandRequest().getCollation();
+
+        // Create an RAII object that prints useful information about the ExpressionContext in the
+        // case of a tassert or crash.
+        ScopedDebugInfo expCtxDiagnostics(
+            "ExpCtxDiagnostics",
+            diagnostic_printers::ExpressionContextPrinter{canonicalQuery->getExpCtx()});
 
         auto swCri = getCollectionRoutingInfoForTxnCmd(opCtx, nss);
         if (swCri == ErrorCodes::NamespaceNotFound) {
@@ -323,32 +385,56 @@ public:
             cmdObj, canonicalQuery->getExpCtx()->getQuerySettings(), requestQueryStats);
 
         const auto cri = uassertStatusOK(std::move(swCri));
-        const auto& cm = cri.cm;
+        const auto& cm = cri.getChunkManager();
+
+        // Create an RAII object that prints the collection's shard key in the case of a tassert
+        // or crash.
+        ScopedDebugInfo shardKeyDiagnostics(
+            "ShardKeyDiagnostics",
+            diagnostic_printers::ShardKeyDiagnosticPrinter{
+                cm.isSharded() ? cm.getShardKeyPattern().toBSON() : BSONObj()});
 
         std::vector<AsyncRequestsSender::Response> shardResponses;
-        try {
-            shardResponses = scatterGatherVersionedTargetByRoutingTable(
-                opCtx,
-                nss.dbName(),
-                nss,
-                cri,
-                applyReadWriteConcern(opCtx, this, distinctReadyForPassthrough),
-                ReadPreferenceSetting::get(opCtx),
-                Shard::RetryPolicy::kIdempotent,
-                query,
-                collation,
-                boost::none /*letParameters*/,
-                boost::none /*runtimeConstants*/,
-                true /* eligibleForSampling */);
-        } catch (const ExceptionFor<ErrorCodes::CommandOnShardedViewNotSupportedOnMongod>& ex) {
-            runDistinctOnView(opCtx,
-                              std::move(canonicalQuery),
-                              *ex.extraInfo<ResolvedView>(),
-                              boost::none /* verbosity */,
-                              result);
+        if (timeseries::isEligibleForViewlessTimeseriesRewrites(opCtx, cri)) {
+            runDistinctAsAgg(opCtx,
+                             std::move(canonicalQuery),
+                             boost::none /* resolvedView */,
+                             boost::none /* verbosity */,
+                             result);
             return true;
+        } else {
+            try {
+                shardResponses = scatterGatherVersionedTargetByRoutingTable(
+                    opCtx,
+                    nss.dbName(),
+                    nss,
+                    cri,
+                    applyReadWriteConcern(opCtx, this, distinctReadyForPassthrough),
+                    ReadPreferenceSetting::get(opCtx),
+                    Shard::RetryPolicy::kIdempotent,
+                    query,
+                    collation,
+                    boost::none /*letParameters*/,
+                    boost::none /*runtimeConstants*/,
+                    true /* eligibleForSampling */);
+            } catch (const ExceptionFor<ErrorCodes::CommandOnShardedViewNotSupportedOnMongod>& ex) {
+                const auto& resolvedView = *ex.extraInfo<ResolvedView>();
+                runDistinctAsAgg(opCtx,
+                                 std::move(canonicalQuery),
+                                 resolvedView,
+                                 boost::none /* verbosity */,
+                                 result);
+                return true;
+            }
         }
 
+        // The construction of 'bsonCmp' below only accounts for a collection default collator when
+        // the targeted collection is sharded. In the event that the collection is unsharded (either
+        // untracked or unsplittable) and has a collection default collator, we can use binary
+        // comparison on the router as long as we obey the collection's default collator on the
+        // targeted shard.
+        // TODO SERVER-101576: Setting up the collation and aggregating shard responses can be
+        // avoided entirely when targeting a single shard.
         BSONObjComparator bsonCmp(BSONObj(),
                                   BSONObjComparator::FieldNamesMode::kConsider,
                                   !collation.isEmpty()
@@ -411,30 +497,30 @@ public:
         return true;
     }
 
-    void runDistinctOnView(OperationContext* opCtx,
-                           std::unique_ptr<CanonicalQuery> canonicalQuery,
-                           const ResolvedView& resolvedView,
-                           boost::optional<ExplainOptions::Verbosity> verbosity,
-                           BSONObjBuilder& bob) const {
+    void runDistinctAsAgg(OperationContext* opCtx,
+                          std::unique_ptr<CanonicalQuery> canonicalQuery,
+                          boost::optional<const ResolvedView&> resolvedView,
+                          boost::optional<ExplainOptions::Verbosity> verbosity,
+                          BSONObjBuilder& bob) const {
         const auto& nss = canonicalQuery->nss();
         const auto& dbName = nss.dbName();
         const auto& vts = auth::ValidatedTenancyScope::get(opCtx);
-        const auto viewAggCmd =
+        const auto distinctAggCmd =
             OpMsgRequestBuilder::create(
                 vts,
                 dbName,
                 uassertStatusOK(parsed_distinct_command::asAggregation(*canonicalQuery)))
                 .body;
-        auto viewAggRequest = aggregation_request_helper::parseFromBSON(
-            viewAggCmd,
+        auto distinctAggRequest = aggregation_request_helper::parseFromBSON(
+            distinctAggCmd,
             vts,
             verbosity,
             canonicalQuery->getFindCommandRequest().getSerializationContext());
 
         // Propagate the query settings with the request to the shards if present.
         const auto& querySettings = canonicalQuery->getExpCtx()->getQuerySettings();
-        if (!query_settings::utils::isDefault(querySettings)) {
-            viewAggRequest.setQuerySettings(querySettings);
+        if (!query_settings::isDefault(querySettings)) {
+            distinctAggRequest.setQuerySettings(querySettings);
         }
 
         auto curOp = CurOp::get(opCtx);
@@ -444,21 +530,48 @@ public:
         auto ownedQueryStatsKey = std::move(curOp->debug().queryStatsInfo.key);
         curOp->debug().queryStatsInfo.disableForSubqueryExecution = true;
 
-        // If running explain distinct on view, then aggregate is executed without plivilege checks
-        // and without response formatting.
         if (verbosity) {
-            uassertStatusOK(ClusterAggregate::retryOnViewError(
-                opCtx, viewAggRequest, resolvedView, nss, PrivilegeVector(), &bob));
+            if (resolvedView.has_value()) {
+                // If running explain distinct on view, then aggregate is executed without privilege
+                // checks and without response formatting.
+                uassertStatusOK(ClusterAggregate::retryOnViewError(opCtx,
+                                                                   distinctAggRequest,
+                                                                   *resolvedView,
+                                                                   nss,
+                                                                   PrivilegeVector(),
+                                                                   verbosity,
+                                                                   &bob));
+            } else {
+                // Viewless timeseries, similar idea.
+                uassertStatusOK(
+                    ClusterAggregate::runAggregate(opCtx,
+                                                   ClusterAggregate::Namespaces{nss, nss},
+                                                   distinctAggRequest,
+                                                   PrivilegeVector{},
+                                                   verbosity,
+                                                   &bob));
+            }
             return;
         }
 
         const auto privileges = uassertStatusOK(
             auth::getPrivilegesForAggregate(AuthorizationSession::get(opCtx->getClient()),
-                                            viewAggRequest.getNamespace(),
-                                            viewAggRequest,
+                                            distinctAggRequest.getNamespace(),
+                                            distinctAggRequest,
                                             true /* isMongos */));
-        uassertStatusOK(ClusterAggregate::retryOnViewError(
-            opCtx, viewAggRequest, resolvedView, nss, privileges, &bob));
+        if (resolvedView.has_value()) {
+            // Query against a view.
+            uassertStatusOK(ClusterAggregate::retryOnViewError(
+                opCtx, distinctAggRequest, *resolvedView, nss, privileges, verbosity, &bob));
+        } else {
+            // Query against viewless timeseries.
+            uassertStatusOK(ClusterAggregate::runAggregate(opCtx,
+                                                           ClusterAggregate::Namespaces{nss, nss},
+                                                           distinctAggRequest,
+                                                           privileges,
+                                                           verbosity,
+                                                           &bob));
+        }
 
         // Copy the result from the aggregate command.
         CommandHelpers::extractOrAppendOk(bob);

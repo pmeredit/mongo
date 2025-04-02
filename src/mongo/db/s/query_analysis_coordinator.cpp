@@ -51,8 +51,6 @@
 #include "mongo/db/server_options.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/analyze_shard_key_role.h"
@@ -201,8 +199,7 @@ void QueryAnalysisCoordinator::onStartup(OperationContext* opCtx) {
     {
         invariant(_configurations.empty());
         FindCommandRequest findRequest{NamespaceString::kConfigQueryAnalyzersNamespace};
-        findRequest.setFilter(BSON(QueryAnalyzerDocument::kModeFieldName << BSON("$ne"
-                                                                                 << "off")));
+        findRequest.setFilter(BSON(QueryAnalyzerDocument::kModeFieldName << BSON("$ne" << "off")));
         auto cursor = client.find(std::move(findRequest));
         while (cursor->more()) {
             auto doc = QueryAnalyzerDocument::parse(IDLParserContext("QueryAnalysisCoordinator"),

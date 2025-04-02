@@ -71,15 +71,11 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/decimal128.h"
 #include "mongo/rpc/object_check.h"  // IWYU pragma: keep
 #include "mongo/shell/kms_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/hex.h"
 #include "mongo/util/time_support.h"
@@ -95,6 +91,10 @@ std::string hexdump(const std::vector<T>& buf) {
 
 std::string hexdump(const PrfBlock& buf) {
     return hexdump(buf.data(), buf.size());
+}
+
+std::string hexdump(const ConstDataRange& buf) {
+    return hexdump(buf.data(), buf.length());
 }
 
 std::vector<char> decode(StringData sd) {
@@ -397,52 +397,94 @@ TEST_F(ServiceContextTest, FLETokens_TestVectors) {
                       "52387ea6942d9299a89f70a2a4d8a4209ea1dfe56e29f6c0e3182ca7818b5c9c"_sd)),
                   serverTextPrefixToken);
 
+    auto edcTextExactDerivedFromDataToken =
+        EDCTextExactDerivedFromDataToken::deriveFrom(edcTextExactToken, sampleValue);
+    ASSERT_EQUALS(EDCTextExactDerivedFromDataToken(decodePrf(
+                      "6006D61E9E985EE8F6490AEBF0BFD120BF7A94317646165584894DA6ECBF0E97"_sd)),
+                  edcTextExactDerivedFromDataToken);
+    auto edcTextSubstringDerivedFromDataToken =
+        EDCTextSubstringDerivedFromDataToken::deriveFrom(edcTextSubstringToken, sampleValue);
+    ASSERT_EQUALS(EDCTextSubstringDerivedFromDataToken(decodePrf(
+                      "4DAB3B274AA5D5E99ECBD7F139CD420F25305C9F082B25AA96F1C9FE6E2122E3"_sd)),
+                  edcTextSubstringDerivedFromDataToken);
+    auto edcTextSuffixDerivedFromDataToken =
+        EDCTextSuffixDerivedFromDataToken::deriveFrom(edcTextSuffixToken, sampleValue);
+    ASSERT_EQUALS(EDCTextSuffixDerivedFromDataToken(decodePrf(
+                      "997F4A0B518F6C872951B65DCF26676D3886C98502FE0A7CC4F9C5EA4F30E94B"_sd)),
+                  edcTextSuffixDerivedFromDataToken);
+    auto edcTextPrefixDerivedFromDataToken =
+        EDCTextPrefixDerivedFromDataToken::deriveFrom(edcTextPrefixToken, sampleValue);
+    ASSERT_EQUALS(EDCTextPrefixDerivedFromDataToken(decodePrf(
+                      "D3EBDD34BCACD11C5929A09D2A897EB7938ABD4756CAB805F46FF0F4AFFA7583"_sd)),
+                  edcTextPrefixDerivedFromDataToken);
+
     auto edcTextExactDerivedFromDataTokenAndContentionFactorToken =
         EDCTextExactDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            edcTextExactToken, sampleValue, counter);
+            edcTextExactDerivedFromDataToken, counter);
     ASSERT_EQUALS(EDCTextExactDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "3551507189d32cc7768390cdd83071deeb3055ca86c4756b16bb740024b23610"_sd)),
                   edcTextExactDerivedFromDataTokenAndContentionFactorToken);
     auto edcTextSubstringDerivedFromDataTokenAndContentionFactorToken =
         EDCTextSubstringDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            edcTextSubstringToken, sampleValue, counter);
+            edcTextSubstringDerivedFromDataToken, counter);
     ASSERT_EQUALS(EDCTextSubstringDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "4b52f6daf3b688971eb5819820c3468b3c79ba45fd3e86134351f9baf203e0d1"_sd)),
                   edcTextSubstringDerivedFromDataTokenAndContentionFactorToken);
     auto edcTextSuffixDerivedFromDataTokenAndContentionFactorToken =
         EDCTextSuffixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            edcTextSuffixToken, sampleValue, counter);
+            edcTextSuffixDerivedFromDataToken, counter);
     ASSERT_EQUALS(EDCTextSuffixDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "c1f273913631a9a1b36fea884b3c8a3a141c9e21556981094ba15f262e540ac7"_sd)),
                   edcTextSuffixDerivedFromDataTokenAndContentionFactorToken);
     auto edcTextPrefixDerivedFromDataTokenAndContentionFactorToken =
         EDCTextPrefixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            edcTextPrefixToken, sampleValue, counter);
+            edcTextPrefixDerivedFromDataToken, counter);
     ASSERT_EQUALS(EDCTextPrefixDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "a8d68ebdb0e2d31754f693c56071b0b1d225e6ec5568aff875bd4f7c48c24f66"_sd)),
                   edcTextPrefixDerivedFromDataTokenAndContentionFactorToken);
 
+    auto escTextExactDerivedFromDataToken =
+        ESCTextExactDerivedFromDataToken::deriveFrom(escTextExactToken, sampleValue);
+    ASSERT_EQUALS(ESCTextExactDerivedFromDataToken(decodePrf(
+                      "6D3311B3DE0E32DBFE55A565327AD4B99D670474DDEF52AA200FC79D76B8C7C4"_sd)),
+                  escTextExactDerivedFromDataToken);
+    auto escTextSubstringDerivedFromDataToken =
+        ESCTextSubstringDerivedFromDataToken::deriveFrom(escTextSubstringToken, sampleValue);
+    ASSERT_EQUALS(ESCTextSubstringDerivedFromDataToken(decodePrf(
+                      "0E9D0F7C42658DD6894D3CBE34FFA0D39BE00BA72A21AC79BC3712B25783D247"_sd)),
+                  escTextSubstringDerivedFromDataToken);
+    auto escTextSuffixDerivedFromDataToken =
+        ESCTextSuffixDerivedFromDataToken::deriveFrom(escTextSuffixToken, sampleValue);
+    ASSERT_EQUALS(ESCTextSuffixDerivedFromDataToken(decodePrf(
+                      "A95860B4A08B39B002E5AEE557268786BE4E6D5A8552090DC397FBDB34374313"_sd)),
+                  escTextSuffixDerivedFromDataToken);
+    auto escTextPrefixDerivedFromDataToken =
+        ESCTextPrefixDerivedFromDataToken::deriveFrom(escTextPrefixToken, sampleValue);
+    ASSERT_EQUALS(ESCTextPrefixDerivedFromDataToken(decodePrf(
+                      "8DF7341DD42C1CEE8411657AFAEA424BFA818A539BF0668E1C355FC2A555E11A"_sd)),
+                  escTextPrefixDerivedFromDataToken);
+
     auto escTextExactDerivedFromDataTokenAndContentionFactorToken =
         ESCTextExactDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            escTextExactToken, sampleValue, counter);
+            escTextExactDerivedFromDataToken, counter);
     ASSERT_EQUALS(ESCTextExactDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "4cd82a4883ab0a6224a24937066f94827f5107e8bb2f0fa841e10aff8d49e8e4"_sd)),
                   escTextExactDerivedFromDataTokenAndContentionFactorToken);
     auto escTextSubstringDerivedFromDataTokenAndContentionFactorToken =
         ESCTextSubstringDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            escTextSubstringToken, sampleValue, counter);
+            escTextSubstringDerivedFromDataToken, counter);
     ASSERT_EQUALS(ESCTextSubstringDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "94f116183f14442e335902756e5b730683cd998c683b90d04dc9e8f48684bdb2"_sd)),
                   escTextSubstringDerivedFromDataTokenAndContentionFactorToken);
     auto escTextSuffixDerivedFromDataTokenAndContentionFactorToken =
         ESCTextSuffixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            escTextSuffixToken, sampleValue, counter);
+            escTextSuffixDerivedFromDataToken, counter);
     ASSERT_EQUALS(ESCTextSuffixDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "13390024c674c2d131771cf95af9787c8c7ef76b5d63078b3dc482cb4075a634"_sd)),
                   escTextSuffixDerivedFromDataTokenAndContentionFactorToken);
     auto escTextPrefixDerivedFromDataTokenAndContentionFactorToken =
         ESCTextPrefixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
-            escTextPrefixToken, sampleValue, counter);
+            escTextPrefixDerivedFromDataToken, counter);
     ASSERT_EQUALS(ESCTextPrefixDerivedFromDataTokenAndContentionFactorToken(decodePrf(
                       "9d0d5f84de779360c43be8e61710deb4b2705b6bf1e11ee41fba09fd4486b7c6"_sd)),
                   escTextPrefixDerivedFromDataTokenAndContentionFactorToken);
@@ -1250,9 +1292,8 @@ void roundTripTest(BSONObj doc, BSONType type, Operation opType, Fle2AlgorithmIn
 
     TestKeyVault keyVault;
 
-    auto inputDoc = BSON("plainText"
-                         << "sample"
-                         << "encrypted" << element);
+    auto inputDoc = BSON("plainText" << "sample"
+                                     << "encrypted" << element);
 
     auto buf = generatePlaceholder(element, opType, algorithm);
     BSONObjBuilder builder;
@@ -1295,9 +1336,8 @@ void roundTripMultiencrypted(BSONObj doc1,
 
     TestKeyVault keyVault;
 
-    auto inputDoc = BSON("plainText"
-                         << "sample"
-                         << "encrypted1" << element1 << "encrypted2" << element2);
+    auto inputDoc = BSON("plainText" << "sample"
+                                     << "encrypted1" << element1 << "encrypted2" << element2);
 
     auto buf1 = generatePlaceholder(element1, operation1, Fle2AlgorithmInt::kEquality, indexKeyId);
     auto buf2 = generatePlaceholder(element2, operation2, Fle2AlgorithmInt::kEquality, indexKey2Id);
@@ -1326,9 +1366,8 @@ TEST_F(ServiceContextTest, FLE_EDC_PrintTest) {
 
     TestKeyVault keyVault;
 
-    auto inputDoc = BSON("plainText"
-                         << "sample"
-                         << "encrypted" << element);
+    auto inputDoc = BSON("plainText" << "sample"
+                                     << "encrypted" << element);
 
     {
         auto buf = generatePlaceholder(element, Operation::kInsert, Fle2AlgorithmInt::kEquality);
@@ -1356,9 +1395,7 @@ TEST_F(ServiceContextTest, FLE_EDC_PrintTest) {
 
 TEST_F(ServiceContextTest, FLE_EDC_Allowed_Types) {
     const std::vector<std::pair<BSONObj, BSONType>> universallyAllowedObjects{
-        {BSON("sample"
-              << "value123"),
-         String},
+        {BSON("sample" << "value123"), String},
         {BSON("sample" << BSONBinData(
                   testValue.data(), testValue.size(), BinDataType::BinDataGeneral)),
          BinData},
@@ -1375,16 +1412,11 @@ TEST_F(ServiceContextTest, FLE_EDC_Allowed_Types) {
     const std::vector<std::pair<BSONObj, BSONType>> unindexedAllowedObjects{
         {BSON("sample" << 123.456), NumberDouble},
         {BSON("sample" << Decimal128()), NumberDecimal},
-        {BSON("sample" << BSON("nested"
-                               << "value")),
-         Object},
+        {BSON("sample" << BSON("nested" << "value")), Object},
         {BSON("sample" << BSON_ARRAY(1 << 23)), Array},
         {BSON("sample" << BSONDBRef("value1", OID())), DBRef},
         {BSON("sample" << BSONSymbol("value")), Symbol},
-        {BSON("sample" << BSONCodeWScope("value",
-                                         BSON("code"
-                                              << "something"))),
-         CodeWScope},
+        {BSON("sample" << BSONCodeWScope("value", BSON("code" << "something"))), CodeWScope},
     };
 
 
@@ -1459,19 +1491,15 @@ TEST_F(ServiceContextTest, FLE_EDC_Disallowed_Types) {
 
     illegalBSONType(BSON("sample" << MINKEY), MinKey, Fle2AlgorithmInt::kEquality);
 
-    illegalBSONType(BSON("sample" << BSON("nested"
-                                          << "value")),
-                    Object,
-                    Fle2AlgorithmInt::kEquality);
+    illegalBSONType(
+        BSON("sample" << BSON("nested" << "value")), Object, Fle2AlgorithmInt::kEquality);
     illegalBSONType(BSON("sample" << BSON_ARRAY(1 << 23)), Array, Fle2AlgorithmInt::kEquality);
 
     illegalBSONType(BSON("sample" << BSONUndefined), Undefined, Fle2AlgorithmInt::kEquality);
     illegalBSONType(BSON("sample" << BSONUndefined), Undefined, Fle2AlgorithmInt::kUnindexed);
     illegalBSONType(BSON("sample" << BSONNULL), jstNULL, Fle2AlgorithmInt::kEquality);
     illegalBSONType(BSON("sample" << BSONNULL), jstNULL, Fle2AlgorithmInt::kUnindexed);
-    illegalBSONType(BSON("sample" << BSONCodeWScope("value",
-                                                    BSON("code"
-                                                         << "something"))),
+    illegalBSONType(BSON("sample" << BSONCodeWScope("value", BSON("code" << "something"))),
                     CodeWScope,
                     Fle2AlgorithmInt::kEquality);
     illegalBSONType(BSON("sample" << MAXKEY), MaxKey, Fle2AlgorithmInt::kEquality);
@@ -1485,9 +1513,7 @@ void illegalRangeBSONType(BSONObj doc, BSONType type) {
 TEST_F(ServiceContextTest, FLE_EDC_Range_Disallowed_Types) {
 
     const std::vector<std::pair<BSONObj, BSONType>> disallowedObjects{
-        {BSON("sample"
-              << "value123"),
-         String},
+        {BSON("sample" << "value123"), String},
         {BSON("sample" << BSONBinData(
                   testValue.data(), testValue.size(), BinDataType::BinDataGeneral)),
          BinData},
@@ -1497,16 +1523,11 @@ TEST_F(ServiceContextTest, FLE_EDC_Range_Disallowed_Types) {
         {BSON("sample" << BSONRegEx("value1", "value2")), RegEx},
         {BSON("sample" << Timestamp()), bsonTimestamp},
         {BSON("sample" << BSONCode("value")), Code},
-        {BSON("sample" << BSON("nested"
-                               << "value")),
-         Object},
+        {BSON("sample" << BSON("nested" << "value")), Object},
         {BSON("sample" << BSON_ARRAY(1 << 23)), Array},
         {BSON("sample" << BSONDBRef("value1", OID())), DBRef},
         {BSON("sample" << BSONSymbol("value")), Symbol},
-        {BSON("sample" << BSONCodeWScope("value",
-                                         BSON("code"
-                                              << "something"))),
-         CodeWScope},
+        {BSON("sample" << BSONCodeWScope("value", BSON("code" << "something"))), CodeWScope},
         {BSON("sample" << MINKEY), MinKey},
         {BSON("sample" << MAXKEY), MaxKey},
     };
@@ -1606,9 +1627,8 @@ void disallowedEqualityPayloadType(BSONType type) {
     TestKeyVault keyVault;
 
 
-    auto inputDoc = BSON("plainText"
-                         << "sample"
-                         << "encrypted" << element);
+    auto inputDoc = BSON("plainText" << "sample"
+                                     << "encrypted" << element);
 
     auto buf = generatePlaceholder(element, Operation::kInsert);
     BSONObjBuilder builder;
@@ -2030,12 +2050,380 @@ TEST_F(ServiceContextTest, FLE_EDC_ServerSide_Range_Payloads_V2) {
     ASSERT(swTags.getValue()[1] == tag);
 }
 
+static FLE2InsertUpdatePayloadV2 generateTestIUPV2ForTextSearch(BSONElement element) {
+    FLE2InsertUpdatePayloadV2 iupayload;
+    const FLECounter contention = 0;
+    auto value = ConstDataRange(element.value(), element.value() + element.valuesize());
+
+    auto collectionToken = CollectionsLevel1Token::deriveFrom(getIndexKey());
+    auto serverEncryptToken = ServerDataEncryptionLevel1Token::deriveFrom(getIndexKey());
+    auto serverDerivationToken = ServerTokenDerivationLevel1Token::deriveFrom(getIndexKey());
+    auto edcToken = EDCToken::deriveFrom(collectionToken);
+    auto escToken = ESCToken::deriveFrom(collectionToken);
+    auto ecocToken = ECOCToken::deriveFrom(collectionToken);
+
+    PrfBlock nullBlock;
+    // d, s, l, p are bogus data
+    iupayload.setEdcDerivedToken(EDCDerivedFromDataTokenAndContentionFactorToken(nullBlock));
+    iupayload.setEscDerivedToken(ESCDerivedFromDataTokenAndContentionFactorToken(nullBlock));
+    iupayload.setServerDerivedFromDataToken(ServerDerivedFromDataToken(nullBlock));
+    iupayload.setEncryptedTokens(
+        StateCollectionTokensV2(iupayload.getEscDerivedToken(), boost::none).encrypt(ecocToken));
+    // u, t, v, e, k
+    iupayload.setIndexKeyId(indexKeyId);
+    iupayload.setType(element.type());
+    iupayload.setValue(value);
+    iupayload.setServerEncryptionToken(serverEncryptToken);
+    iupayload.setContentionFactor(contention);
+    // b
+    iupayload.setTextSearchTokenSets(TextSearchTokenSets{{}, {}, {}, {}});
+    auto& tsts = iupayload.getTextSearchTokenSets().value();
+    {
+        auto& exact = tsts.getExactTokenSet();
+        auto edcDataDerivedToken = EDCTextExactDerivedFromDataToken::deriveFrom(
+            EDCTextExactToken::deriveFrom(edcToken), value);
+        auto escDataDerivedToken = ESCTextExactDerivedFromDataToken::deriveFrom(
+            ESCTextExactToken::deriveFrom(escToken), value);
+        exact.setEdcDerivedToken(
+            EDCTextExactDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                edcDataDerivedToken, contention));
+        exact.setEscDerivedToken(
+            ESCTextExactDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                escDataDerivedToken, contention));
+        exact.setServerDerivedFromDataToken(ServerTextExactDerivedFromDataToken::deriveFrom(
+            ServerTextExactToken::deriveFrom(serverDerivationToken), value));
+        exact.setEncryptedTokens(
+            StateCollectionTokensV2(ESCDerivedFromDataTokenAndContentionFactorToken(
+                                        exact.getEscDerivedToken().asPrfBlock()),
+                                    boost::none)
+                .encrypt(ecocToken));
+    }
+    return iupayload;
+}
+
+static void generateTextTokenSetsForIUPV2(FLE2InsertUpdatePayloadV2& iupayload,
+                                          const std::vector<StringData>& strings,
+                                          QueryTypeEnum type,
+                                          uint32_t contention = 0) {
+    if (!iupayload.getTextSearchTokenSets().has_value()) {
+        iupayload.setTextSearchTokenSets(TextSearchTokenSets{{}, {}, {}, {}});
+    }
+    auto& tsts = iupayload.getTextSearchTokenSets().value();
+
+    auto collectionToken = CollectionsLevel1Token::deriveFrom(getIndexKey());
+    auto serverEncryptToken = ServerDataEncryptionLevel1Token::deriveFrom(getIndexKey());
+    auto serverDerivationToken = ServerTokenDerivationLevel1Token::deriveFrom(getIndexKey());
+    auto edcToken = EDCToken::deriveFrom(collectionToken);
+    auto escToken = ESCToken::deriveFrom(collectionToken);
+    auto ecocToken = ECOCToken::deriveFrom(collectionToken);
+
+    for (const auto& str : strings) {
+        auto doc = BSON("" << str);
+        auto element = doc.firstElement();
+        auto value = ConstDataRange(element.value(), element.value() + element.valuesize());
+
+        if (type == QueryTypeEnum::SubstringPreview) {
+            tsts.getSubstringTokenSets().push_back({});
+            auto& ts = tsts.getSubstringTokenSets().back();
+            auto edcDataDerivedToken = EDCTextSubstringDerivedFromDataToken::deriveFrom(
+                EDCTextSubstringToken::deriveFrom(edcToken), value);
+            auto escDataDerivedToken = ESCTextSubstringDerivedFromDataToken::deriveFrom(
+                ESCTextSubstringToken::deriveFrom(escToken), value);
+
+            ts.setEdcDerivedToken(
+                EDCTextSubstringDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                    edcDataDerivedToken, contention));
+            ts.setEscDerivedToken(
+                ESCTextSubstringDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                    escDataDerivedToken, contention));
+            ts.setServerDerivedFromDataToken(ServerTextSubstringDerivedFromDataToken::deriveFrom(
+                ServerTextSubstringToken::deriveFrom(serverDerivationToken), value));
+            ts.setEncryptedTokens(
+                StateCollectionTokensV2(ESCDerivedFromDataTokenAndContentionFactorToken(
+                                            ts.getEscDerivedToken().asPrfBlock()),
+                                        boost::none)
+                    .encrypt(ecocToken));
+        } else if (type == QueryTypeEnum::SuffixPreview) {
+            tsts.getSuffixTokenSets().push_back({});
+            auto& ts = tsts.getSuffixTokenSets().back();
+            auto edcDataDerivedToken = EDCTextSuffixDerivedFromDataToken::deriveFrom(
+                EDCTextSuffixToken::deriveFrom(edcToken), value);
+            auto escDataDerivedToken = ESCTextSuffixDerivedFromDataToken::deriveFrom(
+                ESCTextSuffixToken::deriveFrom(escToken), value);
+
+            ts.setEdcDerivedToken(
+                EDCTextSuffixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                    edcDataDerivedToken, contention));
+            ts.setEscDerivedToken(
+                ESCTextSuffixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                    escDataDerivedToken, contention));
+            ts.setServerDerivedFromDataToken(ServerTextSuffixDerivedFromDataToken::deriveFrom(
+                ServerTextSuffixToken::deriveFrom(serverDerivationToken), value));
+            ts.setEncryptedTokens(
+                StateCollectionTokensV2(ESCDerivedFromDataTokenAndContentionFactorToken(
+                                            ts.getEscDerivedToken().asPrfBlock()),
+                                        boost::none)
+                    .encrypt(ecocToken));
+        } else if (type == QueryTypeEnum::PrefixPreview) {
+            tsts.getPrefixTokenSets().push_back({});
+            auto& ts = tsts.getPrefixTokenSets().back();
+            auto edcDataDerivedToken = EDCTextPrefixDerivedFromDataToken::deriveFrom(
+                EDCTextPrefixToken::deriveFrom(edcToken), value);
+            auto escDataDerivedToken = ESCTextPrefixDerivedFromDataToken::deriveFrom(
+                ESCTextPrefixToken::deriveFrom(escToken), value);
+
+            ts.setEdcDerivedToken(
+                EDCTextPrefixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                    edcDataDerivedToken, contention));
+            ts.setEscDerivedToken(
+                ESCTextPrefixDerivedFromDataTokenAndContentionFactorToken::deriveFrom(
+                    escDataDerivedToken, contention));
+            ts.setServerDerivedFromDataToken(ServerTextPrefixDerivedFromDataToken::deriveFrom(
+                ServerTextPrefixToken::deriveFrom(serverDerivationToken), value));
+            ts.setEncryptedTokens(
+                StateCollectionTokensV2(ESCDerivedFromDataTokenAndContentionFactorToken(
+                                            ts.getEscDerivedToken().asPrfBlock()),
+                                        boost::none)
+                    .encrypt(ecocToken));
+        }
+    }
+}
+
+static std::vector<ServerDerivedFromDataToken> collectServerDerivedFromDataTokensForTextSearch(
+    FLE2InsertUpdatePayloadV2& iupayload) {
+    std::vector<ServerDerivedFromDataToken> tokens;
+    if (!iupayload.getTextSearchTokenSets().has_value()) {
+        return tokens;
+    }
+    tokens.emplace_back(iupayload.getTextSearchTokenSets()
+                            ->getExactTokenSet()
+                            .getServerDerivedFromDataToken()
+                            .asPrfBlock());
+    for (auto& ts : iupayload.getTextSearchTokenSets()->getSubstringTokenSets()) {
+        tokens.emplace_back(ts.getServerDerivedFromDataToken().asPrfBlock());
+    }
+    for (auto& ts : iupayload.getTextSearchTokenSets()->getSuffixTokenSets()) {
+        tokens.emplace_back(ts.getServerDerivedFromDataToken().asPrfBlock());
+    }
+    for (auto& ts : iupayload.getTextSearchTokenSets()->getPrefixTokenSets()) {
+        tokens.emplace_back(ts.getServerDerivedFromDataToken().asPrfBlock());
+    }
+    return tokens;
+}
+
+// Tests round trip unparse/parse of FLE2IndexedTextEncryptedValue
+TEST_F(ServiceContextTest, FLE_EDC_ServerSide_TextSearch_Payloads) {
+    auto doc = BSON("sample" << "ssssssssss");
+
+    EDCServerPayloadInfo payload;
+    auto& iupayload = payload.payload = generateTestIUPV2ForTextSearch(doc.firstElement());
+
+    const std::vector<StringData> substrs = {"s", "ss", "sss", "ssss", "fake", "fake"};
+    const std::vector<StringData> suffixes = {"s", "ss", "fake", "fake"};
+    const std::vector<StringData> prefixes = {"s", "ss", "sss", "fake", "fake"};
+    const size_t tagCount = 1 + substrs.size() + suffixes.size() + prefixes.size();
+
+    generateTextTokenSetsForIUPV2(iupayload, substrs, QueryTypeEnum::SubstringPreview);
+    generateTextTokenSetsForIUPV2(iupayload, suffixes, QueryTypeEnum::SuffixPreview);
+    generateTextTokenSetsForIUPV2(iupayload, prefixes, QueryTypeEnum::PrefixPreview);
+
+    payload.counts = std::vector<uint64_t>(tagCount);
+    std::iota(payload.counts.begin(), payload.counts.end(), 1);  // fill with values 1...tagCount
+
+    std::vector<PrfBlock> tags = EDCServerCollection::generateTagsForTextSearch(payload);
+    ASSERT_EQ(tags.size(), tagCount);
+
+    auto serverPayload =
+        FLE2IndexedTextEncryptedValue::fromUnencrypted(iupayload, tags, payload.counts);
+    auto buf = uassertStatusOK(serverPayload.serialize());
+
+    const size_t expectedSize = 1 + UUID::kNumBytes + 1 + (3 * sizeof(uint32_t)) +
+        (crypto::aesCTRIVSize + iupayload.getValue().length()) +
+        (tagCount * sizeof(FLE2TagAndEncryptedMetadataBlock::SerializedBlob));
+    ASSERT_EQ(buf.size(), expectedSize);
+
+    FLE2IndexedTextEncryptedValue parsed(buf);
+
+    ASSERT_EQ(parsed.getBsonType(), iupayload.getType());
+    ASSERT_EQ(parsed.getKeyId(), iupayload.getIndexKeyId());
+    ASSERT_EQ(parsed.getTagCount(), tagCount);
+    ASSERT_EQ(parsed.getSubstringTagCount(), substrs.size());
+    ASSERT_EQ(parsed.getSuffixTagCount(), suffixes.size());
+    ASSERT_EQ(parsed.getPrefixTagCount(), prefixes.size());
+
+    auto serverEncryptToken = ServerDataEncryptionLevel1Token::deriveFrom(getIndexKey());
+    auto swValue =
+        FLEUtil::decryptData(serverEncryptToken.toCDR(), parsed.getServerEncryptedValue());
+    ASSERT(swValue.isOK());
+    ASSERT_EQ(swValue.getValue().size(), iupayload.getValue().length());
+    ASSERT(std::equal(swValue.getValue().begin(),
+                      swValue.getValue().end(),
+                      iupayload.getValue().data<uint8_t>()));
+
+    auto serverDataTokens = collectServerDerivedFromDataTokensForTextSearch(iupayload);
+    ASSERT_EQ(serverDataTokens.size(), parsed.getTagCount());
+
+    auto substrBlks = parsed.getSubstringMetadataBlocks();
+    auto suffixBlks = parsed.getSuffixMetadataBlocks();
+    auto prefixBlks = parsed.getPrefixMetadataBlocks();
+    ASSERT_EQ(substrBlks.size(), substrs.size());
+    ASSERT_EQ(suffixBlks.size(), suffixes.size());
+    ASSERT_EQ(prefixBlks.size(), prefixes.size());
+
+    std::vector<FLE2TagAndEncryptedMetadataBlockView> mblocks;
+    mblocks.reserve(parsed.getTagCount());
+    mblocks.push_back(parsed.getExactStringMetadataBlock());
+    mblocks.insert(mblocks.end(), substrBlks.begin(), substrBlks.end());
+    mblocks.insert(mblocks.end(), suffixBlks.begin(), suffixBlks.end());
+    mblocks.insert(mblocks.end(), prefixBlks.begin(), prefixBlks.end());
+
+    // verify metadata blocks have the correct tags
+    for (int i = 0; i < parsed.getTagCount(); i++) {
+        auto swMeta =
+            FLE2TagAndEncryptedMetadataBlock::decryptAndParse(serverDataTokens[i], mblocks[i]);
+        ASSERT(swMeta.isOK());
+        ASSERT_EQ(swMeta.getValue().count, payload.counts[i]);
+        ASSERT_EQ(swMeta.getValue().contentionFactor, 0);
+        ASSERT_EQ(swMeta.getValue().tag, tags[i]);
+        ASSERT(FLE2TagAndEncryptedMetadataBlock::isValidZerosBlob(swMeta.getValue().zeros));
+    }
+
+    // Verify the metadata blocks have unique encrypted zeros blob
+    // This ensures the AES-CTR IV is randomly set for blocks that use the same keys
+    // like text search padding blocks.
+    stdx::unordered_set<std::string> encryptedZeroesSet;
+    for (auto& mblock : mblocks) {
+        ASSERT(encryptedZeroesSet.insert(hexdump(mblock.encryptedZeros)).second);
+    }
+}
+
+TEST_F(ServiceContextTest, FLE_EDC_ServerSide_TextSearch_Payloads_EmptySubstringSuffixPrefixSets) {
+    // test all of substring+suffix+prefix token sets empty
+    auto doc = BSON("sample" << "ssssssssss");
+    EDCServerPayloadInfo payload;
+    auto& iupayload = payload.payload = generateTestIUPV2ForTextSearch(doc.firstElement());
+    payload.counts = std::vector<uint64_t>(1);
+
+    std::vector<PrfBlock> tags = EDCServerCollection::generateTagsForTextSearch(payload);
+    ASSERT_EQ(tags.size(), 1);
+
+    auto serverPayload =
+        FLE2IndexedTextEncryptedValue::fromUnencrypted(iupayload, tags, payload.counts);
+    auto buf = uassertStatusOK(serverPayload.serialize());
+    FLE2IndexedTextEncryptedValue parsed(buf);
+    ASSERT_EQ(parsed.getTagCount(), 1);
+    ASSERT_EQ(parsed.getSubstringTagCount(), 0);
+    ASSERT_EQ(parsed.getSuffixTagCount(), 0);
+    ASSERT_EQ(parsed.getPrefixTagCount(), 0);
+}
+
+TEST_F(ServiceContextTest, FLE_EDC_ServerSide_TextSearch_Payloads_InvalidArgs) {
+    auto doc = BSON("sample" << "ssssssssss");
+
+    EDCServerPayloadInfo payload;
+    auto& iupayload = payload.payload = generateTestIUPV2ForTextSearch(doc.firstElement());
+    generateTextTokenSetsForIUPV2(
+        iupayload, {"s", "ss", "sss", "ssss"}, QueryTypeEnum::SubstringPreview);
+    payload.counts = std::vector<uint64_t>(5);
+
+    std::vector<PrfBlock> tags = EDCServerCollection::generateTagsForTextSearch(payload);
+
+    // test no text search token set in iupayload
+    {
+        auto tmpSets = iupayload.getTextSearchTokenSets();
+        iupayload.setTextSearchTokenSets(boost::none);
+        ASSERT_THROWS_CODE(
+            FLE2IndexedTextEncryptedValue::fromUnencrypted(iupayload, tags, payload.counts),
+            DBException,
+            9784102);
+        iupayload.setTextSearchTokenSets(std::move(tmpSets));
+    }
+
+    // test counters has wrong size
+    {
+        payload.counts.push_back(1);
+        ASSERT_THROWS_CODE(
+            FLE2IndexedTextEncryptedValue::fromUnencrypted(iupayload, tags, payload.counts),
+            DBException,
+            9784107);
+        payload.counts.pop_back();
+    }
+
+    // test tags vector has wrong size
+    {
+        tags.push_back(PrfBlock{});
+        ASSERT_THROWS_CODE(
+            FLE2IndexedTextEncryptedValue::fromUnencrypted(iupayload, tags, payload.counts),
+            DBException,
+            9784113);
+        tags.pop_back();
+    }
+
+    // test wrong BSON type
+    {
+        iupayload.setType(BSONType::NumberInt);
+        ASSERT_THROWS_CODE(
+            FLE2IndexedTextEncryptedValue::fromUnencrypted(iupayload, tags, payload.counts),
+            DBException,
+            9784103);
+        iupayload.setType(BSONType::String);
+    }
+
+    // test substr/suffix/prefix token sets too large
+    {
+        EDCServerPayloadInfo tmpPayload;
+        tmpPayload.payload = generateTestIUPV2ForTextSearch(doc.firstElement());
+        generateTextTokenSetsForIUPV2(tmpPayload.payload,
+                                      std::vector<StringData>(255, "s"_sd),
+                                      QueryTypeEnum::SubstringPreview);
+        tmpPayload.counts = std::vector<uint64_t>(256);
+        auto tmpTags = EDCServerCollection::generateTagsForTextSearch(tmpPayload);
+        ASSERT_THROWS_CODE(FLE2IndexedTextEncryptedValue::fromUnencrypted(
+                               tmpPayload.payload, tmpTags, tmpPayload.counts),
+                           DBException,
+                           9784104);
+    }
+
+    {
+        EDCServerPayloadInfo tmpPayload;
+        tmpPayload.payload = generateTestIUPV2ForTextSearch(doc.firstElement());
+        generateTextTokenSetsForIUPV2(tmpPayload.payload,
+                                      std::vector<StringData>(127, "s"_sd),
+                                      QueryTypeEnum::SubstringPreview);
+        generateTextTokenSetsForIUPV2(
+            tmpPayload.payload, std::vector<StringData>(128, "s"_sd), QueryTypeEnum::SuffixPreview);
+        tmpPayload.counts = std::vector<uint64_t>(256);
+        auto tmpTags = EDCServerCollection::generateTagsForTextSearch(tmpPayload);
+        ASSERT_THROWS_CODE(FLE2IndexedTextEncryptedValue::fromUnencrypted(
+                               tmpPayload.payload, tmpTags, tmpPayload.counts),
+                           DBException,
+                           9784105);
+    }
+
+    {
+        EDCServerPayloadInfo tmpPayload;
+        tmpPayload.payload = generateTestIUPV2ForTextSearch(doc.firstElement());
+        generateTextTokenSetsForIUPV2(tmpPayload.payload,
+                                      std::vector<StringData>(85, "s"_sd),
+                                      QueryTypeEnum::SubstringPreview);
+        generateTextTokenSetsForIUPV2(
+            tmpPayload.payload, std::vector<StringData>(85, "s"_sd), QueryTypeEnum::SuffixPreview);
+        generateTextTokenSetsForIUPV2(
+            tmpPayload.payload, std::vector<StringData>(85, "s"_sd), QueryTypeEnum::PrefixPreview);
+        tmpPayload.counts = std::vector<uint64_t>(256);
+        auto tmpTags = EDCServerCollection::generateTagsForTextSearch(tmpPayload);
+        ASSERT_THROWS_CODE(FLE2IndexedTextEncryptedValue::fromUnencrypted(
+                               tmpPayload.payload, tmpTags, tmpPayload.counts),
+                           DBException,
+                           9784106);
+    }
+}
+
 TEST_F(ServiceContextTest, FLE_EDC_DuplicateSafeContent_CompatibleType) {
 
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
     auto inputDoc = BSON(kSafeContent << BSON_ARRAY(1 << 2 << 4) << "encrypted" << element);
 
@@ -2068,8 +2456,7 @@ TEST_F(ServiceContextTest, FLE_EDC_DuplicateSafeContent_IncompatibleType) {
 
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
 
     auto buf = generatePlaceholder(element, Operation::kInsert);
@@ -2297,8 +2684,7 @@ TEST_F(ServiceContextTest, EncryptionInformation_BadSchema) {
     EncryptionInformation ei;
     ei.setType(1);
 
-    ei.setSchema(BSON("a"
-                      << "b"));
+    ei.setSchema(BSON("a" << "b"));
 
     auto obj = ei.toBSON();
 
@@ -2335,8 +2721,7 @@ TEST_F(ServiceContextTest, EncryptionInformation_MissingStateCollection) {
 TEST_F(ServiceContextTest, IndexedFields_FetchTwoLevels) {
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
     auto inputDoc = BSON(kSafeContent << BSON_ARRAY(1 << 2 << 4) << "encrypted" << element);
 
@@ -2383,8 +2768,7 @@ TEST_F(ServiceContextTest, IndexedFields_FetchTwoLevels) {
 TEST_F(ServiceContextTest, IndexedFields_DuplicateIndexKeyIds) {
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
     auto inputDoc = BSON(kSafeContent << BSON_ARRAY(1 << 2 << 4) << "encrypted" << element);
 
@@ -2482,8 +2866,7 @@ TEST_F(ServiceContextTest, EDC_UnindexedEncryptDecrypt) {
     TestKeyVault keyVault;
     FLEUserKeyAndId userKey = keyVault.getUserKeyById(indexKey2Id);
 
-    auto inputDoc = BSON("a"
-                         << "sample");
+    auto inputDoc = BSON("a" << "sample");
     auto element = inputDoc.firstElement();
     auto const elementData =
         std::vector<uint8_t>(element.value(), element.value() + element.valuesize());
@@ -2511,8 +2894,7 @@ TEST_F(ServiceContextTest, EDC_NonMatchingSchema) {
 
     BSONObjBuilder builder;
     builder.append("plainText", "sample");
-    auto doc = BSON("a"
-                    << "not really a secret");
+    auto doc = BSON("a" << "not really a secret");
     auto element = doc.firstElement();
     auto buf = generatePlaceholder(element, Operation::kInsert);
     builder.appendBinData("not-encrypted", buf.size(), BinDataType::Encrypt, buf.data());
@@ -2598,8 +2980,7 @@ BSONObj encryptUpdateDocument(BSONObj obj, FLEKeyVault* keyVault) {
 TEST_F(ServiceContextTest, FLE_Update_Basic) {
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
     auto buf = generatePlaceholder(element, Operation::kInsert);
     auto inputDoc = BSON(
@@ -2631,8 +3012,7 @@ TEST_F(ServiceContextTest, FLE_Update_Empty) {
 TEST_F(ServiceContextTest, FLE_Update_BadPush) {
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
 
     auto buf = generatePlaceholder(element, Operation::kInsert);
@@ -2645,8 +3025,7 @@ TEST_F(ServiceContextTest, FLE_Update_BadPush) {
 TEST_F(ServiceContextTest, FLE_Update_PushToSafeContent) {
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
 
     auto buf = generatePlaceholder(element, Operation::kInsert);
@@ -2659,8 +3038,7 @@ TEST_F(ServiceContextTest, FLE_Update_PushToSafeContent) {
 TEST_F(ServiceContextTest, FLE_Update_PushToOtherfield) {
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
 
     auto buf = generatePlaceholder(element, Operation::kInsert);
@@ -2764,8 +3142,7 @@ TEST_F(ServiceContextTest, FLE_Update_GetRemovedTags) {
 TEST_F(ServiceContextTest, FLE_Update_GenerateUpdateToRemoveTags) {
     TestKeyVault keyVault;
 
-    auto doc = BSON("value"
-                    << "123456");
+    auto doc = BSON("value" << "123456");
     auto element = doc.firstElement();
     auto buf = generatePlaceholder(element, Operation::kInsert);
 
@@ -2848,10 +3225,8 @@ TEST_F(ServiceContextTest, CompactionHelpersTest_parseCompactionTokensTest) {
 }
 
 TEST_F(ServiceContextTest, CompactionHelpersTest_parseCompactionTokensTestInvalidType) {
-    ASSERT_THROWS_CODE(CompactionHelpers::parseCompactionTokens(BSON("foo"
-                                                                     << "bar")),
-                       DBException,
-                       6346801);
+    ASSERT_THROWS_CODE(
+        CompactionHelpers::parseCompactionTokens(BSON("foo" << "bar")), DBException, 6346801);
 }
 
 TEST_F(ServiceContextTest, CompactionHelpersTest_parseCompactionTokensTestInvalidSubType) {
@@ -3161,8 +3536,10 @@ TEST_F(ServiceContextTest, RangeTest_Double_Bounds_Precision) {
         ASSERT_EQ(_ost.max, 18446744073709551615ULL);    \
         ASSERT_EQ(_ost.value, z);                        \
     }
-#define ASSERT_EIBB_ERROR(v, ub, lb, prc, code) \
-    { ASSERT_THROWS_CODE(getTypeInfoDouble((v), lb, ub, prc), DBException, code); }
+#define ASSERT_EIBB_ERROR(v, ub, lb, prc, code)                                     \
+    {                                                                               \
+        ASSERT_THROWS_CODE(getTypeInfoDouble((v), lb, ub, prc), DBException, code); \
+    }
 
     ASSERT_EIBB(0, 1, -1, 3, 1000);
     ASSERT_EIBB(0, 1, -1E5, 3, 100000000);
@@ -5294,8 +5671,10 @@ TEST_F(EdgeTestFixture, canUsePrecisionMode) {
         ASSERT_EQ(expected_bits_out, bits_out);                          \
     }
 
-#define CAN_USE_PRECISION_MODE_ERRORS(lb, ub, prc, code) \
-    { ASSERT_THROWS_CODE(canUsePrecisionMode(lb, ub, prc, nullptr), DBException, code); }
+#define CAN_USE_PRECISION_MODE_ERRORS(lb, ub, prc, code)                                  \
+    {                                                                                     \
+        ASSERT_THROWS_CODE(canUsePrecisionMode(lb, ub, prc, nullptr), DBException, code); \
+    }
 
     /**
      * Test Cases: (min, max, precision) -> (bool, bits_out)
@@ -5449,6 +5828,20 @@ TEST_F(AnchorPaddingFixture, generatePaddingDocument) {
         auto dec = std::move(swDecrypt.getValue());
         ASSERT_TRUE(std::all_of(dec.begin(), dec.end(), [](auto b) { return b == 0; }));
     }
+}
+
+TEST_F(ServiceContextTest, fleEncryptAndDecrypt) {
+    PrfBlock key;
+    uassertStatusOK(crypto::engineRandBytes(DataRange(key)));
+    std::vector<uint8_t> plaintext{'a', 'b', 'c', 'd', 'e', 'f'};
+    auto encrypt1 = uassertStatusOK(FLEUtil::encryptData(key, plaintext));
+    auto encrypt2 = uassertStatusOK(FLEUtil::encryptData(key, plaintext));
+    // Ensure that we are correctly generating random IVs in encryptData.
+    ASSERT_NE(encrypt1, encrypt2);
+    auto decrypt1 = uassertStatusOK(FLEUtil::decryptData(key, encrypt1));
+    auto decrypt2 = uassertStatusOK(FLEUtil::decryptData(key, encrypt2));
+    ASSERT_EQ(decrypt1, decrypt2);
+    ASSERT_EQ(decrypt1, plaintext);
 }
 
 }  // namespace mongo

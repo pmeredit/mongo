@@ -30,7 +30,7 @@
 #include "expression_context.h"
 #include "mongo/bson/json.h"
 
-#include "mongo/unittest/assert.h"
+#include "mongo/unittest/unittest.h"
 
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_rank_fusion.h"
@@ -45,7 +45,8 @@ namespace {
 class DocumentSourceRankFusionTest : service_context_test::WithSetupTransportLayer,
                                      public AggregationContextFixture {
 private:
-    RAIIServerParameterControllerForTest featureFlagController{"featureFlagRankFusionBasic", true};
+    RAIIServerParameterControllerForTest featureFlagController1{"featureFlagRankFusionBasic", true};
+    RAIIServerParameterControllerForTest featureFlagController2{"featureFlagRankFusionFull", true};
 };
 
 TEST_F(DocumentSourceRankFusionTest, ErrorsIfNoInputsField) {
@@ -119,7 +120,8 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfMissingPipeline) {
                        ErrorCodes::IDLFailedToParse);
 }
 
-TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineAllowed) {
+TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineAllowedBasicRankFusion) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagRankFusionFull", false);
     auto spec = fromjson(R"({
         $rankFusion: {
             input: {
@@ -317,11 +319,13 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfEmptyPipeline) {
                        9834300);
 }
 
-TEST_F(DocumentSourceRankFusionTest, CheckMultiplePipelinesAndOptionalArgumentsAllowed) {
+TEST_F(DocumentSourceRankFusionTest,
+       CheckMultiplePipelinesAndOptionalArgumentsAllowedBasicRankFusion) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagRankFusionFull", false);
+
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
 
     auto spec = fromjson(R"({
         $rankFusion: {
@@ -709,9 +713,8 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfInternalSearchMongotRemoteUsed) {
 
 TEST_F(DocumentSourceRankFusionTest, CheckLimitSampleUnionwithAllowed) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
     auto nsToUnionWith1 = NamespaceString::createNamespaceString_forTest(
         expCtx->getNamespaceString().dbName(), "novels");
     expCtx->addResolvedNamespaces({nsToUnionWith1});
@@ -928,6 +931,16 @@ TEST_F(DocumentSourceRankFusionTest, CheckLimitSampleUnionwithAllowed) {
                     }
                 },
                 {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$sample_score",
+                                "$unionWith_score"
+                            ]
+                        }
+                    }
+                },
+                {
                     "$sort": {
                         "score": -1,
                         "_id": 1
@@ -945,9 +958,8 @@ TEST_F(DocumentSourceRankFusionTest, CheckLimitSampleUnionwithAllowed) {
 
 TEST_F(DocumentSourceRankFusionTest, ErrorsIfNestedUnionWithModifiesFields) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
     auto nsToUnionWith1 = NamespaceString::createNamespaceString_forTest(
         expCtx->getNamespaceString().dbName(), "novels");
     expCtx->addResolvedNamespaces({nsToUnionWith1});
@@ -995,9 +1007,8 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfNestedUnionWithModifiesFields) {
 
 TEST_F(DocumentSourceRankFusionTest, CheckGeoNearAllowedWhenNoIncludeLocsAndNoDistanceField) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
     auto spec = fromjson(R"({
         $rankFusion: {
             input: {
@@ -1191,6 +1202,16 @@ TEST_F(DocumentSourceRankFusionTest, CheckGeoNearAllowedWhenNoIncludeLocsAndNoDi
                 },
                 {
                     "$addFields": {
+                        "score": {
+                            "$add": [
+                                "$agatha_score",
+                                "$geo_score"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$setMetadata": {
                         "score": {
                             "$add": [
                                 "$agatha_score",
@@ -1399,9 +1420,8 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfWeightsIsNotObject) {
 
 TEST_F(DocumentSourceRankFusionTest, DoesNotErrorIfEmptyWeights) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
 
     auto spec = fromjson(R"({
         $rankFusion: {
@@ -1436,9 +1456,8 @@ TEST_F(DocumentSourceRankFusionTest, DoesNotErrorIfEmptyWeights) {
 
 TEST_F(DocumentSourceRankFusionTest, DoesNotErrorIfOnlySomeWeights) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
 
     auto spec = fromjson(R"({
         $rankFusion: {
@@ -1506,7 +1525,7 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfMisnamedWeight) {
 
     ASSERT_THROWS_CODE(DocumentSourceRankFusion::createFromBson(spec.firstElement(), getExpCtx()),
                        AssertionException,
-                       9967400);
+                       9967500);
 }
 
 TEST_F(DocumentSourceRankFusionTest, ErrorsIfExtraWeight) {
@@ -1620,9 +1639,8 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfNegativeWeightValue) {
 
 TEST_F(DocumentSourceRankFusionTest, CheckWeightsApplied) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
     auto spec = fromjson(R"({
         $rankFusion: {
             input: {
@@ -1816,6 +1834,16 @@ TEST_F(DocumentSourceRankFusionTest, CheckWeightsApplied) {
                     }
                 },
                 {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$matchAuthor_score",
+                                "$matchGenres_score"
+                            ]
+                        }
+                    }
+                },
+                {
                     "$sort": {
                         "score": -1,
                         "_id": 1
@@ -1835,9 +1863,8 @@ TEST_F(DocumentSourceRankFusionTest, CheckWeightsApplied) {
 // combination.weights; checks that the weights are applied to the pipeline with the same name.
 TEST_F(DocumentSourceRankFusionTest, CheckWeightsAppliedToCorrectPipeline) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
     auto spec = fromjson(R"({
         $rankFusion: {
             input: {
@@ -2031,6 +2058,16 @@ TEST_F(DocumentSourceRankFusionTest, CheckWeightsAppliedToCorrectPipeline) {
                     }
                 },
                 {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$matchAuthor_score",
+                                "$matchGenres_score"
+                            ]
+                        }
+                    }
+                },
+                {
                     "$sort": {
                         "score": -1,
                         "_id": 1
@@ -2048,9 +2085,8 @@ TEST_F(DocumentSourceRankFusionTest, CheckWeightsAppliedToCorrectPipeline) {
 
 TEST_F(DocumentSourceRankFusionTest, CheckWeightsAppliedMultiplePipelines) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
     auto spec = fromjson(R"({
         $rankFusion: {
             input: {
@@ -2430,6 +2466,18 @@ TEST_F(DocumentSourceRankFusionTest, CheckWeightsAppliedMultiplePipelines) {
                     }
                 },
                 {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$matchAuthor_score",
+                                "$matchDistance_score",
+                                "$matchGenres_score",
+                                "$matchPlot_score"
+                            ]
+                        }
+                    }
+                },
+                {
                     "$sort": {
                         "score": -1,
                         "_id": 1
@@ -2445,6 +2493,31 @@ TEST_F(DocumentSourceRankFusionTest, CheckWeightsAppliedMultiplePipelines) {
         asOneObj);
 }
 
+TEST_F(DocumentSourceRankFusionTest, ScoreDetailsIsRejectedWithoutRankFusionFullFF) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagRankFusionFull", false);
+    auto spec = fromjson(R"({
+        $rankFusion: {
+            input: {
+                pipelines: {
+                    agatha: [
+                        { $match : { author : "Agatha Christie" } },
+                        { $sort: {author: 1} }
+                    ]
+                }
+            },
+            combination: {
+                weights: {
+                    agatha: 5
+                }
+            },
+            scoreDetails: true
+        }
+    })");
+    ASSERT_THROWS_CODE(DocumentSourceRankFusion::createFromBson(spec.firstElement(), getExpCtx()),
+                       AssertionException,
+                       ErrorCodes::QueryFeatureNotAllowed);
+}
+
 TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineScoreDetailsDesugaring) {
     RAIIServerParameterControllerForTest featureFlagController("featureFlagRankFusionFull", true);
     auto spec = fromjson(R"({
@@ -2455,6 +2528,11 @@ TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineScoreDetailsDesugaring) {
                         { $match : { author : "Agatha Christie" } },
                         { $sort: {author: 1} }
                     ]
+                }
+            },
+            combination: {
+                weights: {
+                    agatha: 5
                 }
             },
             scoreDetails: true
@@ -2518,7 +2596,7 @@ TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineScoreDetailsDesugaring) {
                                     ]
                                 },
                                 {
-                                    "$const": 1
+                                    "$const": 5
                                 }
                             ]
                         }
@@ -2527,19 +2605,7 @@ TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineScoreDetailsDesugaring) {
                 {
                     "$addFields": {
                         "agatha_scoreDetails": {
-                            "$ifNull": [
-                                {
-                                    "$meta": "scoreDetails"
-                                },
-                                {
-                                    "value": {
-                                        "$meta": "score"
-                                    },
-                                    "details": {
-                                        "$const": "Not Calculated"
-                                    }
-                                }
-                            ]
+                            "details": []
                         }
                     }
                 },
@@ -2585,26 +2651,31 @@ TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineScoreDetailsDesugaring) {
                 },
                 {
                     "$addFields": {
-                        "calculatedScoreDetails": {
-                            "$mergeObjects": [
-                                {
-                                    "agatha": {
-                                        "$mergeObjects": [
-                                            {
-                                                "rank": "$agatha_rank"
-                                            },
-                                            "$agatha_scoreDetails"
-                                        ]
-                                    }
-                                }
-                            ]
-                        }
+                        "calculatedScoreDetails": [
+                            {
+                                "$mergeObjects": [
+                                    {
+                                        "inputPipelineName": {
+                                            "$const": "agatha"
+                                        },
+                                        "rank": "$agatha_rank",
+                                        "weight": {
+                                            "$const": 5
+                                        }
+                                    },
+                                    "$agatha_scoreDetails"
+                                ]
+                            }
+                        ]
                     }
                 },
                 {
                     "$setMetadata": {
                         "scoreDetails": {
                             "value": "$score",
+                            "description": {
+                                "$const": "value output by reciprocal rank fusion algorithm, computed as sum of (weight * (1 / (60 + rank))) across input pipelines from which this document is output, from:"
+                            },
                             "details": "$calculatedScoreDetails"
                         }
                     }
@@ -2628,9 +2699,8 @@ TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineScoreDetailsDesugaring) {
 TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineScoreDetailsDesugaring) {
     RAIIServerParameterControllerForTest featureFlagController("featureFlagRankFusionFull", true);
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
     auto spec = fromjson(R"({
         $rankFusion: {
             input: {
@@ -2639,7 +2709,7 @@ TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineScoreDetailsDesugaring) {
                         { $match : { author : "Agatha Christie" } },
                         { $sort: {author: 1} }
                     ],
-                    searchPipe : [
+                    searchPipe: [
                         {
                             $search: {
                                 index: "search_index",
@@ -2651,6 +2721,11 @@ TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineScoreDetailsDesugaring) {
                             }
                         }
                     ]
+                }
+            },
+            combination: {
+                weights: {
+                    searchPipe: 2
                 }
             },
             scoreDetails: true
@@ -2723,19 +2798,7 @@ TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineScoreDetailsDesugaring) {
                 {
                     "$addFields": {
                         "agatha_scoreDetails": {
-                            "$ifNull": [
-                                {
-                                    "$meta": "scoreDetails"
-                                },
-                                {
-                                    "value": {
-                                        "$meta": "score"
-                                    },
-                                    "details": {
-                                        "$const": "Not Calculated"
-                                    }
-                                }
-                            ]
+                            "details": []
                         }
                     }
                 },
@@ -2792,7 +2855,7 @@ TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineScoreDetailsDesugaring) {
                                                 ]
                                             },
                                             {
-                                                "$const": 1
+                                                "$const": 2
                                             }
                                         ]
                                     }
@@ -2801,19 +2864,7 @@ TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineScoreDetailsDesugaring) {
                             {
                                 "$addFields": {
                                     "searchPipe_scoreDetails": {
-                                        "$ifNull": [
-                                            {
-                                                "$meta": "scoreDetails"
-                                            },
-                                            {
-                                                "value": {
-                                                    "$meta": "score"
-                                                },
-                                                "details": {
-                                                    "$const": "Not Calculated"
-                                                }
-                                            }
-                                        ]
+                                        "$meta": "scoreDetails"
                                     }
                                 }
                             }
@@ -2886,36 +2937,45 @@ TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineScoreDetailsDesugaring) {
                 },
                 {
                     "$addFields": {
-                        "calculatedScoreDetails": {
-                            "$mergeObjects": [
-                                {
-                                    "agatha": {
-                                        "$mergeObjects": [
-                                            {
-                                                "rank": "$agatha_rank"
-                                            },
-                                            "$agatha_scoreDetails"
-                                        ]
-                                    }
-                                },
-                                {
-                                    "searchPipe": {
-                                        "$mergeObjects": [
-                                            {
-                                                "rank": "$searchPipe_rank"
-                                            },
-                                            "$searchPipe_scoreDetails"
-                                        ]
-                                    }
-                                }
-                            ]
-                        }
+                        "calculatedScoreDetails": [
+                            {
+                                "$mergeObjects": [
+                                    {
+                                        "inputPipelineName": {
+                                            "$const": "agatha"
+                                        },
+                                        "rank": "$agatha_rank",
+                                        "weight": {
+                                            "$const": 1
+                                        }
+                                    },
+                                    "$agatha_scoreDetails"
+                                ]
+                            },
+                            {
+                                "$mergeObjects": [
+                                    {
+                                        "inputPipelineName": {
+                                            "$const": "searchPipe"
+                                        },
+                                        "rank": "$searchPipe_rank",
+                                        "weight": {
+                                            "$const": 2
+                                        }
+                                    },
+                                    "$searchPipe_scoreDetails"
+                                ]
+                            }
+                        ]
                     }
                 },
                 {
                     "$setMetadata": {
                         "scoreDetails": {
                             "value": "$score",
+                            "description": {
+                                "$const": "value output by reciprocal rank fusion algorithm, computed as sum of (weight * (1 / (60 + rank))) across input pipelines from which this document is output, from:"
+                            },
                             "details": "$calculatedScoreDetails"
                         }
                     }
@@ -3061,9 +3121,8 @@ TEST_F(DocumentSourceRankFusionTest, ErrorsIfPipelineNameContainsDot) {
 
 TEST_F(DocumentSourceRankFusionTest, QueryShapeDebugString) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
 
     auto spec = fromjson(R"({
         $rankFusion: {
@@ -3248,6 +3307,16 @@ TEST_F(DocumentSourceRankFusionTest, QueryShapeDebugString) {
                     }
                 },
                 {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$HASH<matchAuthor_score>",
+                                "$HASH<matchDistance_score>"
+                            ]
+                        }
+                    }
+                },
+                {
                     "$sort": {
                         "HASH<score>": -1,
                         "HASH<_id>": 1
@@ -3265,9 +3334,8 @@ TEST_F(DocumentSourceRankFusionTest, QueryShapeDebugString) {
 
 TEST_F(DocumentSourceRankFusionTest, RepresentativeQueryShape) {
     auto expCtx = getExpCtx();
-    expCtx->setResolvedNamespaces(
-        StringMap<ResolvedNamespace>{{expCtx->getNamespaceString().coll().toString(),
-                                      {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
 
     auto spec = fromjson(R"({
         $rankFusion: {
@@ -3456,6 +3524,16 @@ TEST_F(DocumentSourceRankFusionTest, RepresentativeQueryShape) {
                     }
                 },
                 {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$matchAuthor_score",
+                                "$matchDistance_score"
+                            ]
+                        }
+                    }
+                },
+                {
                     "$sort": {
                         "score": -1,
                         "_id": 1
@@ -3473,6 +3551,363 @@ TEST_F(DocumentSourceRankFusionTest, RepresentativeQueryShape) {
 
     // Ensure the representative query shape is reparseable.
     ASSERT_DOES_NOT_THROW(Pipeline::parseFromArray(asOneObj.firstElement(), expCtx));
+}
+
+TEST_F(DocumentSourceRankFusionTest, CheckOnePipelineRankFusionFullDesugaring) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagRankFusionFull", true);
+    auto spec = fromjson(R"({
+        $rankFusion: {
+            input: {
+                pipelines: {
+                    agatha: [
+                        { $match : { author : "Agatha Christie" } },
+                        { $sort: {author: 1} }
+                    ]
+                }
+            },
+            combination: {
+                weights: {
+                    agatha: 5
+                }
+            }
+        }
+    })");
+
+    const auto desugaredList =
+        DocumentSourceRankFusion::createFromBson(spec.firstElement(), getExpCtx());
+    const auto pipeline = Pipeline::create(desugaredList, getExpCtx());
+    BSONObj asOneObj = BSON("expectedStages" << pipeline->serializeToBson());
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+        R"({
+            "expectedStages": [
+                {
+                    "$match": {
+                        "author": "Agatha Christie"
+                    }
+                },
+                {
+                    "$sort": {
+                        "author": 1,
+                        "$_internalOutputSortKeyMetadata": true
+                    }
+                },
+                {
+                    "$replaceRoot": {
+                        "newRoot": {
+                            "docs": "$$ROOT"
+                        }
+                    }
+                },
+                {
+                    "$_internalSetWindowFields": {
+                        "sortBy": {
+                            "order": 1
+                        },
+                        "output": {
+                            "agatha_rank": {
+                                "$rank": {}
+                            }
+                        }
+                    }
+                },
+                {
+                    "$addFields": {
+                        "agatha_score": {
+                            "$multiply": [
+                                {
+                                    "$divide": [
+                                        {
+                                            "$const": 1
+                                        },
+                                        {
+                                            "$add": [
+                                                "$agatha_rank",
+                                                {
+                                                    "$const": 60
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "$const": 5
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$docs._id",
+                        "docs": {
+                            "$first": "$docs"
+                        },
+                        "agatha_score": {
+                            "$max": {
+                                "$ifNull": [
+                                    "$agatha_score",
+                                    {
+                                        "$const": 0
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "$addFields": {
+                        "score": {
+                            "$add": [
+                                "$agatha_score"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$agatha_score"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$sort": {
+                        "score": -1,
+                        "_id": 1
+                    }
+                },
+                {
+                    "$replaceRoot": {
+                        "newRoot": "$docs"
+                    }
+                }
+            ]
+        })",
+        asOneObj);
+}
+
+TEST_F(DocumentSourceRankFusionTest, CheckTwoPipelineRankFusionFullDesugaring) {
+    RAIIServerParameterControllerForTest featureFlagController("featureFlagRankFusionFull", true);
+    auto expCtx = getExpCtx();
+    expCtx->setResolvedNamespaces(ResolvedNamespaceMap{
+        {expCtx->getNamespaceString(), {expCtx->getNamespaceString(), std::vector<BSONObj>()}}});
+    auto spec = fromjson(R"({
+        $rankFusion: {
+            input: {
+                pipelines: {
+                    agatha: [
+                        { $match : { author : "Agatha Christie" } },
+                        { $sort: {author: 1} }
+                    ],
+                    searchPipe: [
+                        {
+                            $search: {
+                                index: "search_index",
+                                text: {
+                                    query: "mystery",
+                                    path: "genres"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            combination: {
+                weights: {
+                    searchPipe: 2
+                }
+            }
+        }
+    })");
+
+    const auto desugaredList =
+        DocumentSourceRankFusion::createFromBson(spec.firstElement(), getExpCtx());
+    const auto pipeline = Pipeline::create(desugaredList, getExpCtx());
+    BSONObj asOneObj = BSON("expectedStages" << pipeline->serializeToBson());
+    ASSERT_BSONOBJ_EQ_AUTO(  // NOLINT
+        R"({
+            "expectedStages": [
+                {
+                    "$match": {
+                        "author": "Agatha Christie"
+                    }
+                },
+                {
+                    "$sort": {
+                        "author": 1,
+                        "$_internalOutputSortKeyMetadata": true
+                    }
+                },
+                {
+                    "$replaceRoot": {
+                        "newRoot": {
+                            "docs": "$$ROOT"
+                        }
+                    }
+                },
+                {
+                    "$_internalSetWindowFields": {
+                        "sortBy": {
+                            "order": 1
+                        },
+                        "output": {
+                            "agatha_rank": {
+                                "$rank": {}
+                            }
+                        }
+                    }
+                },
+                {
+                    "$addFields": {
+                        "agatha_score": {
+                            "$multiply": [
+                                {
+                                    "$divide": [
+                                        {
+                                            "$const": 1
+                                        },
+                                        {
+                                            "$add": [
+                                                "$agatha_rank",
+                                                {
+                                                    "$const": 60
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "$const": 1
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$unionWith": {
+                        "coll": "pipeline_test",
+                        "pipeline": [
+                            {
+                                "$search": {
+                                    "index": "search_index",
+                                    "text": {
+                                        "query": "mystery",
+                                        "path": "genres"
+                                    }
+                                }
+                            },
+                            {
+                                "$replaceRoot": {
+                                    "newRoot": {
+                                        "docs": "$$ROOT"
+                                    }
+                                }
+                            },
+                            {
+                                "$_internalSetWindowFields": {
+                                    "sortBy": {
+                                        "order": 1
+                                    },
+                                    "output": {
+                                        "searchPipe_rank": {
+                                            "$rank": {}
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "$addFields": {
+                                    "searchPipe_score": {
+                                        "$multiply": [
+                                            {
+                                                "$divide": [
+                                                    {
+                                                        "$const": 1
+                                                    },
+                                                    {
+                                                        "$add": [
+                                                            "$searchPipe_rank",
+                                                            {
+                                                                "$const": 60
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "$const": 2
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$docs._id",
+                        "docs": {
+                            "$first": "$docs"
+                        },
+                        "agatha_score": {
+                            "$max": {
+                                "$ifNull": [
+                                    "$agatha_score",
+                                    {
+                                        "$const": 0
+                                    }
+                                ]
+                            }
+                        },
+                        "searchPipe_score": {
+                            "$max": {
+                                "$ifNull": [
+                                    "$searchPipe_score",
+                                    {
+                                        "$const": 0
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "$addFields": {
+                        "score": {
+                            "$add": [
+                                "$agatha_score",
+                                "$searchPipe_score"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$setMetadata": {
+                        "score": {
+                            "$add": [
+                                "$agatha_score",
+                                "$searchPipe_score"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "$sort": {
+                        "score": -1,
+                        "_id": 1
+                    }
+                },
+                {
+                    "$replaceRoot": {
+                        "newRoot": "$docs"
+                    }
+                }
+            ]
+        })",
+        asOneObj);
 }
 }  // namespace
 }  // namespace mongo

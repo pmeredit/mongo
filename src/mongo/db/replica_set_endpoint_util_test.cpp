@@ -49,8 +49,8 @@
 #include "mongo/rpc/op_msg.h"
 #include "mongo/s/grid.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -104,14 +104,14 @@ private:
 TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient) {
     std::shared_ptr<transport::Session> session = getTransportLayer().createSession();
     auto client = getServiceContext()->getService()->makeClient("NotIsConfigShard", session);
-    ASSERT(isReplicaSetEndpointClient(client.get()));
+    ASSERT(isReplicaSetEndpointClient(kNoVersionContext, client.get()));
 }
 
 TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_RouterPort) {
     std::shared_ptr<transport::Session> session =
         getTransportLayer().createSession(true /* isFromRouterPort */);
     auto client = getServiceContext()->getService()->makeClient("RouterPort", session);
-    ASSERT_FALSE(isReplicaSetEndpointClient(client.get()));
+    ASSERT_FALSE(isReplicaSetEndpointClient(kNoVersionContext, client.get()));
 }
 
 TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_NotRouterServer) {
@@ -119,7 +119,7 @@ TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_NotRouterServer) {
 
     std::shared_ptr<transport::Session> session = getTransportLayer().createSession();
     auto client = getServiceContext()->getService()->makeClient("NotRouterServer", session);
-    ASSERT_FALSE(isReplicaSetEndpointClient(client.get()));
+    ASSERT_FALSE(isReplicaSetEndpointClient(kNoVersionContext, client.get()));
 }
 
 TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_NotIsConfigShard) {
@@ -127,7 +127,7 @@ TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_NotIsConfigShard) 
 
     std::shared_ptr<transport::Session> session = getTransportLayer().createSession();
     auto client = getServiceContext()->getService()->makeClient("NotIsConfigShard", session);
-    ASSERT_FALSE(isReplicaSetEndpointClient(client.get()));
+    ASSERT_FALSE(isReplicaSetEndpointClient(kNoVersionContext, client.get()));
 }
 
 TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_NotIsReplicaSetMember) {
@@ -135,7 +135,7 @@ TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_NotIsReplicaSetMem
 
     std::shared_ptr<transport::Session> session = getTransportLayer().createSession();
     auto client = getServiceContext()->getService()->makeClient("NotIsReplicaSetMember", session);
-    ASSERT_FALSE(isReplicaSetEndpointClient(client.get()));
+    ASSERT_FALSE(isReplicaSetEndpointClient(kNoVersionContext, client.get()));
 }
 
 TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_HasTwoOrMoreShards) {
@@ -144,7 +144,7 @@ TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_HasTwoOrMoreShards
 
     std::shared_ptr<transport::Session> session = getTransportLayer().createSession();
     auto client = getServiceContext()->getService()->makeClient("HasTwoOrMoreShards", session);
-    ASSERT_FALSE(isReplicaSetEndpointClient(client.get()));
+    ASSERT_FALSE(isReplicaSetEndpointClient(kNoVersionContext, client.get()));
 }
 
 TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_FeatureFlagDisabled) {
@@ -153,7 +153,7 @@ TEST_F(ReplicaSetEndpointUtilTest, IsReplicaSetEndpointClient_FeatureFlagDisable
 
     std::shared_ptr<transport::Session> session = getTransportLayer().createSession();
     auto client = getServiceContext()->getService()->makeClient("FeatureFlagDisabled", session);
-    ASSERT_FALSE(isReplicaSetEndpointClient(client.get()));
+    ASSERT_FALSE(isReplicaSetEndpointClient(kNoVersionContext, client.get()));
 }
 
 // Add test commands to the command registries.

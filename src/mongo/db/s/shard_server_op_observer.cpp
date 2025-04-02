@@ -42,8 +42,11 @@
 #include "mongo/bson/timestamp.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/db/catalog_raii.h"
+#include "mongo/db/collection_crud/collection_write_path.h"
+#include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/database_name.h"
+#include "mongo/db/db_raii.h"
 #include "mongo/db/repl/member_state.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/replica_set_endpoint_sharding_state.h"
@@ -56,11 +59,13 @@
 #include "mongo/db/s/migration_source_manager.h"
 #include "mongo/db/s/operation_sharding_state.h"
 #include "mongo/db/s/range_deletion_task_gen.h"
+#include "mongo/db/s/shard_catalog_operations.h"
 #include "mongo/db/s/shard_filtering_metadata_refresh.h"
 #include "mongo/db/s/shard_identity_rollback_notifier.h"
 #include "mongo/db/s/sharding_initialization_mongod.h"
 #include "mongo/db/s/sharding_migration_critical_section.h"
 #include "mongo/db/s/sharding_recovery_service.h"
+#include "mongo/db/s/type_oplog_catalog_metadata_gen.h"
 #include "mongo/db/s/type_shard_collection.h"
 #include "mongo/db/s/type_shard_collection_gen.h"
 #include "mongo/db/s/type_shard_database.h"
@@ -72,8 +77,6 @@
 #include "mongo/db/update/update_oplog_entry_serialization.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/s/cannot_implicitly_create_collection_info.h"
 #include "mongo/s/catalog/type_index_catalog.h"
 #include "mongo/s/catalog/type_index_catalog_gen.h"
@@ -99,7 +102,7 @@ public:
     CollectionPlacementVersionLogOpHandler(const NamespaceString& nss, bool droppingCollection)
         : _nss(nss), _droppingCollection(droppingCollection) {}
 
-    void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) override {
+    void commit(OperationContext* opCtx, boost::optional<Timestamp> commitTime) noexcept override {
         invariant(shard_role_details::getLocker(opCtx)->isCollectionLockedForMode(_nss, MODE_IX));
         invariant(commitTime, "Invalid commit time");
 
@@ -108,8 +111,6 @@ public:
 
         // Force subsequent uses of the namespace to refresh the filtering metadata so they can
         // synchronize with any work happening on the primary (e.g., migration critical section).
-        // TODO (SERVER-71444): Fix to be interruptible or document exception.
-        UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
         auto scopedCss =
             CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, _nss);
         if (_droppingCollection)
@@ -118,7 +119,7 @@ public:
             scopedCss->clearFilteringMetadata(opCtx);
     }
 
-    void rollback(OperationContext* opCtx) override {}
+    void rollback(OperationContext* opCtx) noexcept override {}
 
 private:
     const NamespaceString _nss;
@@ -154,6 +155,15 @@ void onConfigDeleteInvalidateCachedCollectionMetadataAndNotify(OperationContext*
     // TODO SERVER-58223: evaluate whether this is safe or whether acquiring the lock can block.
     AllowLockAcquisitionOnTimestampedUnitOfWork allowLockAcquisition(
         shard_role_details::getLocker(opCtx));
+    // TODO SERVER-99703: We have to disable the checks here as we're
+    // violating the ordering of locks for databases. This can happen
+    // because a write to a collection in the config database like the
+    // critical section will make us take a lock on a different database.
+    // That is, we have an operation that has taken a lock on config,
+    // followed by a lock on a user database. Other op observers like the
+    // preimages one will take the inverse order, that is they have a lock
+    // on a user database and then take a lock on the config database.
+    DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
     AutoGetCollection autoColl(
         opCtx,
         deletedNss,
@@ -181,6 +191,31 @@ void abortOngoingMigrationIfNeeded(OperationContext* opCtx, const NamespaceStrin
         // Only interrupt the migration, but don't actually join
         (void)msm->abort();
     }
+}
+
+template <typename OplogEntry>
+void logDatabaseMetadataUpdateOplogEntry(OperationContext* opCtx,
+                                         const DatabaseName& dbName,
+                                         const OplogEntry& entry,
+                                         const std::string& operation) {
+    repl::MutableOplogEntry oplogEntry;
+    oplogEntry.setOpType(repl::OpTypeEnum::kCommand);
+    oplogEntry.setNss(NamespaceString::makeCommandNamespace(dbName));
+    oplogEntry.setObject(entry.toBSON());
+    oplogEntry.setOpTime(OplogSlot());
+    oplogEntry.setWallClockTime(opCtx->getServiceContext()->getFastClockSource()->now());
+
+    writeConflictRetry(opCtx, operation, NamespaceString::kRsOplogNamespace, [&] {
+        AutoGetOplogFastPath oplogWrite(opCtx, OplogAccessMode::kWrite);
+        WriteUnitOfWork wuow(opCtx);
+        repl::OpTime opTime = repl::logOp(opCtx, &oplogEntry);
+        uassert(9980400,
+                str::stream() << "Failed to create new oplog entry for " << operation
+                              << " with opTime: " << oplogEntry.getOpTime().toString() << ": "
+                              << redact(oplogEntry.toBSON()),
+                !opTime.isNull());
+        wuow.commit();
+    });
 }
 
 }  // namespace
@@ -274,10 +309,17 @@ void ShardServerOpObserver::onInserts(OperationContext* opCtx,
                         // applying the related oplog entries.
                         boost::optional<AutoGetDb> lockDbIfNotPrimary;
                         if (!opCtx->isEnforcingConstraints()) {
+                            // TODO SERVER-99703: We have to disable the checks here as we're
+                            // violating the ordering of locks for databases. This can happen
+                            // because a write to a collection in the config database like the
+                            // critical section will make us take a lock on a different database.
+                            // That is, we have an operation that has taken a lock on config,
+                            // followed by a lock on a user database. Other op observers like the
+                            // preimages one will take the inverse order, that is they have a lock
+                            // on a user database and then take a lock on the config database.
+                            DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
                             lockDbIfNotPrimary.emplace(opCtx, insertedNss.dbName(), MODE_IX);
                         }
-                        // TODO (SERVER-71444): Fix to be interruptible or document exception.
-                        UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
                         auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(
                             opCtx, insertedNss.dbName());
                         scopedDss->enterCriticalSectionCatchUpPhase(opCtx, reason);
@@ -287,6 +329,15 @@ void ShardServerOpObserver::onInserts(OperationContext* opCtx,
                         // applying the related oplog entries.
                         boost::optional<AutoGetCollection> lockCollectionIfNotPrimary;
                         if (!opCtx->isEnforcingConstraints()) {
+                            // TODO SERVER-99703: We have to disable the checks here as we're
+                            // violating the ordering of locks for databases. This can happen
+                            // because a write to a collection in the config database like the
+                            // critical section will make us take a lock on a different database.
+                            // That is, we have an operation that has taken a lock on config,
+                            // followed by a lock on a user database. Other op observers like the
+                            // preimages one will take the inverse order, that is they have a lock
+                            // on a user database and then take a lock on the config database.
+                            DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
                             lockCollectionIfNotPrimary.emplace(
                                 opCtx,
                                 insertedNss,
@@ -295,8 +346,6 @@ void ShardServerOpObserver::onInserts(OperationContext* opCtx,
                                     auto_get_collection::ViewMode::kViewsPermitted));
                         }
 
-                        // TODO (SERVER-71444): Fix to be interruptible or document exception.
-                        UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
                         auto scopedCsr =
                             CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
                                 opCtx, insertedNss);
@@ -363,6 +412,16 @@ void ShardServerOpObserver::onUpdate(OperationContext* opCtx,
         // TODO SERVER-58223: evaluate whether this is safe or whether acquiring the lock can block.
         AllowLockAcquisitionOnTimestampedUnitOfWork allowLockAcquisition(
             shard_role_details::getLocker(opCtx));
+
+        // TODO SERVER-99703: We have to disable the checks here as we're
+        // violating the ordering of locks for databases. This can happen
+        // because a write to a collection in the config database like the
+        // critical section will make us take a lock on a different database.
+        // That is, we have an operation that has taken a lock on config,
+        // followed by a lock on a user database. Other op observers like the
+        // preimages one will take the inverse order, that is they have a lock
+        // on a user database and then take a lock on the config database.
+        DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
         AutoGetCollection autoColl(
             opCtx,
             updatedNss,
@@ -389,45 +448,6 @@ void ShardServerOpObserver::onUpdate(OperationContext* opCtx,
         }
     }
 
-    if (needsSpecialHandling &&
-        args.coll->ns() == NamespaceString::kShardConfigDatabasesNamespace) {
-        // Notification of routing table changes is only needed on secondaries that are applying
-        // oplog entries.
-        if (opCtx->isEnforcingConstraints()) {
-            return;
-        }
-
-        // This logic runs on updates to the shard's persisted cache of the config server's
-        // config.databases collection.
-        //
-        // If an update occurs to the 'enterCriticalSectionSignal' field, clear the routing
-        // table immediately. This will provoke the next secondary caller to refresh through the
-        // primary, blocking behind the critical section.
-
-        // Extract which database was updated
-        std::string db;
-        fassert(40478,
-                bsonExtractStringField(
-                    args.updateArgs->criteria, ShardDatabaseType::kDbNameFieldName, &db));
-
-        auto enterCriticalSectionCounterFieldNewVal = update_oplog_entry::extractNewValueForField(
-            updateDoc, ShardDatabaseType::kEnterCriticalSectionCounterFieldName);
-
-        if (enterCriticalSectionCounterFieldNewVal.ok()) {
-            // TODO SERVER-58223: evaluate whether this is safe or whether acquiring the lock can
-            // block.
-            AllowLockAcquisitionOnTimestampedUnitOfWork allowLockAcquisition(
-                shard_role_details::getLocker(opCtx));
-
-            DatabaseName dbName = DatabaseNameUtil::deserialize(
-                boost::none, db, SerializationContext::stateDefault());
-            AutoGetDb autoDb(opCtx, dbName, MODE_X);
-            auto scopedDss =
-                DatabaseShardingState::assertDbLockedAndAcquireExclusive(opCtx, dbName);
-            scopedDss->clearDbInfo(opCtx);
-        }
-    }
-
     if (args.coll->ns() == NamespaceString::kCollectionCriticalSectionsNamespace) {
         const auto collCSDoc = CollectionCriticalSectionDocument::parse(
             IDLParserContext("ShardServerOpObserver"), args.updateArgs->updatedDoc);
@@ -442,11 +462,18 @@ void ShardServerOpObserver::onUpdate(OperationContext* opCtx,
                     // applying the related oplog entries.
                     boost::optional<AutoGetDb> lockDbIfNotPrimary;
                     if (!opCtx->isEnforcingConstraints()) {
+                        // TODO SERVER-99703: We have to disable the checks here as we're
+                        // violating the ordering of locks for databases. This can happen
+                        // because a write to a collection in the config database like the
+                        // critical section will make us take a lock on a different database.
+                        // That is, we have an operation that has taken a lock on config,
+                        // followed by a lock on a user database. Other op observers like the
+                        // preimages one will take the inverse order, that is they have a lock
+                        // on a user database and then take a lock on the config database.
+                        DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
                         lockDbIfNotPrimary.emplace(opCtx, updatedNss.dbName(), MODE_IX);
                     }
 
-                    // TODO (SERVER-71444): Fix to be interruptible or document exception.
-                    UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
                     auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(
                         opCtx, updatedNss.dbName());
                     scopedDss->enterCriticalSectionCommitPhase(opCtx, reason);
@@ -456,6 +483,15 @@ void ShardServerOpObserver::onUpdate(OperationContext* opCtx,
                     // applying the related oplog entries.
                     boost::optional<AutoGetCollection> lockCollectionIfNotPrimary;
                     if (!opCtx->isEnforcingConstraints()) {
+                        // TODO SERVER-99703: We have to disable the checks here as we're
+                        // violating the ordering of locks for databases. This can happen
+                        // because a write to a collection in the config database like the
+                        // critical section will make us take a lock on a different database.
+                        // That is, we have an operation that has taken a lock on config,
+                        // followed by a lock on a user database. Other op observers like the
+                        // preimages one will take the inverse order, that is they have a lock
+                        // on a user database and then take a lock on the config database.
+                        DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
                         lockCollectionIfNotPrimary.emplace(
                             opCtx,
                             updatedNss,
@@ -464,8 +500,6 @@ void ShardServerOpObserver::onUpdate(OperationContext* opCtx,
                                 auto_get_collection::ViewMode::kViewsPermitted));
                     }
 
-                    // TODO (SERVER-71444): Fix to be interruptible or document exception.
-                    UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
                     auto scopedCsr =
                         CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
                             opCtx, updatedNss);
@@ -567,34 +601,34 @@ void ShardServerOpObserver::onModifyCollectionShardingIndexCatalog(OperationCont
         case ShardingIndexCatalogOpEnum::rename: {
             auto renameEntry = ShardingIndexCatalogRenameEntry::parse(
                 IDLParserContext("OplogModifyCatalogEntryContext"), indexDoc);
-            shard_role_details::getRecoveryUnit(opCtx)->onCommit([renameEntry](
-                                                                     OperationContext* opCtx,
-                                                                     boost::optional<Timestamp>) {
-                std::vector<IndexCatalogType> fromIndexes;
-                boost::optional<UUID> uuid;
-                {
-                    auto fromCSR =
-                        CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
-                            opCtx, renameEntry.getFromNss());
-                    auto indexCache = fromCSR->getIndexesInCritSec(opCtx);
-                    indexCache->forEachGlobalIndex([&](const auto& index) {
-                        fromIndexes.push_back(index);
-                        return true;
-                    });
-                    uuid.emplace(indexCache->getCollectionIndexes().uuid());
+            shard_role_details::getRecoveryUnit(opCtx)->onCommit(
+                [renameEntry](OperationContext* opCtx, boost::optional<Timestamp>) {
+                    std::vector<IndexCatalogType> fromIndexes;
+                    boost::optional<UUID> uuid;
+                    {
+                        auto fromCSR =
+                            CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
+                                opCtx, renameEntry.getFromNss());
+                        auto indexCache = fromCSR->getIndexesInCritSec(opCtx);
+                        indexCache->forEachGlobalIndex([&](const auto& index) {
+                            fromIndexes.push_back(index);
+                            return true;
+                        });
+                        uuid.emplace(indexCache->getCollectionIndexes().uuid());
 
-                    fromCSR->clearIndexes(opCtx);
-                }
-                auto toCSR = CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
-                    opCtx, renameEntry.getToNss());
-                uassert(7079505,
-                        format(FMT_STRING("The critical section for collection {} must be taken in "
-                                          "order to execute this command"),
-                               renameEntry.getToNss().toStringForErrorMsg()),
-                        toCSR->getCriticalSectionSignal(opCtx,
-                                                        ShardingMigrationCriticalSection::kWrite));
-                toCSR->replaceIndexes(opCtx, fromIndexes, {*uuid, renameEntry.getLastmod()});
-            });
+                        fromCSR->clearIndexes(opCtx);
+                    }
+                    auto toCSR =
+                        CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
+                            opCtx, renameEntry.getToNss());
+                    uassert(7079505,
+                            fmt::format("The critical section for collection {} must be taken in "
+                                        "order to execute this command",
+                                        renameEntry.getToNss().toStringForErrorMsg()),
+                            toCSR->getCriticalSectionSignal(
+                                opCtx, ShardingMigrationCriticalSection::kWrite));
+                    toCSR->replaceIndexes(opCtx, fromIndexes, {*uuid, renameEntry.getLastmod()});
+                });
             break;
         }
         default:
@@ -628,32 +662,6 @@ void ShardServerOpObserver::onDelete(OperationContext* opCtx,
 
     if (nss == NamespaceString::kShardConfigCollectionsNamespace) {
         onConfigDeleteInvalidateCachedCollectionMetadataAndNotify(opCtx, documentId);
-    }
-
-    if (nss == NamespaceString::kShardConfigDatabasesNamespace) {
-        // Primaries take locks when writing to certain internal namespaces. It must
-        // be ensured that those locks are also taken on secondaries, when applying
-        // the related oplog entries. Return early, if the node is not a secondary
-        // in oplog application.
-        if (opCtx->isEnforcingConstraints()) {
-            return;
-        }
-
-        // Extract which database entry is being deleted from the _id field.
-        std::string deletedDatabase;
-        fassert(50772,
-                bsonExtractStringField(
-                    documentId, ShardDatabaseType::kDbNameFieldName, &deletedDatabase));
-
-        // TODO SERVER-58223: evaluate whether this is safe or whether acquiring the lock can block.
-        AllowLockAcquisitionOnTimestampedUnitOfWork allowLockAcquisition(
-            shard_role_details::getLocker(opCtx));
-
-        DatabaseName dbName = DatabaseNameUtil::deserialize(
-            boost::none, deletedDatabase, SerializationContext::stateDefault());
-        AutoGetDb autoDb(opCtx, dbName, MODE_X);
-        auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(opCtx, dbName);
-        scopedDss->clearDbInfo(opCtx);
     }
 
     if (nss == NamespaceString::kServerConfigurationNamespace) {
@@ -694,26 +702,35 @@ void ShardServerOpObserver::onDelete(OperationContext* opCtx,
             IDLParserContext("ShardServerOpObserver"), deletedDoc);
 
         shard_role_details::getRecoveryUnit(opCtx)->onCommit(
-            [deletedNss = collCSDoc.getNss(), reason = collCSDoc.getReason().getOwned()](
-                OperationContext* opCtx, boost::optional<Timestamp>) {
+            [deletedNss = collCSDoc.getNss(),
+             reason = collCSDoc.getReason().getOwned(),
+             clearDbInfo = collCSDoc.getClearDbInfo()](OperationContext* opCtx,
+                                                       boost::optional<Timestamp>) {
                 if (deletedNss.isDbOnly()) {
                     // Primaries take locks when writing to certain internal namespaces. It must
                     // be ensured that those locks are also taken on secondaries, when
                     // applying the related oplog entries.
                     boost::optional<AutoGetDb> lockDbIfNotPrimary;
                     if (!opCtx->isEnforcingConstraints()) {
+                        // TODO SERVER-99703: We have to disable the checks here as we're
+                        // violating the ordering of locks for databases. This can happen
+                        // because a write to a collection in the config database like the
+                        // critical section will make us take a lock on a different database.
+                        // That is, we have an operation that has taken a lock on config,
+                        // followed by a lock on a user database. Other op observers like the
+                        // preimages one will take the inverse order, that is they have a lock
+                        // on a user database and then take a lock on the config database.
+                        DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
                         lockDbIfNotPrimary.emplace(opCtx, deletedNss.dbName(), MODE_IX);
                     }
 
-                    // TODO (SERVER-71444): Fix to be interruptible or document exception.
-                    UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
                     auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(
                         opCtx, deletedNss.dbName());
 
                     // Secondaries that are in oplog application must clear the database metadata
                     // before releasing the in-memory critical section.
-                    if (!opCtx->isEnforcingConstraints()) {
-                        scopedDss->clearDbInfo(opCtx);
+                    if (!opCtx->isEnforcingConstraints() && clearDbInfo) {
+                        scopedDss->clearDbInfo_DEPRECATED(opCtx);
                     }
 
                     scopedDss->exitCriticalSection(opCtx, reason);
@@ -723,6 +740,15 @@ void ShardServerOpObserver::onDelete(OperationContext* opCtx,
                     // applying the related oplog entries.
                     boost::optional<AutoGetCollection> lockCollectionIfNotPrimary;
                     if (!opCtx->isEnforcingConstraints()) {
+                        // TODO SERVER-99703: We have to disable the checks here as we're
+                        // violating the ordering of locks for databases. This can happen
+                        // because a write to a collection in the config database like the
+                        // critical section will make us take a lock on a different database.
+                        // That is, we have an operation that has taken a lock on config,
+                        // followed by a lock on a user database. Other op observers like the
+                        // preimages one will take the inverse order, that is they have a lock
+                        // on a user database and then take a lock on the config database.
+                        DisableLockerRuntimeOrderingChecks disableChecks{opCtx};
                         lockCollectionIfNotPrimary.emplace(
                             opCtx,
                             deletedNss,
@@ -731,8 +757,6 @@ void ShardServerOpObserver::onDelete(OperationContext* opCtx,
                                 auto_get_collection::ViewMode::kViewsPermitted));
                     }
 
-                    // TODO (SERVER-71444): Fix to be interruptible or document exception.
-                    UninterruptibleLockGuard noInterrupt(opCtx);  // NOLINT.
                     auto scopedCsr =
                         CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
                             opCtx, deletedNss);
@@ -809,7 +833,7 @@ void ShardServerOpObserver::onCreateCollection(OperationContext* opCtx,
     // Temp collections are always UNSHARDED
     if (options.temp) {
         CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, collectionName)
-            ->setFilteringMetadata(opCtx, CollectionMetadata());
+            ->setFilteringMetadata(opCtx, CollectionMetadata::UNTRACKED());
         return;
     }
 
@@ -820,13 +844,13 @@ void ShardServerOpObserver::onCreateCollection(OperationContext* opCtx,
             oss._allowCollectionCreation);
 
     // If the check above passes, this means the collection doesn't exist and is being created and
-    // that the caller will be responsible to eventially set the proper placement version.
+    // that the caller will be responsible to eventually set the proper placement version.
     auto scopedCsr =
         CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, collectionName);
     if (oss._forceCSRAsUnknownAfterCollectionCreation) {
         scopedCsr->clearFilteringMetadata(opCtx);
     } else if (!scopedCsr->getCurrentMetadataIfKnown()) {
-        scopedCsr->setFilteringMetadata(opCtx, CollectionMetadata());
+        scopedCsr->setFilteringMetadata(opCtx, CollectionMetadata::UNTRACKED());
     }
 }
 
@@ -917,7 +941,12 @@ void ShardServerOpObserver::onCollMod(OperationContext* opCtx,
     if (repl::ReplicationCoordinator::get(opCtx)->isInInitialSyncOrRollback()) {
         return;
     }
-    abortOngoingMigrationIfNeeded(opCtx, nss);
+    // A collMod with no arguments is used to repair or cleanup metadata during FCV upgrade or
+    // downgrade. This is not an index modification operation, and does not need to abort ongoing
+    // migrations.
+    if (collModCmd.nFields() > 1) {
+        abortOngoingMigrationIfNeeded(opCtx, nss);
+    }
 };
 
 void ShardServerOpObserver::onReplicationRollback(OperationContext* opCtx,
@@ -936,5 +965,51 @@ void ShardServerOpObserver::onReplicationRollback(OperationContext* opCtx,
     }
 }
 
+void ShardServerOpObserver::onCreateDatabaseMetadata(
+    OperationContext* opCtx, const CreateDatabaseMetadataOplogEntry& entry) {
+    auto dbMetadata = entry.getDb();
+    auto dbName = dbMetadata.getDbName();
+
+    LOGV2_DEBUG(10105906,
+                1,
+                "Updating database sharding in-memory state onCreateDatabaseMetadata",
+                "dbName"_attr = dbName);
+
+    // Step 1: Write to `config.shard.catalog.databases` to insert database metadata.
+    shard_catalog_operations::insertDatabaseMetadata(opCtx, dbMetadata);
+
+    // Step 2: Update DSS in primary node.
+    {
+        AutoGetDb autoDb(opCtx, dbName, MODE_IX);
+        auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(opCtx, dbName);
+        scopedDss->setAuthoritativeDbInfo(opCtx, dbMetadata);
+    }
+
+    // Step 3: Write an oplog 'c' entry to inform secondaries.
+    logDatabaseMetadataUpdateOplogEntry(opCtx, dbName, entry, "createDatabaseMetadata");
+}
+
+void ShardServerOpObserver::onDropDatabaseMetadata(OperationContext* opCtx,
+                                                   const DropDatabaseMetadataOplogEntry& entry) {
+    auto dbName = entry.getDbName();
+
+    LOGV2_DEBUG(10105907,
+                1,
+                "Updating database sharding in-memory state onDropDatabaseMetadata",
+                "dbName"_attr = dbName);
+
+    // Step 1: Remove database metadata from `config.shard.catalog.databases`.
+    shard_catalog_operations::deleteDatabaseMetadata(opCtx, dbName);
+
+    // Step 2: Update DSS in primary node.
+    {
+        AutoGetDb autoDb(opCtx, dbName, MODE_IX);
+        auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(opCtx, dbName);
+        scopedDss->clearDbInfo(opCtx);
+    }
+
+    // Step 3: Write an oplog 'c' entry to inform secondaries.
+    logDatabaseMetadataUpdateOplogEntry(opCtx, dbName, entry, "dropDatabaseMetadata");
+}
 
 }  // namespace mongo

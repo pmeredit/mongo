@@ -43,8 +43,6 @@
 #include "mongo/db/server_options_server_helpers.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/process_id.h"
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/processinfo.h"
@@ -77,8 +75,7 @@ void logProcessDetails(std::ostream* os) {
                       .obj();
     vii.logBuildInfo(os);
     if (os) {
-        *os << format(FMT_STRING("Operating System: {}"),
-                      tojson(osInfo, ExtendedRelaxedV2_0_0, true))
+        *os << fmt::format("Operating System: {}", tojson(osInfo, ExtendedRelaxedV2_0_0, true))
             << std::endl;
     } else {
         LOGV2(51765, "Operating System", "os"_attr = osInfo);

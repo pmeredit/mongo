@@ -43,8 +43,7 @@
 #include "mongo/db/storage/sorted_data_interface_test_assert.h"
 #include "mongo/db/storage/sorted_data_interface_test_harness.h"
 #include "mongo/db/storage/write_unit_of_work.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -731,10 +730,8 @@ TEST_F(SortedDataInterfaceTest, SaveUnpositionedAndRestore) {
 }
 
 TEST_F(SortedDataInterfaceTest, SaveRestoreLex) {
-    const auto key1 = BSON(""
-                           << "abc");
-    const auto key2 = BSON(""
-                           << "abcd");
+    const auto key1 = BSON("" << "abc");
+    const auto key2 = BSON("" << "abcd");
     auto sorted =
         harnessHelper()->newSortedDataInterface(opCtx(),
                                                 /*unique=*/false,
@@ -766,10 +763,8 @@ TEST_F(SortedDataInterfaceTest, SaveRestoreLex) {
 }
 
 TEST_F(SortedDataInterfaceTest, SaveRestoreLexWithEndPosition) {
-    const auto key1 = BSON(""
-                           << "abc");
-    const auto key2 = BSON(""
-                           << "abcd");
+    const auto key1 = BSON("" << "abc");
+    const auto key2 = BSON("" << "abcd");
     auto sorted =
         harnessHelper()->newSortedDataInterface(opCtx(),
                                                 /*unique=*/false,

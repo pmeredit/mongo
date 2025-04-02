@@ -65,9 +65,6 @@
 #include "mongo/db/write_concern.h"
 #include "mongo/idl/generic_argument_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/rpc/check_allowed_op_query_cmd.h"
 #include "mongo/rpc/factory.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -202,13 +199,29 @@ inline void waitForWriteConcern(OperationContext* opCtx,
     // approximation is to use the system’s last op time, which is guaranteed to be >= than the
     // original op time.
 
-    // Ensures that if we tried to do a write, we wait for write concern, even if that write was
-    // a noop. We do not need to update this for multi-document transactions as read-only/noop
-    // transactions will do a noop write at commit time, which should have incremented the
-    // lastOp. And speculative majority semantics dictate that "abortTransaction" should not
-    // wait for write concern on operations the transaction observed.
-    if (shard_role_details::getLocker(opCtx)->wasGlobalLockTakenForWrite() &&
-        !opCtx->inMultiDocumentTransaction()) {
+    // Ensures that we always wait for write concern, even if that write was a noop. We do not need
+    // to update this for multi-document transactions as read-only/noop transactions will do a noop
+    // write at commit time, which should have incremented the lastOp. And speculative majority
+    // semantics dictate that "abortTransaction" should not wait for write concern on operations the
+    // transaction observed.
+
+    // Aggregate and getMore requests can be read ops or write ops. We only want to wait for write
+    // concern if the op could have done a write (i.e. had any write stages in its pipeline).
+    // Aggregate::Invocation::isReadOperation will indicate whether the original agg request had
+    // any write stages in its pipeline, but GetMore::Invocation::isReadOperation will not, so we
+    // fall back to checking whether it took the global write lock for getMore.
+    // Also, aggregate requests with write stages can be processed on secondaries if the read
+    // concern specifies such. The secondariy will forward writes to the primary, and the primary
+    // will wait for write concern. The secondary should not wait for write concern.
+    auto replCoord = repl::ReplicationCoordinator::get(opCtx);
+    auto skipSettingLastOpToSystemOp = (replCoord && replCoord->getSettings().isReplSet() &&
+                                        !replCoord->getMemberState().primary()) ||
+        (invocation->isReadOperation() &&
+         invocation->definition()->getLogicalOp() != LogicalOp::opGetMore) ||
+        (invocation->definition()->getLogicalOp() == LogicalOp::opGetMore &&
+         !shard_role_details::getLocker(opCtx)->wasGlobalLockTakenForWrite());
+
+    if (!skipSettingLastOpToSystemOp && !opCtx->inMultiDocumentTransaction()) {
         repl::ReplClientInfo::forClient(opCtx->getClient()).setLastOpToSystemLastOpTime(opCtx);
         lastOpAfterRun = repl::ReplClientInfo::forClient(opCtx->getClient()).getLastOp();
         waitForWriteConcernAndAppendStatus();
@@ -289,18 +302,18 @@ inline void appendReplyMetadata(OperationContext* opCtx,
     }
 }
 
-inline Status refreshDatabase(OperationContext* opCtx, const StaleDbRoutingVersion& se) noexcept {
+inline Status refreshDatabase(OperationContext* opCtx, const StaleDbRoutingVersion& se) {
     return FilteringMetadataCache::get(opCtx)->onDbVersionMismatch(
         opCtx, se.getDb(), se.getVersionReceived());
 }
 
-inline Status refreshCollection(OperationContext* opCtx, const StaleConfigInfo& se) noexcept {
+inline Status refreshCollection(OperationContext* opCtx, const StaleConfigInfo& se) {
     return FilteringMetadataCache::get(opCtx)->onCollectionPlacementVersionMismatch(
         opCtx, se.getNss(), se.getVersionReceived().placementVersion());
 }
 
-inline Status refreshCatalogCache(
-    OperationContext* opCtx, const ShardCannotRefreshDueToLocksHeldInfo& refreshInfo) noexcept {
+inline Status refreshCatalogCache(OperationContext* opCtx,
+                                  const ShardCannotRefreshDueToLocksHeldInfo& refreshInfo) {
     return Grid::get(opCtx)
         ->catalogCache()
         ->getCollectionRoutingInfo(opCtx, refreshInfo.getNss())
@@ -308,7 +321,7 @@ inline Status refreshCatalogCache(
 }
 
 inline void handleReshardingCriticalSectionMetrics(OperationContext* opCtx,
-                                                   const StaleConfigInfo& se) noexcept {
+                                                   const StaleConfigInfo& se) {
     resharding_metrics::onCriticalSectionError(opCtx, se);
 }
 
@@ -317,9 +330,9 @@ inline void handleReshardingCriticalSectionMetrics(OperationContext* opCtx,
 // lock.  This will cause mongod to perhaps erroneously check for write concern when no writes
 // were done, or unnecessarily kill a read operation.  If we re-use the opCtx to retry command
 // execution, we must reset the locker state.
-inline void resetLockerState(OperationContext* opCtx) noexcept {
+inline void resetLockerState(OperationContext* opCtx) {
     // It is necessary to lock the client to change the Locker on the OperationContext.
-    stdx::lock_guard<Client> lk(*opCtx->getClient());
+    ClientLock lk(opCtx->getClient());
     invariant(!shard_role_details::getLocker(opCtx)->isLocked());
     shard_role_details::swapLocker(opCtx, std::make_unique<Locker>(opCtx->getServiceContext()), lk);
 }

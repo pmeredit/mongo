@@ -90,9 +90,7 @@ selector:
     - jstests/core/**/fsync.js
     - jstests/core/**/geo_s2cursorlimitskip.js
     - jstests/core/**/geo_update_btree2.js
-    - jstests/core/**/index9.js
     - jstests/core/**/queryoptimizera.js
-    - jstests/core/**/stages*.js
     - jstests/core/**/startup_log.js
     - jstests/core/**/query/top/top.js
     - jstests/core/**/geo_2d_explain.js
@@ -107,11 +105,11 @@ selector:
     - jstests/core/**/profile3.js
     - jstests/core/**/profile_findandmodify.js
     - jstests/core/**/query/top/top.js
-    - jstests/core/views/views_stats.js
+    - jstests/core/catalog/views/views_stats.js
     - jstests/core/**/crud_api.js
     - jstests/core/**/find_and_modify.js
-    - jstests/core/**/find_and_modify2.js
-    - jstests/core/**/find_and_modify_server6865.js
+    - jstests/core/**/find_and_modify_fields.js
+    - jstests/core/**/find_and_modify_positional_new_remove.js
     - jstests/core/**/project_with_collation.js
     - jstests/core/**/currentop.js
     - jstests/core/**/fsync.js
@@ -127,7 +125,7 @@ selector:
     - jstests/core/**/startup_log.js
     - jstests/core/**/shell_connection_strings.js
     - jstests/core/**/geo_s2ordering.js
-    - jstests/core/mixed_version_replica_set.js
+    - jstests/core/testing/mixed_version_replica_set.js
   exclude_with_any_tags:
     - assumes_standalone_mongod
     - assumes_against_mongod_not_mongos

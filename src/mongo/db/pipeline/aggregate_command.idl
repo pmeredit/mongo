@@ -62,10 +62,10 @@ types:
         deserializer: ::mongo::parseAggregateCursorFromBSON
         # SimpleCursorOptions has only non view members.
         is_view: false
-    explainVerbosity:
+    explainBool:
         bson_serialization_type: any
-        description: "The Verbosity value representing explain verbosity."
-        cpp_type: "mongo::ExplainOptions::Verbosity"
+        description: "The bool value specifying the explain field."
+        cpp_type: "bool"
         serializer: ::mongo::serializeExplainToBSON
         deserializer: ::mongo::parseExplainModeFromBSON
         # ExplainOptions::Verbosity is not a view.
@@ -219,7 +219,7 @@ commands:
                 stability: stable
             explain:
                 description: "Specifies to return the information on the processing of the pipeline."
-                type: explainVerbosity
+                type: explainBool
                 optional: true
                 stability: unstable
             allowDiskUse:
@@ -250,7 +250,7 @@ commands:
               description: "Query settings for the given query"
               type: QuerySettings
               optional: true
-              stability: unstable
+              stability: internal
             let:
                 description: "A document containing user-specified let parameter constants; i.e. values that do not change once computed."
                 type: object_owned
@@ -352,6 +352,14 @@ commands:
                 stability: internal
             includeQueryStatsMetrics:
                 description: "Determines whether or not to include query stats metrics in the response."
+                type: optionalBool
+                stability: internal
+            # TODO SERVER-101661 Remove this internal flag once $rankFusion works on views.
+            $_isRankFusion:
+                description: Internal usage only. If present, indicates that the pipeline is the 
+                    desugared representation of a user's $rankFusion pipeline. This is necessary 
+                    for guarding that $rankFusion is not yet allowed to be run over views.
+                cpp_name: isRankFusion
                 type: optionalBool
                 stability: internal
 

@@ -12,6 +12,7 @@ import {
     listStreamProcessors,
     makeRandomString,
     stopStreamProcessor,
+    TEST_PROJECT_ID,
     TEST_TENANT_ID
 } from "src/mongo/db/modules/enterprise/jstests/streams/utils.js";
 
@@ -35,6 +36,7 @@ function badDBSourceStartError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -73,6 +75,7 @@ function badDBSourceStartErrorWithStartAtOperationTime() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -108,6 +111,7 @@ function badKafkaSourceStartError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -132,58 +136,68 @@ function badKafkaSourceStartError() {
 // Create a streamProcessor with a bad $merge target. Verify the
 // streamProcessor reports a meaningful error in listStreamProcessors.
 function badMergeStartError() {
-    // Chose a valid network address and port that does not have a running server on it.
-    const goodUri = 'mongodb://' + db.getMongo().host;
-    const goodConnection = "dbgood";
-    const dbName = "test";
-    const inputCollName = "testin";
-    const badUri = "mongodb://127.0.0.1:9123";
-    const badConnection = "dbbad";
-    const outputCollName = "outputcoll";
-    const outputDbName = "test";
-    const connectionRegistry = [
-        {
-            name: badConnection,
-            type: 'atlas',
-            options: {
-                uri: badUri,
-            }
-        },
-        {
-            name: goodConnection,
-            type: 'atlas',
-            options: {
-                uri: goodUri,
-            }
-        },
-    ];
-    const spName = "sp1";
-    let result = db.runCommand({
-        streams_startStreamProcessor: '',
-        tenantId: TEST_TENANT_ID,
-        name: spName,
-        processorId: spName,
-        pipeline: [
+    const test = (parallelism) => {
+        // Chose a valid network address and port that does not have a running server on it.
+        const goodUri = 'mongodb://' + db.getMongo().host;
+        const goodConnection = "dbgood";
+        const dbName = "test";
+        const inputCollName = "testin";
+        const badUri = "mongodb://127.0.0.1:9123";
+        const badConnection = "dbbad";
+        const outputCollName = "outputcoll";
+        const outputDbName = "test";
+        const connectionRegistry = [
             {
-                $source: {
-                    connectionName: goodConnection,
-                    db: dbName,
-                    coll: inputCollName,
+                name: badConnection,
+                type: 'atlas',
+                options: {
+                    uri: badUri,
                 }
             },
             {
-                $merge: {
-                    into: {connectionName: badConnection, db: outputDbName, coll: outputCollName},
+                name: goodConnection,
+                type: 'atlas',
+                options: {
+                    uri: goodUri,
                 }
+            },
+        ];
+        const spName = "sp1";
+        let merge = {
+            $merge: {
+                into: {connectionName: badConnection, db: outputDbName, coll: outputCollName},
             }
-        ],
-        connections: connectionRegistry,
-        options: {featureFlags: {}}
-    });
-    assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
-    assert.eq(
-        result.errmsg,
-        "$merge to test.outputcoll failed: No suitable servers found: `serverselectiontimeoutms` timed out: [connection refused calling hello on '127.0.0.1']: generic server error");
+        };
+        if (parallelism) {
+            merge["$merge"]["parallelism"] = NumberInt(parallelism);
+        }
+        let result = db.runCommand({
+            streams_startStreamProcessor: '',
+            tenantId: TEST_TENANT_ID,
+            projectId: TEST_PROJECT_ID,
+            name: spName,
+            processorId: spName,
+            pipeline: [
+                {
+                    $source: {
+                        connectionName: goodConnection,
+                        db: dbName,
+                        coll: inputCollName,
+                    }
+                },
+                merge
+            ],
+            connections: connectionRegistry,
+            options: {featureFlags: {}}
+        });
+        assert.commandFailedWithCode(result, ErrorCodes.StreamProcessorAtlasConnectionError);
+        assert.eq(
+            result.errmsg,
+            "$merge to test.outputcoll failed: No suitable servers found: `serverselectiontimeoutms` timed out: [connection refused calling hello on '127.0.0.1']: generic server error");
+    };
+
+    test();
+    test(4);
 }
 
 // Test a bad $merge state with on specified, should throw an error during start.
@@ -215,6 +229,7 @@ function badMerge_WithOn_StartError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -267,6 +282,7 @@ function badMongoDLQAsyncError() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -324,6 +340,7 @@ function badKafkaEmit() {
     let result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -354,6 +371,7 @@ function badKafkaEmit() {
     result = db.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: "sp2",
         processorId: "sp2",
         pipeline: [
@@ -434,6 +452,7 @@ function changeSourceFailsAfterSuccesfulStart() {
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -528,6 +547,7 @@ function mergeFailsWithFullQueue() {
     assert.commandWorked(mongostream.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -616,6 +636,7 @@ function startFailedStreamProcessor() {
     assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -659,6 +680,7 @@ function startFailedStreamProcessor() {
     let result = assert.commandWorked(dbMerge.runCommand({
         streams_startStreamProcessor: '',
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -692,6 +714,7 @@ function unparseableMongocxxUri() {
     const result = db.runCommand({
         streams_startStreamProcessor: "Test roll back random",
         tenantId: TEST_TENANT_ID,
+        projectId: TEST_PROJECT_ID,
         name: spName,
         processorId: spName,
         pipeline: [
@@ -882,6 +905,7 @@ function timeseriesEmitUpdateFailure() {
 
     sp.createStreamProcessor(spName, [
         {$source: {connectionName: connectionName, db: dbName, coll: inputColl}},
+        {$addFields: {_ts: {$meta: "stream.source.ts"}}},
         {
             $emit: {
                 connectionName: connectionName,

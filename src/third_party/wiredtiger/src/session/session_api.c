@@ -573,10 +573,8 @@ __session_reconfigure(WT_SESSION *wt_session, const char *config)
     WT_SESSION_IMPL *session;
 
     session = (WT_SESSION_IMPL *)wt_session;
-    SESSION_API_CALL_PREPARE_NOT_ALLOWED(session, ret, reconfigure, config, cfg);
+    SESSION_API_CALL_PREPARE_ALLOWED(session, reconfigure, config, cfg);
     WT_UNUSED(cfg);
-
-    WT_ERR(__wt_txn_context_check(session, false));
 
     WT_ERR(__wt_session_reset_cursors(session, false));
 
@@ -584,7 +582,15 @@ __session_reconfigure(WT_SESSION *wt_session, const char *config)
      * Note that this method only checks keys that are passed in by the application: we don't want
      * to reset other session settings to their default values.
      */
-    WT_ERR(__wt_txn_reconfigure(session, config));
+    ret = __wt_txn_reconfigure(session, config);
+    if (ret == EINVAL) {
+        /*
+         * EINVAL is returned iff there is an active transaction and txn is being reconfigured. In
+         * this case, don't want to fail the transaction - same as in SESSION_API_PREPARE_CHECK.
+         */
+        __set_err = false;
+        goto err;
+    }
 
     WT_ERR(__session_config_int(session, config));
 
@@ -686,8 +692,13 @@ __session_open_cursor_int(WT_SESSION_IMPL *session, const char *uri, WT_CURSOR *
             WT_RET(__wt_curmetadata_open(session, uri, owner, cfg, cursorp));
         break;
     case 'b':
-        if (WT_PREFIX_MATCH(uri, "backup:"))
+        /* FIXME-WT-14231 Allow taking backups when live restore is in the COMPLETE phase. */
+        if (WT_PREFIX_MATCH(uri, "backup:")) {
+            if (F_ISSET(S2C(session), WT_CONN_LIVE_RESTORE_FS))
+                WT_RET_SUB(session, EINVAL, WT_CONFLICT_LIVE_RESTORE,
+                  "backup cannot be taken when live restore is enabled");
             WT_RET(__wt_curbackup_open(session, uri, other, cfg, cursorp));
+        }
         break;
     case 's':
         if (WT_PREFIX_MATCH(uri, "statistics:")) {
@@ -1765,7 +1776,6 @@ __session_begin_transaction(WT_SESSION *wt_session, const char *config)
     SESSION_API_CALL_PREPARE_NOT_ALLOWED_NOCONF(session, ret, begin_transaction);
     SESSION_API_CONF(session, begin_transaction, config, conf);
     WT_STAT_CONN_INCR(session, txn_begin);
-    WT_STAT_SESSION_SET(session, txn_bytes_dirty, 0);
 
     WT_ERR(__wt_txn_context_check(session, false));
 
@@ -1823,9 +1833,8 @@ __session_commit_transaction(WT_SESSION *wt_session, const char *config)
 
     /* Permit the commit if the transaction failed, but was read-only. */
     if (F_ISSET(txn, WT_TXN_ERROR) && txn->mod_count != 0)
-        WT_ERR_MSG(session, EINVAL, "failed %s transaction requires rollback%s%s",
-          F_ISSET(txn, WT_TXN_PREPARE) ? "prepared " : "", txn->rollback_reason == NULL ? "" : ": ",
-          txn->rollback_reason == NULL ? "" : txn->rollback_reason);
+        WT_ERR_MSG(session, EINVAL, "failed %s transaction requires rollback",
+          F_ISSET(txn, WT_TXN_PREPARE) ? "prepared " : "");
 
 err:
     /*
@@ -1949,6 +1958,14 @@ __session_rollback_transaction(WT_SESSION *wt_session, const char *config)
     F_CLR(session, WT_SESSION_RESOLVING_TXN);
 
 err:
+    /*
+     * Check for a prepared transaction, and quit: we can't ignore the error and we can't roll back
+     * a prepared transaction.
+     */
+    if (ret != 0 && session->txn && F_ISSET(session->txn, WT_TXN_PREPARE))
+        WT_IGNORE_RET(__wt_panic(session, ret,
+          "transactional error logged after transaction was prepared, failing the system"));
+
 #ifdef HAVE_CALL_LOG
     WT_TRET(__wt_call_log_rollback_transaction(session, config, ret));
 #endif
@@ -2202,20 +2219,6 @@ err:
 }
 
 /*
- * __session_get_rollback_reason --
- *     WT_SESSION->get_rollback_reason method.
- */
-static const char *
-__session_get_rollback_reason(WT_SESSION *wt_session)
-{
-    WT_SESSION_IMPL *session;
-
-    session = (WT_SESSION_IMPL *)wt_session;
-
-    return (session->txn->rollback_reason);
-}
-
-/*
  * __session_get_last_error --
  *     WT_SESSION->get_last_error method.
  */
@@ -2331,8 +2334,7 @@ __open_session(WT_CONNECTION_IMPL *conn, WT_EVENT_HANDLER *event_handler, const 
         __session_begin_transaction, __session_commit_transaction, __session_prepare_transaction,
         __session_rollback_transaction, __session_query_timestamp, __session_timestamp_transaction,
         __session_timestamp_transaction_uint, __session_checkpoint, __session_reset_snapshot,
-        __session_transaction_pinned_range, __session_get_last_error, __session_get_rollback_reason,
-        __wt_session_breakpoint},
+        __session_transaction_pinned_range, __session_get_last_error, __wt_session_breakpoint},
       stds_min = {NULL, NULL, __session_close, __session_reconfigure_notsup, __wt_session_strerror,
         __session_open_cursor, __session_alter_readonly, __session_bind_configuration,
         __session_create_readonly, __wti_session_compact_readonly, __session_drop_readonly,
@@ -2343,7 +2345,7 @@ __open_session(WT_CONNECTION_IMPL *conn, WT_EVENT_HANDLER *event_handler, const 
         __session_query_timestamp_notsup, __session_timestamp_transaction_notsup,
         __session_timestamp_transaction_uint_notsup, __session_checkpoint_readonly,
         __session_reset_snapshot_notsup, __session_transaction_pinned_range_notsup,
-        __session_get_last_error, __session_get_rollback_reason, __wt_session_breakpoint},
+        __session_get_last_error, __wt_session_breakpoint},
       stds_readonly = {NULL, NULL, __session_close, __session_reconfigure, __wt_session_strerror,
         __session_open_cursor, __session_alter_readonly, __session_bind_configuration,
         __session_create_readonly, __wti_session_compact_readonly, __session_drop_readonly,
@@ -2354,7 +2356,7 @@ __open_session(WT_CONNECTION_IMPL *conn, WT_EVENT_HANDLER *event_handler, const 
         __session_query_timestamp, __session_timestamp_transaction,
         __session_timestamp_transaction_uint, __session_checkpoint_readonly,
         __session_reset_snapshot, __session_transaction_pinned_range, __session_get_last_error,
-        __session_get_rollback_reason, __wt_session_breakpoint};
+        __wt_session_breakpoint};
     WT_DECL_RET;
     WT_SESSION_IMPL *session, *session_ret;
     uint32_t i;
@@ -2498,7 +2500,7 @@ __open_session(WT_CONNECTION_IMPL *conn, WT_EVENT_HANDLER *event_handler, const 
     F_SET(session_ret, WT_SESSION_SAVE_ERRORS);
     session_ret->err_info.err_msg = NULL;
     WT_ERR(__wt_buf_initsize(session, &(session_ret->err_info.err_msg_buf), 128));
-    WT_ERR(__wt_session_set_last_error(session_ret, 0, WT_NONE, WT_ERROR_INFO_EMPTY));
+    __wt_session_reset_last_error(session_ret);
 
     /*
      * Release write to ensure structure fields are set before any other thread will consider the

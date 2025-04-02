@@ -63,7 +63,9 @@ export function generateSchemaV1(fieldMap) {
             bsonType: pathSpec["bsonType"],
             algorithm: kRandomAlgo
         };
-        if (pathSpec.hasOwnProperty("queries") && pathSpec.queries !== []) {
+
+        if (pathSpec.hasOwnProperty("queries") && pathSpec.queries instanceof Object &&
+            Object.keys(pathSpec.queries).length > 0) {
             fle1Spec.algorithm = kDeterministicAlgo;
         }
         currentLevel[pathElements[pathElements.length - 1]] = {encrypt: fle1Spec};

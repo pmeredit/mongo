@@ -85,8 +85,6 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
@@ -332,8 +330,15 @@ private:
     // A vector of all insert statements in timestamp order.
     std::vector<TenantInsertStatement> _tenantInsertStatements;
 
-    // A mapping from a tenant id to insert statements and the change collection of the tenant.
-    stdx::unordered_map<TenantId, boost::optional<AutoGetChangeCollection>, TenantId::Hasher>
+    struct TenantIdComparator {
+        bool operator()(const TenantId& lhs, const TenantId& rhs) const {
+            return ResourceId(RESOURCE_TENANT, lhs) < ResourceId(RESOURCE_TENANT, rhs);
+        }
+    };
+    // A mapping from a tenant id to insert statements and the change collection of the tenant. We
+    // don't use an unordered_map here since we will iterate the map in order to acquire locks
+    // within the acquireLocks() method. This avoids possible deadlocks based on lock inversion.
+    std::map<TenantId, boost::optional<AutoGetChangeCollection>, TenantIdComparator>
         _tenantToChangeCollectionMap;
 
     // An operation context to use while performing all operations in this class.

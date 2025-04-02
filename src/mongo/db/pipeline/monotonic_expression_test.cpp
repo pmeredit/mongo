@@ -40,8 +40,7 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/monotonic_expression.h"
 #include "mongo/db/service_context_d_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 namespace {
@@ -103,58 +102,45 @@ TEST_F(MonotonicExpressionFixture, NestedOppositesAreProcessedCorrectlyForNonMon
 }
 
 TEST_F(MonotonicExpressionFixture, MonotonicAndNonMonotonicFieldIsNonMonotonic) {
-    ASSERT_FALSE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("$a"
-                                                                 << "$b")),
-                                       "a"));
+    ASSERT_FALSE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("$a" << "$b")), "a"));
 }
 
 TEST_F(MonotonicExpressionFixture, MonotonicAndConstantIsMonotonic) {
-    ASSERT_TRUE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("$a"
-                                                                << "1")),
-                                      "a"));
+    ASSERT_TRUE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("$a" << "1")), "a"));
 }
 
 TEST_F(MonotonicExpressionFixture, ConstantAndConstantIsMonotonic) {
-    ASSERT_TRUE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("1"
-                                                                << "2")),
-                                      "a"));
+    ASSERT_TRUE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("1" << "2")), "a"));
 }
 
 TEST_F(MonotonicExpressionFixture, MonotonicAndOppositeMonotonicIsNonMonotonic) {
-    ASSERT_FALSE(isMonotonicExpression(BSON("$subtract" << BSON_ARRAY("$a"
-                                                                      << "$a")),
-                                       "a"));
+    ASSERT_FALSE(isMonotonicExpression(BSON("$subtract" << BSON_ARRAY("$a" << "$a")), "a"));
 }
 
 TEST_F(MonotonicExpressionFixture, MonotonicAndMonotonicIsMonotonic) {
-    const auto& dateTrunc = BSON("$dateTrunc" << BSON("date"
-                                                      << "$time"
-                                                      << "unit"
-                                                      << "hour"
-                                                      << "timezone"
-                                                      << "America/New_York"));
+    const auto& dateTrunc = BSON("$dateTrunc" << BSON("date" << "$time"
+                                                             << "unit"
+                                                             << "hour"
+                                                             << "timezone"
+                                                             << "America/New_York"));
     ASSERT_TRUE(isMonotonicExpression(BSON("$add" << BSON_ARRAY(dateTrunc << "$time")), "time"));
-    ASSERT_TRUE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("$time"
-                                                                << "$time")),
-                                      "time"));
+    ASSERT_TRUE(isMonotonicExpression(BSON("$add" << BSON_ARRAY("$time" << "$time")), "time"));
 }
 TEST_F(MonotonicExpressionFixture, FunctionWithConstantNonMonotonicChildrenIsMonotonic) {
-    ASSERT_TRUE(isMonotonicExpression(BSON("$dateTrunc" << BSON("date"
-                                                                << "$time"
-                                                                << "unit"
-                                                                << "hour"
-                                                                << "timezone"
-                                                                << "America/New_York")),
+    ASSERT_TRUE(isMonotonicExpression(BSON("$dateTrunc" << BSON("date" << "$time"
+                                                                       << "unit"
+                                                                       << "hour"
+                                                                       << "timezone"
+                                                                       << "America/New_York")),
                                       "time"));
 }
 
 TEST_F(MonotonicExpressionFixture, FunctionWithNonConstantNonMonotonicChildrenIsNonMonotonic) {
-    ASSERT_FALSE(isMonotonicExpression(BSON("$dateTrunc" << BSON("date"
-                                                                 << "$time"
-                                                                 << "unit"
-                                                                 << "hour"
-                                                                 << "binSize"
-                                                                 << "$time")),
+    ASSERT_FALSE(isMonotonicExpression(BSON("$dateTrunc" << BSON("date" << "$time"
+                                                                        << "unit"
+                                                                        << "hour"
+                                                                        << "binSize"
+                                                                        << "$time")),
                                        "time"));
 }
 

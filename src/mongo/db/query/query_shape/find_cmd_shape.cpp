@@ -35,6 +35,18 @@
 namespace mongo::query_shape {
 namespace {
 
+// Compare the raw size of each class, ignoring any padding added from differences in size when
+// compared with alignment.
+static constexpr auto kExpectedAlignment =
+    std::max(alignof(Shape), alignof(FindCmdShapeComponents));
+static constexpr auto kExpectedPadding =
+    (kExpectedAlignment - (sizeof(Shape) + sizeof(FindCmdShapeComponents)) % kExpectedAlignment) %
+    kExpectedAlignment;
+static_assert(
+    sizeof(FindCmdShape) == sizeof(Shape) + sizeof(FindCmdShapeComponents) + kExpectedPadding,
+    "If the class's members have changed, this assert and the extraSize() calculation may "
+    "need to be updated with a new value.");
+
 BSONObj projectionShape(const boost::optional<projection_ast::Projection>& proj,
                         const SerializationOptions& opts =
                             SerializationOptions::kRepresentativeQueryShapeSerializeOptions) {
@@ -102,7 +114,6 @@ void FindCmdShapeComponents::appendTo(BSONObjBuilder& bob,
 
     bob.append("command", "find");
 
-    std::unique_ptr<MatchExpression> filterExpr;
     // Filter.
     bob.append(FindCommandRequest::kFilterFieldName, filter);
 
@@ -125,7 +136,7 @@ void FindCmdShapeComponents::appendTo(BSONObjBuilder& bob,
     // The values here don't matter (assuming we're not using the 'kUnchanged' policy).
     tassert(7973601,
             "Serialization policy not supported - original values have been discarded",
-            serializationOpts.literalPolicy != LiteralSerializationPolicy::kUnchanged);
+            !serializationOpts.isKeepingLiteralsUnchanged());
     if (hasField.limit) {
         serializationOpts.appendLiteral(&bob, FindCommandRequest::kLimitFieldName, 1ll);
     }

@@ -54,9 +54,7 @@
 #include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/snapshot.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/intrusive_counter.h"
 
 namespace mongo {
@@ -106,8 +104,9 @@ protected:
     }
 
     std::unique_ptr<PlanYieldPolicy> yieldPolicy() {
-        return std::make_unique<NoopYieldPolicy>(
-            opCtx(), opCtx()->getServiceContext()->getFastClockSource());
+        return std::make_unique<NoopYieldPolicy>(opCtx(),
+                                                 opCtx()->getServiceContext()->getFastClockSource(),
+                                                 PlanYieldPolicy::YieldThroughAcquisitions());
     }
 
     OperationContext* opCtx() {

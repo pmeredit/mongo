@@ -32,9 +32,9 @@
 #include <utility>
 
 #include "mongo/db/exec/plan_stats.h"
+#include "mongo/db/memory_tracking/memory_usage_tracker.h"
 #include "mongo/db/pipeline/accumulation_statement.h"
 #include "mongo/db/pipeline/accumulator.h"
-#include "mongo/util/memory_usage_tracker.h"
 
 namespace mongo {
 
@@ -218,7 +218,7 @@ protected:
     std::vector<AccumulationStatement> _accumulatedFields;
     // Per-field memory trackers corresponding to each AccumulationStatement in _accumulatedFields.
     // Caching these helps avoid lookups in the map in MemoryUsageTracker for every input document.
-    std::vector<MemoryUsageTracker::Impl*> _accumulatedFieldMemoryTrackers;
+    std::vector<SimpleMemoryUsageTracker*> _accumulatedFieldMemoryTrackers;
 
     // Only set to true for a merging $group when a $group is split by distributedPlanLogic().
     bool _doingMerge{false};

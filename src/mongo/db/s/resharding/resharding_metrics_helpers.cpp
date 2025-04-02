@@ -45,9 +45,6 @@
 #include "mongo/db/s/resharding/resharding_donor_recipient_common.h"
 #include "mongo/db/s/resharding/resharding_donor_service.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/stale_exception.h"
 #include "mongo/util/uuid.h"
@@ -59,19 +56,11 @@ namespace resharding_metrics {
 namespace {
 
 boost::optional<UUID> tryGetReshardingUUID(OperationContext* opCtx, const NamespaceString& nss) {
-    // We intentionally use AutoGetDb and acquire the collection lock manually here instead of using
-    // AutoGetCollection. AutoGetCollection will call checkShardVersionOrThrow() to verify that the
-    // shard version on the opCtx is compatible with the shard version on the collection, however
-    // this verification will throw if the critical section is held. Since the critical section is
-    // always held on this code path by definition, this check must be bypassed. As a consequence,
-    // if the metadata is not known (because this is a secondary that stepped up during the critical
+    // If the metadata is not known (because this is a secondary that stepped up during the critical
     // section), the metrics will not be incremented. The resharding metrics already do not attempt
     // to restore the number of reads/writes done on a previous primary during a critical section,
     // so this is considered acceptable.
-    AutoGetDb autoDb(opCtx, nss.dbName(), MODE_IS);
-    Lock::CollectionLock collLock(opCtx, nss, MODE_IS);
-    const auto scopedCsr =
-        CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx, nss);
+    const auto scopedCsr = CollectionShardingRuntime::acquireShared(opCtx, nss);
     auto metadata = scopedCsr->getCurrentMetadataIfKnown();
     if (!metadata || !metadata->isSharded()) {
         return boost::none;

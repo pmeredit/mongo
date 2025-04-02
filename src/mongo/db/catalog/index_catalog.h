@@ -48,7 +48,6 @@
 #include "mongo/db/index/multikey_paths.h"
 #include "mongo/db/index_builds/resumable_index_builds_gen.h"
 #include "mongo/db/index_names.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/record_id.h"
@@ -425,12 +424,12 @@ public:
      * the members explaining what they each stand for.
      */
     struct RemoveExistingIndexesFlags {
-        RemoveExistingIndexesFlags(){};
+        RemoveExistingIndexesFlags() {};
         RemoveExistingIndexesFlags(
             bool removeInProgressIndexBuilds,
             const std::map<StringData, std::set<IndexType>>* fieldsToUseForComparison)
             : removeInProgressIndexBuilds(removeInProgressIndexBuilds),
-              fieldsToUseForComparison(fieldsToUseForComparison){};
+              fieldsToUseForComparison(fieldsToUseForComparison) {};
         // Flag indicating whether we should also check unfinished index builds for wether the given
         // specs match.
         bool removeInProgressIndexBuilds = true;

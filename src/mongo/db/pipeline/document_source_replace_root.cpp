@@ -58,7 +58,6 @@
 namespace mongo {
 
 using boost::intrusive_ptr;
-using namespace fmt::literals;
 
 Document ReplaceRootTransformation::applyTransformation(const Document& input) const {
     // Extract subdocument in the form of a Value.
@@ -118,13 +117,13 @@ boost::intrusive_ptr<DocumentSourceMatch> ReplaceRootTransformation::createTypeN
 void ReplaceRootTransformation::reportRenames(const MatchExpression* expr,
                                               const std::string& prefixPath,
                                               StringMap<std::string>& renames) {
-    DepsTracker deps = {};
+    DepsTracker deps;
     match_expression::addDependencies(expr, &deps);
     for (const auto& path : deps.fields) {
         // Only record renames for top level paths.
         const auto oldPathTopLevelField = FieldPath::extractFirstFieldFromDottedPath(path);
-        renames.emplace(
-            std::make_pair(oldPathTopLevelField, "{}.{}"_format(prefixPath, oldPathTopLevelField)));
+        renames.emplace(std::make_pair(oldPathTopLevelField,
+                                       fmt::format("{}.{}", prefixPath, oldPathTopLevelField)));
     }
 }
 
@@ -174,7 +173,7 @@ bool ReplaceRootTransformation::pushDotRenamedMatchBefore(Pipeline::SourceContai
             // resulted in an error before the optimization are not 'optimized' to cases which do
             // not error. Optimizations should not change the behavior.
             splitMatchForReplaceRoot.first->joinMatchWith(
-                createTypeNEObjectPredicate(prefixPath, _expCtx), "$or"_sd);
+                createTypeNEObjectPredicate(prefixPath, _expCtx), MatchExpression::MatchType::OR);
 
             // Swap the eligible portion of the match stage with the replaceRoot stage. std::swap is
             // used here as it performs reassignment of what the iterators point to in O(1) for

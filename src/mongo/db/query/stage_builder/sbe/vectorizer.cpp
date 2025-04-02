@@ -148,6 +148,130 @@ Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer
     return {n, TypeSignature::kAnyScalarType, {}};
 }
 
+template <typename Lhs, typename Rhs>
+Vectorizer::Tree Vectorizer::vectorizeLogicalOp(optimizer::Operations opType,
+                                                Lhs lhsNode,
+                                                Rhs rhsNode) {
+    Tree lhs = lhsNode();
+    if (!lhs.expr.has_value()) {
+        return lhs;
+    }
+    // An And/Or operation between two blocks has to work at the level of measures, not on
+    // the expanded arrays.
+    foldIfNecessary(lhs, true);
+
+    if (TypeSignature::kBlockType.isSubset(lhs.typeSignature)) {
+        // Treat the result of the left side as the mask to be applied on the right side.
+        // This way, the right side can decide whether to skip the processing of the indexes
+        // where the left side produced a false result.
+        auto lhsVar = getABTLocalVariableName(_frameGenerator->generate(), 0);
+
+        auto mask = opType == optimizer::Operations::And
+            ? lhsVar
+            : getABTLocalVariableName(_frameGenerator->generate(), 0);
+
+        _activeMasks.push_back(mask);
+        Tree rhs = rhsNode();
+        _activeMasks.pop_back();
+        if (!rhs.expr.has_value()) {
+            return rhs;
+        }
+        foldIfNecessary(rhs, true);
+
+        if (TypeSignature::kBlockType.isSubset(rhs.typeSignature)) {
+            return {opType == optimizer::Operations::And
+                        ? makeLet(lhsVar,
+                                  std::move(*lhs.expr),
+                                  makeABTFunction("valueBlockLogicalAnd"_sd,
+                                                  makeVariable(lhsVar),
+                                                  std::move(*rhs.expr)))
+                        : makeLet(lhsVar,
+                                  std::move(*lhs.expr),
+                                  makeLet(mask,
+                                          makeABTFunction(
+                                              "valueBlockLogicalNot"_sd,
+                                              makeABTFunction("valueBlockFillEmpty"_sd,
+                                                              makeVariable(lhsVar),
+                                                              optimizer::Constant::boolean(false))),
+                                          makeABTFunction("valueBlockLogicalOr"_sd,
+                                                          makeVariable(lhsVar),
+                                                          std::move(*rhs.expr)))),
+                    TypeSignature::kBlockType.include(TypeSignature::kBooleanType)
+                        .include(lhs.typeSignature.include(rhs.typeSignature)
+                                     .intersect(TypeSignature::kNothingType)),
+                    {}};
+        }
+    } else {
+        Tree rhs = rhsNode();
+        if (!rhs.expr.has_value()) {
+            return rhs;
+        }
+        // Preserve scalar operation, reject vectorization of scalar vs vector.
+        if (!TypeSignature::kBlockType.isSubset(rhs.typeSignature)) {
+            return {
+                make<optimizer::BinaryOp>(opType, std::move(*lhs.expr), std::move(*rhs.expr)),
+                TypeSignature::kBooleanType.include(lhs.typeSignature.include(rhs.typeSignature)
+                                                        .intersect(TypeSignature::kNothingType)),
+                {}};
+        }
+    }
+    return {{}, TypeSignature::kAnyScalarType, {}};
+}
+
+template <typename Lhs, typename Rhs>
+Vectorizer::Tree Vectorizer::vectorizeArithmeticOp(optimizer::Operations opType,
+                                                   Lhs lhsNode,
+                                                   Rhs rhsNode) {
+    Tree lhs = lhsNode();
+    if (!lhs.expr.has_value()) {
+        return lhs;
+    }
+    Tree rhs = rhsNode();
+    if (!rhs.expr.has_value()) {
+        return rhs;
+    }
+
+    StringData fnName = [&]() {
+        switch (opType) {
+            case optimizer::Operations::Add:
+                return "valueBlockAdd"_sd;
+            case optimizer::Operations::Sub:
+                return "valueBlockSub"_sd;
+            case optimizer::Operations::Div:
+                return "valueBlockDiv"_sd;
+            case optimizer::Operations::Mult:
+                return "valueBlockMult"_sd;
+            default:
+                MONGO_UNREACHABLE;
+        }
+    }();
+
+    auto returnTS =
+        TypeSignature::kNumericType.include(getTypeSignature(sbe::value::TypeTags::Date));
+
+    if (TypeSignature::kBlockType.isSubset(lhs.typeSignature) ||
+        TypeSignature::kBlockType.isSubset(rhs.typeSignature)) {
+        boost::optional<optimizer::ProjectionName> sameCell = lhs.sourceCell.has_value() &&
+                rhs.sourceCell.has_value() && *lhs.sourceCell == *rhs.sourceCell
+            ? lhs.sourceCell
+            : boost::none;
+        // If we can't identify a single cell for both branches, fold them.
+        if (!sameCell.has_value()) {
+            foldIfNecessary(lhs);
+            foldIfNecessary(rhs);
+        }
+        return {
+            makeABTFunction(fnName, generateMaskArg(), std::move(*lhs.expr), std::move(*rhs.expr)),
+            TypeSignature::kBlockType.include(returnTS),
+            sameCell};
+    } else {
+        // Preserve scalar operation.
+        return {make<optimizer::BinaryOp>(opType, std::move(*lhs.expr), std::move(*rhs.expr)),
+                returnTS,
+                {}};
+    }
+}
+
 Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer::BinaryOp& op) {
     switch (op.op()) {
         case optimizer::Operations::FillEmpty: {
@@ -356,127 +480,59 @@ Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer
         }
         case optimizer::Operations::And:
         case optimizer::Operations::Or: {
-            Tree lhs = op.getLeftChild().visit(*this);
-            if (!lhs.expr.has_value()) {
-                return lhs;
-            }
-            // An And/Or operation between two blocks has to work at the level of measures, not on
-            // the expanded arrays.
-            foldIfNecessary(lhs, true);
-
-            if (TypeSignature::kBlockType.isSubset(lhs.typeSignature)) {
-                // Treat the result of the left side as the mask to be applied on the right side.
-                // This way, the right side can decide whether to skip the processing of the indexes
-                // where the left side produced a false result.
-                auto lhsVar = getABTLocalVariableName(_frameGenerator->generate(), 0);
-
-                auto mask = op.op() == optimizer::Operations::And
-                    ? lhsVar
-                    : getABTLocalVariableName(_frameGenerator->generate(), 0);
-
-                _activeMasks.push_back(mask);
-                Tree rhs = op.getRightChild().visit(*this);
-                _activeMasks.pop_back();
-                if (!rhs.expr.has_value()) {
-                    return rhs;
-                }
-                foldIfNecessary(rhs, true);
-
-                if (TypeSignature::kBlockType.isSubset(rhs.typeSignature)) {
-                    return {op.op() == optimizer::Operations::And
-                                ? makeLet(lhsVar,
-                                          std::move(*lhs.expr),
-                                          makeABTFunction("valueBlockLogicalAnd"_sd,
-                                                          makeVariable(lhsVar),
-                                                          std::move(*rhs.expr)))
-                                : makeLet(lhsVar,
-                                          std::move(*lhs.expr),
-                                          makeLet(mask,
-                                                  makeABTFunction(
-                                                      "valueBlockLogicalNot"_sd,
-                                                      makeABTFunction(
-                                                          "valueBlockFillEmpty"_sd,
-                                                          makeVariable(lhsVar),
-                                                          optimizer::Constant::boolean(false))),
-                                                  makeABTFunction("valueBlockLogicalOr"_sd,
-                                                                  makeVariable(lhsVar),
-                                                                  std::move(*rhs.expr)))),
-                            TypeSignature::kBlockType.include(TypeSignature::kBooleanType)
-                                .include(lhs.typeSignature.include(rhs.typeSignature)
-                                             .intersect(TypeSignature::kNothingType)),
-                            {}};
-                }
-            } else {
-                Tree rhs = op.getRightChild().visit(*this);
-                if (!rhs.expr.has_value()) {
-                    return rhs;
-                }
-                // Preserve scalar operation, reject vectorization of scalar vs vector.
-                if (!TypeSignature::kBlockType.isSubset(rhs.typeSignature)) {
-                    return {make<optimizer::BinaryOp>(
-                                op.op(), std::move(*lhs.expr), std::move(*rhs.expr)),
-                            TypeSignature::kBooleanType.include(
-                                lhs.typeSignature.include(rhs.typeSignature)
-                                    .intersect(TypeSignature::kNothingType)),
-                            {}};
-                }
-            }
+            return vectorizeLogicalOp(
+                op.op(),
+                [&]() { return op.getLeftChild().visit(*this); },
+                [&]() { return op.getRightChild().visit(*this); });
             break;
         }
         case optimizer::Operations::Add:
         case optimizer::Operations::Sub:
         case optimizer::Operations::Div:
         case optimizer::Operations::Mult: {
-            Tree lhs = op.getLeftChild().visit(*this);
-            if (!lhs.expr.has_value()) {
-                return lhs;
-            }
-            Tree rhs = op.getRightChild().visit(*this);
-            if (!rhs.expr.has_value()) {
-                return rhs;
-            }
-
-            StringData fnName = [&]() {
-                switch (op.op()) {
-                    case optimizer::Operations::Add:
-                        return "valueBlockAdd"_sd;
-                    case optimizer::Operations::Sub:
-                        return "valueBlockSub"_sd;
-                    case optimizer::Operations::Div:
-                        return "valueBlockDiv"_sd;
-                    case optimizer::Operations::Mult:
-                        return "valueBlockMult"_sd;
-                    default:
-                        MONGO_UNREACHABLE;
-                }
-            }();
-
-            auto returnTS =
-                TypeSignature::kNumericType.include(getTypeSignature(sbe::value::TypeTags::Date));
-
-            if (TypeSignature::kBlockType.isSubset(lhs.typeSignature) ||
-                TypeSignature::kBlockType.isSubset(rhs.typeSignature)) {
-                boost::optional<optimizer::ProjectionName> sameCell = lhs.sourceCell.has_value() &&
-                        rhs.sourceCell.has_value() && *lhs.sourceCell == *rhs.sourceCell
-                    ? lhs.sourceCell
-                    : boost::none;
-                // If we can't identify a single cell for both branches, fold them.
-                if (!sameCell.has_value()) {
-                    foldIfNecessary(lhs);
-                    foldIfNecessary(rhs);
-                }
-                return {makeABTFunction(
-                            fnName, generateMaskArg(), std::move(*lhs.expr), std::move(*rhs.expr)),
-                        TypeSignature::kBlockType.include(returnTS),
-                        sameCell};
-            } else {
-                // Preserve scalar operation.
-                return {
-                    make<optimizer::BinaryOp>(op.op(), std::move(*lhs.expr), std::move(*rhs.expr)),
-                    returnTS,
-                    {}};
-            }
+            return vectorizeArithmeticOp(
+                op.op(),
+                [&]() { return op.getLeftChild().visit(*this); },
+                [&]() { return op.getRightChild().visit(*this); });
             break;
+        }
+        default:
+            break;
+    }
+    logUnsupportedConversion(n);
+    return {{}, TypeSignature::kAnyScalarType, {}};
+}
+
+Vectorizer::Tree Vectorizer::vectorizeNaryHelper(const optimizer::NaryOp& op, size_t argIdx) {
+    // Verify that we have at least 2 items to process.
+    tassert(10199602, "index out of range", argIdx < op.nodes().size() - 1);
+    auto lhsNode = [&]() {
+        return op.nodes()[argIdx].visit(*this);
+    };
+    auto rhsNode = [&]() {
+        // If this is the last item, process it directly, otherwise recurse simulating
+        // the presence of a nested logical operation.
+        size_t rhsIdx = argIdx + 1;
+        return (rhsIdx == op.nodes().size() - 1) ? op.nodes()[rhsIdx].visit(*this)
+                                                 : vectorizeNaryHelper(op, rhsIdx);
+    };
+    switch (op.op()) {
+        case optimizer::Operations::And:
+        case optimizer::Operations::Or:
+            return vectorizeLogicalOp(op.op(), lhsNode, rhsNode);
+        case optimizer::Operations::Add:
+            return vectorizeArithmeticOp(op.op(), lhsNode, rhsNode);
+        default:
+            MONGO_UNREACHABLE;
+    }
+}
+
+Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer::NaryOp& op) {
+    switch (op.op()) {
+        case optimizer::Operations::And:
+        case optimizer::Operations::Or:
+        case optimizer::Operations::Add: {
+            return vectorizeNaryHelper(op, 0);
         }
         default:
             break;
@@ -853,8 +909,50 @@ Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer
             body.sourceCell};
 }
 
-Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer::If& op) {
-    auto test = op.getCondChild().visit(*this);
+Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer::MultiLet& op) {
+    // Simply recreate the MultiLet node using the processed inputs.
+    std::vector<Tree> bindVec;
+    bindVec.reserve(op.numBinds());
+
+    for (size_t idx = 0; idx < op.numBinds(); ++idx) {
+        auto bind = op.bind(idx).visit(*this);
+        if (!bind.expr.has_value()) {
+            return bind;
+        }
+        bindVec.emplace_back(std::move(bind));
+    }
+
+    // Forward the inferred type to the inner expressions.
+    for (size_t idx = 0; idx < op.numBinds(); ++idx) {
+        _variableTypes.insert_or_assign(
+            op.varName(idx), std::make_pair(bindVec[idx].typeSignature, bindVec[idx].sourceCell));
+    }
+
+    auto body = op.in().visit(*this);
+
+    for (auto&& name : op.varNames()) {
+        _variableTypes.erase(name);
+    }
+
+    if (!body.expr.has_value()) {
+        return body;
+    }
+
+    optimizer::ABTVector nodes;
+    nodes.reserve(op.numBinds() + 1);
+
+    for (size_t idx = 0; idx < op.numBinds(); ++idx) {
+        nodes.emplace_back(std::move(*bindVec[idx].expr));
+    }
+
+    return {makeLet(op.varNames(), std::move(nodes), std::move(*body.expr)),
+            body.typeSignature,
+            body.sourceCell};
+}
+
+template <typename Cond, typename Then, typename Else>
+Vectorizer::Tree Vectorizer::vectorizeCond(Cond condNode, Then thenNode, Else elseNode) {
+    auto test = condNode();
     if (!test.expr.has_value()) {
         return test;
     }
@@ -897,7 +995,7 @@ Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer
         // The `then` side will use all the bitmaps seen so far AND the current bitmap.
         auto thenBranchBitmapVar = getABTLocalVariableName(_frameGenerator->generate(), 0);
         _activeMasks.push_back(thenBranchBitmapVar);
-        auto thenBranch = op.getThenChild().visit(*this);
+        auto thenBranch = thenNode();
         _activeMasks.pop_back();
         if (!thenBranch.expr.has_value()) {
             return thenBranch;
@@ -913,7 +1011,7 @@ Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer
         // bitmap.
         auto elseBranchBitmapVar = getABTLocalVariableName(_frameGenerator->generate(), 0);
         _activeMasks.push_back(elseBranchBitmapVar);
-        auto elseBranch = op.getElseChild().visit(*this);
+        auto elseBranch = elseNode();
         _activeMasks.pop_back();
         if (!elseBranch.expr.has_value()) {
             return elseBranch;
@@ -954,11 +1052,11 @@ Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer
                 sameCell};
     } else {
         // Scalar test, keep it as it is.
-        auto thenBranch = op.getThenChild().visit(*this);
+        auto thenBranch = thenNode();
         if (!thenBranch.expr.has_value()) {
             return thenBranch;
         }
-        auto elseBranch = op.getElseChild().visit(*this);
+        auto elseBranch = elseNode();
         if (!elseBranch.expr.has_value()) {
             return elseBranch;
         }
@@ -1047,6 +1145,41 @@ Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer
             thenBranch.typeSignature.include(elseBranch.typeSignature),
             sameCell};
     }
+}
+
+Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer::If& op) {
+    return vectorizeCond([&]() { return op.getCondChild().visit(*this); },
+                         [&]() { return op.getThenChild().visit(*this); },
+                         [&]() { return op.getElseChild().visit(*this); });
+}
+
+Vectorizer::Tree Vectorizer::vectorizeSwitchHelper(const optimizer::Switch& op, size_t branchIdx) {
+    return vectorizeCond([&]() { return op.getCondChild(branchIdx).visit(*this); },
+                         [&]() { return op.getThenChild(branchIdx).visit(*this); },
+                         [&]() {
+                             // When we need to process the last branch, break the recursion:
+                             // the "else" statement is just the final default statement.
+                             // Otherwise, the "else" statement is the next branch.
+                             return (branchIdx == op.getNumBranches() - 1)
+                                 ? op.getDefaultChild().visit(*this)
+                                 : vectorizeSwitchHelper(op, branchIdx + 1);
+                         });
+}
+
+Vectorizer::Tree Vectorizer::operator()(const optimizer::ABT& n, const optimizer::Switch& op) {
+    // A switch is syntactic sugar for if(cond0) then then0 else (if (cond1) then then1 else (...)).
+    // We process it using recursion so that we don't risk to generate a vectorized code that
+    // processes a branch on a value that has been guarded by a previous "if" branch.
+    //
+    // e.g.
+    // switch
+    //   case type(val) != number then fail("not a number")
+    //   case val == 0 then fail("division by zero")
+    //   default div(4, val)
+    //
+    // When processing a block { "string", 0, 89 } the branch performing the division should not
+    // attempt to process the first two values.
+    return vectorizeSwitchHelper(op, 0);
 }
 
 }  // namespace mongo::stage_builder

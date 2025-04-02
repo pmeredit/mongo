@@ -65,21 +65,53 @@ public:
 
     ChunkVersion calculateChunkVersionForInitialChunks(OperationContext* opCtx);
 
-    boost::optional<CollectionIndexes> getCatalogIndexVersion(OperationContext* opCtx,
-                                                              const NamespaceString& nss,
-                                                              const UUID& uuid);
-
     bool getIsUnsplittable(OperationContext* opCtx, const NamespaceString& nss);
 
-    boost::optional<CollectionIndexes> getCatalogIndexVersionForCommit(OperationContext* opCtx,
-                                                                       const NamespaceString& nss);
+    template <typename CommandType>
+    std::vector<AsyncRequestsSender::Response> sendCommandToShards(
+        OperationContext* opCtx,
+        std::shared_ptr<async_rpc::AsyncRPCOptions<CommandType>> opts,
+        const std::vector<ShardId>& shardIds) {
+        return sharding_ddl_util::sendAuthenticatedCommandToShards(opCtx, opts, shardIds);
+    }
 
     template <typename CommandType>
-    void sendCommandToShards(OperationContext* opCtx,
-                             std::shared_ptr<async_rpc::AsyncRPCOptions<CommandType>> opts,
-                             const std::vector<ShardId>& shardIds) {
-        sharding_ddl_util::sendAuthenticatedCommandToShards(opCtx, opts, shardIds);
+    std::vector<AsyncRequestsSender::Response> sendCommandToShards(
+        OperationContext* opCtx,
+        std::shared_ptr<async_rpc::AsyncRPCOptions<CommandType>> opts,
+        const std::map<ShardId, ShardVersion>& shardVersions,
+        const ReadPreferenceSetting& readPref) {
+        return sharding_ddl_util::sendAuthenticatedCommandToShards(
+            opCtx, opts, shardVersions, readPref, true /* throwOnError */);
     }
+
+    /**
+     * Returns a map from each donor shard id to the number of documents copied from that donor
+     * shard by performing at snapshot read at the clone timestamp on that shard. 'shardVersions'
+     * is map from the each donor shard id to the shard version of the collection on that donor
+     * shard at the clone timestamp.
+     */
+    virtual std::map<ShardId, int64_t> getDocumentsToCopyFromDonors(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::TaskExecutor>& executor,
+        CancellationToken token,
+        const UUID& reshardingUUID,
+        const NamespaceString& nss,
+        const Timestamp& cloneTimestamp,
+        const std::map<ShardId, ShardVersion>& shardVersions) = 0;
+
+    /**
+     * Returns a map from each donor shard id to the change in the number of documents in the
+     * collection being resharded between the clone timestamp and blocking-writes timestamp on that
+     * shard.
+     */
+    virtual std::map<ShardId, int64_t> getDocumentsDeltaFromDonors(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::TaskExecutor>& executor,
+        CancellationToken token,
+        const UUID& reshardingUUID,
+        const NamespaceString& nss,
+        const std::vector<ShardId>& shardIds) = 0;
 
     /**
      * To be called before transitioning to the "applying" state to verify the temporary collection
@@ -89,6 +121,8 @@ public:
      *   copied from that donor across all the recipients.
      */
     virtual void verifyClonedCollection(OperationContext* opCtx,
+                                        const std::shared_ptr<executor::TaskExecutor>& executor,
+                                        CancellationToken token,
                                         const ReshardingCoordinatorDocument& coordinatorDoc) = 0;
 
     /**
@@ -104,11 +138,42 @@ public:
     ParticipantShardsAndChunks calculateParticipantShardsAndChunks(
         OperationContext* opCtx, const ReshardingCoordinatorDocument& coordinatorDoc) override;
 
+    std::map<ShardId, int64_t> getDocumentsToCopyFromDonors(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::TaskExecutor>& executor,
+        CancellationToken token,
+        const UUID& reshardingUUID,
+        const NamespaceString& nss,
+        const Timestamp& cloneTimestamp,
+        const std::map<ShardId, ShardVersion>& shardVersions) override;
+
+    std::map<ShardId, int64_t> getDocumentsDeltaFromDonors(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::TaskExecutor>& executor,
+        CancellationToken token,
+        const UUID& reshardingUUID,
+        const NamespaceString& nss,
+        const std::vector<ShardId>& shardIds) override;
+
     void verifyClonedCollection(OperationContext* opCtx,
+                                const std::shared_ptr<executor::TaskExecutor>& executor,
+                                CancellationToken token,
                                 const ReshardingCoordinatorDocument& coordinatorDoc) override;
 
     void verifyFinalCollection(OperationContext* opCtx,
                                const ReshardingCoordinatorDocument& coordinatorDoc) override;
+
+private:
+    /**
+     * Returns a map from each donor shard id to the number of documents copied from that donor
+     * shard based on the metrics in the recipient collection cloner resume data documents.
+     */
+    std::map<ShardId, int64_t> _getDocumentsCopiedFromRecipients(
+        OperationContext* opCtx,
+        const std::shared_ptr<executor::TaskExecutor>& executor,
+        CancellationToken token,
+        const UUID& reshardingUUID,
+        const std::vector<ShardId>& shardIds);
 };
 
 }  // namespace mongo

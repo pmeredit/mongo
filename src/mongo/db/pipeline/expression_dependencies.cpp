@@ -79,7 +79,6 @@ public:
     void visit(const ExpressionArrayToObject*) override {}
     void visit(const ExpressionBsonSize*) override {}
     void visit(const ExpressionCeil*) override {}
-    void visit(const ExpressionCoerceToBool*) override {}
     void visit(const ExpressionCompare*) override {}
     void visit(const ExpressionConcat*) override {}
     void visit(const ExpressionConcatArrays*) override {}
@@ -201,6 +200,9 @@ public:
     void visit(const ExpressionObject*) override {}
     void visit(const ExpressionInternalFLEBetween*) override {}
     void visit(const ExpressionInternalFLEEqual*) override {}
+    void visit(const ExpressionEncStrStartsWith*) override {}
+    void visit(const ExpressionEncStrEndsWith*) override {}
+    void visit(const ExpressionEncStrContains*) override {}
     void visit(const ExpressionInternalRawSortKey*) override {}
     void visit(const ExpressionInternalOwningShard*) override {}
     void visit(const ExpressionInternalIndexKey*) override {}
@@ -222,14 +224,18 @@ public:
     }
 
     void visit(const ExpressionMeta* expr) final {
-        _deps->setNeedsMetadata(expr->getMetaType(), true);
+        _deps->setNeedsMetadata(expr->getMetaType());
     }
 
     void visit(const ExpressionInternalRawSortKey* expr) final {
-        _deps->setNeedsMetadata(DocumentMetadataFields::MetaType::kSortKey, true);
+        _deps->setNeedsMetadata(DocumentMetadataFields::MetaType::kSortKey);
     }
 
     void visit(const ExpressionRandom* expr) final {
+        _deps->needRandomGenerator = true;
+    }
+
+    void visit(const ExpressionUUID* expr) final {
         _deps->needRandomGenerator = true;
     }
 
@@ -294,6 +300,7 @@ public:
     void visit(const ExpressionLet* expr) final {}
     void visit(const ExpressionMeta* expr) final {}
     void visit(const ExpressionRandom* expr) final {}
+    void visit(const ExpressionUUID* expr) final {}
     void visit(const ExpressionInternalFindAllValuesAtPath* expr) final {}
 
 private:

@@ -64,15 +64,11 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/log_severity.h"
-#include "mongo/unittest/assert.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/log_test.h"
 #include "mongo/unittest/temp_dir.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
@@ -123,13 +119,13 @@ private:
     std::unique_ptr<StorageEngine> makeEngine() {
         // Use a small journal for testing to account for the unlikely event that the underlying
         // filesystem does not support fast allocation of a file of zeros.
-        std::string extraStrings = "log=(file_max=1m,prealloc=false)";
+        WiredTigerKVEngine::WiredTigerConfig wtConfig = getWiredTigerConfigFromStartupOptions();
+        wtConfig.cacheSizeMB = 1;
+        wtConfig.extraOpenOptions = "log=(file_max=1m,prealloc=false)";
         auto kv = std::make_unique<WiredTigerKVEngine>(std::string{kWiredTigerEngineName},
                                                        _dbpath.path(),
                                                        _cs.get(),
-                                                       extraStrings,
-                                                       1,
-                                                       0,
+                                                       std::move(wtConfig),
                                                        false,
                                                        _forRepair);
 
@@ -318,9 +314,8 @@ TEST_F(WiredTigerKVEngineTest, TestOplogTruncation) {
 
     // If the test fails we want to ensure the checkpoint thread shuts down to avoid accessing the
     // storage engine during shutdown.
-    ON_BLOCK_EXIT([&] {
-        checkpointer->shutdown({ErrorCodes::ShutdownInProgress, "Test finished"});
-    });
+    ON_BLOCK_EXIT(
+        [&] { checkpointer->shutdown({ErrorCodes::ShutdownInProgress, "Test finished"}); });
 
     auto opCtxPtr = _makeOperationContext();
     // The initial data timestamp has to be set to take stable checkpoints. The first stable
@@ -606,6 +601,40 @@ TEST_F(WiredTigerKVEngineTest, TestOldestStableTimestampEndOfStartupRecoveryStab
 TEST_F(WiredTigerKVEngineTest, ExtractIdentFromPath) {
     boost::filesystem::path dbpath = "/data/db";
     boost::filesystem::path identAbsolutePathDefault =
+        "/data/db/collection-8a3a1418-4f05-44d6-aca7-59a2f7b30248.wt";
+    std::string identDefault = "collection-8a3a1418-4f05-44d6-aca7-59a2f7b30248";
+
+    ASSERT_EQ(extractIdentFromPath(dbpath, identAbsolutePathDefault), identDefault);
+
+    boost::filesystem::path identAbsolutePathDirectoryPerDb =
+        "/data/db/test/collection-8a3a1418-4f05-44d6-aca7-59a2f7b30248.wt";
+    std::string identDirectoryPerDb = "test/collection-8a3a1418-4f05-44d6-aca7-59a2f7b30248";
+
+    ASSERT_EQ(extractIdentFromPath(dbpath, identAbsolutePathDirectoryPerDb), identDirectoryPerDb);
+
+    boost::filesystem::path identAbsolutePathWiredTigerDirectoryForIndexes =
+        "/data/db/collection/8a3a1418-4f05-44d6-aca7-59a2f7b30248.wt";
+    std::string identWiredTigerDirectoryForIndexes =
+        "collection/8a3a1418-4f05-44d6-aca7-59a2f7b30248";
+
+    ASSERT_EQ(extractIdentFromPath(dbpath, identAbsolutePathWiredTigerDirectoryForIndexes),
+              identWiredTigerDirectoryForIndexes);
+
+    boost::filesystem::path identAbsolutePathDirectoryPerDbAndWiredTigerDirectoryForIndexes =
+        "/data/db/test/collection/8a3a1418-4f05-44d6-aca7-59a2f7b30248.wt";
+    std::string identDirectoryPerDbWiredTigerDirectoryForIndexes =
+        "test/collection/8a3a1418-4f05-44d6-aca7-59a2f7b30248";
+
+    ASSERT_EQ(extractIdentFromPath(dbpath,
+                                   identAbsolutePathDirectoryPerDbAndWiredTigerDirectoryForIndexes),
+              identDirectoryPerDbWiredTigerDirectoryForIndexes);
+}
+
+// Prior to v8.2, idents were suffixed with a unique <counter> + <random number> combination. All
+// future versions must also maintain compatibility with the legacy ident format.
+TEST_F(WiredTigerKVEngineTest, ExtractLegacyIdentFromPath) {
+    boost::filesystem::path dbpath = "/data/db";
+    boost::filesystem::path identAbsolutePathDefault =
         "/data/db/collection-9-11733751379908443489.wt";
     std::string identDefault = "collection-9-11733751379908443489";
 
@@ -848,6 +877,11 @@ TEST_F(WiredTigerKVEngineTest, TestRestartUsesNewConn) {
     auto permit = engine->tryGetStatsCollectionPermit();
     ASSERT(permit);
     ASSERT_EQ(engine->getConn(), permit->conn());
+}
+
+TEST_F(WiredTigerKVEngineTest, TestGetBackupCheckpointTimestampWithoutOpenBackupCursor) {
+    auto* engine = _helper.getWiredTigerKVEngine();
+    ASSERT_EQ(Timestamp::min(), engine->getBackupCheckpointTimestamp());
 }
 
 DEATH_TEST_F(WiredTigerKVEngineTest, WaitUntilDurableMustBeOutOfUnitOfWork, "invariant") {

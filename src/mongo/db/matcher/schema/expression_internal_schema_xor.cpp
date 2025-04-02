@@ -33,34 +33,6 @@
 namespace mongo {
 constexpr StringData InternalSchemaXorMatchExpression::kName;
 
-bool InternalSchemaXorMatchExpression::matches(const MatchableDocument* doc,
-                                               MatchDetails* details) const {
-    bool found = false;
-    for (size_t i = 0; i < numChildren(); i++) {
-        if (getChild(i)->matches(doc, nullptr)) {
-            if (found) {
-                return false;
-            }
-            found = true;
-        }
-    }
-    return found;
-}
-
-bool InternalSchemaXorMatchExpression::matchesSingleElement(const BSONElement& element,
-                                                            MatchDetails* details) const {
-    bool found = false;
-    for (size_t i = 0; i < numChildren(); i++) {
-        if (getChild(i)->matchesSingleElement(element, details)) {
-            if (found) {
-                return false;
-            }
-            found = true;
-        }
-    }
-    return found;
-}
-
 void InternalSchemaXorMatchExpression::debugString(StringBuilder& debug,
                                                    int indentationLevel) const {
     _debugAddSpace(debug, indentationLevel);

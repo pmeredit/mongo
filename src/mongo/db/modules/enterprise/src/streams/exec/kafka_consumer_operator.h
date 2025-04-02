@@ -12,7 +12,6 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/chunked_memory_aggregator.h"
 #include "streams/exec/checkpoint_data_gen.h"
 #include "streams/exec/checkpoint_storage.h"
 #include "streams/exec/delayed_watermark_generator.h"
@@ -27,6 +26,7 @@
 #include "streams/exec/unflushed_state_container.h"
 #include "streams/exec/watermark_combiner.h"
 #include "streams/exec/watermark_generator.h"
+#include "streams/util/chunked_memory_aggregator.h"
 
 namespace mongo {
 class KafkaSourceCheckpointState;
@@ -122,6 +122,7 @@ public:
     // thread-safe so it cannot be called from outside the executor thread, e.g. this cannot be
     // called in parallel with `runOnce()`.
     std::vector<KafkaConsumerPartitionState> getPartitionStates() const;
+    static constexpr auto kKafkaConsumerOperatorName = "KafkaConsumerOperator";
 
 protected:
     // Merges stats from all the partition consumers.
@@ -227,8 +228,8 @@ private:
         // Used to retrieve error details
         std::unique_ptr<KafkaEventCallback> _eventCallback;
         // Support for GWProxy authentication callbacks to enable VPC peering sessions.
-        std::shared_ptr<streams::KafkaResolveCallback> _resolveCbImpl;
-        std::shared_ptr<streams::KafkaConnectAuthCallback> _connectCbImpl;
+        std::shared_ptr<KafkaResolveCallback> _resolveCbImpl;
+        std::shared_ptr<KafkaConnectAuthCallback> _connectCbImpl;
         // KafkaConsumer instance used to determine the topic/partition map for the topics we
         // will be subscribing to
         std::unique_ptr<RdKafka::KafkaConsumer> _consumer;
@@ -259,7 +260,7 @@ private:
     void processCheckpointMsg(const StreamControlMsg& controlMsg);
 
     std::string doGetName() const override {
-        return "KafkaConsumerOperator";
+        return kKafkaConsumerOperatorName;
     }
 
     ConnectionStatus doGetConnectionStatus() override;

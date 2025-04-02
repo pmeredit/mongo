@@ -40,7 +40,6 @@
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/db/jsobj.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/stdx/mutex.h"
@@ -460,7 +459,7 @@ public:
      *
      * @returns the number of times the fail point has been entered so far.
      */
-    EntryCountT waitForTimesEntered(EntryCountT targetTimesEntered) const noexcept {
+    EntryCountT waitForTimesEntered(EntryCountT targetTimesEntered) const {
         return waitForTimesEntered(Interruptible::notInterruptible(), targetTimesEntered);
     }
 

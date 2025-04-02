@@ -74,6 +74,7 @@
 #include "mongo/db/storage/ident.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/snapshot.h"
+#include "mongo/db/timeseries/mixed_schema_buckets_state.h"
 #include "mongo/db/timeseries/timeseries_gen.h"
 #include "mongo/db/yieldable.h"
 #include "mongo/logv2/log_attr.h"
@@ -371,16 +372,30 @@ public:
                                                  ChangeStreamPreAndPostImagesOptions val) = 0;
 
     /**
+     * Returns true if this is a time-series collection.
+     */
+    virtual bool isTimeseriesCollection() const = 0;
+
+    /**
+     * return true if this is a time-series collection with FCV 9.0 metadata format,
+     * the time-series collection has a unified namespace (no view nor bucket collection, only the
+     * main namespace)
+     *
+     * TODO SERVER-101588: remove this function and all its usages once 9.0 becomes last LTS.
+     * By then only viewless timeseries collection will exists.
+     */
+    virtual bool isNewTimeseriesWithoutView() const = 0;
+
+    /**
      * Returns true if this is a temporary collection.
      */
     virtual bool isTemporary() const = 0;
 
     /**
-     * Returns true if the time-series collection may have mixed-schema data.
-     *
-     * If FCV < 5.2 or if this is not a time-series collection, returns boost::none.
+     * Returns a description of whether time-series mixed-schema buckets may be present for this
+     * collection, and how they should be handled.
      */
-    virtual boost::optional<bool> getTimeseriesBucketsMayHaveMixedSchemaData() const = 0;
+    virtual timeseries::MixedSchemaBucketsState getTimeseriesMixedSchemaBucketsState() const = 0;
 
     /**
      * Sets the 'timeseriesBucketsMayHaveMixedSchemaData' catalog entry flag to 'setting' for this
@@ -401,6 +416,13 @@ public:
      */
     virtual void setTimeseriesBucketingParametersChanged(OperationContext* opCtx,
                                                          boost::optional<bool> value) = 0;
+
+    /**
+     * Used to remove the legacy `md.timeseriesBucketingParametersHaveChanged` catalog field
+     * during FCV upgrade.
+     */
+    // TODO(SERVER-101423): Remove once 9.0 becomes last LTS.
+    virtual void removeLegacyTimeseriesBucketingParametersHaveChanged(OperationContext* opCtx) = 0;
 
     /**
      * Returns true if the passed in time-series bucket document contains mixed-schema data. Returns
@@ -431,6 +453,7 @@ public:
      * only transition from true to false.
      */
     virtual bool areTimeseriesBucketsFixed() const = 0;
+
     /*
      * Returns true if this collection is clustered. That is, its RecordIds store the value of the
      * cluster key. If the collection is clustered on _id, there is no separate _id index.
@@ -511,9 +534,12 @@ public:
 
     /**
      * Repairs invalid index options on all indexes in this collection. Returns a list of
-     * index names that were repaired.
+     * index names that were repaired. Specifying 'removeDeprecatedFields' as true, causes
+     * deprecated fields, which much be otherwise supported for backwards compatibility, to be
+     * removed when performing the repair.
      */
-    virtual std::vector<std::string> repairInvalidIndexOptions(OperationContext* opCtx) = 0;
+    virtual std::vector<std::string> repairInvalidIndexOptions(
+        OperationContext* opCtx, bool removeDeprecatedFields = false) = 0;
 
     /**
      * Updates the 'temp' setting for this collection.
@@ -670,6 +696,12 @@ public:
     virtual long long dataSize(OperationContext* opCtx) const = 0;
 
     /**
+     * Return the size on disk in bytes
+     */
+    virtual int64_t sizeOnDisk(OperationContext* opCtx,
+                               const StorageEngine& storageEngine) const = 0;
+
+    /**
      * Returns true if the collection does not contain any records.
      */
     virtual bool isEmpty(OperationContext* opCtx) const = 0;
@@ -702,7 +734,7 @@ public:
      * Returns the time-series options for this buckets collection, or boost::none if not a
      * time-series buckets collection.
      */
-    virtual boost::optional<TimeseriesOptions> getTimeseriesOptions() const = 0;
+    virtual const boost::optional<TimeseriesOptions>& getTimeseriesOptions() const = 0;
 
     /**
      * Sets the time-series options for this buckets collection.
@@ -749,6 +781,91 @@ public:
 };
 
 /**
+ * A collection pointer that is consistent with the underlying WT snapshot. This class will
+ * invariant in debug builds that there are no pointers to the collection leftover once we abandon
+ * the snapshot. In release mode this class is equivalent to the plain pointer to avoid the
+ * performance overhead of reference counting.
+ *
+ * A proper instance of this class should only be constructed by trusted users such as the
+ * CollectionCatalog or the CollectionPtr to avoid misuse.
+ *
+ * Note that this class cannot detect an ABA problem with respect to collections acquired under a
+ * lock. The following scenario is possible and won't be caught by this class:
+ * - Lock on collA is acquired
+ * - ConsistentCollection on collA is created
+ * - Lock is released
+ * - Lock is acquired again
+ * - ConsistentCollection is used
+ * This usage will yield an invalid ConsistentCollection since the Collection could've potentially
+ * been modified but won't be detected.
+ *
+ * TODO SERVER-95260: Investigate if this can be detected once generational lock information is
+ * available.
+ */
+class ConsistentCollection {
+public:
+    ConsistentCollection() = default;
+
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+    ~ConsistentCollection();
+
+    ConsistentCollection(ConsistentCollection&& other);
+    ConsistentCollection(const ConsistentCollection& other);
+
+    ConsistentCollection& operator=(ConsistentCollection&& other);
+    ConsistentCollection& operator=(const ConsistentCollection& other);
+#else
+    ~ConsistentCollection() = default;
+
+    ConsistentCollection(ConsistentCollection&& other) = default;
+    ConsistentCollection(const ConsistentCollection& other) = default;
+
+    ConsistentCollection& operator=(ConsistentCollection&& other) = default;
+    ConsistentCollection& operator=(const ConsistentCollection& other) = default;
+#endif
+
+    operator bool() const {
+        return static_cast<bool>(_collection);
+    }
+
+    const Collection* operator->() const {
+        return get();
+    }
+
+    const Collection* get() const {
+        return _collection;
+    }
+
+private:
+    friend class CollectionCatalog;  // The catalog is the main source for consistent collections as
+                                     // part of establishing a consistent collection with the WT
+                                     // snapshot.
+    // TODO SERVER-100333: See if we can tighten up CollectionPtr to not be able to create this
+    // class.
+    friend class CollectionPtr;  // CollectionPtr can manually construct a consistent collection in
+                                 // order to maintain compatibility with legacy usages.
+    friend class LockedCollectionYieldRestore;  // Locked collections implicitly guarantee that the
+                                                // collection is consistent with the snapshot since
+                                                // they impede all modifications to it.
+    friend class CatalogTestFixture;
+
+    const Collection* _collection = nullptr;
+
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+    RecoveryUnit::Snapshot* _snapshot = nullptr;
+
+    ConsistentCollection(OperationContext* opCtx, const Collection* collection);
+
+    int _getRefCount() const;
+
+    void _releaseCollectionIfInSnapshot();
+#else
+    ConsistentCollection(OperationContext* opCtx, const Collection* collection)
+        : _collection(collection) {};
+#endif
+};
+
+/**
  * Smart-pointer'esque type to handle yielding of Collection lock that may invalidate pointers when
  * resuming. CollectionPtr will re-load the Collection from the Catalog when restoring from a yield
  * that dropped locks.
@@ -759,13 +876,21 @@ public:
 
     // Function for the implementation on how we load a new Collection pointer when restoring from
     // yield
-    using RestoreFn = std::function<const Collection*(OperationContext*, boost::optional<UUID>)>;
+    using RestoreFn = std::function<ConsistentCollection(OperationContext*, boost::optional<UUID>)>;
 
     // Creates non-yieldable CollectionPtr, performing yield/restore will invariant. To make this
     // CollectionPtr yieldable call `makeYieldable` and provide appropriate implementation depending
     // on context.
     CollectionPtr() = default;
-    explicit CollectionPtr(const Collection* collection);
+    explicit CollectionPtr(ConsistentCollection collection);
+    // TODO SERVER-100333: Replace this with a non-const version. Fully owned collections are safe
+    // to use since they are not consistent with any snapshot by definition as they are being
+    // committed.
+    [[deprecated(
+        "This constructor is in the process of being replaced with the much safer "
+        "ConsistentCollection one. Please try to avoid using it as it could lead to an "
+        "inconsistent CollectionPtr in the event of a WT snapshot yield if stored without "
+        "care")]] explicit CollectionPtr(const Collection* coll);
 
     CollectionPtr(const CollectionPtr&) = delete;
     CollectionPtr(CollectionPtr&&);
@@ -785,10 +910,10 @@ public:
         return !operator==(other);
     }
     const Collection* operator->() const {
-        return _collection;
+        return _collection.get();
     }
     const Collection* get() const {
-        return _collection;
+        return _collection.get();
     }
 
     // Makes this CollectionPtr yieldable. The RestoreFn provides an implementation on how to setup
@@ -819,7 +944,7 @@ public:
 private:
     // These members needs to be mutable so the yield/restore interface can be const. We don't want
     // yield/restore to require a non-const instance when it otherwise could be const.
-    mutable const Collection* _collection = nullptr;
+    mutable ConsistentCollection _collection;
 
     // If the collection is currently in the 'yielded' state (i.e. yield() has been called), this
     // field will contain what was the UUID of the collection at the time of yield.

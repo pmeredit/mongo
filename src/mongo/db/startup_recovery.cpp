@@ -87,7 +87,6 @@
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/repl_set_member_in_standalone_mode.h"
 #include "mongo/db/server_feature_flags_gen.h"
-#include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/shard_role.h"
 #include "mongo/db/storage/storage_options.h"
@@ -96,8 +95,6 @@
 #include "mongo/db/timeseries/timeseries_extended_range.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/s/database_version.h"
 #include "mongo/s/shard_version.h"
@@ -321,11 +318,11 @@ Status ensureCollectionProperties(OperationContext* opCtx,
  * Opens each database and provides a callback on each one.
  */
 template <typename Func>
-void openDatabases(OperationContext* opCtx, const StorageEngine* storageEngine, Func&& onDatabase) {
+void openDatabases(OperationContext* opCtx, Func&& onDatabase) {
     invariant(shard_role_details::getLocker(opCtx)->isW());
 
     auto databaseHolder = DatabaseHolder::get(opCtx);
-    auto dbNames = storageEngine->listDatabases();
+    auto dbNames = catalog::listDatabases();
     for (const auto& dbName : dbNames) {
         LOGV2_DEBUG(21010, 1, "    Opening database: {dbName}", "dbName"_attr = dbName);
         auto db = databaseHolder->openDb(opCtx, dbName);
@@ -398,8 +395,7 @@ void clearTempFilesExceptForResumableBuilds(const std::vector<ResumeIndexInfo>& 
 }
 
 bool useUnreplicatedTruncatesForChangeStreamCollections() {
-    bool res = mongo::feature_flags::gFeatureFlagUseUnreplicatedTruncatesForDeletions.isEnabled(
-        serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+    bool res = mongo::feature_flags::gFeatureFlagUseUnreplicatedTruncatesForDeletions.isEnabled();
     return res;
 }
 
@@ -601,7 +597,11 @@ void reconcileCatalogAndRestartUnfinishedIndexBuilds(
     // complete. Therefore, when a replica set member is started in standalone mode, we cannot
     // restart the index build because it will never complete.
     if (getReplSetMemberInStandaloneMode(opCtx->getServiceContext())) {
-        LOGV2(21005, "Not restarting unfinished index builds because we are in standalone mode");
+        LOGV2(
+            9871800,
+            "Any unfinished index builds will not be resumed nor restarted due to standalone mode",
+            "numIndexBuildsToRestart"_attr = reconcileResult.indexBuildsToRestart.size(),
+            "numIndexBuildsToResume"_attr = reconcileResult.indexBuildsToResume.size());
         return;
     }
 
@@ -697,7 +697,7 @@ void startupRepair(OperationContext* opCtx,
     // The local database should be repaired before any other replicated collections so we know
     // whether not to rebuild unfinished two-phase index builds if this is a replica set node
     // running in standalone mode.
-    auto dbNames = storageEngine->listDatabases();
+    auto dbNames = catalog::listDatabases();
     if (auto it = std::find(dbNames.begin(), dbNames.end(), DatabaseName::kLocal);
         it != dbNames.end()) {
         auto scopedTimer = createTimeElapsedBuilderScopedTimer(
@@ -719,7 +719,7 @@ void startupRepair(OperationContext* opCtx,
         }
     }
 
-    openDatabases(opCtx, storageEngine, [&](auto dbName) {
+    openDatabases(opCtx, [&](auto dbName) {
         // Ensures all collections meet requirements such as having _id indexes, and corrects them
         // if needed.
         uassertStatusOK(
@@ -838,7 +838,7 @@ void startupRecovery(OperationContext* opCtx,
     const bool shouldClearNonLocalTmpCollections =
         !(hasReplSetConfigDoc(opCtx) || usingReplication);
 
-    openDatabases(opCtx, storageEngine, [&](const DatabaseName& dbName) {
+    openDatabases(opCtx, [&](const DatabaseName& dbName) {
         // Ensures all collections meet requirements such as having _id indexes, and corrects them
         // if needed.
         uassertStatusOK(

@@ -10,15 +10,12 @@ variables:
     tasks: []
     setup_task:
       - func: "f_expansions_write"
-      - func: "apply compile expansions"
-      - func: "f_expansions_write"
       - func: "set task expansion macros"
       - func: "f_expansions_write"
       - func: "get engflow creds"
       - func: "fetch pgo profile"
     teardown_task:
       - func: "f_expansions_write"
-      - func: "attach scons logs"
       - func: "attach report"
       - func: "attach artifacts"
       - func: "attach local resmoke invocation"
@@ -28,7 +25,6 @@ variables:
       - func: "save mongo coredumps"
       - func: "generate hang analyzer tasks"
       - func: "save failed unittests"
-      - func: "save unstripped dbtest"
       - func: "save bazel headers"
       - func: "save bazel jvm dump"
       - func: "save hang analyzer debugger files"
@@ -39,7 +35,6 @@ variables:
         vars:
           files: >-
             src/resmoke_error_code
-            src/build/scons/config.log
             src/*.gcda.gcov
             src/gcov-intermediate-files.tgz
             src/*.core src/*.mdmp src/*.core.gz src/*.mdmp.gz
@@ -73,13 +68,8 @@ variables:
       - func: "f_expansions_write"
       - func: "use WiredTiger develop" # noop if ${use_wt_develop} is not "true"
       - func: "f_expansions_write"
-      - func: "set up win mount script"
-      - func: "f_expansions_write"
-      - func: "generate compile expansions"
-      - func: "f_expansions_write"
     teardown_group:
       - func: "f_expansions_write"
-      - func: "umount shared scons directory"
       - func: "cleanup environment"
     timeout:
       - func: "f_expansions_write"
@@ -90,7 +80,6 @@ task_groups:
   - <<: *compile_task_group_template
     name: compile_and_package_serial_no_unittests_TG
     tasks:
-      - compile_dist_test
       - archive_dist_test
       - archive_dist_test_debug
 
@@ -115,48 +104,25 @@ tasks:
   - <<: *version_expansions_gen
     name: version_expansions_future_git_tag_multiversion_gen
 
-  ## compile - build all scons targets except unittests ##
-  - &compile_dist_test
-    name: compile_dist_test
-    tags: ["assigned_to_jira_team_devprod_build", "auxiliary", "bazel_check"]
-    depends_on:
-      - name: version_expansions_gen
-        variant: generate-tasks-for-version
-    commands:
-      - func: "scons compile"
-        vars:
-          targets: >-
-            install-dist-test
-            ${additional_compile_targets|}
-          bazel_build_tags: --bazel-build-tag=dist_test
-          skip_archive: on
-          task_compile_flags: >-
-            PREFIX=dist-test
-
-  - <<: *compile_dist_test
-    name: compile_dist_test_future_git_tag_multiversion
-    depends_on:
-      - name: version_expansions_future_git_tag_multiversion_gen
-
   # Sys-perf relies on the name of this task, please reach out before changing it.
   - &archive_dist_test
     name: archive_dist_test
     tags: ["assigned_to_jira_team_devprod_build", "auxiliary"]
     depends_on:
-      - name: compile_dist_test
+      - name: version_expansions_gen
+        variant: generate-tasks-for-version
     commands:
       - func: "activate task"
         vars:
           task_to_activate: ${archive_dist_test_debug_task_name|archive_dist_test_debug}
           skip_for_patch_author: sys-perf-user
-      - func: "scons compile"
+      - func: "bazel compile"
         vars:
           targets: >-
-            archive-dist-test
-          bazel_build_tags: --bazel-build-tag=dist_test
-          skip_archive: on
-          task_compile_flags: >-
-            PREFIX=dist-test
+            archive-dist-test-stripped
+            ${additional_compile_targets|}
+          bazel_args: >-
+            --config=evg
       - func: "f_expansions_write"
       - command: subprocess.exec
         params:
@@ -165,7 +131,7 @@ tasks:
           args:
             - "src/evergreen/run_python_script.sh"
             - "evergreen/macos_notary.py"
-            - "mongodb-binaries.${ext|tgz}"
+            - "bazel-bin/dist-test-stripped.${ext|tgz}"
       - func: "BOLT"
 
       - command: s3.put
@@ -173,7 +139,7 @@ tasks:
           optional: true
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: src/mongodb-binaries.${ext|tgz}
+          local_file: src/bazel-bin/dist-test-stripped.${ext|tgz}
           remote_file: ${mongo_binaries}
           bucket: mciuploads
           permissions: public-read
@@ -202,7 +168,7 @@ tasks:
             - "src/etc/evergreen.yml"
             - "src/etc/evergreen_yml_components/**"
             - "src/etc/repo_config.yaml"
-            - "src/etc/scons/**"
+            - "src/bazel/**"
             - "src/etc/macos_dev_entitlements.xml"
             - "src/docker_compose/**"
             - "src/buildscripts/**"
@@ -222,6 +188,7 @@ tasks:
             - "src/src/third_party/schemastore.org/**"
             - "src/poetry.lock"
             - "src/pyproject.toml"
+            - "src/x509/**"
           exclude_files:
             - "src/*_test.pdb"
 
@@ -260,7 +227,7 @@ tasks:
   - <<: *archive_dist_test
     name: archive_dist_test_future_git_tag_multiversion
     depends_on:
-      - name: compile_dist_test_future_git_tag_multiversion
+      - name: version_expansions_future_git_tag_multiversion_gen
 
   - &archive_dist_test_debug
     name: archive_dist_test_debug
@@ -268,14 +235,12 @@ tasks:
     depends_on:
       - name: archive_dist_test
     commands:
-      - func: "scons compile"
+      - func: "bazel compile"
         vars:
           targets: >-
-            archive-dist-test-debug
-          bazel_build_tags: --bazel-build-tag=dist_test
-          skip_archive: on
-          task_compile_flags: >-
-            PREFIX=dist-test
+            archive-dist-test-debug install-dist-test
+          bazel_args: >-
+            --config=evg
       - func: "upload debugsymbols"
       - func: "f_expansions_write"
       - command: subprocess.exec
@@ -283,7 +248,7 @@ tasks:
           binary: bash
           args:
             - "./src/evergreen/record_mongodb_server_version.sh"
-            - "./build/install/dist-test/bin/mongod"
+            - "./bazel-bin/install/bin/mongod"
             - "./version_info_mongod.txt"
       - command: s3.put
         params:
@@ -319,21 +284,14 @@ tasks:
       - name: version_expansions_gen
         variant: generate-tasks-for-version
     commands:
-      - func: "do scons setup"
+      - func: "do bazel setup"
       - func: "f_expansions_write"
-      - func: "scons compile"
+      - func: "bazel compile"
         vars:
-          targets: archive-mongo-crypt-dev
-          bazel_build_tags: --bazel-build-tag=mongo_crypt
-          task_compile_flags: >-
-            --allocator=system
-            --enterprise-features=fle
-            --js-engine=none
-            --link-model=dynamic-sdk
-            --enable-http-client=off
-            --ssl=off
-            ${crypt_task_compile_flags}
-            DESTDIR='$BUILD_ROOT/crypt-lib-$MONGO_VERSION'
+          targets: archive-mongo_crypt-stripped
+          bazel_args: >-
+            --config=evg_crypt
+          task_compile_flags: --linkstatic=True ${crypt_task_compile_flags}
       - command: subprocess.exec
         params:
           binary: bash
@@ -343,7 +301,7 @@ tasks:
         params:
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: "src/mongo-crypt-dev.${ext|tgz}"
+          local_file: "src/bazel-bin/mongo_crypt-stripped.${ext|tgz}"
           remote_file: "${project}/mongo_crypt/${build_variant}/${revision}/mongo_crypt_shared_v1-${version}.${ext|tgz}"
           bucket: mciuploads
           permissions: public-read
@@ -353,21 +311,19 @@ tasks:
   - name: package
     tags: ["assigned_to_jira_team_devprod_build", "auxiliary"]
     depends_on:
-      - name: compile_dist_test
+      - name: archive_dist_test
     commands:
       - func: "f_expansions_write"
-      - func: "scons compile"
+      - func: "bazel compile"
         vars:
           targets: >-
-            archive-dist
+            archive-dist-stripped
             archive-dist-debug
-            archive-jstestshell
-            archive-jstestshell-debug
+            archive-mongo-stripped
+            archive-mongo-debug
             ${additional_package_targets|}
-          bazel_build_tags: --bazel-build-tag=dist_test
-          skip_archive: on
-          task_compile_flags: >-
-            --legacy-tarball
+          bazel_args: >-
+            --config=evg
       - command: subprocess.exec
         params:
           binary: bash
@@ -375,7 +331,7 @@ tasks:
           args:
             - "src/evergreen/run_python_script.sh"
             - "evergreen/macos_notary.py"
-            - "mongodb-dist.${ext|tgz}"
+            - "bazel-bin/dist-stripped.${ext|tgz}"
       - func: "f_expansions_write"
       - command: subprocess.exec
         params:
@@ -387,7 +343,7 @@ tasks:
           optional: true
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: src/mongodb-dist.${ext|tgz}
+          local_file: src/bazel-bin/dist-stripped.${ext|tgz}
           remote_file: ${project}/${build_variant}/${revision}/dist/mongo-${build_id}.${ext|tgz}
           bucket: mciuploads
           permissions: public-read
@@ -398,7 +354,7 @@ tasks:
           optional: true
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: src/mongodb-dist-debugsymbols.${ext|tgz}
+          local_file: src/bazel-bin/dist-debug.${ext|tgz}
           remote_file: ${project}/${build_variant}/${revision}/dist/mongo-${build_id}-debugsymbols.${ext|tgz}
           bucket: mciuploads
           permissions: public-read
@@ -408,7 +364,7 @@ tasks:
         params:
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: src/mongodb-jstestshell.${ext|tgz}
+          local_file: src/bazel-bin/mongo-stripped.${ext|tgz}
           remote_file: ${mongo_jstestshell}
           bucket: mciuploads
           permissions: public-read
@@ -418,7 +374,7 @@ tasks:
         params:
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: src/mongodb-jstestshell-debugsymbols.${ext|tgz}
+          local_file: src/bazel-bin/mongo-debug.${ext|tgz}
           remote_file: ${mongo_jstestshell_debugsymbols}
           bucket: mciuploads
           permissions: public-read
@@ -429,7 +385,7 @@ tasks:
           optional: true
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: src/mongodb-cryptd.${ext|tgz}
+          local_file: src/bazel-bin/mongocryptd-stripped.${ext|tgz}
           remote_file: ${mongo_cryptd}
           bucket: mciuploads
           permissions: public-read
@@ -440,7 +396,7 @@ tasks:
           optional: true
           aws_key: ${aws_key}
           aws_secret: ${aws_secret}
-          local_file: src/mongodb-cryptd-debugsymbols.${ext|tgz}
+          local_file: src/bazel-bin/mongocryptd-debug.${ext|tgz}
           remote_file: ${mongo_cryptd_debugsymbols}
           bucket: mciuploads
           permissions: public-read
@@ -453,7 +409,7 @@ tasks:
           source_dir: "src"
           include:
             - "repo/**"
-            - "./**.msi"
+            - "bazel-bin/src/mongo/installer/**.msi"
       - command: s3.put
         params:
           optional: true
@@ -472,9 +428,9 @@ tasks:
         vars:
           files: >-
             packages.tgz
-            src/mongodb-cryptd-debugsymbols.${ext|tgz}
-            src/mongodb-cryptd.${ext|tgz}
-            src/mongodb-jstestshell-debugsymbols.${ext|tgz}
-            src/mongodb-jstestshell.${ext|tgz}
-            src/mongodb-dist-debugsymbols.${ext|tgz}
-            src/mongodb-dist.${ext|tgz}
+            src/bazel-bin/mongocryptd-debug.${ext|tgz}
+            src/bazel-bin/mongocryptd-stripped.${ext|tgz}
+            src/bazel-bin/mongo-debug.${ext|tgz}
+            src/bazel-bin/mongo-stripped.${ext|tgz}
+            src/bazel-bin/dist-debug.${ext|tgz}
+            src/bazel-bin/dist-stripped.${ext|tgz}

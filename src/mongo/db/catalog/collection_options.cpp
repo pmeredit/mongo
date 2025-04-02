@@ -54,8 +54,6 @@
 #include "mongo/idl/command_generic_argument.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/overloaded_visitor.h"  // IWYU pragma: keep
 #include "mongo/util/str.h"
@@ -122,6 +120,8 @@ Status CollectionOptions::validateForStorage() const {
     return CollectionOptions::parse(toBSON(), ParseKind::parseForStorage).getStatus();
 }
 
+static constexpr auto kAutoIndexIdFieldName = "autoIndexId"_sd;
+
 StatusWith<CollectionOptions> CollectionOptions::parse(const BSONObj& options, ParseKind kind) {
     CollectionOptions collectionOptions;
     // Versions 2.4 and earlier of the server store "create" inside the collection metadata when the
@@ -174,7 +174,7 @@ StatusWith<CollectionOptions> CollectionOptions::parse(const BSONObj& options, P
         } else if (fieldName == "$nExtents") {
             // Ignoring for backwards compatibility.
             continue;
-        } else if (fieldName == "autoIndexId") {
+        } else if (fieldName == kAutoIndexIdFieldName) {
             if (e.trueValue())
                 collectionOptions.autoIndexId = YES;
             else
@@ -349,9 +349,6 @@ CollectionOptions CollectionOptions::fromCreateCommand(const CreateCommand& cmd)
     if (auto max = cmd.getMax()) {
         options.cappedMaxDocs = adjustCappedMaxDocs(*max);
     }
-    if (auto autoIndexId = cmd.getAutoIndexId()) {
-        options.autoIndexId = *autoIndexId ? YES : NO;
-    }
     if (auto idIndex = cmd.getIdIndex()) {
         options.idIndex = std::move(*idIndex);
     }
@@ -443,8 +440,8 @@ void CollectionOptions::appendBSON(BSONObjBuilder* builder,
             builder->appendNumber(CreateCommand::kMaxFieldName, cappedMaxDocs);
     }
 
-    if (autoIndexId != DEFAULT && shouldAppend(CreateCommand::kAutoIndexIdFieldName))
-        builder->appendBool(CreateCommand::kAutoIndexIdFieldName, autoIndexId == YES);
+    if (autoIndexId != DEFAULT && shouldAppend(kAutoIndexIdFieldName))
+        builder->appendBool(kAutoIndexIdFieldName, autoIndexId == YES);
 
     if (temp && shouldAppend(CreateCommand::kTempFieldName))
         builder->appendBool(CreateCommand::kTempFieldName, true);

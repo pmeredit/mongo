@@ -57,6 +57,7 @@ function documentsDataSourceWindowMerge() {
                     ]
                 }
             },
+            {$addFields: {_stream_meta: {$meta: "stream"}}},
             {$merge: {into: {connectionName: "atlas_conn", db: dbName, coll: collName}}}
         ]);
 

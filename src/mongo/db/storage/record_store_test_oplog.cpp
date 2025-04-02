@@ -49,8 +49,7 @@
 #include "mongo/db/storage/record_store_test_harness.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/transaction_resources.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -109,8 +108,7 @@ TEST(RecordStoreTestHarness, SeekOplog) {
         }
         {
             StorageWriteTransaction txn(ru);
-            BSONObj obj = BSON("ts"
-                               << "not a Timestamp");
+            BSONObj obj = BSON("ts" << "not a Timestamp");
             ASSERT_EQ(rs->insertRecord(opCtx.get(), obj.objdata(), obj.objsize(), Timestamp())
                           .getStatus(),
                       ErrorCodes::BadValue);

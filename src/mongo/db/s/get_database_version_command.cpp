@@ -97,7 +97,8 @@ public:
                     str::stream() << definition()->getName() << " can only be run on shard servers",
                     serverGlobalParams.clusterRole.has(ClusterRole::ShardServer));
 
-            auto dbName = _targetDb();
+            const auto dbName = _targetDb();
+
             AutoGetDb autoDb(opCtx, dbName, MODE_IS);
             const auto scopedDss =
                 DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, dbName);

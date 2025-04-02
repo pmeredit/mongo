@@ -36,9 +36,7 @@
 #include "mongo/db/exec/working_set.h"
 #include "mongo/db/record_id_helpers.h"
 #include "mongo/db/storage/snapshot.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 namespace mongo {
 
@@ -80,9 +78,7 @@ TEST_F(WorkingSetFixture, noFieldToGet) {
     ASSERT_TRUE(member->getFieldDotted("foo", &elt));
 
     WorkingSetMember* member = ws->get(id);
-    member->doc = {SnapshotId(),
-                   Document{BSON("fake"
-                                 << "obj")}};
+    member->doc = {SnapshotId(), Document{BSON("fake" << "obj")}};
     ws->transitionToOwnedObj(id);
     ASSERT_TRUE(member->getFieldDotted("foo", &elt));
 }

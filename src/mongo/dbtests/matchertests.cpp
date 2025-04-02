@@ -44,9 +44,9 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/client.h"
 #include "mongo/db/db_raii.h"
+#include "mongo/db/exec/matcher/matcher.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/extensions_callback_real.h"
-#include "mongo/db/matcher/match_details.h"
 #include "mongo/db/matcher/matcher.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
@@ -56,8 +56,7 @@
 #include "mongo/db/query/collation/collator_interface_mock.h"
 #include "mongo/db/service_context.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/intrusive_counter.h"
 #include "mongo/util/timer.h"
@@ -81,7 +80,7 @@ public:
         BSONObj query = fromjson("{\"a\":\"b\"}");
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(query, expCtx);
-        ASSERT(m.matches(fromjson("{\"a\":\"b\"}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{\"a\":\"b\"}")));
     }
 };
 
@@ -92,7 +91,7 @@ public:
         BSONObj query = fromjson("{\"a\":5}");
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(query, expCtx);
-        ASSERT(m.matches(fromjson("{\"a\":5}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{\"a\":5}")));
     }
 };
 
@@ -104,7 +103,7 @@ public:
         query.append("a", 5);
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(query.done(), expCtx);
-        ASSERT(m.matches(fromjson("{\"a\":5}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{\"a\":5}")));
     }
 };
 
@@ -117,7 +116,7 @@ public:
         M m(query, expCtx);
         BSONObjBuilder b;
         b.append("a", 5);
-        ASSERT(m.matches(b.done()));
+        ASSERT(exec::matcher::matches(&m, b.done()));
     }
 };
 
@@ -135,20 +134,20 @@ public:
         {
             BSONObjBuilder b;
             b.append("a", 4.0);
-            ASSERT(m.matches(b.done()));
+            ASSERT(exec::matcher::matches(&m, b.done()));
         }
 
         {
             BSONObjBuilder b;
             b.append("a", 5);
-            ASSERT(!m.matches(b.done()));
+            ASSERT(!exec::matcher::matches(&m, b.done()));
         }
 
 
         {
             BSONObjBuilder b;
             b.append("a", 4);
-            ASSERT(m.matches(b.done()));
+            ASSERT(exec::matcher::matches(&m, b.done()));
         }
     }
 };
@@ -159,8 +158,8 @@ public:
     void run() {
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(BSON("a" << BSON("x" << 1)), expCtx);
-        ASSERT(m.matches(BSON("a" << BSON("x" << 1))));
-        ASSERT(m.matches(BSON("a" << BSON("x" << 1.0))));
+        ASSERT(exec::matcher::matches(&m, BSON("a" << BSON("x" << 1))));
+        ASSERT(exec::matcher::matches(&m, BSON("a" << BSON("x" << 1.0))));
     }
 };
 
@@ -170,10 +169,10 @@ public:
     void run() {
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(fromjson("{a:{$size:4}}"), expCtx);
-        ASSERT(m.matches(fromjson("{a:[1,2,3,4]}")));
-        ASSERT(!m.matches(fromjson("{a:[1,2,3]}")));
-        ASSERT(!m.matches(fromjson("{a:[1,2,3,'a','b']}")));
-        ASSERT(!m.matches(fromjson("{a:[[1,2,3,4]]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{a:[1,2,3,4]}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{a:[1,2,3]}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{a:[1,2,3,'a','b']}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{a:[[1,2,3,4]]}")));
     }
 };
 
@@ -183,11 +182,11 @@ public:
     void run() {
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(fromjson("{loc:{$within:{$box:[{x: 4, y:4},[6,6]]}}}"), expCtx);
-        ASSERT(!m.matches(fromjson("{loc: [3,4]}")));
-        ASSERT(m.matches(fromjson("{loc: [4,4]}")));
-        ASSERT(m.matches(fromjson("{loc: [5,5]}")));
-        ASSERT(m.matches(fromjson("{loc: [5,5.1]}")));
-        ASSERT(m.matches(fromjson("{loc: {x: 5, y:5.1}}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{loc: [3,4]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [4,4]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [5,5]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [5,5.1]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: {x: 5, y:5.1}}")));
     }
 };
 
@@ -197,11 +196,11 @@ public:
     void run() {
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(fromjson("{loc:{$within:{$polygon:[{x:0,y:0},[0,5],[5,5],[5,0]]}}}"), expCtx);
-        ASSERT(m.matches(fromjson("{loc: [3,4]}")));
-        ASSERT(m.matches(fromjson("{loc: [4,4]}")));
-        ASSERT(m.matches(fromjson("{loc: {x:5,y:5}}")));
-        ASSERT(!m.matches(fromjson("{loc: [5,5.1]}")));
-        ASSERT(!m.matches(fromjson("{loc: {}}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [3,4]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [4,4]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: {x:5,y:5}}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{loc: [5,5.1]}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{loc: {}}")));
     }
 };
 
@@ -211,13 +210,13 @@ public:
     void run() {
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         M m(fromjson("{loc:{$within:{$center:[{x:30,y:30},10]}}}"), expCtx);
-        ASSERT(!m.matches(fromjson("{loc: [3,4]}")));
-        ASSERT(m.matches(fromjson("{loc: {x:30,y:30}}")));
-        ASSERT(m.matches(fromjson("{loc: [20,30]}")));
-        ASSERT(m.matches(fromjson("{loc: [30,20]}")));
-        ASSERT(m.matches(fromjson("{loc: [40,30]}")));
-        ASSERT(m.matches(fromjson("{loc: [30,40]}")));
-        ASSERT(!m.matches(fromjson("{loc: [31,40]}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{loc: [3,4]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: {x:30,y:30}}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [20,30]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [30,20]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [40,30]}")));
+        ASSERT(exec::matcher::matches(&m, fromjson("{loc: [30,40]}")));
+        ASSERT(!exec::matcher::matches(&m, fromjson("{loc: [31,40]}")));
     }
 };
 
@@ -231,7 +230,7 @@ public:
         MatchDetails details;
         details.requestElemMatchKey();
         ASSERT(!details.hasElemMatchKey());
-        ASSERT(matcher.matches(fromjson("{ a:[ { b:1 } ] }"), &details));
+        ASSERT(exec::matcher::matches(&matcher, fromjson("{ a:[ { b:1 } ] }"), &details));
         // The '0' entry of the 'a' array is matched.
         ASSERT(details.hasElemMatchKey());
         ASSERT_EQUALS(std::string("0"), details.elemMatchKey());
@@ -248,13 +247,12 @@ public:
             NamespaceString::createNamespaceString_forTest("unittests.matchertests");
         AutoGetCollectionForReadCommand ctx(&opCtx, nss);
         const auto expCtx = ExpressionContextBuilder{}.opCtx(opCtxPtr.get()).ns(kTestNss).build();
-        M m(BSON("$where"
-                 << "function(){ return this.a == 1; }"),
+        M m(BSON("$where" << "function(){ return this.a == 1; }"),
             expCtx,
             ExtensionsCallbackReal(&opCtx, &nss),
             MatchExpressionParser::AllowedFeatures::kJavascript);
-        ASSERT(m.matches(BSON("a" << 1)));
-        ASSERT(!m.matches(BSON("a" << 2)));
+        ASSERT(exec::matcher::matches(&m, BSON("a" << 1)));
+        ASSERT(!exec::matcher::matches(&m, BSON("a" << 2)));
     }
 };
 
@@ -266,7 +264,7 @@ public:
         M m(patt, expCtx);
         Timer t;
         for (int i = 0; i < 900000; i++) {
-            if (!m.matches(obj)) {
+            if (!exec::matcher::matches(&m, obj)) {
                 ASSERT(0);
             }
         }
@@ -294,11 +292,8 @@ class NullCollator {
 public:
     void run() {
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        M matcher(BSON("a"
-                       << "string"),
-                  expCtx);
-        ASSERT(!matcher.matches(BSON("a"
-                                     << "string2")));
+        M matcher(BSON("a" << "string"), expCtx);
+        ASSERT(!exec::matcher::matches(&matcher, BSON("a" << "string2")));
     }
 };
 
@@ -311,11 +306,8 @@ public:
             std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kAlwaysEqual);
         boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
         expCtx->setCollator(std::move(collator));
-        M matcher(BSON("a"
-                       << "string"),
-                  expCtx);
-        ASSERT(matcher.matches(BSON("a"
-                                    << "string2")));
+        M matcher(BSON("a" << "string"), expCtx);
+        ASSERT(exec::matcher::matches(&matcher, BSON("a" << "string2")));
     }
 };
 

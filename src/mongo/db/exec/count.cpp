@@ -30,10 +30,8 @@
 #include <memory>
 #include <vector>
 
-
-#include "mongo/db/catalog/collection.h"
 #include "mongo/db/exec/count.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
 
@@ -42,12 +40,8 @@ using std::unique_ptr;
 // static
 const char* CountStage::kStageType = "COUNT";
 
-CountStage::CountStage(ExpressionContext* expCtx,
-                       const CollectionPtr& collection,
-                       long long limit,
-                       long long skip,
-                       WorkingSet* ws,
-                       PlanStage* child)
+CountStage::CountStage(
+    ExpressionContext* expCtx, long long limit, long long skip, WorkingSet* ws, PlanStage* child)
     : PlanStage(kStageType, expCtx), _limit(limit), _skip(skip), _leftToSkip(_skip), _ws(ws) {
     invariant(_skip >= 0);
     invariant(_limit >= 0);

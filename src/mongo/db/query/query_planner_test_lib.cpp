@@ -60,7 +60,6 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/accumulation_statement.h"
 #include "mongo/db/pipeline/expression.h"
-#include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/pipeline/field_path.h"
 #include "mongo/db/query/collation/collator_factory_mock.h"
@@ -68,19 +67,14 @@
 #include "mongo/db/query/index_entry.h"
 #include "mongo/db/query/interval.h"
 #include "mongo/db/query/projection.h"
-#include "mongo/db/query/projection_ast.h"
 #include "mongo/db/query/projection_ast_util.h"
 #include "mongo/db/query/projection_parser.h"
 #include "mongo/db/query/projection_policies.h"
 #include "mongo/db/query/query_solution.h"
 #include "mongo/db/query/stage_types.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/stdx/type_traits.h"
 #include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 #include "mongo/util/string_map.h"
 
@@ -1108,11 +1102,8 @@ Status QueryPlannerTestLib::solutionMatches(const BSONObj& testSoln,
         BSONElement isAdditionElt = projObj["isAddition"];
         const bool isAddition = isAdditionElt.trueValue();
 
-        // Create an empty/dummy expression context without access to the operation context and
-        // collator. This should be sufficient to parse a projection.
-        auto expCtx = ExpressionContextBuilder{}
-                          .ns(NamespaceString::createNamespaceString_forTest("test.dummy"))
-                          .build();
+        boost::intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest(
+            NamespaceString::createNamespaceString_forTest("test.dummy")));
         auto projection = projection_ast::parseAndAnalyze(
             expCtx,
             spec.Obj(),

@@ -51,12 +51,13 @@
 #include "mongo/s/database_version.h"
 #include "mongo/s/shard_version.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
 
 /**
  * Helper functions which add new operations into an existing BulkWriteCommandRequest.
+ * Only used from tests.
  */
 class BulkWriteCommandModifier {
 public:
@@ -80,9 +81,9 @@ public:
      */
     void finishBuild();
 
-    void addOp(write_ops::InsertCommandRequest insertOp);
-    void addOp(write_ops::UpdateCommandRequest updateOp);
-    void addOp(write_ops::DeleteCommandRequest deleteOp);
+    void addOp(const write_ops::InsertCommandRequest& insertOp);
+    void addOp(const write_ops::UpdateCommandRequest& updateOp);
+    void addOp(const write_ops::DeleteCommandRequest& deleteOp);
 
     void addInsert(const OpMsgRequest& request);
     void addUpdate(const OpMsgRequest& request);

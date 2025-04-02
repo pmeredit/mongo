@@ -117,23 +117,22 @@ public:
     /**
      * Source (receive) a new Message from the remote host for this Session.
      */
-    virtual StatusWith<Message> sourceMessage() noexcept = 0;
-    virtual Future<Message> asyncSourceMessage(const BatonHandle& handle = nullptr) noexcept = 0;
+    virtual StatusWith<Message> sourceMessage() = 0;
+    virtual Future<Message> asyncSourceMessage(const BatonHandle& handle = nullptr) = 0;
 
     /**
      * Waits for the availability of incoming data.
      */
-    virtual Status waitForData() noexcept = 0;
-    virtual Future<void> asyncWaitForData() noexcept = 0;
+    virtual Status waitForData() = 0;
+    virtual Future<void> asyncWaitForData() = 0;
 
     /**
      * Sink (send) a Message to the remote host for this Session.
      *
      * Async version will keep the buffer alive until the operation completes.
      */
-    virtual Status sinkMessage(Message message) noexcept = 0;
-    virtual Future<void> asyncSinkMessage(Message message,
-                                          const BatonHandle& handle = nullptr) noexcept = 0;
+    virtual Status sinkMessage(Message message) = 0;
+    virtual Future<void> asyncSinkMessage(Message message, const BatonHandle& handle = nullptr) = 0;
 
     /**
      * Cancel any outstanding async operations. There is no way to cancel synchronous calls.
@@ -165,7 +164,17 @@ public:
     /**
      * Returns true if this session was connected through an L4 load balancer.
      */
-    virtual bool isFromLoadBalancer() const = 0;
+    virtual bool isLoadBalancerPeer() const = 0;
+
+    /**
+     * Returns true if the connection is on a load balancer port.
+     */
+    virtual bool isConnectedToLoadBalancerPort() const = 0;
+
+    /**
+     * Signal the session that the client declared being from a load balancer.
+     */
+    virtual void setisLoadBalancerPeer(bool helloHasLoadBalancedOption) = 0;
 
     /**
      * Returns true if this session binds to the operation state, which implies open cursors and
@@ -246,6 +255,10 @@ public:
 
 protected:
     Session();
+
+    std::shared_ptr<SessionManager> getSessionManager() const {
+        return _sessionManager.lock();
+    }
 
 private:
     const Id _id;

@@ -120,9 +120,7 @@
 #include "mongo/s/client/shard_registry.h"
 #include "mongo/s/database_version.h"
 #include "mongo/s/grid.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/duration.h"
@@ -485,7 +483,9 @@ protected:
         txnParticipant.unstashTransactionResources(opCtx, "prepareTransaction");
 
         // The transaction machinery cannot store an empty locker.
-        { Lock::GlobalLock globalLock(opCtx, MODE_IX); }
+        {
+            Lock::GlobalLock globalLock(opCtx, MODE_IX);
+        }
         auto opTime = [opCtx] {
             TransactionParticipant::SideTransactionBlock sideTxn{opCtx};
 

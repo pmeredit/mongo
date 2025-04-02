@@ -97,8 +97,6 @@
 #include "mongo/crypto/hash_block.h"
 #include "mongo/crypto/sha256_block.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/ctype.h"
 #include "mongo/util/errno_util.h"
@@ -995,8 +993,7 @@ Status addYAMLNodesToEnvironment(const YAML::Node& root,
             // If this is not a special field name, and we are in a sub object, append our
             // current fieldName to the selector for the sub object we are traversing
             else {
-                using namespace fmt::literals;
-                dottedName = "{}.{}"_format(parentPath, fieldName);
+                dottedName = fmt::format("{}.{}", parentPath, fieldName);
             }
         }
 

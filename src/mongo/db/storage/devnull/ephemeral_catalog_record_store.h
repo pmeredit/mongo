@@ -50,7 +50,7 @@
 #include "mongo/db/storage/record_data.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/stdx/mutex.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/uuid.h"
 
@@ -169,7 +169,7 @@ public:
 
     void reserveRecordIds(OperationContext* opCtx,
                           std::vector<RecordId>* out,
-                          size_t nRecords) final{};
+                          size_t nRecords) final {};
 
     RecordStore::Capped* capped() override {
         return nullptr;

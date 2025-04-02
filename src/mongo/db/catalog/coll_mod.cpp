@@ -92,11 +92,10 @@
 #include "mongo/db/timeseries/timeseries_options.h"
 #include "mongo/db/transaction_resources.h"
 #include "mongo/db/ttl/ttl_collection_cache.h"
+#include "mongo/db/version_context.h"
 #include "mongo/db/views/view.h"
 #include "mongo/db/views/view_catalog_helpers.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/s/catalog/sharding_catalog_client.h"
 #include "mongo/s/catalog/type_collection.h"
@@ -119,32 +118,6 @@ MONGO_FAIL_POINT_DEFINE(hangAfterDatabaseLock);
 MONGO_FAIL_POINT_DEFINE(hangAfterCollModIndexUniqueFullIndexScan);
 MONGO_FAIL_POINT_DEFINE(hangAfterCollModIndexUniqueReleaseIXLock);
 
-void assertNoMovePrimaryInProgress(OperationContext* opCtx, NamespaceString const& nss) {
-    try {
-        const auto scopedDss =
-            DatabaseShardingState::assertDbLockedAndAcquireShared(opCtx, nss.dbName());
-        auto scopedCss = CollectionShardingState::assertCollectionLockedAndAcquire(opCtx, nss);
-
-        auto collDesc = scopedCss->getCollectionDescription(opCtx);
-        // Only collections that are not registered in the sharding catalog are affected by
-        // movePrimary
-        if (!collDesc.hasRoutingTable()) {
-            if (scopedDss->isMovePrimaryInProgress()) {
-                LOGV2(4945200, "assertNoMovePrimaryInProgress", logAttrs(nss));
-
-                uasserted(ErrorCodes::MovePrimaryInProgress,
-                          "movePrimary is in progress for namespace " + nss.toStringForErrorMsg());
-            }
-        }
-    } catch (const DBException& ex) {
-        if (ex.toStatus() != ErrorCodes::MovePrimaryInProgress) {
-            LOGV2(4945201, "Error when getting collection description", "what"_attr = ex.what());
-            return;
-        }
-        throw;
-    }
-}
-
 struct ParsedCollModRequest {
     ParsedCollModIndexRequest indexRequest;
     std::string viewOn = {};
@@ -157,6 +130,8 @@ struct ParsedCollModRequest {
     boost::optional<long long> cappedSize;
     boost::optional<long long> cappedMax;
     boost::optional<bool> timeseriesBucketsMayHaveMixedSchemaData;
+    // TODO(SERVER-101423): Remove once 9.0 becomes last LTS.
+    boost::optional<bool> _removeLegacyTimeseriesBucketingParametersHaveChanged;
     boost::optional<bool> recordIdsReplicated;
 };
 
@@ -643,6 +618,24 @@ StatusWith<std::pair<ParsedCollModRequest, BSONObj>> parseCollModRequest(
                                  *mixedSchema);
     }
 
+    if (auto removeLegacyTSBucketingParametersHaveChanged =
+            cmr.get_removeLegacyTimeseriesBucketingParametersHaveChanged()) {
+        tassert(9123100,
+                "_removeLegacyTimeseriesBucketingParametersHaveChanged should only be set to true",
+                *removeLegacyTSBucketingParametersHaveChanged);
+
+        tassert(
+            9123101,
+            "_removeLegacyTimeseriesBucketingParametersHaveChanged needs a time-series collection",
+            isTimeseries);
+
+        parsed._removeLegacyTimeseriesBucketingParametersHaveChanged =
+            removeLegacyTSBucketingParametersHaveChanged;
+        oplogEntryBuilder.append(
+            CollMod::k_removeLegacyTimeseriesBucketingParametersHaveChangedFieldName,
+            *removeLegacyTSBucketingParametersHaveChanged);
+    }
+
     if (auto recordIdsReplicated = cmr.getRecordIdsReplicated()) {
         if (*recordIdsReplicated) {
             return {ErrorCodes::InvalidOptions, "Cannot set recordIdsReplicated to true"};
@@ -810,6 +803,8 @@ Status _collModInternal(OperationContext* opCtx,
                         CollectionAcquisition* acquisition,
                         BSONObjBuilder* result,
                         boost::optional<repl::OplogApplication::Mode> mode) {
+    const auto fcvSnapshot = serverGlobalParams.featureCompatibility.acquireFCVSnapshot();
+
     // Get key pattern from the config server if we may need it for parsing checks if on the primary
     // before taking any locks. The ddl lock will prevent the key pattern from changing.
     boost::optional<ShardKeyPattern> shardKeyPattern;
@@ -987,6 +982,10 @@ Status _collModInternal(OperationContext* opCtx,
             writableColl->setTimeseriesBucketsMayHaveMixedSchemaData(opCtx, mixedSchema);
         }
 
+        if (cmrNew._removeLegacyTimeseriesBucketingParametersHaveChanged.has_value()) {
+            writableColl->removeLegacyTimeseriesBucketingParametersHaveChanged(opCtx);
+        }
+
         if (auto recordIdsReplicated = cmrNew.recordIdsReplicated) {
             // Must be false if present.
             invariant(
@@ -1031,28 +1030,41 @@ Status _collModInternal(OperationContext* opCtx,
             if (changed) {
                 writableColl->setTimeseriesOptions(opCtx, newOptions);
                 if (feature_flags::gTSBucketingParametersUnchanged.isEnabled(
-                        serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+                        VersionContext::getDecoration(opCtx), fcvSnapshot)) {
                     writableColl->setTimeseriesBucketingParametersChanged(opCtx, true);
                 };
             }
         }
 
+        const auto version = fcvSnapshot.getVersion();
         // We involve an empty collMod command during a setFCV downgrade to clean timeseries
         // bucketing parameters in the catalog. So if the FCV is in downgrading or downgraded stage,
         // remove time-series bucketing parameters flag, as nodes older than 7.1 cannot understand
         // this flag.
         // (Generic FCV reference): This FCV check should exist across LTS binary versions.
         // TODO SERVER-80003 remove special version handling when LTS becomes 8.0.
-        if (const auto version =
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot().getVersion();
-            cmrNew.numModifications == 0 && coll->timeseriesBucketingParametersHaveChanged() &&
+        if (cmrNew.numModifications == 0 && coll->timeseriesBucketingParametersHaveChanged() &&
             version == multiversion::GenericFCV::kDowngradingFromLatestToLastLTS) {
             writableColl->setTimeseriesBucketingParametersChanged(opCtx, boost::none);
         }
 
-        // Fix any invalid index options for indexes belonging to this collection.
+        // Fix any invalid index options for indexes belonging to this collection, only for empty
+        // collMod requests which are called during setFCV upgrade.
+        const auto removeDeprecatedFields = [&]() {
+            if (cmrNew.numModifications > 0) {
+                return false;
+            }
+
+            if (!ServerGlobalParams::FCVSnapshot::isUpgradingOrDowngrading(version)) {
+                return false;
+            }
+
+            const auto transitionInfo = getTransitionFCVInfo(version);
+            return transitionInfo.from < transitionInfo.to;
+        }();
+
         std::vector<std::string> indexesWithInvalidOptions =
-            writableColl->repairInvalidIndexOptions(opCtx);
+            writableColl->repairInvalidIndexOptions(opCtx, removeDeprecatedFields);
         for (const auto& indexWithInvalidOptions : indexesWithInvalidOptions) {
             const IndexDescriptor* desc =
                 writableColl->getIndexCatalog()->findIndexByName(opCtx, indexWithInvalidOptions);

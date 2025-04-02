@@ -8,7 +8,6 @@
 #include <memory>
 
 #include "mongo/bson/bsonelement.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
@@ -73,7 +72,7 @@ protected:
     std::vector<Document> getStreamingPipelineResults(const string& bsonPipeline,
                                                       const vector<StreamDocument>& streamDocs,
                                                       boost::optional<size_t> expectedNumDlqDocs) {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         Planner planner(_context.get(), {});
 
         // Get the user pipeline vector
@@ -145,7 +144,7 @@ protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
     const std::vector<StreamDocument> _streamDocs = {
-        Document(fromjson("{a: 1, b: 5, name: 'a', o: {p: { q: 1, z: 1, sizes: [1, 2, 3]}}}}")),
+        Document(fromjson("{a: 1, b: 5, name: 'a', o: {p: { q: 1, z: 1, sizes: [1, 2, 3]}}}")),
         Document(fromjson("{a: 2, b: 2, name: 'b', o: {p: { q: 2, z: 2, sizes: [4, 5]}}}")),
         Document(fromjson("{a: 3, b: 3, name: 'c', o: {p: { q: 3, z: 3, sizes: [6, 7, 8]}}}")),
         Document(fromjson("{a: 4, b: 4, name: 'd', o: {p: { q: 4, z: 4, sizes: [9, 10]}}}")),

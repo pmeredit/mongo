@@ -4,10 +4,10 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStreams
 
+#include "streams/exec/output_sampler.h"
+
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
-
-#include "streams/exec/output_sampler.h"
 
 namespace streams {
 

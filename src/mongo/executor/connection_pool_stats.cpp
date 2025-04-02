@@ -28,6 +28,7 @@
  */
 
 #include <algorithm>
+#include <fmt/format.h>
 #include <fmt/ostream.h>
 #include <iosfwd>
 #include <type_traits>
@@ -148,8 +149,8 @@ void ConnectionPoolStats::appendToBSON(mongo::BSONObjBuilder& result, bool forFT
 
     // Process pools stats.
     {
-        if (strategy) {
-            result.append("replicaSetMatchingStrategy", matchingStrategyToString(*strategy));
+        if (matchingStrategy) {
+            result.append("replicaSetMatchingStrategy", *matchingStrategy);
         }
 
         BSONObjBuilder poolBuilder(result.subobjStart("pools"));

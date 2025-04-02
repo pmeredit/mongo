@@ -67,7 +67,7 @@ public:
      */
     class NoCustomAction : public BeforeReleasingCustomAction {
     public:
-        void operator()(OperationContext*, const NamespaceString&) const final{};
+        void operator()(OperationContext*, const NamespaceString&) const final {};
     };
 
 
@@ -103,11 +103,16 @@ public:
      * Do nothing if the critical section is taken for that namespace and reason, and will invariant
      * otherwise since it is the responsibility of the caller to ensure that only one thread is
      * taking the critical section.
+     *
+     * NOTE: If the `clearDbInfo` flag is set, at the time of releasing the database critical
+     * section it will also clear the filtering database information. This flag is only used by
+     * secondary nodes.
      */
     void acquireRecoverableCriticalSectionBlockWrites(OperationContext* opCtx,
                                                       const NamespaceString& nss,
                                                       const BSONObj& reason,
-                                                      const WriteConcernOptions& writeConcern);
+                                                      const WriteConcernOptions& writeConcern,
+                                                      bool clearDbInfo = true);
 
     /**
      * Advances the recoverable critical section from the catch-up phase (i.e. blocking writes) to
@@ -168,6 +173,12 @@ private:
      * Recovers the index versions from disk into the CSR.
      */
     void recoverIndexesCatalog(OperationContext* opCtx);
+
+    /**
+     * Called from onConsistentDataAvailable to recover the in-memory metadata information from the
+     * on-disk shard catalog. Runs on startup and on rollback.
+     */
+    void _reloadShardingState(OperationContext* opCtx);
 
     void onStartup(OperationContext* opCtx) final {}
     void onSetCurrentConfig(OperationContext* opCtx) final {}

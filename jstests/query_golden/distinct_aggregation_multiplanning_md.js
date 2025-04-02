@@ -103,6 +103,22 @@ outputAggregationPlanAndResults(coll, [
     {$group: {_id: "$a", accumB: {$first: "$b"}, accumC: {$first: "$c"}, accumD: {$first: "$d"}}}
 ]);
 
+section(
+    "Rooted $or can only use a DISTINCT_SCAN when all predicates have mergeable bounds for a single index scan");
+subSection("Rooted $or with one index bound uses DISTINCT_SCAN");
+outputAggregationPlanAndResults(
+    coll, [{$match: {$or: [{a: {$lte: 5}}, {a: {$gt: 8}}]}}, {$group: {_id: "$a"}}]);
+subSection("Rooted $or + $and on one field prevents use of DISTINCT_SCAN");
+outputAggregationPlanAndResults(coll, [
+    {$match: {$or: [{a: {$lte: 5}}, {a: {$gt: 6, $lt: 7}}, {a: {$gt: 8}}]}},
+    {$group: {_id: "$a"}}
+]);
+subSection("Rooted $or on different fields prevents use of DISTINCT_SCAN");
+outputAggregationPlanAndResults(
+    coll, [{$match: {$or: [{a: {$gt: 0}}, {b: {$lt: 10}}]}}, {$group: {_id: "$a"}}]);
+outputAggregationPlanAndResults(
+    coll, [{$match: {$or: [{a: {$gt: 0}, b: {$lt: 10}}, {a: {$lt: 10}}]}}, {$group: {_id: "$a"}}]);
+
 subSection("Multiplanning tie between DISTINCT_SCAN and IXSCAN favors DISTINCT_SCAN");
 const coll2 = db[jsTestName() + "-2"];
 coll2.drop();
@@ -153,7 +169,6 @@ subSection("No available indexes");
 outputAggregationPlanAndResults(
     coll, [{$group: {_id: "$a", accum: {$top: {sortBy: {a: 1, b: 1}, output: "$b"}}}}]);
 
-// TODO SERVER-97238: Ensure we don't unwind the array here (i.e. we should fetch).
 section("$group by non-multikey field with $first/$last on a multikey field");
 outputAggregationPlanAndResults(coll, [{$group: {_id: "$b", accum: {$first: "$a"}}}]);
 outputAggregationPlanAndResults(coll, [{$group: {_id: "$b", accum: {$last: "$a"}}}]);

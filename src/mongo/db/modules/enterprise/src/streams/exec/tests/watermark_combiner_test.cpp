@@ -2,10 +2,10 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include "mongo/unittest/unittest.h"
-
-#include "streams/exec/delayed_watermark_generator.h"
 #include "streams/exec/watermark_combiner.h"
+
+#include "mongo/unittest/unittest.h"
+#include "streams/exec/delayed_watermark_generator.h"
 
 namespace streams {
 namespace {

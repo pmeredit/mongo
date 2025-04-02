@@ -77,10 +77,8 @@
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/stdx/thread.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/death_test.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -1189,9 +1187,13 @@ private:
 
         // Adds the collection to the durable catalog.
         auto storageEngine = getServiceContext()->getStorageEngine();
+        const auto ident =
+            ident::generateNewCollectionIdent(nss.dbName(),
+                                              storageEngine->isUsingDirectoryPerDb(),
+                                              storageEngine->isUsingDirectoryForIndexes());
         std::pair<RecordId, std::unique_ptr<RecordStore>> catalogIdRecordStorePair =
-            uassertStatusOK(storageEngine->getCatalog()->createCollection(
-                opCtx, nss, options, /*allocateDefaultSpace=*/true));
+            uassertStatusOK(
+                storageEngine->getDurableCatalog()->createCollection(opCtx, nss, ident, options));
         auto& catalogId = catalogIdRecordStorePair.first;
         auto catalogEntry = DurableCatalog::get(opCtx)->getParsedCatalogEntry(opCtx, catalogId);
         auto metadata = catalogEntry->metadata;
@@ -1232,8 +1234,8 @@ private:
 
         // Drops the collection from the durable catalog.
         auto storageEngine = getServiceContext()->getStorageEngine();
-        uassertStatusOK(
-            storageEngine->getCatalog()->dropCollection(opCtx, writableCollection->getCatalogId()));
+        uassertStatusOK(storageEngine->getDurableCatalog()->dropCollection(
+            opCtx, writableCollection->getCatalogId()));
 
         // Drops the collection from the in-memory catalog.
         CollectionCatalog::get(opCtx)->dropCollection(
@@ -1327,11 +1329,11 @@ private:
                 ChangeForCatalogVisibility(std::function<void()> commitHandler)
                     : callback(std::move(commitHandler)) {}
 
-                void commit(OperationContext* opCtx, boost::optional<Timestamp>) final {
+                void commit(OperationContext* opCtx, boost::optional<Timestamp>) noexcept final {
                     callback();
                 }
 
-                void rollback(OperationContext* opCtx) final {}
+                void rollback(OperationContext* opCtx) noexcept final {}
 
                 std::function<void()> callback;
             };
@@ -1415,11 +1417,12 @@ private:
                     ChangeForCatalogVisibility(std::function<void()> commitHandler)
                         : callback(std::move(commitHandler)) {}
 
-                    void commit(OperationContext* opCtx, boost::optional<Timestamp>) final {
+                    void commit(OperationContext* opCtx,
+                                boost::optional<Timestamp>) noexcept final {
                         callback();
                     }
 
-                    void rollback(OperationContext* opCtx) final {}
+                    void rollback(OperationContext* opCtx) noexcept final {}
 
                     std::function<void()> callback;
                 };
@@ -1454,7 +1457,7 @@ private:
         // Stash the catalog so we may perform multiple lookups that will be in sync with our
         // snapshot
         CollectionCatalog::stash(opCtx, CollectionCatalog::get(opCtx));
-        const Collection* coll = CollectionCatalog::get(opCtx)->establishConsistentCollection(
+        auto coll = CollectionCatalog::get(opCtx)->establishConsistentCollection(
             opCtx, nssOrUUID, boost::none);
 
         // Notify the thread that our openCollection lookup is done.
@@ -1474,8 +1477,8 @@ private:
 
             ASSERT_EQ(coll->ns(), nss);
             // Check that lookup returns the same instance as openCollection above
-            ASSERT_EQ(catalog->lookupCollectionByNamespace(opCtx, coll->ns()), coll);
-            ASSERT_EQ(catalog->lookupCollectionByUUID(opCtx, coll->uuid()), coll);
+            ASSERT_EQ(catalog->lookupCollectionByNamespace(opCtx, coll->ns()), coll.get());
+            ASSERT_EQ(catalog->lookupCollectionByUUID(opCtx, coll->uuid()), coll.get());
             ASSERT_EQ(catalog->lookupNSSByUUID(opCtx, coll->uuid()), nss);
             ASSERT_EQ(coll->getIndexCatalog()->numIndexesTotal(), expectedNumIndexes);
 
@@ -1485,8 +1488,8 @@ private:
             ASSERT(coll->isMetadataEqual(catalogEntry->metadata->toBSON()));
 
             // Lookups from the catalog should return the newly opened collection.
-            ASSERT_EQ(catalog->lookupCollectionByNamespace(opCtx, coll->ns()), coll);
-            ASSERT_EQ(catalog->lookupCollectionByUUID(opCtx, coll->uuid()), coll);
+            ASSERT_EQ(catalog->lookupCollectionByNamespace(opCtx, coll->ns()), coll.get());
+            ASSERT_EQ(catalog->lookupCollectionByUUID(opCtx, coll->uuid()), coll.get());
         } else {
             ASSERT(!coll);
             if (nssOrUUID.isNamespaceString()) {
@@ -1496,7 +1499,7 @@ private:
 
                 // Lookups from the catalog should return the newly opened collection (in this case
                 // nullptr).
-                ASSERT_EQ(catalog->lookupCollectionByNamespace(opCtx, nssOrUUID.nss()), coll);
+                ASSERT_EQ(catalog->lookupCollectionByNamespace(opCtx, nssOrUUID.nss()), coll.get());
             } else {
                 auto catalogEntry =
                     DurableCatalog::get(opCtx)->scanForCatalogEntryByUUID(opCtx, nssOrUUID.uuid());
@@ -1504,7 +1507,7 @@ private:
 
                 // Lookups from the catalog should return the newly opened collection (in this case
                 // nullptr).
-                ASSERT_EQ(catalog->lookupCollectionByUUID(opCtx, nssOrUUID.uuid()), coll);
+                ASSERT_EQ(catalog->lookupCollectionByUUID(opCtx, nssOrUUID.uuid()), coll.get());
             }
         }
 
@@ -1571,7 +1574,7 @@ TEST_F(CollectionCatalogTimestampTest, OpenCollectionBeforeCreateTimestamp) {
 
     // Lookups from the catalog should return the newly opened collection (in this case nullptr).
     ASSERT_EQ(CollectionCatalog::get(opCtx.get())->lookupCollectionByNamespace(opCtx.get(), nss),
-              coll);
+              coll.get());
 }
 
 TEST_F(CollectionCatalogTimestampTest, OpenEarlierCollection) {
@@ -1608,7 +1611,7 @@ TEST_F(CollectionCatalogTimestampTest, OpenEarlierCollection) {
     ASSERT_EQ(1, latestColl->getIndexCatalog()->numIndexesTotal());
 
     // Ensure the idents are shared between the collection instances.
-    ASSERT_NE(coll, latestColl);
+    ASSERT_NE(coll.get(), latestColl);
     ASSERT_EQ(coll->getSharedIdent(), latestColl->getSharedIdent());
 }
 
@@ -1652,7 +1655,7 @@ TEST_F(CollectionCatalogTimestampTest, OpenEarlierCollectionWithIndex) {
     ASSERT_EQ(2, latestColl->getIndexCatalog()->numIndexesTotal());
 
     // Ensure the idents are shared between the collection and index instances.
-    ASSERT_NE(coll, latestColl);
+    ASSERT_NE(coll.get(), latestColl);
     ASSERT_EQ(coll->getSharedIdent(), latestColl->getSharedIdent());
 
     auto indexDescPast = coll->getIndexCatalog()->findIndexByName(opCtx.get(), "x_1");
@@ -1687,7 +1690,7 @@ TEST_F(CollectionCatalogTimestampTest, OpenLatestCollectionWithIndex) {
     // Verify that the CollectionCatalog returns the latest collection.
     auto currentColl =
         CollectionCatalog::get(opCtx.get())->lookupCollectionByNamespace(opCtx.get(), nss);
-    ASSERT_EQ(coll, currentColl);
+    ASSERT_EQ(coll.get(), currentColl);
 
     // Ensure the idents are shared between the collection and index instances.
     ASSERT_EQ(coll->getSharedIdent(), currentColl->getSharedIdent());
@@ -1747,7 +1750,7 @@ TEST_F(CollectionCatalogTimestampTest, OpenEarlierCollectionWithDropPendingIndex
     auto newOpCtx = cc().makeOperationContext();
     auto latestColl =
         CollectionCatalog::get(newOpCtx.get())->lookupCollectionByNamespace(newOpCtx.get(), nss);
-    ASSERT_NE(coll, latestColl);
+    ASSERT_NE(coll.get(), latestColl);
 
     auto indexDescX = coll->getIndexCatalog()->findIndexByName(opCtx.get(), "x_1");
     auto indexDescY = coll->getIndexCatalog()->findIndexByName(opCtx.get(), "y_1");
@@ -1841,7 +1844,7 @@ TEST_F(CollectionCatalogTimestampTest,
     auto latestColl =
         CollectionCatalog::get(newOpCtx.get())->lookupCollectionByNamespace(newOpCtx.get(), nss);
 
-    ASSERT_NE(coll, latestColl);
+    ASSERT_NE(coll.get(), latestColl);
 
     auto indexDescZ = coll->getIndexCatalog()->findIndexByName(opCtx.get(), zIndexName);
     auto indexEntryZ = coll->getIndexCatalog()->getEntryShared(indexDescZ);
@@ -1862,9 +1865,7 @@ TEST_F(CollectionCatalogTimestampTest, OpenEarlierAlreadyDropPendingCollection) 
     // Maintain a shared_ptr to the catalog so that collection "a.b" isn't expired in the drop
     // pending map after we drop the collections.
     auto catalog = CollectionCatalog::get(opCtx.get());
-    auto coll =
-
-        catalog->lookupCollectionByNamespace(opCtx.get(), firstNss);
+    auto coll = catalog->lookupCollectionByNamespace(opCtx.get(), firstNss);
     ASSERT(coll);
 
     // Make the collections drop pending.
@@ -1884,14 +1885,18 @@ TEST_F(CollectionCatalogTimestampTest, OpenEarlierAlreadyDropPendingCollection) 
         ASSERT(openedColl);
         ASSERT_EQ(
             CollectionCatalog::get(opCtx.get())->lookupCollectionByNamespace(opCtx.get(), firstNss),
-            openedColl);
+            openedColl.get());
+
+        // Release the consistent collection reference so we can advance the snapshot.
+        auto ptr = openedColl.get();
+        openedColl = ConsistentCollection{};
         shard_role_details::getRecoveryUnit(opCtx.get())->abandonSnapshot();
 
         // Once snapshot is abandoned, openedColl has been released so it should not match the
         // collection lookup.
         ASSERT_NE(
             CollectionCatalog::get(opCtx.get())->lookupCollectionByNamespace(opCtx.get(), firstNss),
-            openedColl);
+            ptr);
     }
 
     {
@@ -1909,8 +1914,7 @@ TEST_F(CollectionCatalogTimestampTest, OpenEarlierAlreadyDropPendingCollection) 
         ASSERT(openedColl);
         ASSERT_EQ(CollectionCatalog::get(opCtx.get())
                       ->lookupCollectionByNamespace(opCtx.get(), secondNss),
-                  openedColl);
-        shard_role_details::getRecoveryUnit(opCtx.get())->abandonSnapshot();
+                  openedColl.get());
     }
 }
 
@@ -1949,68 +1953,9 @@ TEST_F(CollectionCatalogTimestampTest, OpenNewCollectionUsingDropPendingCollecti
     auto openedColl = CollectionCatalog::get(opCtx.get())
                           ->establishConsistentCollection(opCtx.get(), nss, readTimestamp);
     ASSERT(openedColl);
-    ASSERT_NE(coll, openedColl);
+    ASSERT_NE(coll, openedColl.get());
     // Ensure the idents are shared between the opened collection and the drop pending collection.
     ASSERT_EQ(coll->getSharedIdent(), openedColl->getSharedIdent());
-    shard_role_details::getRecoveryUnit(opCtx.get())->abandonSnapshot();
-}
-
-TEST_F(CollectionCatalogTimestampTest, OpenExistingCollectionWithReaper) {
-    const NamespaceString nss = NamespaceString::createNamespaceString_forTest("a.b");
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-    const Timestamp dropCollectionTs = Timestamp(20, 20);
-
-    createCollection(opCtx.get(), nss, createCollectionTs);
-
-    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-
-    // Maintain a shared_ptr to the catalog so that the reaper cannot drop the collection ident.
-    auto catalog = CollectionCatalog::get(opCtx.get());
-    auto coll = catalog->lookupCollectionByNamespace(opCtx.get(), nss);
-    ASSERT(coll);
-
-    // Mark the collection as drop pending. The dropToken in the ident reaper is not expired as we
-    // still have a reference.
-    dropCollection(opCtx.get(), nss, dropCollectionTs);
-
-    {
-        ASSERT_EQ(1, storageEngine->getNumDropPendingIdents());
-        ASSERT_EQ(coll->getRecordStore()->getSharedIdent()->getIdent(),
-                  *storageEngine->getDropPendingIdents().begin());
-
-        // Ident is not expired and should not be removed.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-
-        ASSERT_EQ(1, storageEngine->getNumDropPendingIdents());
-        ASSERT_EQ(coll->getRecordStore()->getSharedIdent()->getIdent(),
-                  *storageEngine->getDropPendingIdents().begin());
-    }
-
-    {
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs);
-        ASSERT(openedColl);
-        ASSERT_EQ(coll->getSharedIdent(), openedColl->getSharedIdent());
-
-        // The ident is now expired and should be removed the next time the ident reaper runs.
-        catalog.reset();
-    }
-
-    {
-        // Remove the collection reference in UncommittedCatalogUpdates.
-        shard_role_details::getRecoveryUnit(opCtx.get())->abandonSnapshot();
-
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-        ASSERT_EQ(0, storageEngine->getNumDropPendingIdents());
-
-        // Now we fail to open the collection as the ident has been removed.
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        ASSERT(!CollectionCatalog::get(opCtx.get())
-                    ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs));
-    }
 }
 
 TEST_F(CollectionCatalogTimestampTest, checkIfUUIDExistsAtLatest) {
@@ -2116,276 +2061,6 @@ TEST_F(CollectionCatalogTimestampTest, checkIfUUIDExistsAtLatest) {
     }
 }
 
-
-TEST_F(CollectionCatalogTimestampTest, OpenNewCollectionWithReaper) {
-    const NamespaceString nss = NamespaceString::createNamespaceString_forTest("a.b");
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-    const Timestamp dropCollectionTs = Timestamp(20, 20);
-
-    createCollection(opCtx.get(), nss, createCollectionTs);
-
-    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-
-    // Make the collection drop pending. The dropToken in the ident reaper is now expired as we
-    // don't maintain any references to the collection.
-    dropCollection(opCtx.get(), nss, dropCollectionTs);
-
-    {
-        // Open the collection, which marks the ident as in use before running the ident reaper.
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs);
-        ASSERT(openedColl);
-
-        ASSERT_EQ(1, storageEngine->getNumDropPendingIdents());
-        ASSERT_EQ(openedColl->getRecordStore()->getSharedIdent()->getIdent(),
-                  *storageEngine->getDropPendingIdents().begin());
-
-        // Ident is marked as in use and it should not be removed.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-
-        ASSERT_EQ(1, storageEngine->getNumDropPendingIdents());
-        ASSERT_EQ(openedColl->getRecordStore()->getSharedIdent()->getIdent(),
-                  *storageEngine->getDropPendingIdents().begin());
-    }
-
-    {
-        // Run the ident reaper before opening the collection.
-        ASSERT_EQ(1, storageEngine->getNumDropPendingIdents());
-
-        // The dropToken is expired as the ident is no longer in use.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-
-        ASSERT_EQ(0, storageEngine->getNumDropPendingIdents());
-
-        // Now we fail to open the collection as the ident has been removed.
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        ASSERT(!CollectionCatalog::get(opCtx.get())
-                    ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs));
-    }
-}
-
-TEST_F(CollectionCatalogTimestampTest, OpenExistingCollectionAndIndexesWithReaper) {
-    const NamespaceString nss = NamespaceString::createNamespaceString_forTest("a.b");
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-    const Timestamp createIndexTs = Timestamp(20, 20);
-    const Timestamp dropXIndexTs = Timestamp(30, 30);
-    const Timestamp dropYIndexTs = Timestamp(40, 40);
-    const Timestamp dropCollectionTs = Timestamp(50, 50);
-
-    createCollection(opCtx.get(), nss, createCollectionTs);
-    createIndex(opCtx.get(),
-                nss,
-                BSON("v" << 2 << "name"
-                         << "x_1"
-                         << "key" << BSON("x" << 1)),
-                createIndexTs);
-    createIndex(opCtx.get(),
-                nss,
-                BSON("v" << 2 << "name"
-                         << "y_1"
-                         << "key" << BSON("y" << 1)),
-                createIndexTs);
-
-    // Perform index drops at different timestamps. By not maintaining shared_ptrs to the these
-    // indexes, their idents are expired.
-    dropIndex(opCtx.get(), nss, "x_1", dropXIndexTs);
-    dropIndex(opCtx.get(), nss, "y_1", dropYIndexTs);
-
-    // Maintain a shared_ptr to the catalog so that the reaper cannot drop the collection ident.
-    auto catalog = CollectionCatalog::get(opCtx.get());
-    auto coll = catalog->lookupCollectionByNamespace(opCtx.get(), nss);
-    ASSERT(coll);
-
-    dropCollection(opCtx.get(), nss, dropCollectionTs);
-
-    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    ASSERT_EQ(3, storageEngine->getNumDropPendingIdents());
-
-    {
-        // Open the collection using shared state before any index drops.
-        OneOffRead oor(opCtx.get(), createIndexTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, createIndexTs);
-        ASSERT(openedColl);
-        ASSERT_EQ(openedColl->getSharedIdent(), coll->getSharedIdent());
-        ASSERT_EQ(2, openedColl->getIndexCatalog()->numIndexesTotal());
-
-        // All idents are marked as in use and none should be removed.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-        ASSERT_EQ(3, storageEngine->getNumDropPendingIdents());
-    }
-
-    {
-        // Open the collection using shared state after a single index was dropped.
-        OneOffRead oor(opCtx.get(), dropXIndexTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IX);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, dropXIndexTs);
-        ASSERT(openedColl);
-        ASSERT_EQ(openedColl->getSharedIdent(), coll->getSharedIdent());
-        ASSERT_EQ(1, openedColl->getIndexCatalog()->numIndexesTotal());
-
-        std::vector<std::string> indexNames;
-        openedColl->getAllIndexes(&indexNames);
-        ASSERT_EQ(1, indexNames.size());
-        ASSERT_EQ("y_1", indexNames.front());
-
-        // Only the collection and 'y' index idents are marked as in use. The 'x' index ident will
-        // be removed.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-        ASSERT_EQ(2, storageEngine->getNumDropPendingIdents());
-    }
-
-    {
-        // Open the collection using shared state before any indexes were created.
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs);
-        ASSERT(openedColl);
-        ASSERT_EQ(openedColl->getSharedIdent(), coll->getSharedIdent());
-        ASSERT_EQ(0, openedColl->getIndexCatalog()->numIndexesTotal());
-    }
-
-    {
-        // Try to open the collection using shared state when both indexes were present. This should
-        // fail as the ident for index 'x' was already removed.
-        OneOffRead oor(opCtx.get(), createIndexTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        ASSERT(!CollectionCatalog::get(opCtx.get())
-                    ->establishConsistentCollection(opCtx.get(), nss, createIndexTs));
-
-        ASSERT_EQ(2, storageEngine->getNumDropPendingIdents());
-    }
-
-    {
-        // Drop all remaining idents.
-        catalog.reset();
-
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-        ASSERT_EQ(0, storageEngine->getNumDropPendingIdents());
-
-        // All idents are removed so opening the collection before any indexes were created should
-        // fail.
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        ASSERT(!CollectionCatalog::get(opCtx.get())
-                    ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs));
-    }
-}
-
-TEST_F(CollectionCatalogTimestampTest, OpenNewCollectionAndIndexesWithReaper) {
-    const NamespaceString nss = NamespaceString::createNamespaceString_forTest("a.b");
-    const Timestamp createCollectionTs = Timestamp(10, 10);
-    const Timestamp createIndexTs = Timestamp(20, 20);
-    const Timestamp dropXIndexTs = Timestamp(30, 30);
-    const Timestamp dropYIndexTs = Timestamp(40, 40);
-    const Timestamp dropCollectionTs = Timestamp(50, 50);
-
-    createCollection(opCtx.get(), nss, createCollectionTs);
-    createIndex(opCtx.get(),
-                nss,
-                BSON("v" << 2 << "name"
-                         << "x_1"
-                         << "key" << BSON("x" << 1)),
-                createIndexTs);
-    createIndex(opCtx.get(),
-                nss,
-                BSON("v" << 2 << "name"
-                         << "y_1"
-                         << "key" << BSON("y" << 1)),
-                createIndexTs);
-
-    // Perform drops at different timestamps. By not maintaining shared_ptrs to the these, their
-    // idents are expired.
-    dropIndex(opCtx.get(), nss, "x_1", dropXIndexTs);
-    dropIndex(opCtx.get(), nss, "y_1", dropYIndexTs);
-    dropCollection(opCtx.get(), nss, dropCollectionTs);
-
-    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    ASSERT_EQ(3, storageEngine->getNumDropPendingIdents());
-
-    {
-        // Open the collection before any index drops.
-        OneOffRead oor(opCtx.get(), createIndexTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IX);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, createIndexTs);
-        ASSERT(openedColl);
-        ASSERT_EQ(2, openedColl->getIndexCatalog()->numIndexesTotal());
-
-        // All idents are marked as in use and none should be removed.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-        ASSERT_EQ(3, storageEngine->getNumDropPendingIdents());
-    }
-
-    {
-        // Open the collection after the 'x' index was dropped.
-        OneOffRead oor(opCtx.get(), dropXIndexTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IX);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, dropXIndexTs);
-        ASSERT(openedColl);
-        ASSERT_EQ(1, openedColl->getIndexCatalog()->numIndexesTotal());
-
-        std::vector<std::string> indexNames;
-        openedColl->getAllIndexes(&indexNames);
-        ASSERT_EQ(1, indexNames.size());
-        ASSERT_EQ("y_1", indexNames.front());
-
-        // The 'x' index ident will be removed.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-        ASSERT_EQ(2, storageEngine->getNumDropPendingIdents());
-    }
-
-    {
-        // Open the collection before any indexes were created.
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        auto openedColl = CollectionCatalog::get(opCtx.get())
-                              ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs);
-        ASSERT(openedColl);
-        ASSERT_EQ(0, openedColl->getIndexCatalog()->numIndexesTotal());
-    }
-
-    {
-        // Try to open the collection before any index drops. Because the 'x' index ident is already
-        // dropped, this should fail.
-        OneOffRead oor(opCtx.get(), createIndexTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        ASSERT(!CollectionCatalog::get(opCtx.get())
-                    ->establishConsistentCollection(opCtx.get(), nss, createIndexTs));
-
-        ASSERT_EQ(2, storageEngine->getNumDropPendingIdents());
-    }
-
-    {
-        // Drop all remaining idents and try to open the collection. This should fail.
-        storageEngine->dropIdentsOlderThan(opCtx.get(), Timestamp::max());
-        ASSERT_EQ(0, storageEngine->getNumDropPendingIdents());
-
-        OneOffRead oor(opCtx.get(), createCollectionTs);
-
-        Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
-        ASSERT(!CollectionCatalog::get(opCtx.get())
-                    ->establishConsistentCollection(opCtx.get(), nss, createCollectionTs));
-    }
-}
-
 TEST_F(CollectionCatalogTimestampTest, CollectionLifetimeTiedToStorageTransactionLifetime) {
     const NamespaceString nss = NamespaceString::createNamespaceString_forTest("a.b");
     const Timestamp createCollectionTs = Timestamp(10, 10);
@@ -2406,16 +2081,17 @@ TEST_F(CollectionCatalogTimestampTest, CollectionLifetimeTiedToStorageTransactio
         OneOffRead oor(opCtx.get(), readTimestamp);
         Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
 
-        auto coll = CollectionCatalog::get(opCtx.get())
-                        ->establishConsistentCollection(opCtx.get(), nss, readTimestamp);
-        ASSERT(coll);
+        {
+            auto coll = CollectionCatalog::get(opCtx.get())
+                            ->establishConsistentCollection(opCtx.get(), nss, readTimestamp);
+            ASSERT(coll);
 
-        std::shared_ptr<const Collection> fetchedColl =
-            OpenedCollections::get(opCtx.get()).lookupByNamespace(nss).value();
-        ASSERT(fetchedColl);
-        ASSERT_EQ(coll, fetchedColl.get());
-        ASSERT_EQ(coll->getSharedIdent(), fetchedColl->getSharedIdent());
-
+            std::shared_ptr<const Collection> fetchedColl =
+                OpenedCollections::get(opCtx.get()).lookupByNamespace(nss).value();
+            ASSERT(fetchedColl);
+            ASSERT_EQ(coll.get(), fetchedColl.get());
+            ASSERT_EQ(coll->getSharedIdent(), fetchedColl->getSharedIdent());
+        }
         shard_role_details::getRecoveryUnit(opCtx.get())->abandonSnapshot();
         ASSERT(!OpenedCollections::get(opCtx.get()).lookupByNamespace(nss));
     }
@@ -2434,8 +2110,10 @@ TEST_F(CollectionCatalogTimestampTest, CollectionLifetimeTiedToStorageTransactio
         std::shared_ptr<const Collection> fetchedColl =
             OpenedCollections::get(opCtx.get()).lookupByNamespace(nss).value();
         ASSERT(fetchedColl);
-        ASSERT_EQ(coll, fetchedColl.get());
+        ASSERT_EQ(coll.get(), fetchedColl.get());
         ASSERT_EQ(coll->getSharedIdent(), fetchedColl->getSharedIdent());
+
+        coll = ConsistentCollection{};
 
         wuow.commit();
         ASSERT(!OpenedCollections::get(opCtx.get()).lookupByNamespace(nss));
@@ -2458,8 +2136,10 @@ TEST_F(CollectionCatalogTimestampTest, CollectionLifetimeTiedToStorageTransactio
         std::shared_ptr<const Collection> fetchedColl =
             OpenedCollections::get(opCtx.get()).lookupByNamespace(nss).value();
         ASSERT(fetchedColl);
-        ASSERT_EQ(coll, fetchedColl.get());
+        ASSERT_EQ(coll.get(), fetchedColl.get());
         ASSERT_EQ(coll->getSharedIdent(), fetchedColl->getSharedIdent());
+
+        coll = ConsistentCollection{};
 
         // The storage snapshot is aborted when the WriteUnitOfWork destructor runs.
         wuow.reset();
@@ -2469,6 +2149,28 @@ TEST_F(CollectionCatalogTimestampTest, CollectionLifetimeTiedToStorageTransactio
         ASSERT(!OpenedCollections::get(opCtx.get()).lookupByNamespace(nss));
     }
 }
+
+#ifdef MONGO_CONFIG_DEBUG_BUILD
+DEATH_TEST_F(CollectionCatalogTimestampTest,
+             DetectLeftoverOpenCollections,
+             "Server encountered potential use-after free") {
+    const NamespaceString collNss = NamespaceString::createNamespaceString_forTest("a.coll");
+    const Timestamp createCollectionTs = Timestamp(10, 10);
+
+    // We put this line here in order to make it the last to be destroyed.
+    ConsistentCollection collection;
+
+    createCollection(opCtx.get(), collNss, createCollectionTs);
+
+    const Timestamp readTimestamp(15, 15);
+
+    // This will leave a stale reference to the Collection once we abandon the snapshot during
+    // destruction of the GlobalLock.
+    Lock::GlobalLock globalLock(opCtx.get(), MODE_IS);
+    collection = CollectionCatalog::get(opCtx.get())
+                     ->establishConsistentCollection(opCtx.get(), collNss, readTimestamp);
+}
+#endif
 
 DEATH_TEST_F(CollectionCatalogTimestampTest, OpenCollectionInWriteUnitOfWork, "invariant") {
     const NamespaceString nss = NamespaceString::createNamespaceString_forTest("a.b");
@@ -3586,10 +3288,10 @@ TEST_F(CollectionCatalogTimestampTest, OpenCollectionBetweenIndexBuildInProgress
         // Lookups from the catalog should return the newly opened collection.
         ASSERT_EQ(CollectionCatalog::get(opCtx.get())
                       ->lookupCollectionByNamespace(opCtx.get(), coll->ns()),
-                  coll);
+                  coll.get());
         ASSERT_EQ(
             CollectionCatalog::get(opCtx.get())->lookupCollectionByUUID(opCtx.get(), coll->uuid()),
-            coll);
+            coll.get());
     }
 
     finishIndexBuild(opCtx.get(), nss, std::move(indexBuildBlock), indexReadyTs);
@@ -3608,10 +3310,10 @@ TEST_F(CollectionCatalogTimestampTest, OpenCollectionBetweenIndexBuildInProgress
         // Lookups from the catalog should return the newly opened collection.
         ASSERT_EQ(CollectionCatalog::get(opCtx.get())
                       ->lookupCollectionByNamespace(opCtx.get(), coll->ns()),
-                  coll);
+                  coll.get());
         ASSERT_EQ(
             CollectionCatalog::get(opCtx.get())->lookupCollectionByUUID(opCtx.get(), coll->uuid()),
-            coll);
+            coll.get());
     }
 }
 
@@ -3801,10 +3503,11 @@ TEST(GetConfigDebugDumpTest, NonConfigDatabase) {
     // Run against a non-config database. It should always return boost::none.
 
     const auto resultNonConfig = catalog::getConfigDebugDump(
-        NamespaceString::createNamespaceString_forTest("nonConfig", "dummy"));
+        kNoVersionContext, NamespaceString::createNamespaceString_forTest("nonConfig", "dummy"));
     ASSERT_FALSE(resultNonConfig);
 
     const auto resultNonConfigDatabases = catalog::getConfigDebugDump(
+        kNoVersionContext,
         NamespaceString::createNamespaceString_forTest("nonConfig", "databases"));
     ASSERT_FALSE(resultNonConfigDatabases);
 };
@@ -3814,12 +3517,12 @@ TEST(GetConfigDebugDumpTest, ConfigDatabase) {
     // false depending on the collection.
 
     const auto resultNotListed = catalog::getConfigDebugDump(
-        NamespaceString::createNamespaceString_forTest("config", "dummy"));
+        kNoVersionContext, NamespaceString::createNamespaceString_forTest("config", "dummy"));
     ASSERT_TRUE(resultNotListed);
     ASSERT_FALSE(*resultNotListed);
 
     const auto resultListed = catalog::getConfigDebugDump(
-        NamespaceString::createNamespaceString_forTest("config", "databases"));
+        kNoVersionContext, NamespaceString::createNamespaceString_forTest("config", "databases"));
     ASSERT_TRUE(resultListed);
     ASSERT_TRUE(*resultListed);
 };
@@ -3832,19 +3535,20 @@ TEST(GetConfigDebugDumpTest, FeatureFlagDisabled) {
                                                           false);
 
     const auto resultNonConfig = catalog::getConfigDebugDump(
-        NamespaceString::createNamespaceString_forTest("nonConfig", "dummy"));
+        kNoVersionContext, NamespaceString::createNamespaceString_forTest("nonConfig", "dummy"));
     ASSERT_FALSE(resultNonConfig);
 
     const auto resultNonConfigDatabases = catalog::getConfigDebugDump(
+        kNoVersionContext,
         NamespaceString::createNamespaceString_forTest("nonConfig", "databases"));
     ASSERT_FALSE(resultNonConfigDatabases);
 
     const auto resultNotListed = catalog::getConfigDebugDump(
-        NamespaceString::createNamespaceString_forTest("config", "dummy"));
+        kNoVersionContext, NamespaceString::createNamespaceString_forTest("config", "dummy"));
     ASSERT_FALSE(resultNotListed);
 
     const auto resultListed = catalog::getConfigDebugDump(
-        NamespaceString::createNamespaceString_forTest("config", "databases"));
+        kNoVersionContext, NamespaceString::createNamespaceString_forTest("config", "databases"));
     ASSERT_FALSE(resultListed);
 };
 

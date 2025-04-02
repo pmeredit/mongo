@@ -64,8 +64,8 @@
 #include "mongo/s/query/exec/async_results_merger.h"
 #include "mongo/s/query/exec/async_results_merger_params_gen.h"
 #include "mongo/s/sharding_mongos_test_fixture.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/hostandport.h"
@@ -152,12 +152,12 @@ protected:
      * 'findCmd' should not have a 'batchSize', since the find's batchSize is used just in the
      * initial find. The getMore 'batchSize' can be passed in through 'getMoreBatchSize.'
      */
-    std::unique_ptr<AsyncResultsMerger> makeARMFromExistingCursors(
+    std::shared_ptr<AsyncResultsMerger> makeARMFromExistingCursors(
         std::vector<RemoteCursor> remoteCursors,
         boost::optional<BSONObj> findCmd = boost::none,
         boost::optional<std::int64_t> getMoreBatchSize = boost::none) {
 
-        return std::make_unique<AsyncResultsMerger>(
+        return AsyncResultsMerger::create(
             operationContext(),
             executor(),
             makeARMParamsFromExistingCursors(std::move(remoteCursors), findCmd, getMoreBatchSize));

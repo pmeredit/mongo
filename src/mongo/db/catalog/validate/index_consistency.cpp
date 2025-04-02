@@ -58,11 +58,11 @@
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/index/index_descriptor.h"
+#include "mongo/db/index/preallocated_container_pool.h"
 #include "mongo/db/index_names.h"
 #include "mongo/db/multi_key_path_tracker.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/record_id_helpers.h"
-#include "mongo/db/storage/execution_context.h"
 #include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/key_format.h"
 #include "mongo/db/storage/key_string/key_string.h"
@@ -70,9 +70,6 @@
 #include "mongo/db/storage/sorted_data_interface.h"
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
@@ -434,17 +431,26 @@ bool KeyStringIndexConsistency::limitMemoryUsageForSecondPhase(ValidateResults* 
 
     const uint64_t maxMemoryUsageBytes =
         static_cast<uint64_t>(maxValidateMemoryUsageMB.load()) * 1024 * 1024;
-    const uint64_t totalMemoryNeededBytes =
-        std::accumulate(_indexKeyBuckets.begin(),
-                        _indexKeyBuckets.end(),
-                        0ull,
-                        [](uint64_t bytes, const IndexKeyBucket& bucket) {
-                            return bucket.indexKeyCount ? bytes + bucket.bucketSizeBytes : bytes;
-                        });
+
+    const auto totalbytesAndBuckets = std::accumulate(
+        _indexKeyBuckets.begin(),
+        _indexKeyBuckets.end(),
+        std::pair<uint64_t, uint64_t>(0, 0),
+        [](std::pair<uint64_t, uint64_t> bytesAndBuckets, const IndexKeyBucket& bucket) {
+            if (bucket.indexKeyCount) {
+                bytesAndBuckets.first += bucket.bucketSizeBytes;
+                ++bytesAndBuckets.second;
+            }
+            return bytesAndBuckets;
+        });
 
     // Allows twice the "maxValidateMemoryUsageMB" because each KeyString has two hashes stored.
-    if (totalMemoryNeededBytes <= maxMemoryUsageBytes * 2) {
+    if (totalbytesAndBuckets.first <= maxMemoryUsageBytes * 2) {
         // The amount of memory we need is under the limit, so no need to do anything else.
+        LOGV2(10139000,
+              "Total memory is less than max memory",
+              "cumulativeSizeOfBucketsBytes"_attr = totalbytesAndBuckets.first,
+              "numBuckets"_attr = totalbytesAndBuckets.second);
         return true;
     }
 
@@ -463,6 +469,9 @@ bool KeyStringIndexConsistency::limitMemoryUsageForSecondPhase(ValidateResults* 
         });
     invariant(smallestBucketWithAnInconsistency->indexKeyCount != 0);
 
+    std::uint64_t cumulativeSizeOfBucketsBytes = 0;
+    std::uint64_t numBuckets = 0;
+
     if (smallestBucketWithAnInconsistency->bucketSizeBytes > maxMemoryUsageBytes) {
         // We're going to just keep the smallest bucket, and zero everything else.
         std::for_each(
@@ -474,23 +483,25 @@ bool KeyStringIndexConsistency::limitMemoryUsageForSecondPhase(ValidateResults* 
 
                 bucket.indexKeyCount = 0;
             });
+        cumulativeSizeOfBucketsBytes = smallestBucketWithAnInconsistency->bucketSizeBytes;
+        numBuckets = 1;
     } else {
         // We're going to scan through the buckets and keep as many as we can.
-        std::uint32_t memoryUsedSoFarBytes = 0;
         std::for_each(
             _indexKeyBuckets.begin(), _indexKeyBuckets.end(), [&](IndexKeyBucket& bucket) {
                 if (bucket.indexKeyCount == 0) {
                     return;
                 }
 
-                if (bucket.bucketSizeBytes + memoryUsedSoFarBytes > maxMemoryUsageBytes) {
+                if (bucket.bucketSizeBytes + cumulativeSizeOfBucketsBytes > maxMemoryUsageBytes) {
                     // Including this bucket would put us over the memory limit, so zero this
                     // bucket. We don't want to keep any entry that will exceed the memory limit in
                     // the second phase so we don't double the 'maxMemoryUsageBytes' here.
                     bucket.indexKeyCount = 0;
                     return;
                 }
-                memoryUsedSoFarBytes += bucket.bucketSizeBytes;
+                numBuckets += 1;
+                cumulativeSizeOfBucketsBytes += bucket.bucketSizeBytes;
             });
     }
 
@@ -506,7 +517,9 @@ bool KeyStringIndexConsistency::limitMemoryUsageForSecondPhase(ValidateResults* 
           "limit for validation can be configured via the 'maxValidateMemoryUsageMB' server "
           "parameter",
           "maxValidateMemoryUsageMB"_attr = maxValidateMemoryUsageMB.load(),
-          "totalMemoryNeededBytes"_attr = totalMemoryNeededBytes);
+          "totalMemoryNeededBytes"_attr = totalbytesAndBuckets.first,
+          "cumulativeSizeOfBucketsBytes"_attr = cumulativeSizeOfBucketsBytes,
+          "numBuckets"_attr = numBuckets);
 
     return true;
 }
@@ -819,11 +832,11 @@ void KeyStringIndexConsistency::traverseRecord(OperationContext* opCtx,
 
     const auto descriptor = index->descriptor();
     SharedBufferFragmentBuilder pool(key_string::HeapBuilder::kHeapAllocatorDefaultBytes);
-    auto& executionCtx = StorageExecutionContext::get(opCtx);
+    auto& containerPool = PreallocatedContainerPool::get(opCtx);
 
-    const auto documentKeySet = executionCtx.keys();
-    const auto multikeyMetadataKeys = executionCtx.multikeyMetadataKeys();
-    const auto documentMultikeyPaths = executionCtx.multikeyPaths();
+    const auto documentKeySet = containerPool.keys();
+    const auto multikeyMetadataKeys = containerPool.multikeyMetadataKeys();
+    const auto documentMultikeyPaths = containerPool.multikeyPaths();
 
     try {
         iam->getKeys(opCtx,
@@ -843,7 +856,8 @@ void KeyStringIndexConsistency::traverseRecord(OperationContext* opCtx,
                   "Could not build index key ",
                   "indexName"_attr = descriptor->indexName(),
                   "recordId"_attr = recordId,
-                  "record"_attr = redact(recordBson));
+                  "record"_attr = redact(recordBson),
+                  "error"_attr = ex.toString());
             results->addError(str::stream()
                                   << "Could not build key for index '" << descriptor->indexName()
                                   << "' from document with recordId '" << recordId << "'",

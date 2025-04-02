@@ -73,9 +73,7 @@
 #include "mongo/s/resharding/type_collection_fields_gen.h"
 #include "mongo/s/shard_key_pattern.h"
 #include "mongo/s/stale_exception.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
@@ -132,9 +130,8 @@ protected:
             ASSERT_BSONOBJ_EQ(request.cmdObj["filter"].Obj(), BSON("info.uuid" << uuid));
             ASSERT(request.cmdObj.hasField("databaseVersion"));
             ASSERT_BSONOBJ_EQ(request.cmdObj["readConcern"].Obj(),
-                              BSON("level"
-                                   << "local"
-                                   << "afterClusterTime" << kDefaultFetchTimestamp));
+                              BSON("level" << "local"
+                                           << "afterClusterTime" << kDefaultFetchTimestamp));
 
             std::string listCollectionsNs = str::stream()
                 << nss.db_forTest() << "$cmd.listCollections";
@@ -155,9 +152,8 @@ protected:
             ASSERT_EQ(request.cmdObj.firstElement().checkAndGetStringData(), nss.coll());
             ASSERT(request.cmdObj.hasField("shardVersion"));
             ASSERT_BSONOBJ_EQ(request.cmdObj["readConcern"].Obj(),
-                              BSON("level"
-                                   << "local"
-                                   << "afterClusterTime" << kDefaultFetchTimestamp));
+                              BSON("level" << "local"
+                                           << "afterClusterTime" << kDefaultFetchTimestamp));
 
             return BSON(
                 "ok" << 1 << "cursor"
@@ -207,9 +203,6 @@ protected:
             const auto chunkObj = BSON("chunks" << chunk.toConfigBSON());
             return std::vector<BSONObj>{coll.toBSON(), chunkObj};
         }());
-
-        expectCollectionAndIndexesAggregation(
-            tempNss, epoch, timestamp, uuid, skey, boost::none, {});
 
         future.default_timed_get();
     }
@@ -286,9 +279,8 @@ protected:
         externalState.ensureTempReshardingCollectionExistsWithIndexes(
             operationContext(), kMetadata, kDefaultFetchTimestamp);
 
-        AutoGetCollection autoColl(operationContext(), kReshardingNss, MODE_IX);
-        auto scopedCsr = CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(
-            operationContext(), kReshardingNss);
+        auto scopedCsr =
+            CollectionShardingRuntime::acquireShared(operationContext(), kReshardingNss);
         ASSERT(scopedCsr->getCurrentMetadataIfKnown() == boost::none);
     }
 
@@ -315,11 +307,8 @@ protected:
 TEST_F(RecipientServiceExternalStateTest, ReshardingConfigServerUpdatesHaveNoTimeout) {
     RecipientStateMachineExternalStateImpl externalState;
     auto future = launchAsync([&] {
-        externalState.updateCoordinatorDocument(operationContext(),
-                                                BSON("query"
-                                                     << "test"),
-                                                BSON("update"
-                                                     << "test"));
+        externalState.updateCoordinatorDocument(
+            operationContext(), BSON("query" << "test"), BSON("update" << "test"));
     });
 
     onCommand([&](const executor::RemoteCommandRequest& request) {
@@ -379,13 +368,6 @@ TEST_F(RecipientServiceExternalStateTest, CreateLocalReshardingCollectionBasic) 
                                      << IndexConstants::kIdIndexName))},
             HostAndPort(shards[1].getHost()));
         expectListIndexes(kOrigNss, kOrigUUID, indexes, HostAndPort(shards[0].getHost()));
-        expectCollectionAndIndexesAggregation(kReshardingNss,
-                                              kReshardingEpoch,
-                                              kReshardingTimestamp,
-                                              kReshardingUUID,
-                                              kShardKey,
-                                              boost::none,
-                                              {});
     });
 
     verifyTempReshardingCollectionAndMetadata();
@@ -451,13 +433,6 @@ TEST_F(RecipientServiceExternalStateTest,
         expectRefreshReturnForOriginalColl(
             kOrigNss, kShardKey, kOrigUUID, kOrigEpoch, kOrigTimestamp);
         expectListIndexes(kOrigNss, kOrigUUID, indexes, HostAndPort(shards[0].getHost()));
-        expectCollectionAndIndexesAggregation(kReshardingNss,
-                                              kReshardingEpoch,
-                                              kReshardingTimestamp,
-                                              kReshardingUUID,
-                                              kShardKey,
-                                              boost::none,
-                                              {});
     });
 
     verifyTempReshardingCollectionAndMetadata();
@@ -530,13 +505,6 @@ TEST_F(RecipientServiceExternalStateTest,
                                      << IndexConstants::kIdIndexName))},
             HostAndPort(shards[1].getHost()));
         expectListIndexes(kOrigNss, kOrigUUID, indexes, HostAndPort(shards[0].getHost()));
-        expectCollectionAndIndexesAggregation(kReshardingNss,
-                                              kReshardingEpoch,
-                                              kReshardingTimestamp,
-                                              kReshardingUUID,
-                                              kShardKey,
-                                              boost::none,
-                                              {});
     });
 
     verifyTempReshardingCollectionAndMetadata();
@@ -544,160 +512,6 @@ TEST_F(RecipientServiceExternalStateTest,
     future.default_timed_get();
 
     verifyCollectionAndIndexes(kReshardingNss, kReshardingUUID, expectedIndexes);
-}
-
-TEST_F(RecipientServiceExternalStateTest,
-       CreateLocalReshardingCollectionCollectionAlreadyExistsWithSomeIndexes) {
-    auto shards = setupNShards(2);
-
-    // Shard kOrigNss by _id with chunks [minKey, 0), [0, maxKey] on shards "0" and "1"
-    // respectively. ShardId("1") is the primary shard for the database.
-    loadRoutingTableWithTwoChunksAndTwoShardsImpl(kOrigNss,
-                                                  kShardKey.toBSON(),
-                                                  boost::optional<std::string>("1"),
-                                                  kOrigUUID,
-                                                  kOrigEpoch,
-                                                  kOrigTimestamp);
-
-    {
-        // The resharding collection shouldn't exist yet.
-        AutoGetCollection autoColl(operationContext(), kReshardingNss, MODE_IS);
-        ASSERT_FALSE(autoColl.getCollection());
-    }
-
-    // Simulate a refresh for the temporary resharding collection.
-    loadOneChunkMetadataForTemporaryReshardingColl(kReshardingNss,
-                                                   kOrigNss,
-                                                   kReshardingKey,
-                                                   kReshardingUUID,
-                                                   kReshardingEpoch,
-                                                   kReshardingTimestamp);
-
-    const std::vector<BSONObj> indexes = {
-        BSON("v" << 2 << "key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName),
-        BSON("v" << 2 << "key"
-                 << BSON("a" << 1 << "b"
-                             << "hashed")
-                 << "name"
-                 << "indexOne"),
-        BSON("v" << 2 << "key" << BSON("c.d" << 1) << "name"
-                 << "nested")};
-    // When creating collection, only _id index should be created, the other index is cloned
-    // manually.
-    const std::vector<BSONObj> expectedIndexes = {
-        BSON("v" << 2 << "key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName),
-        BSON("v" << 2 << "key" << BSON("c.d" << 1) << "name"
-                 << "nested")};
-
-    // Create the collection and indexes to simulate retrying after a failover. Only include the id
-    // index, because it is needed to create the collection.
-    CollectionOptionsAndIndexes optionsAndIndexes = {
-        kReshardingUUID, {indexes[0], indexes[2]}, indexes[0], BSON("uuid" << kReshardingUUID)};
-    MigrationDestinationManager::cloneCollectionIndexesAndOptions(
-        operationContext(), kReshardingNss, optionsAndIndexes);
-
-    {
-        // The collection should exist locally but only have the _id index.
-        DBDirectClient client(operationContext());
-        auto indexSpecs = client.getIndexSpecs(kReshardingNss, false, 0);
-        ASSERT_EQ(indexSpecs.size(), 2);
-    }
-
-    auto future = launchAsync([&] {
-        expectRefreshReturnForOriginalColl(
-            kOrigNss, kShardKey, kOrigUUID, kOrigEpoch, kOrigTimestamp);
-        expectListCollections(
-            kOrigNss,
-            kOrigUUID,
-            {BSON("name" << kOrigNss.coll() << "options" << BSONObj() << "info"
-                         << BSON("readOnly" << false << "uuid" << kOrigUUID) << "idIndex"
-                         << BSON("v" << 2 << "key" << BSON("_id" << 1) << "name"
-                                     << IndexConstants::kIdIndexName))},
-            HostAndPort(shards[1].getHost()));
-        expectListIndexes(kOrigNss, kOrigUUID, indexes, HostAndPort(shards[0].getHost()));
-        expectCollectionAndIndexesAggregation(kReshardingNss,
-                                              kReshardingEpoch,
-                                              kReshardingTimestamp,
-                                              kReshardingUUID,
-                                              kShardKey,
-                                              boost::none,
-                                              {});
-    });
-
-    verifyTempReshardingCollectionAndMetadata();
-
-    future.default_timed_get();
-
-    verifyCollectionAndIndexes(kReshardingNss, kReshardingUUID, expectedIndexes);
-}
-
-TEST_F(RecipientServiceExternalStateTest,
-       CreateLocalReshardingCollectionCollectionAlreadyExistsWithAllIndexes) {
-    auto shards = setupNShards(2);
-
-    // Shard kOrigNss by _id with chunks [minKey, 0), [0, maxKey] on shards "0" and "1"
-    // respectively. ShardId("1") is the primary shard for the database.
-    loadRoutingTableWithTwoChunksAndTwoShardsImpl(kOrigNss,
-                                                  kShardKey.toBSON(),
-                                                  boost::optional<std::string>("1"),
-                                                  kOrigUUID,
-                                                  kOrigEpoch,
-                                                  kOrigTimestamp);
-
-    {
-        // The resharding collection shouldn't exist yet.
-        AutoGetCollection autoColl(operationContext(), kReshardingNss, MODE_IS);
-        ASSERT_FALSE(autoColl.getCollection());
-    }
-
-    // Simulate a refresh for the temporary resharding collection.
-    loadOneChunkMetadataForTemporaryReshardingColl(kReshardingNss,
-                                                   kOrigNss,
-                                                   kReshardingKey,
-                                                   kReshardingUUID,
-                                                   kReshardingEpoch,
-                                                   kReshardingTimestamp);
-
-    const std::vector<BSONObj> indexes = {
-        BSON("v" << 2 << "key" << BSON("_id" << 1) << "name" << IndexConstants::kIdIndexName),
-        BSON("v" << 2 << "key"
-                 << BSON("a" << 1 << "b"
-                             << "hashed")
-                 << "name"
-                 << "indexOne")};
-
-    // Create the collection and indexes to simulate retrying after a failover.
-    CollectionOptionsAndIndexes optionsAndIndexes = {
-        kReshardingUUID, indexes, indexes[0], BSON("uuid" << kReshardingUUID)};
-    MigrationDestinationManager::cloneCollectionIndexesAndOptions(
-        operationContext(), kReshardingNss, optionsAndIndexes);
-
-    auto future = launchAsync([&] {
-        expectRefreshReturnForOriginalColl(
-            kOrigNss, kShardKey, kOrigUUID, kOrigEpoch, kOrigTimestamp);
-        expectListCollections(
-            kOrigNss,
-            kOrigUUID,
-            {BSON("name" << kOrigNss.coll() << "options" << BSONObj() << "info"
-                         << BSON("readOnly" << false << "uuid" << kOrigUUID) << "idIndex"
-                         << BSON("v" << 2 << "key" << BSON("_id" << 1) << "name"
-                                     << IndexConstants::kIdIndexName))},
-            HostAndPort(shards[1].getHost()));
-        expectListIndexes(kOrigNss, kOrigUUID, indexes, HostAndPort(shards[0].getHost()));
-        expectCollectionAndIndexesAggregation(kReshardingNss,
-                                              kReshardingEpoch,
-                                              kReshardingTimestamp,
-                                              kReshardingUUID,
-                                              kShardKey,
-                                              boost::none,
-                                              {});
-    });
-
-    verifyTempReshardingCollectionAndMetadata();
-
-    future.default_timed_get();
-
-    verifyCollectionAndIndexes(kReshardingNss, kReshardingUUID, indexes);
 }
 
 }  // namespace

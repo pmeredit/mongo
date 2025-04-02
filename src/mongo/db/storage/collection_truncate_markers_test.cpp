@@ -45,9 +45,8 @@
 #include "mongo/db/storage/write_unit_of_work.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/platform/compiler.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/unittest/unittest.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
 
@@ -119,10 +118,7 @@ public:
                         int numElements,
                         Timestamp timestampToUse) {
         AutoGetCollection coll(opCtx, nss, MODE_IX);
-        const auto correctedSize = dataLength -
-            BSON("x"
-                 << "")
-                .objsize();
+        const auto correctedSize = dataLength - BSON("x" << "").objsize();
         invariant(correctedSize >= 0);
         const auto objToInsert = BSON("x" << std::string(correctedSize, 'a'));
         WriteUnitOfWork wuow(opCtx);
@@ -149,7 +145,7 @@ public:
               0 /* leftoverRecordsBytes */,
               minBytesPerMarker,
               Microseconds(0),
-              CollectionTruncateMarkers::MarkersCreationMethod::EmptyCollection){};
+              CollectionTruncateMarkers::MarkersCreationMethod::EmptyCollection) {};
     MONGO_COMPILER_DIAGNOSTIC_POP
 
     void setExpirePartialMarker(bool value) {
@@ -179,7 +175,7 @@ public:
               0 /* leftoverRecordsBytes */,
               minBytesPerMarker,
               Microseconds(0),
-              CollectionTruncateMarkers::MarkersCreationMethod::EmptyCollection){};
+              CollectionTruncateMarkers::MarkersCreationMethod::EmptyCollection) {};
 
 private:
     bool _hasExcessMarkers(OperationContext* opCtx) const override {

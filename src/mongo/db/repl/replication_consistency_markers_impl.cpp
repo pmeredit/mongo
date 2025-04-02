@@ -58,8 +58,6 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/clock_source.h"
 #include "mongo/util/concurrency/admission_context.h"
@@ -76,8 +74,7 @@ namespace repl {
 
 namespace {
 const BSONObj kInitialSyncFlag(BSON(MinValidDocument::kInitialSyncFlagFieldName << true));
-const BSONObj kOplogTruncateAfterPointId(BSON("_id"
-                                              << "oplogTruncateAfterPoint"));
+const BSONObj kOplogTruncateAfterPointId(BSON("_id" << "oplogTruncateAfterPoint"));
 }  // namespace
 
 ReplicationConsistencyMarkersImpl::ReplicationConsistencyMarkersImpl(
@@ -333,9 +330,9 @@ Status ReplicationConsistencyMarkersImpl::_setOplogTruncateAfterPoint(
     return _upsertOplogTruncateAfterPointDocument(
         collection,
         opCtx,
-        BSON("_id"
-             << "oplogTruncateAfterPoint"
-             << OplogTruncateAfterPointDocument::kOplogTruncateAfterPointFieldName << timestamp));
+        BSON("_id" << "oplogTruncateAfterPoint"
+                   << OplogTruncateAfterPointDocument::kOplogTruncateAfterPointFieldName
+                   << timestamp));
 }
 
 void ReplicationConsistencyMarkersImpl::setOplogTruncateAfterPoint(OperationContext* opCtx,

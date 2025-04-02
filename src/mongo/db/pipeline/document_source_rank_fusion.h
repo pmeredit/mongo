@@ -77,7 +77,8 @@ public:
     class LiteParsed final : public LiteParsedDocumentSourceNestedPipelines {
     public:
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec);
+                                                 const BSONElement& spec,
+                                                 const LiteParserOptions& options);
 
         LiteParsed(std::string parseTimeName,
                    const NamespaceString& nss,
@@ -90,21 +91,15 @@ public:
                                            bool bypassDocumentValidation) const final {
             return requiredPrivilegesBasic(isMongos, bypassDocumentValidation);
         };
-    };
 
-    static StageConstraints constraints() {
-        StageConstraints constraints{DocumentSource::StreamType::kStreaming,
-                                     DocumentSource::PositionRequirement::kFirst,
-                                     DocumentSource::HostTypeRequirement::kLocalOnly,
-                                     DocumentSource::DiskUseRequirement::kNoDiskUse,
-                                     DocumentSource::FacetRequirement::kNotAllowed,
-                                     DocumentSource::TransactionRequirement::kAllowed,
-                                     DocumentSource::LookupRequirement::kAllowed,
-                                     DocumentSource::UnionRequirement::kAllowed};
-        // Tried to get rid of the 'has to be the first stage in the pipeline' error.
-        constraints.requiresInputDocSource = false;
-        return constraints;
-    }
+        bool isSearchStage() const final {
+            return true;
+        }
+
+        bool isRankFusionStage() const final {
+            return true;
+        }
+    };
 
 private:
     // It is illegal to construct a DocumentSourceRankFusion directly, use createFromBson() instead.

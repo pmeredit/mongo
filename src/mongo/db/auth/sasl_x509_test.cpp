@@ -56,18 +56,15 @@
 #include "mongo/db/service_entry_point_shard_role.h"
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/transport/mock_session.h"
 #include "mongo/transport/transport_layer_mock.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
 namespace mongo::auth {
 
 namespace {
-using namespace fmt::literals;
 
 constexpr auto kX509Str = "x509"_sd;
 constexpr auto kX509Subject = "C=US,ST=New York,L=New York City,O=MongoDB,OU=Kernel,CN=client"_sd;
@@ -76,11 +73,11 @@ constexpr auto kX509UTF8String = 12;
 BSONObj generateX509UserDocument(const StringData username) {
     const auto database = "$external"_sd;
 
-    return BSON("_id"
-                << "{}.{}"_format(database, username) << AuthorizationManager::USER_NAME_FIELD_NAME
-                << username << AuthorizationManager::USER_DB_FIELD_NAME << database << "roles"
-                << BSONArray() << "privileges" << BSONArray() << "credentials"
-                << BSON("external" << true));
+    return BSON("_id" << fmt::format("{}.{}", database, username)
+                      << AuthorizationManager::USER_NAME_FIELD_NAME << username
+                      << AuthorizationManager::USER_DB_FIELD_NAME << database << "roles"
+                      << BSONArray() << "privileges" << BSONArray() << "credentials"
+                      << BSON("external" << true));
 }
 
 // Construct a simple, structured X509 name equivalent to "CN=mongodb.com"
@@ -108,7 +105,7 @@ void setX509PeerInfo(const std::shared_ptr<transport::Session>& session, SSLPeer
 
 class SASLX509Test : public mongo::unittest::Test {
 protected:
-    void setUp() final {
+    void setUp() final try {
         auto serviceContextHolder = ServiceContext::make();
         serviceContext = serviceContextHolder.get();
         setGlobalServiceContext(std::move(serviceContextHolder));
@@ -160,6 +157,10 @@ protected:
                                         "MockServer.test");
         saslClientSession->setParameter(NativeSaslClientSession::parameterServiceHostAndPort,
                                         "MockServer.test:27017");
+    } catch (const DBException& e) {
+        ::mongo::StringBuilder sb;
+        sb << "SASLX509Test Fixture Setup Failed: " << e.what();
+        FAIL(sb.str());
     }
 
 
@@ -177,7 +178,7 @@ protected:
         return saslServerSession->step(opCtx.get(), clientOutput);
     }
 
-    void tearDown() final {
+    ~SASLX509Test() override {
         opCtx.reset();
         Client::releaseCurrent();
         setGlobalServiceContext(nullptr);

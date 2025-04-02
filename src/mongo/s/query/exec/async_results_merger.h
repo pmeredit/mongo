@@ -49,6 +49,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/client_cursor/cursor_id.h"
 #include "mongo/db/query/client_cursor/cursor_response.h"
+#include "mongo/db/query/client_cursor/release_memory_gen.h"
 #include "mongo/db/query/query_stats/data_bearing_node_metrics.h"
 #include "mongo/db/query/tailable_mode_gen.h"
 #include "mongo/db/server_options.h"
@@ -89,7 +90,7 @@ class CursorResponse;
  *
  * On any error, the caller is responsible for shutting down the ARM using the kill() method.
  */
-class AsyncResultsMerger {
+class AsyncResultsMerger : public std::enable_shared_from_this<AsyncResultsMerger> {
     AsyncResultsMerger(const AsyncResultsMerger&) = delete;
     AsyncResultsMerger& operator=(const AsyncResultsMerger&) = delete;
 
@@ -102,8 +103,11 @@ public:
     static const BSONObj kWholeSortKeySortPattern;
 
     /**
+     * Factory function to create an 'AsyncResultsMerger' instance. Calling this method is the only
+     * allowed way to create an 'AsyncResultsMerger'.
+     *
      * Takes ownership of the cursors from ClusterClientCursorParams by storing their cursorIds and
-     * the hosts on which they exist in _remotes.
+     * the hosts on which they exist in '_remotes'.
      *
      * Additionally copies each remote's first batch of results, if one exists, into that remote's
      * docBuffer. If a sort is specified in the ClusterClientCursorParams, places the remotes with
@@ -115,15 +119,16 @@ public:
      * detachFromOperationContext() before deleting 'opCtx', and call reattachToOperationContext()
      * with a new, valid OperationContext before the next use.
      */
-    AsyncResultsMerger(OperationContext* opCtx,
-                       std::shared_ptr<executor::TaskExecutor> executor,
-                       AsyncResultsMergerParams params);
+    static std::shared_ptr<AsyncResultsMerger> create(
+        OperationContext* opCtx,
+        std::shared_ptr<executor::TaskExecutor> executor,
+        AsyncResultsMergerParams params);
 
     /**
      * In order to be destroyed, either the ARM must have been kill()'ed or all cursors must have
      * been exhausted. This is so that any unexhausted cursors are cleaned up by the ARM.
      */
-    ~AsyncResultsMerger();
+    virtual ~AsyncResultsMerger();
 
     /**
      * Returns a const reference to the parameters.
@@ -227,6 +232,12 @@ public:
      */
     Status scheduleGetMores();
 
+    stdx::shared_future<void> releaseMemory();
+
+    // It merges the releaseMemory results from all the remote requests. At the moment it returns
+    // only a status but it can be extended to return more in the future.
+    Status releaseMemoryResult();
+
     /**
      * Adds the specified shard cursors to the set of cursors to be merged.  The results from the
      * new cursors will be returned as normal through nextReady().
@@ -300,6 +311,14 @@ public:
     query_stats::DataBearingNodeMetrics takeMetrics();
 
 private:
+    /**
+     * Constructor is private. All 'AsyncResultsMerger' objects are supposed to be created via the
+     * static 'create()' factory function.
+     */
+    AsyncResultsMerger(OperationContext* opCtx,
+                       std::shared_ptr<executor::TaskExecutor> executor,
+                       AsyncResultsMergerParams params);
+
     /**
      * Contains the original response received by the shard. This is necessary for processing
      * additional transaction participants.
@@ -398,17 +417,17 @@ private:
 
         // The buffer of results that have been retrieved but not yet returned to the caller.
         std::queue<BSONObj> docBuffer;
+        // Keep outside the docBuffer so not to mess with buffered results from normal execution.
+        boost::optional<ReleaseMemoryCommandReply> releaseMemoryResponse;
 
         // Is valid if there is currently a pending request to this remote.
         executor::TaskExecutor::CallbackHandle cbHandle;
+        // Different handle so that it does not override the handle for getMore.
+        executor::TaskExecutor::CallbackHandle releaseMemoryCbHandle;
 
         // Set to an error status if there is an error retrieving a response from this remote or if
         // the command result contained an error.
         Status status = Status::OK();
-
-        // Count of fetched docs during ARM processing of the current batch. Used to reduce the
-        // batchSize in getMore when mongod returned less docs than the requested batchSize.
-        long long fetchedCount = 0;
     };
 
     using RemoteCursorPtr = boost::intrusive_ptr<RemoteCursorData>;
@@ -474,7 +493,7 @@ private:
     // Helpers for ready().
     //
 
-    bool _ready(WithLock);
+    bool _ready(WithLock) const;
     bool _readySorted(WithLock) const;
     bool _readySortedTailable(WithLock) const;
     bool _readyUnsorted(WithLock) const;
@@ -498,7 +517,14 @@ private:
      * When nextEvent() schedules remote work, the callback uses this function to process
      * results.
      */
-    void _handleBatchResponse(WithLock, CbData const&, const RemoteCursorPtr& remote);
+    void _handleBatchResponse(WithLock lk,
+                              CbData const&,
+                              StatusWith<CursorResponse>& response,
+                              const RemoteCursorPtr& remote);
+
+    void _handleReleaseMemoryResponse(WithLock lk,
+                                      StatusWith<ReleaseMemoryCommandReply>& response,
+                                      const RemoteCursorPtr& remote);
 
     /**
      * Schedule a killCursors request for the remote if the remote still has a cursor open.
@@ -522,13 +548,17 @@ private:
     /**
      * Processes results from a remote query.
      */
-    void _processBatchResults(WithLock, CbResponse const& response, const RemoteCursorPtr& remote);
+    void _processBatchResults(WithLock lk,
+                              const CursorResponse& cursorResponse,
+                              const RemoteCursorPtr& remote);
 
     /**
      * Adds the batch of results to the RemoteCursorData. Returns false if there was an error
      * parsing the batch.
      */
-    bool _addBatchToBuffer(WithLock, const RemoteCursorPtr& remote, const CursorResponse& response);
+    bool _addBatchToBuffer(WithLock lk,
+                           const RemoteCursorPtr& remote,
+                           const CursorResponse& response);
 
     /**
      * If there is a valid unsignaled event that has been requested via nextEvent() and there
@@ -543,6 +573,12 @@ private:
      * Returns true if this async cursor is waiting to receive another batch from a remote.
      */
     bool _haveOutstandingBatchRequests(WithLock);
+    /**
+     * Returns true if this async cursor is waiting to receive a response on a releaseMemory command
+     * from a remote.
+     */
+    bool _haveOutstandingReleaseMemoryRequests(WithLock);
+
 
     /**
      * Called internally when attempting to get a new event for the caller to wait on. Throws if
@@ -577,6 +613,11 @@ private:
      * Checks if we need to schedule a killCursor command for this remote
      */
     bool _shouldKillRemote(WithLock, const RemoteCursorData& remote);
+
+    /**
+     * Schedules a releaseMemory command to be run on all remote hosts that have stored cursors.
+     */
+    Status _scheduleReleaseMemory(WithLock);
 
     /**
      * Updates the given remote's metadata (e.g. the cursor id) based on information in
@@ -680,6 +721,10 @@ private:
      */
     size_t _gettingFromRemote = 0;
 
+    /**
+     * Overall status of this 'AsyncResultsMerger'. Will be updated to a non-OK status if any of the
+     * remotes returns a non-OK status, and will never transition back from non-OK to OK.
+     */
     Status _status = Status::OK();
 
     executor::TaskExecutor::EventHandle _currentEvent;
@@ -698,7 +743,8 @@ private:
     BSONObj _highWaterMark;
 
     // For tailable cursors, set to true if the next result returned from nextReady() should be
-    // boost::none.
+    // boost::none. Can only ever be true for 'TailableModeEnum::kTailable' cursors, but not for
+    // other cursor types.
     bool _eofNext = false;
 
     //
@@ -709,11 +755,12 @@ private:
 
     // Handles the promise/future mechanism used to cleanly shut down the ARM. This avoids race
     // conditions in cases where the underlying TaskExecutor is simultaneously being torn down.
-    struct KillCompletePromiseFuture {
-        KillCompletePromiseFuture() : _future(_promise.get_future()) {}
+    struct CompletePromiseFuture {
+        CompletePromiseFuture() : _future(_promise.get_future()) {}
 
-        // Multiple calls to kill() can be made and each must return a future that will be
-        // notified when the ARM has been cleaned up.
+        // Multiple calls to the method that creates the promise (i.e., kill()/releaseMemory()) can
+        // be made and each must return a future that will be notified when the ARM has been cleaned
+        // up.
         stdx::shared_future<void> getFuture() {
             return _future;
         }
@@ -728,7 +775,9 @@ private:
         stdx::promise<void> _promise;
         stdx::shared_future<void> _future;
     };
-    boost::optional<KillCompletePromiseFuture> _killCompleteInfo;
+
+    boost::optional<CompletePromiseFuture> _killCompleteInfo;
+    boost::optional<CompletePromiseFuture> _releaseMemoryCompleteInfo;
 };
 
 }  // namespace mongo

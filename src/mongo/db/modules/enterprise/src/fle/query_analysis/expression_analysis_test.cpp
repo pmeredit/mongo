@@ -548,6 +548,7 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$dayOfMonth: '$ssn'}"),
         fromjson("{$dayOfWeek: '$ssn'}"),
         fromjson("{$divide: ['$ssn', 42.0]}"),
+        fromjson("{$encStrStartsWith: {input: \"$ssn\", prefix:\"21\"}}"),
         fromjson("{$eq: ['$ssn', '8675309']}"),
         fromjson("{$exp: '$ssn'}"),
         fromjson("{$floor: '$ssn'}"),
@@ -559,9 +560,8 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$indexOfArray: ['$ssn', 42.0]}"),
         fromjson("{$indexOfBytes: ['$ssn', '1234']}"),
         fromjson("{$indexOfCP: ['$ssn', '1234']}"),
-        BSON("$_internalJsEmit" << BSON("this"
-                                        << "{}"
-                                        << "eval" << BSONCode("function(){}"))),
+        BSON("$_internalJsEmit" << BSON("this" << "{}"
+                                               << "eval" << BSONCode("function(){}"))),
         fromjson("{$isArray: '$ssn'}"),
         fromjson("{$isoDayOfWeek: '$ssn'}"),
         fromjson("{$isoWeek: '$ssn'}"),

@@ -1,6 +1,8 @@
 /**
  *    Copyright (C) 2024-present MongoDB, Inc. and subject to applicable commercial license.
  */
+#include "streams/management/container_group_stats_provider.h"
+
 #include <fstream>
 #include <limits>
 #include <sys/vfs.h>
@@ -9,7 +11,6 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
-#include "streams/management/container_group_stats_provider.h"
 
 namespace streams {
 

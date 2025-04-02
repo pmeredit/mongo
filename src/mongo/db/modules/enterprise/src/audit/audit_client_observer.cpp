@@ -15,48 +15,16 @@
 namespace mongo::audit {
 namespace {
 ServiceContext::ConstructorActionRegisterer auditClientObserverRegisterer{
-    "AuditClientObserverRegisterer", {"InitializeGlobalAuditManager"}, [](ServiceContext* svCtx) {
+    "AuditClientObserverRegisterer", {"InitializeGlobalAuditManager"}, [](ServiceContext* svcCtx) {
         if (getGlobalAuditManager()->isEnabled()) {
-            svCtx->registerClientObserver(std::make_unique<AuditClientObserver>());
+            svcCtx->registerClientObserver(std::make_unique<AuditClientObserver>());
         }
     }};
 
 }  // namespace
 
-void AuditClientObserver::onCreateOperationContext(OperationContext* opCtx) {
-    auto client = opCtx->getClient();
-    if (!client) {
-        return;
-    }
-
-    if (AuthorizationSession::exists(client)) {
-        auto session = AuthorizationSession::get(client);
-
-        auto userName = session->getAuthenticatedUserName();
-        auto roleNameContainer = roleNameIteratorToContainer<std::vector<RoleName>>(
-            session->getAuthenticatedRoleNames());
-        if (userName) {
-            rpc::AuditUserAttrs::set(opCtx,
-                                     rpc::AuditUserAttrs(*userName, std::move(roleNameContainer)));
-        }
-    }
-}
-
 void AuditClientObserver::onCreateClient(Client* client) {
-    auto session = client->session();
-    if (!session) {
-        return;
-    }
-
-    auto local = session->local();
-    auto remote = session->getSourceRemoteEndpoint();
-    std::vector<HostAndPort> proxies;
-    if (auto proxyEndpoint = session->getProxiedDstEndpoint()) {
-        proxies.push_back(*proxyEndpoint);
-    }
-
-    rpc::AuditClientAttrs::set(
-        client, rpc::AuditClientAttrs(std::move(local), std::move(remote), std::move(proxies)));
+    rpc::AuditClientAttrs::resetToPeerClient(client);
 }
 
 }  // namespace mongo::audit

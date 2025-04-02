@@ -55,9 +55,8 @@
 #include "mongo/db/pipeline/expression_context_for_test.h"
 #include "mongo/db/query/explain_options.h"
 #include "mongo/idl/server_parameter_test_util.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
 
@@ -495,7 +494,7 @@ TEST_F(BucketAutoTests, ShouldNeedTextScoreInDependenciesFromGroupByField) {
     auto bucketAuto =
         createBucketAuto(fromjson("{$bucketAuto : {groupBy : {$meta: 'textScore'}, buckets : 2}}"));
 
-    DepsTracker dependencies(DepsTracker::kAllMetadata & ~DepsTracker::kOnlyTextScore);
+    DepsTracker dependencies(DepsTracker::kOnlyTextScore);
     ASSERT_EQUALS(DepsTracker::State::EXHAUSTIVE_ALL, bucketAuto->getDependencies(&dependencies));
     ASSERT_EQUALS(0U, dependencies.fields.size());
 
@@ -508,7 +507,7 @@ TEST_F(BucketAutoTests, ShouldNeedTextScoreInDependenciesFromOutputField) {
         createBucketAuto(fromjson("{$bucketAuto : {groupBy : '$x', buckets : 2, output: {avg : "
                                   "{$avg : {$meta : 'textScore'}}}}}"));
 
-    DepsTracker dependencies(DepsTracker::kAllMetadata & ~DepsTracker::kOnlyTextScore);
+    DepsTracker dependencies(DepsTracker::kOnlyTextScore);
     ASSERT_EQUALS(DepsTracker::State::EXHAUSTIVE_ALL, bucketAuto->getDependencies(&dependencies));
     ASSERT_EQUALS(1U, dependencies.fields.size());
 
@@ -601,16 +600,16 @@ TEST_F(BucketAutoTests, FailsWithNonOrInvalidExpressionGroupBy) {
     spec = fromjson("{$bucketAuto : {groupBy : '', buckets : 1}}");
     ASSERT_THROWS_CODE(createBucketAuto(spec), AssertionException, 40239);
 
-    spec = fromjson("{$bucketAuto : {groupBy : {}}, buckets : 1}}");
+    spec = fromjson("{$bucketAuto : {groupBy : {}}, buckets : 1}");
     ASSERT_THROWS_CODE(createBucketAuto(spec), AssertionException, 40239);
 
-    spec = fromjson("{$bucketAuto : {groupBy : '$'}, buckets : 1}}");
+    spec = fromjson("{$bucketAuto : {groupBy : '$'}, buckets : 1}");
     ASSERT_THROWS_CODE(createBucketAuto(spec), AssertionException, 40239);
 
-    spec = fromjson("{$bucketAuto : {groupBy : []}, buckets : 1}}");
+    spec = fromjson("{$bucketAuto : {groupBy : []}, buckets : 1}");
     ASSERT_THROWS_CODE(createBucketAuto(spec), AssertionException, 40239);
 
-    spec = fromjson("{$bucketAuto : {groupBy : null}, buckets : 1}}");
+    spec = fromjson("{$bucketAuto : {groupBy : null}, buckets : 1}");
     ASSERT_THROWS_CODE(createBucketAuto(spec), AssertionException, 40239);
 }
 

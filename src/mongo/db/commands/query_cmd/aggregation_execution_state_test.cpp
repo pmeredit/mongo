@@ -30,13 +30,18 @@
 #include <memory>
 
 #include "mongo/bson/bsonmisc.h"
-#include "mongo/db/catalog/catalog_test_fixture.h"
+#include "mongo/db/catalog/create_collection.h"
 #include "mongo/db/commands/query_cmd/aggregation_execution_state.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/repl/read_concern_level.h"
+#include "mongo/db/s/collection_sharding_runtime.h"
+#include "mongo/db/s/database_sharding_state.h"
+#include "mongo/db/s/shard_filtering_metadata_refresh.h"
+#include "mongo/db/s/shard_server_test_fixture.h"
 #include "mongo/db/views/view_catalog_helpers.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/s/database_version.h"
+#include "mongo/s/shard_version_factory.h"
+#include "mongo/unittest/unittest.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
@@ -46,36 +51,134 @@ namespace {
 /**
  * Test the basic functionality of each subclass of AggCatalogState.
  */
-class AggregationExecutionStateTest : public CatalogTestFixture {
+class AggregationExecutionStateTest : public ShardServerTestFixtureWithCatalogCacheMock {
 protected:
-    /**
-     * Add a collection with the given name to the catalog.
-     */
-    NamespaceString createCollection(StringData coll) {
-        NamespaceString nss = NamespaceString::createNamespaceString_forTest("test", coll);
+    void setUp() override;
+
+    DatabaseVersion getDbVersion() {
+        return _dbVersion;
+    }
+
+    // Install database metadata for the "test" database and fills the cache.
+    void installDatabaseMetadata(OperationContext* opCtx, const DatabaseVersion& dbVersion) {
+        AutoGetDb autoDb(opCtx, _dbName, MODE_X, {}, {});
+        auto scopedDss = DatabaseShardingState::assertDbLockedAndAcquireExclusive(opCtx, _dbName);
+        scopedDss->setDbInfo(opCtx, {_dbName, kMyShardName, dbVersion});
+        getCatalogCacheMock()->setDatabaseReturnValue(
+            _dbName, CatalogCacheMock::makeDatabaseInfo(_dbName, kMyShardName, dbVersion));
+        _dbVersion = dbVersion;
+    }
+
+    // Install sharded collection metadata for an unsharded collection and fills the cache.
+    void installUnshardedCollectionMetadata(OperationContext* opCtx, const NamespaceString& nss) {
+        AutoGetCollection coll(
+            opCtx,
+            NamespaceStringOrUUID(nss),
+            MODE_IX,
+            AutoGetCollection::Options{}.viewMode(auto_get_collection::ViewMode::kViewsPermitted));
+        CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, nss)
+            ->setFilteringMetadata(opCtx, CollectionMetadata::UNTRACKED());
+        auto cm = ChunkManager(RoutingTableHistoryValueHandle{OptionalRoutingTableHistory{}},
+                               _dbVersion.getTimestamp());
+        getCatalogCacheMock()->setCollectionReturnValue(
+            nss,
+            CollectionRoutingInfo(
+                std::move(cm),
+                DatabaseTypeValueHandle(DatabaseType{nss.dbName(), kMyShardName, _dbVersion})));
+    }
+
+    // Install sharded collection metadata for 1 chunk sharded collection and fills the cache.
+    void installShardedCollectionMetadata(OperationContext* opCtx,
+                                          const NamespaceString& nss,
+                                          ShardId shardName) {
+        // Made up a shard version
+        const ShardVersion shardVersion = ShardVersionFactory::make(
+            ChunkVersion(CollectionGeneration{OID::gen(), Timestamp(5, 0)},
+                         CollectionPlacement(10, 1)),
+            boost::optional<CollectionIndexes>(boost::none));
+
+
+        const auto uuid = [&] {
+            AutoGetCollection autoColl(opCtx, NamespaceStringOrUUID(nss), MODE_IX);
+            return autoColl.getCollection()->uuid();
+        }();
+
+        const auto chunk = ChunkType(uuid,
+                                     ChunkRange{BSON("skey" << MINKEY), BSON("skey" << MAXKEY)},
+                                     shardVersion.placementVersion(),
+                                     shardName);
+
+
+        const std::string shardKey("skey");
+        const ShardKeyPattern shardKeyPattern{BSON(shardKey << 1)};
+        const auto epoch = chunk.getVersion().epoch();
+        const auto timestamp = chunk.getVersion().getTimestamp();
+
+        auto rt = RoutingTableHistory::makeNew(nss,
+                                               uuid,
+                                               shardKeyPattern.getKeyPattern(),
+                                               false, /* unsplittable */
+                                               nullptr,
+                                               false,
+                                               epoch,
+                                               timestamp,
+                                               boost::none /* timeseriesFields */,
+                                               boost::none /* resharding Fields */,
+                                               true /* allowMigrations */,
+                                               {chunk});
+
+        const auto version = rt.getVersion();
+        const auto rtHandle = RoutingTableHistoryValueHandle(
+            std::make_shared<RoutingTableHistory>(std::move(rt)),
+            ComparableChunkVersion::makeComparableChunkVersion(version));
+
+        auto cm = ChunkManager(rtHandle, boost::none);
+        const auto collectionMetadata = CollectionMetadata(cm, shardName);
+
+        AutoGetCollection coll(opCtx, NamespaceStringOrUUID(nss), MODE_IX);
+        CollectionShardingRuntime::assertCollectionLockedAndAcquireExclusive(opCtx, nss)
+            ->setFilteringMetadata(opCtx, collectionMetadata);
+
+        getCatalogCacheMock()->setCollectionReturnValue(
+            nss,
+            CollectionRoutingInfo(
+                std::move(cm),
+                DatabaseTypeValueHandle(DatabaseType{nss.dbName(), shardName, _dbVersion})));
+    }
+
+    DatabaseType createTestDatabase(const UUID& uuid, const Timestamp& timestamp) {
+        return DatabaseType(_dbName, kMyShardName, DatabaseVersion(uuid, timestamp));
+    }
+
+    NamespaceString createTestCollection(StringData coll, bool sharded) {
+        NamespaceString nss = NamespaceString::createNamespaceString_forTest(_dbName, coll);
         auto opCtx = operationContext();
-        DBDirectClient client{opCtx};
-        auto cmd = BSON("create" << coll);
-        BSONObj result;
-        ASSERT_TRUE(client.runCommand(nss.dbName(), cmd, result));
+        OperationShardingState::ScopedAllowImplicitCollectionCreate_UNSAFE unsafeCreateCollection(
+            opCtx);
+        uassertStatusOK(createCollection(opCtx, _dbName, BSON("create" << coll)));
+
+        if (sharded) {
+            installShardedCollectionMetadata(opCtx, nss, kMyShardName);
+        } else {
+            installUnshardedCollectionMetadata(opCtx, nss);
+        }
+
         return nss;
     }
 
-    /**
-     * Add a view with the given name to the catalog.
-     */
-    std::pair<NamespaceString, std::vector<BSONObj>> createView(StringData viewName,
-                                                                StringData collName) {
-        NamespaceString collNss = NamespaceString::createNamespaceString_forTest("test", collName);
-        NamespaceString viewNss = NamespaceString::createNamespaceString_forTest("test", viewName);
+    std::pair<NamespaceString, std::vector<BSONObj>> createTestView(StringData viewName,
+                                                                    StringData collName) {
+        NamespaceString viewNss = NamespaceString::createNamespaceString_forTest(_dbName, viewName);
 
         auto opCtx = operationContext();
-        DBDirectClient client{opCtx};
+        OperationShardingState::ScopedAllowImplicitCollectionCreate_UNSAFE unsafeCreateCollection(
+            opCtx);
         auto match = BSON("$match" << BSON("a" << 1));
-        auto cmd =
-            BSON("create" << viewName << "viewOn" << collName << "pipeline" << BSON_ARRAY(match));
-        BSONObj result;
-        ASSERT_TRUE(client.runCommand(collNss.dbName(), cmd, result));
+        uassertStatusOK(createCollection(
+            opCtx,
+            _dbName,
+            BSON("create" << viewName << "viewOn" << collName << "pipeline" << BSON_ARRAY(match))));
+        installUnshardedCollectionMetadata(opCtx, viewNss);
         std::vector<BSONObj> expectedResolvedPipeline = {match};
         return std::make_pair(viewNss, expectedResolvedPipeline);
     }
@@ -93,8 +196,39 @@ protected:
         _request = std::make_unique<AggregateCommandRequest>(nss, pipeline);
         _lpp = std::make_unique<LiteParsedPipeline>(*_request);
 
-        return std::make_unique<AggExState>(
-            opCtx, *_request, *_lpp, _cmdObj, _privileges, _externalSources);
+        return std::make_unique<AggExState>(opCtx,
+                                            *_request,
+                                            *_lpp,
+                                            _cmdObj,
+                                            _privileges,
+                                            _externalSources,
+                                            boost::none /* verbosity */);
+    }
+
+    /**
+     * Create an AggExState instance that one might see for a typical query.
+     */
+    std::unique_ptr<AggExState> createDefaultAggExStateWithSecondaryCollections(
+        StringData main, StringData secondary) {
+        auto opCtx = operationContext();
+
+        NamespaceString nss = NamespaceString::createNamespaceString_forTest("test", main);
+        NamespaceString nss2 = NamespaceString::createNamespaceString_forTest("test", secondary);
+
+        BSONObj lookup = BSON("$lookup" << BSON("from" << nss2.coll()));
+        BSONArray pipeline = BSON_ARRAY(lookup);
+        _cmdObj = BSON("aggregate" << main << "pipeline" << pipeline << "cursor" << BSONObj{});
+        _request =
+            std::make_unique<AggregateCommandRequest>(nss, std::vector<mongo::BSONObj>{lookup});
+        _lpp = std::make_unique<LiteParsedPipeline>(*_request);
+
+        return std::make_unique<AggExState>(opCtx,
+                                            *_request,
+                                            *_lpp,
+                                            _cmdObj,
+                                            _privileges,
+                                            _externalSources,
+                                            boost::none /* verbosity */);
     }
 
     /**
@@ -117,8 +251,13 @@ protected:
         _request = std::make_unique<AggregateCommandRequest>(nss, pipeline);
         _lpp = std::make_unique<LiteParsedPipeline>(*_request);
 
-        auto aggExState = std::make_unique<AggExState>(
-            opCtx, *_request, *_lpp, _cmdObj, _privileges, _externalSources);
+        auto aggExState = std::make_unique<AggExState>(opCtx,
+                                                       *_request,
+                                                       *_lpp,
+                                                       _cmdObj,
+                                                       _privileges,
+                                                       _externalSources,
+                                                       boost::none /* verbosity */);
 
         return aggExState;
     }
@@ -140,8 +279,13 @@ protected:
         _request = std::make_unique<AggregateCommandRequest>(nss, pipeline);
         _lpp = std::make_unique<LiteParsedPipeline>(*_request);
 
-        return std::make_unique<AggExState>(
-            opCtx, *_request, *_lpp, _cmdObj, _privileges, _externalSources);
+        return std::make_unique<AggExState>(opCtx,
+                                            *_request,
+                                            *_lpp,
+                                            _cmdObj,
+                                            _privileges,
+                                            _externalSources,
+                                            boost::none /* verbosity */);
     }
 
 private:
@@ -150,16 +294,27 @@ private:
     PrivilegeVector _privileges;
     BSONObj _cmdObj;
     std::vector<std::pair<NamespaceString, std::vector<ExternalDataSourceInfo>>> _externalSources;
+    DatabaseVersion _dbVersion = {UUID::gen(), Timestamp(1, 0)};
+    const DatabaseName _dbName = DatabaseName::createDatabaseName_forTest(boost::none, "test");
 };
+
+void AggregationExecutionStateTest::setUp() {
+    ShardServerTestFixtureWithCatalogCacheMock::setUp();
+    serverGlobalParams.clusterRole = {ClusterRole::ShardServer, ClusterRole::RouterServer};
+
+    auto dbType = createTestDatabase(UUID::gen(), Timestamp(1, 0));
+    installDatabaseMetadata(operationContext(), dbType.getVersion());
+
+    Grid::get(operationContext())->setShardingInitialized();
+}
 
 TEST_F(AggregationExecutionStateTest, CreateDefaultAggCatalogState) {
     StringData coll{"coll"};
-    auto nss = createCollection(coll);
+    auto nss = createTestCollection(coll, false /*sharded*/);
     std::unique_ptr<AggExState> aggExState = createDefaultAggExState(coll);
     std::unique_ptr<AggCatalogState> aggCatalogState = aggExState->createAggCatalogState();
 
-    // This call should not throw.
-    aggCatalogState->validate();
+    ASSERT_DOES_NOT_THROW(aggCatalogState->validate());
 
     ASSERT_TRUE(aggCatalogState->lockAcquired());
 
@@ -175,21 +330,129 @@ TEST_F(AggregationExecutionStateTest, CreateDefaultAggCatalogState) {
 
     ASSERT_TRUE(aggCatalogState->getUUID().has_value());
 
-    // This call should not throw.
-    aggCatalogState->relinquishLocks();
+    ASSERT_DOES_NOT_THROW(aggCatalogState->relinquishResources());
+}
+
+TEST_F(AggregationExecutionStateTest, CreateDefaultAggCatalogStateWithSecondaryCollection) {
+    StringData main{"main"};
+    StringData secondaryColl{"secondaryColl"};
+
+    auto mainNss = createTestCollection(main, false /*sharded*/);
+    auto secondaryNssColl = createTestCollection(secondaryColl, false /*sharded*/);
+
+    std::unique_ptr<AggExState> aggExState =
+        createDefaultAggExStateWithSecondaryCollections(main, secondaryColl);
+
+    std::unique_ptr<AggCatalogState> aggCatalogState = aggExState->createAggCatalogState();
+
+    ASSERT_DOES_NOT_THROW(aggCatalogState->validate());
+
+    ASSERT_TRUE(aggCatalogState->lockAcquired());
+
+    // Verify main collection
+    ASSERT_TRUE(aggCatalogState->getCollections().hasMainCollection());
+
+    // Verify secondary collections
+    {
+        auto secondaryColls = aggCatalogState->getCollections().getSecondaryCollections();
+        ASSERT_EQ(1, secondaryColls.size());
+        ASSERT_TRUE(secondaryColls.contains(secondaryNssColl));
+    }
+
+    // Verify MultipleCollectionAccessor
+    ASSERT_FALSE(aggCatalogState->getCollections().isAnySecondaryNamespaceAViewOrNotFullyLocal());
+
+    ASSERT_TRUE(aggCatalogState->getUUID().has_value());
+
+    ASSERT_DOES_NOT_THROW(aggCatalogState->relinquishResources());
+}
+
+TEST_F(AggregationExecutionStateTest, CreateDefaultAggCatalogStateWithSecondaryShardedCollection) {
+    StringData main{"main"};
+    StringData secondaryColl{"secondaryColl"};
+
+    auto mainNss = createTestCollection(main, false /*sharded*/);
+    auto secondaryNssColl = createTestCollection(secondaryColl, true /*sharded*/);
+
+    // Add at least 1 shard version to the opCtx to simulate a router request. This is necessary
+    // to correctly set the isAnySecondaryNamespaceAViewOrNotFullyLocal.
+    ScopedSetShardRole setShardRole(
+        operationContext(), mainNss, ShardVersion::UNSHARDED(), getDbVersion());
+    std::unique_ptr<AggExState> aggExState =
+        createDefaultAggExStateWithSecondaryCollections(main, secondaryColl);
+
+    std::unique_ptr<AggCatalogState> aggCatalogState = aggExState->createAggCatalogState();
+
+    ASSERT_DOES_NOT_THROW(aggCatalogState->validate());
+
+    ASSERT_TRUE(aggCatalogState->lockAcquired());
+
+    // Verify main collection.
+    ASSERT_TRUE(aggCatalogState->getCollections().hasMainCollection());
+
+    // Verify secondary collections
+    {
+        auto secondaryColls = aggCatalogState->getCollections().getSecondaryCollections();
+        ASSERT_EQ(1, secondaryColls.size());
+        ASSERT_TRUE(secondaryColls.contains(secondaryNssColl));
+    }
+
+    // Verify MultipleCollectionAccessor
+    ASSERT_TRUE(aggCatalogState->getCollections().isAnySecondaryNamespaceAViewOrNotFullyLocal());
+
+    ASSERT_TRUE(aggCatalogState->getUUID().has_value());
+
+    ASSERT_DOES_NOT_THROW(aggCatalogState->relinquishResources());
+}
+
+TEST_F(AggregationExecutionStateTest, CreateDefaultAggCatalogStateWithSecondaryView) {
+    StringData main{"main"};
+    StringData secondaryColl{"secondaryColl"};
+    StringData secondaryView{"secondaryView"};
+
+    auto mainNss = createTestCollection(main, false /*sharded*/);
+    auto secondaryNssColl = createTestCollection(secondaryColl, false /*sharded*/);
+    auto [secondaryNssView, _] = createTestView(secondaryView, secondaryColl);
+
+    std::unique_ptr<AggExState> aggExState =
+        createDefaultAggExStateWithSecondaryCollections(main, secondaryView);
+
+    std::unique_ptr<AggCatalogState> aggCatalogState = aggExState->createAggCatalogState();
+
+    ASSERT_DOES_NOT_THROW(aggCatalogState->validate());
+
+    ASSERT_TRUE(aggCatalogState->lockAcquired());
+
+    // Verify main collection
+    ASSERT_TRUE(aggCatalogState->getCollections().hasMainCollection());
+    ASSERT_FALSE(aggCatalogState->getMainCollectionOrView().isView());
+
+    // Verify secondary collections
+    {
+        auto secondaryColls = aggCatalogState->getCollections().getSecondaryCollections();
+        ASSERT_EQ(1, secondaryColls.size());
+        ASSERT_TRUE(secondaryColls.contains(secondaryNssView));
+    }
+
+    // Verify MultipleCollectionAccessor
+    ASSERT_TRUE(aggCatalogState->getCollections().isAnySecondaryNamespaceAViewOrNotFullyLocal());
+
+    ASSERT_TRUE(aggCatalogState->getUUID().has_value());
+
+    ASSERT_DOES_NOT_THROW(aggCatalogState->relinquishResources());
 }
 
 TEST_F(AggregationExecutionStateTest, CreateDefaultAggCatalogStateView) {
     StringData coll{"coll"};
     StringData view{"view"};
-    auto viewOn = createCollection(coll);
-    auto [viewNss, expectedPipeline] = createView(view, coll);
+    auto viewOn = createTestCollection(coll, false /*sharded*/);
+    auto [viewNss, expectedPipeline] = createTestView(view, coll);
     std::unique_ptr<AggExState> aggExState = createDefaultAggExState(view);
     std::unique_ptr<AggCatalogState> aggCatalogState = aggExState->createAggCatalogState();
 
-    // This call should not throw.
-    aggCatalogState->validate();
+    ASSERT_DOES_NOT_THROW(aggCatalogState->validate());
 
+    ASSERT_TRUE(aggCatalogState->getMainCollectionOrView().isView());
     ASSERT_TRUE(aggCatalogState->lockAcquired());
 
     boost::optional<AutoStatsTracker> tracker;
@@ -215,18 +478,16 @@ TEST_F(AggregationExecutionStateTest, CreateDefaultAggCatalogStateView) {
 
     ASSERT_FALSE(aggCatalogState->getUUID().has_value());
 
-    // This call should not throw.
-    aggCatalogState->relinquishLocks();
+    ASSERT_DOES_NOT_THROW(aggCatalogState->relinquishResources());
 }
 
 TEST_F(AggregationExecutionStateTest, CreateOplogAggCatalogState) {
     StringData coll{"coll"};
-    createCollection(coll);
+    createTestCollection(coll, false /*sharded*/);
     std::unique_ptr<AggExState> aggExState = createOplogAggExState(coll);
     std::unique_ptr<AggCatalogState> aggCatalogState = aggExState->createAggCatalogState();
 
-    // This call should not throw.
-    aggCatalogState->validate();
+    ASSERT_DOES_NOT_THROW(aggCatalogState->validate());
 
     ASSERT_TRUE(aggCatalogState->lockAcquired());
 
@@ -243,20 +504,19 @@ TEST_F(AggregationExecutionStateTest, CreateOplogAggCatalogState) {
     // UUIDs are not used for change stream queries.
     ASSERT_FALSE(aggCatalogState->getUUID().has_value());
 
-    // This call should not throw.
-    aggCatalogState->relinquishLocks();
+    ASSERT_DOES_NOT_THROW(aggCatalogState->relinquishResources());
 }
 
 TEST_F(AggregationExecutionStateTest, CreateOplogAggCatalogStateFailsOnView) {
     StringData coll{"coll"};
     StringData view{"view"};
-    createCollection(coll);
-    createView(view, coll);
+    createTestCollection(coll, false /*sharded*/);
+    createTestView(view, coll);
 
     std::unique_ptr<AggExState> aggExState = createOplogAggExState(view);
 
-    // This will call the validate() method which will fail because you cannot open a change stream
-    // on a view.
+    // This will call the validate() method which will fail because you cannot open a change
+    // stream on a view.
     ASSERT_THROWS_CODE(
         aggExState->createAggCatalogState(), DBException, ErrorCodes::CommandNotSupportedOnView);
 }

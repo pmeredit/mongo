@@ -27,11 +27,12 @@
  *    it in the license file.
  */
 
-#include "mongo/unittest/bson_test_util.h"
 #include <absl/container/node_hash_map.h>
 #include <boost/move/utility_core.hpp>
 #include <cstdint>
 #include <deque>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <functional>
 #include <list>
 #include <map>
@@ -72,9 +73,8 @@
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/stdx/unordered_set.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
 #include "mongo/unittest/temp_dir.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/debug_util.h"
 #include "mongo/util/intrusive_counter.h"
@@ -177,8 +177,7 @@ TEST_F(DocumentSourceGroupTest, ShouldBeAbleToPauseLoadingWhileSpilled) {
     const size_t maxMemoryUsageBytes = 1000;
 
     auto&& [parser, _1, _2, _3] = AccumulationStatement::getParser("$push");
-    auto accumulatorArg = BSON(""
-                               << "$largeStr");
+    auto accumulatorArg = BSON("" << "$largeStr");
     auto accExpr = parser(expCtx.get(), accumulatorArg.firstElement(), expCtx->variablesParseState);
     AccumulationStatement pushStatement{"spaceHog", accExpr};
     auto groupByExpression =
@@ -220,8 +219,7 @@ TEST_F(DocumentSourceGroupTest, ShouldErrorIfNotAllowedToSpillToDiskAndResultSet
                                 // This is the only way to do this in a debug build.
 
     auto&& [parser, _1, _2, _3] = AccumulationStatement::getParser("$push");
-    auto accumulatorArg = BSON(""
-                               << "$largeStr");
+    auto accumulatorArg = BSON("" << "$largeStr");
     auto accExpr = parser(expCtx.get(), accumulatorArg.firstElement(), expCtx->variablesParseState);
     AccumulationStatement pushStatement{"spaceHog", accExpr};
     auto groupByExpression =
@@ -239,6 +237,54 @@ TEST_F(DocumentSourceGroupTest, ShouldErrorIfNotAllowedToSpillToDiskAndResultSet
         group->getNext(), AssertionException, ErrorCodes::QueryExceededMemoryLimitNoDiskUseAllowed);
 }
 
+TEST_F(DocumentSourceGroupTest, ShouldBeAbleToForceSpillAfterReturningResults) {
+    auto expCtx = getExpCtx();
+
+    unittest::TempDir tempDir("DocumentSourceGroupTest");
+    expCtx->setTempDir(tempDir.path());
+    expCtx->setAllowDiskUse(true);
+    const size_t maxMemoryUsageBytes = 1024 * 1024;
+
+    auto&& [parser, _1, _2, _3] = AccumulationStatement::getParser("$push");
+    auto accumulatorArg = BSON("" << "$largeStr");
+    auto accExpr = parser(expCtx.get(), accumulatorArg.firstElement(), expCtx->variablesParseState);
+    AccumulationStatement pushStatement{"spaceHog", accExpr};
+    auto groupByExpression =
+        ExpressionFieldPath::parse(expCtx.get(), "$_id", expCtx->variablesParseState);
+    auto group = DocumentSourceGroup::create(
+        expCtx, groupByExpression, {pushStatement}, maxMemoryUsageBytes);
+
+    std::string largeStr(maxMemoryUsageBytes / 16, 'x');
+    auto mock = DocumentSourceMock::createForTest({Document{{"_id", 0}, {"largeStr", largeStr}},
+                                                   Document{{"_id", 1}, {"largeStr", largeStr}},
+                                                   Document{{"_id", 2}, {"largeStr", largeStr}}},
+                                                  expCtx);
+    group->setSource(mock.get());
+
+    auto next = group->getNext();
+    ASSERT_TRUE(next.isAdvanced());
+    stdx::unordered_set<int> idSet;
+    idSet.insert(next.releaseDocument()["_id"].coerceToInt());
+
+    const auto* stats = static_cast<const GroupStats*>(group->getSpecificStats());
+    ASSERT_EQ(stats->spillingStats.getSpills(), 0);
+
+    group->forceSpill();
+
+    ASSERT_EQ(stats->spillingStats.getSpills(), 1);
+    ASSERT_EQ(stats->spillingStats.getSpilledRecords(), 2);
+
+    for (auto result = group->getNext(); result.isAdvanced(); result = group->getNext()) {
+        idSet.insert(result.releaseDocument()["_id"].coerceToInt());
+    }
+    ASSERT_TRUE(group->getNext().isEOF());
+
+    ASSERT_EQ(idSet.size(), 3UL);
+    ASSERT_EQ(idSet.count(0), 1UL);
+    ASSERT_EQ(idSet.count(1), 1UL);
+    ASSERT_EQ(idSet.count(2), 1UL);
+}
+
 TEST_F(DocumentSourceGroupTest, ShouldCorrectlyTrackMemoryUsageBetweenPauses) {
     auto expCtx = getExpCtx();
     const size_t maxMemoryUsageBytes = 1000;
@@ -246,8 +292,7 @@ TEST_F(DocumentSourceGroupTest, ShouldCorrectlyTrackMemoryUsageBetweenPauses) {
                                 // This is the only way to do this in a debug build.
 
     auto&& [parser, _1, _2, _3] = AccumulationStatement::getParser("$push");
-    auto accumulatorArg = BSON(""
-                               << "$largeStr");
+    auto accumulatorArg = BSON("" << "$largeStr");
     auto accExpr = parser(expCtx.get(), accumulatorArg.firstElement(), expCtx->variablesParseState);
     AccumulationStatement pushStatement{"spaceHog", accExpr};
     auto groupByExpression =
@@ -545,6 +590,82 @@ TEST_F(DocumentSourceGroupTest,
     ASSERT_TRUE(distributedPlanLogic);
 }
 
+TEST_F(DocumentSourceGroupTest, MemoryTracking) {
+    auto expCtx = getExpCtx();
+    // Pause between input docs so we have a chance to check memory tracking.
+    auto mock = DocumentSourceMock::createForTest(
+        {
+            Document{{"_id", 0}, {"k", 10}, {"arr", BSON_ARRAY("foo"_sd << "bar"_sd)}},
+            DocumentSource::GetNextResult::makePauseExecution(),
+            Document{{"_id", 1}, {"k", 10}, {"arr", BSON_ARRAY("baz"_sd << "mongo"_sd)}},
+            DocumentSource::GetNextResult::makePauseExecution(),
+            Document{{"_id", 2}, {"k", 20}, {"arr", BSON_ARRAY("bird"_sd << "elephant"_sd)}},
+            DocumentSource::GetNextResult::makePauseExecution(),
+            Document{{"_id", 3}, {"k", 20}, {"arr", BSON_ARRAY("dog"_sd << "giraffe"_sd)}},
+        },
+        expCtx);
+
+    auto group = [&expCtx, &mock]() {
+        auto spec = fromjson(R"({
+                $group: {
+                    _id: "$k",
+                    concatted: {$concatArrays: "$arr"}
+                }
+            })");
+        auto src = DocumentSourceGroup::createFromBson(spec.firstElement(), expCtx.get());
+        src->setSource(mock.get());
+        return boost::dynamic_pointer_cast<DocumentSourceGroup>(src);
+    }();
+
+    GroupProcessor* groupProcessor = group->getGroupProcessor();
+    const MemoryUsageTracker& memTracker = groupProcessor->getMemoryTracker();
+    ASSERT_EQUALS(memTracker.currentMemoryBytes(), 0);
+
+    // Tracked memory increases as rows are processed. Different platforms have different amounts of
+    // memory here, so just show that the amount is increasing.
+    ASSERT_TRUE(group->getNext().isPaused());
+    int64_t curBytes1 = memTracker.currentMemoryBytes();
+    ASSERT_GREATER_THAN(curBytes1, 0);
+
+    ASSERT_TRUE(group->getNext().isPaused());
+    int64_t curBytes2 = memTracker.currentMemoryBytes();
+    ASSERT_GREATER_THAN(curBytes2, curBytes1);
+
+    ASSERT_TRUE(group->getNext().isPaused());
+    int64_t curBytes3 = memTracker.currentMemoryBytes();
+    ASSERT_GREATER_THAN(curBytes3, curBytes2);
+
+    std::vector<Document> outDocs;
+    {
+        auto result = group->getNext();
+        ASSERT_TRUE(result.isAdvanced());
+        int64_t curBytes4 = memTracker.currentMemoryBytes();
+        ASSERT_GREATER_THAN(curBytes4, curBytes3);
+        outDocs.push_back(result.releaseDocument());
+
+        // There are no more input documents, so memory usage stays the same here.
+        result = group->getNext();
+        ASSERT_TRUE(result.isAdvanced());
+        int64_t curBytes5 = memTracker.currentMemoryBytes();
+        ASSERT_EQUALS(curBytes4, curBytes5);
+        outDocs.push_back(result.releaseDocument());
+    }
+
+    // output order of documents will not be deterministic, so sort them.
+    std::sort(outDocs.begin(), outDocs.end(), [](const Document& d0, const Document& d1) {
+        return Value::compare(d0["_id"], d1["_id"], nullptr) < 0;
+    });
+    ASSERT_DOCUMENT_EQ(
+        outDocs[0], Document{fromjson(R"({_id: 10, concatted: ["foo", "bar", "baz", "mongo"]})")});
+    ASSERT_DOCUMENT_EQ(
+        outDocs[1],
+        Document{fromjson(R"({_id: 20, concatted: ["bird", "elephant", "dog", "giraffe"]})")});
+
+    ASSERT_TRUE(group->getNext().isEOF());
+    // Tracked memory goes back to zero once all output has been produced.
+    ASSERT_EQUALS(memTracker.currentMemoryBytes(), 0);
+}
+
 BSONObj toBson(const boost::intrusive_ptr<DocumentSource>& source) {
     std::vector<Value> arr;
     source->serializeToArray(arr);
@@ -740,8 +861,7 @@ class IdObjectExpression : public ExpressionBase {
         return BSON("a" << 6);
     }
     BSONObj spec() override {
-        return BSON("_id" << BSON("z"
-                                  << "$a"));
+        return BSON("_id" << BSON("z" << "$a"));
     }
     BSONObj expected() override {
         return BSON("_id" << BSON("z" << 6));
@@ -765,16 +885,14 @@ class TwoIdSpecs : public ParseErrorBase {
 /** $group _id is the empty string. */
 class IdEmptyString : public IdConstantBase {
     BSONObj spec() override {
-        return BSON("_id"
-                    << "");
+        return BSON("_id" << "");
     }
 };
 
 /** $group _id is a std::string constant. */
 class IdStringConstant : public IdConstantBase {
     BSONObj spec() override {
-        return BSON("_id"
-                    << "abc");
+        return BSON("_id" << "abc");
     }
 };
 
@@ -784,8 +902,7 @@ class IdFieldPath : public ExpressionBase {
         return BSON("a" << 5);
     }
     BSONObj spec() override {
-        return BSON("_id"
-                    << "$a");
+        return BSON("_id" << "$a");
     }
     BSONObj expected() override {
         return BSON("_id" << 5);
@@ -795,8 +912,7 @@ class IdFieldPath : public ExpressionBase {
 /** $group with _id set to an invalid field path. */
 class IdInvalidFieldPath : public ParseErrorBase {
     BSONObj spec() override {
-        return BSON("_id"
-                    << "$a..");
+        return BSON("_id" << "$a..");
     }
 };
 
@@ -882,9 +998,7 @@ class AggregateObjectExpression : public ExpressionBase {
         return BSON("a" << 6);
     }
     BSONObj spec() override {
-        return BSON("_id" << 0 << "z"
-                          << BSON("$first" << BSON("x"
-                                                   << "$a")));
+        return BSON("_id" << 0 << "z" << BSON("$first" << BSON("x" << "$a")));
     }
     BSONObj expected() override {
         return BSON("_id" << 0 << "z" << BSON("x" << 6));
@@ -897,9 +1011,7 @@ class AggregateOperatorExpression : public ExpressionBase {
         return BSON("a" << 6);
     }
     BSONObj spec() override {
-        return BSON("_id" << 0 << "z"
-                          << BSON("$first"
-                                  << "$a"));
+        return BSON("_id" << 0 << "z" << BSON("$first" << "$a"));
     }
     BSONObj expected() override {
         return BSON("_id" << 0 << "z" << 6);
@@ -1000,9 +1112,7 @@ class SingleDocument : public CheckResultsBase {
         return {DOC("a" << 1)};
     }
     BSONObj groupSpec() override {
-        return BSON("_id" << 0 << "a"
-                          << BSON("$sum"
-                                  << "$a"));
+        return BSON("_id" << 0 << "a" << BSON("$sum" << "$a"));
     }
     std::string expectedResultSetString() override {
         return "[{_id:0,a:1}]";
@@ -1015,9 +1125,7 @@ class TwoValuesSingleKey : public CheckResultsBase {
         return {DOC("a" << 1), DOC("a" << 2)};
     }
     BSONObj groupSpec() override {
-        return BSON("_id" << 0 << "a"
-                          << BSON("$push"
-                                  << "$a"));
+        return BSON("_id" << 0 << "a" << BSON("$push" << "$a"));
     }
     std::string expectedResultSetString() override {
         return "[{_id:0,a:[1,2]}]";
@@ -1030,11 +1138,8 @@ class TwoValuesTwoKeys : public CheckResultsBase {
         return {DOC("_id" << 0 << "a" << 1), DOC("_id" << 1 << "a" << 2)};
     }
     BSONObj groupSpec() override {
-        return BSON("_id"
-                    << "$_id"
-                    << "a"
-                    << BSON("$push"
-                            << "$a"));
+        return BSON("_id" << "$_id"
+                          << "a" << BSON("$push" << "$a"));
     }
     std::string expectedResultSetString() override {
         return "[{_id:0,a:[1]},{_id:1,a:[2]}]";
@@ -1050,11 +1155,8 @@ class FourValuesTwoKeys : public CheckResultsBase {
                 DOC("id" << 1 << "a" << 4)};
     }
     BSONObj groupSpec() override {
-        return BSON("_id"
-                    << "$id"
-                    << "a"
-                    << BSON("$push"
-                            << "$a"));
+        return BSON("_id" << "$id"
+                          << "a" << BSON("$push" << "$a"));
     }
     std::string expectedResultSetString() override {
         return "[{_id:0,a:[1,3]},{_id:1,a:[2,4]}]";
@@ -1070,12 +1172,9 @@ class FourValuesTwoKeysTwoAccumulators : public CheckResultsBase {
                 DOC("id" << 1 << "a" << 4)};
     }
     BSONObj groupSpec() override {
-        return BSON("_id"
-                    << "$id"
-                    << "list"
-                    << BSON("$push"
-                            << "$a")
-                    << "sum" << BSON("$sum" << BSON("$divide" << BSON_ARRAY("$a" << 2))));
+        return BSON("_id" << "$id"
+                          << "list" << BSON("$push" << "$a") << "sum"
+                          << BSON("$sum" << BSON("$divide" << BSON_ARRAY("$a" << 2))));
     }
     std::string expectedResultSetString() override {
         return "[{_id:0,list:[1,3],sum:2},{_id:1,list:[2,4],sum:3}]";
@@ -1088,11 +1187,8 @@ class GroupNullUndefinedIds : public CheckResultsBase {
         return {DOC("a" << BSONNULL << "b" << 100), DOC("b" << 10)};
     }
     BSONObj groupSpec() override {
-        return BSON("_id"
-                    << "$a"
-                    << "sum"
-                    << BSON("$sum"
-                            << "$b"));
+        return BSON("_id" << "$a"
+                          << "sum" << BSON("$sum" << "$b"));
     }
     std::string expectedResultSetString() override {
         return "[{_id:null,sum:110}]";
@@ -1102,28 +1198,25 @@ class GroupNullUndefinedIds : public CheckResultsBase {
 /** A complex _id expression. */
 class ComplexId : public CheckResultsBase {
     std::deque<DocumentSource::GetNextResult> inputData() override {
-        return {DOC("a"
-                    << "de"_sd
-                    << "b"
-                    << "ad"_sd
-                    << "c"
-                    << "beef"_sd
-                    << "d"
-                    << ""_sd),
-                DOC("a"
-                    << "d"_sd
-                    << "b"
-                    << "eadbe"_sd
-                    << "c"
-                    << ""_sd
-                    << "d"
-                    << "ef"_sd)};
+        return {DOC("a" << "de"_sd
+                        << "b"
+                        << "ad"_sd
+                        << "c"
+                        << "beef"_sd
+                        << "d"
+                        << ""_sd),
+                DOC("a" << "d"_sd
+                        << "b"
+                        << "eadbe"_sd
+                        << "c"
+                        << ""_sd
+                        << "d"
+                        << "ef"_sd)};
     }
     BSONObj groupSpec() override {
-        return BSON("_id" << BSON("$concat" << BSON_ARRAY("$a"
-                                                          << "$b"
-                                                          << "$c"
-                                                          << "$d")));
+        return BSON("_id" << BSON("$concat" << BSON_ARRAY("$a" << "$b"
+                                                               << "$c"
+                                                               << "$d")));
     }
     std::string expectedResultSetString() override {
         return "[{_id:'deadbeef'}]";
@@ -1136,9 +1229,7 @@ class UndefinedAccumulatorValue : public CheckResultsBase {
         return {Document()};
     }
     BSONObj groupSpec() override {
-        return BSON("_id" << 0 << "first"
-                          << BSON("$first"
-                                  << "$missing"));
+        return BSON("_id" << 0 << "first" << BSON("$first" << "$missing"));
     }
     std::string expectedResultSetString() override {
         return "[{_id:0, first:null}]";
@@ -1152,15 +1243,12 @@ public:
         auto source = DocumentSourceMock::createForTest({"{_id:0,list:[1,2]}",
                                                          "{_id:1,list:[3,4]}",
                                                          "{_id:0,list:[10,20]}",
-                                                         "{_id:1,list:[30,40]}]}"},
+                                                         "{_id:1,list:[30,40]}"},
                                                         ctx());
 
         // Create a group source.
-        createGroup(BSON("_id"
-                         << "$x"
-                         << "list"
-                         << BSON("$push"
-                                 << "$y")));
+        createGroup(BSON("_id" << "$x"
+                               << "list" << BSON("$push" << "$y")));
         // Create a merger version of the source.
         boost::intrusive_ptr<DocumentSource> group = createMerger();
         // Attach the merger to the synthetic shard results.
@@ -1243,12 +1331,9 @@ private:
                 Document(BSON("a" << 2 << "b" << 1))};
     }
     BSONObj groupSpec() final {
-        return BSON("_id"
-                    << "$a"
-                    << "sum"
-                    << BSON("$sum"
-                            << "$b")
-                    << "$monotonicIdFields" << BSON_ARRAY("_id"));
+        return BSON("_id" << "$a"
+                          << "sum" << BSON("$sum" << "$b") << "$monotonicIdFields"
+                          << BSON_ARRAY("_id"));
     }
     std::string expectedResultSetString() final {
         return "[{_id:1,sum:3},{_id:2,sum:4}]";
@@ -1333,14 +1418,11 @@ private:
     }
 
     BSONObj groupSpec() final {
-        auto id = BSON("x"
-                       << "$x"
-                       << "y"
-                       << "$y");
-        return BSON("_id" << id << "big_array"
-                          << BSON("$push"
-                                  << "$b")
-                          << "$monotonicIdFields" << BSON_ARRAY("x"));
+        auto id = BSON("x" << "$x"
+                           << "y"
+                           << "$y");
+        return BSON("_id" << id << "big_array" << BSON("$push" << "$b") << "$monotonicIdFields"
+                          << BSON_ARRAY("x"));
     }
 
     boost::optional<int64_t> getMaxMemoryUsageBytes() final {
@@ -1368,7 +1450,7 @@ private:
     int expectedSpills() const {
         // 'DocumentSourceGroup' has the knob called 'internalQueryEnableAggressiveSpillsInGroup'
         // used to spill more aggressively when turned on.
-        return internalQueryEnableAggressiveSpillsInGroup ? kCount : 4;
+        return internalQueryEnableAggressiveSpillsInGroup.loadRelaxed() ? kCount : 4;
     }
 
     std::deque<DocumentSource::GetNextResult> inputData() final {
@@ -1384,12 +1466,9 @@ private:
     }
 
     BSONObj groupSpec() final {
-        return BSON("_id"
-                    << "$a"
-                    << "big_array"
-                    << BSON("$push"
-                            << "$b")
-                    << "$monotonicIdFields" << BSON_ARRAY("_id"));
+        return BSON("_id" << "$a"
+                          << "big_array" << BSON("$push" << "$b") << "$monotonicIdFields"
+                          << BSON_ARRAY("_id"));
     }
 
     boost::optional<int64_t> getMaxMemoryUsageBytes() final {
@@ -1429,14 +1508,11 @@ private:
     }
 
     BSONObj groupSpec() final {
-        BSONObj id = BSON("x"
-                          << "$x"
-                          << "y"
-                          << "$y");
-        return BSON("_id" << id << "sum"
-                          << BSON("$sum"
-                                  << "$z")
-                          << "$monotonicIdFields" << BSON_ARRAY("x"));
+        BSONObj id = BSON("x" << "$x"
+                              << "y"
+                              << "$y");
+        return BSON("_id" << id << "sum" << BSON("$sum" << "$z") << "$monotonicIdFields"
+                          << BSON_ARRAY("x"));
     }
 
     boost::optional<int64_t> getMaxMemoryUsageBytes() final {

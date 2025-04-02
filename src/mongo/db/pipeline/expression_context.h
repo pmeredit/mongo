@@ -72,6 +72,7 @@
 #include "mongo/db/query/query_settings/query_settings_gen.h"
 #include "mongo/db/query/tailable_mode_gen.h"
 #include "mongo/db/query/util/deferred.h"
+#include "mongo/db/version_context.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/scripting/engine.h"
 #include "mongo/util/assert_util.h"
@@ -113,7 +114,13 @@ struct ResolvedNamespace {
     std::vector<BSONObj> pipeline;
     boost::optional<UUID> uuid = boost::none;
     bool involvedNamespaceIsAView = false;
+    // TODO (SERVER-100170): Add a LiteParsedPipeline member. We often need this information when
+    // resolving views and currently recompute the object every time it's requested. Once added, go
+    // through the rest of the codebase to ensure that we aren't unnecessarily creating a
+    // LiteParsedPipeline object when it's already being stored here.
 };
+
+using ResolvedNamespaceMap = absl::flat_hash_map<NamespaceString, ResolvedNamespace>;
 
 enum class ExpressionContextCollationMatchesDefault { kYes, kNo };
 
@@ -318,7 +325,7 @@ public:
      * namespace not involved in the pipeline.
      */
     const ResolvedNamespace& getResolvedNamespace(const NamespaceString& nss) const {
-        auto it = _params.resolvedNamespaces.find(nss.coll());
+        auto it = _params.resolvedNamespaces.find(nss);
         tassert(9453000,
                 str::stream() << "No resolved namespace provided for " << nss.toStringForErrorMsg(),
                 it != _params.resolvedNamespaces.end());
@@ -359,12 +366,12 @@ public:
         return !_params.explain;
     }
 
-    void setResolvedNamespaces(StringMap<ResolvedNamespace> resolvedNamespaces) {
+    void setResolvedNamespaces(ResolvedNamespaceMap resolvedNamespaces) {
         _params.resolvedNamespaces = std::move(resolvedNamespaces);
     }
 
-    void addResolvedNamespace(StringData collName, const ResolvedNamespace& resolvedNs) {
-        auto it = _params.resolvedNamespaces.find(collName);
+    void addResolvedNamespace(NamespaceString nss, const ResolvedNamespace& resolvedNs) {
+        auto it = _params.resolvedNamespaces.find(nss);
 
         // Assert that the resolved namespace we are adding either doesn't exist in the map or we
         // are reassigning the same value (no modification allowed). Only perform the uuid check if
@@ -377,13 +384,13 @@ public:
                      (!it->second.uuid.has_value() || !resolvedNs.uuid.has_value() ||
                       it->second.uuid.value() == resolvedNs.uuid.value())));
 
-        _params.resolvedNamespaces[collName] = resolvedNs;
+        _params.resolvedNamespaces[nss] = resolvedNs;
     }
 
     void addResolvedNamespaces(
         const mongo::stdx::unordered_set<mongo::NamespaceString>& resolvedNamespaces) {
         for (const auto& nss : resolvedNamespaces) {
-            _params.resolvedNamespaces.try_emplace(nss.coll(), nss, std::vector<BSONObj>{});
+            _params.resolvedNamespaces.try_emplace(nss, nss, std::vector<BSONObj>{});
         }
     }
 
@@ -514,8 +521,7 @@ public:
      * 'maxFeatureCompatibilityVersion' if set. Will do nothing if the feature flag is enabled
      * or boost::none.
      */
-    void throwIfFeatureFlagIsNotEnabledOnFCV(StringData name,
-                                             const boost::optional<FeatureFlag>& flag);
+    void throwIfFeatureFlagIsNotEnabledOnFCV(StringData name, CheckableFeatureFlagRef flag);
 
     void setOperationContext(OperationContext* opCtx) {
         _params.opCtx = opCtx;
@@ -722,6 +728,16 @@ public:
         _params.forcePlanCache = forcePlanCache;
     }
 
+    bool getAllowGenericForeignDbLookup() const {
+        return _params.allowGenericForeignDbLookup;
+    }
+
+    // Should only be used to test parsing with the flag. Otherwise, this flag should only be set
+    // when creating a new ExpressionContext.
+    bool setAllowGenericForeignDbLookup_forTest(bool allowGenericForeignDbLookup) {
+        return _params.allowGenericForeignDbLookup = allowGenericForeignDbLookup;
+    }
+
     const TimeZoneDatabase* getTimeZoneDatabase() const {
         return _params.timeZoneDatabase;
     }
@@ -837,6 +853,7 @@ public:
 
     bool isFeatureFlagMongotIndexedViewsEnabled() const {
         return feature_flags::gFeatureFlagMongotIndexedViews.isEnabledUseLatestFCVWhenUninitialized(
+            VersionContext::getDecoration(getOperationContext()),
             serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
     }
 
@@ -896,16 +913,52 @@ public:
     }
 
     bool isFeatureFlagShardFilteringDistinctScanEnabled() const {
-        return _featureFlagShardFilteringDistinctScan.get();
+        return _featureFlagShardFilteringDistinctScan.get(
+            VersionContext::getDecoration(getOperationContext()));
+    }
+
+    /**
+     * Returns if the query is IDHACK query.
+     */
+    inline bool isIdHackQuery() const {
+        return _params.isIdHackQuery;
+    }
+
+    /**
+     * Returns if query contains encryption information as part of the request.
+     */
+    inline bool isFleQuery() const {
+        return _params.isFleQuery;
+    }
+
+    /**
+     * Returns if query can be rejected via query settings.
+     */
+    inline bool canBeRejected() const {
+        return _params.canBeRejected;
     }
 
     bool isBasicRankFusionEnabled() const {
-        return _featureFlagRankFusionBasic.get();
+        return _featureFlagRankFusionBasic.get(
+            VersionContext::getDecoration(getOperationContext()));
     }
 
     bool isFeatureFlagStreamsEnabled() const {
-        return _featureFlagStreams.get();
+        return _featureFlagStreams.get(VersionContext::getDecoration(getOperationContext()));
     }
+
+    bool isMapReduceCommand() const {
+        return _params.isMapReduceCommand;
+    }
+
+    void setIsRankFusion() {
+        _params.isRankFusion = true;
+    }
+
+    bool isRankFusion() const {
+        return _params.isRankFusion;
+    }
+
 
 protected:
     struct ExpressionContextParams {
@@ -918,7 +971,7 @@ protected:
         std::shared_ptr<MongoProcessInterface> mongoProcessInterface = nullptr;
         NamespaceString ns;
         // A map from namespace to the resolved namespace, in case any views are involved.
-        StringMap<ResolvedNamespace> resolvedNamespaces;
+        ResolvedNamespaceMap resolvedNamespaces;
         SerializationContext serializationContext;
         // If known, the UUID of the execution namespace for this aggregation command.
         // TODO(SERVER-78226): Replace `ns` and `uuid` with a type which can express "nss and uuid".
@@ -996,8 +1049,7 @@ protected:
         // True if this ExpressionContext is used to parse a collection validator expression.
         bool isParsingCollectionValidator = false;
         // These fields can be used in a context when API version validations were not enforced
-        // during
-        // parse time (Example creating a view or validator), but needs to be enforce while
+        // during parse time (Example creating a view or validator), but needs to be enforce while
         // querying later.
         bool exprUnstableForApiV1 = false;
         bool exprDeprecatedForApiV1 = false;
@@ -1008,13 +1060,34 @@ protected:
         // Forces the plan cache to be used even if there's only one solution available. Queries
         // that are ineligible will still not be cached.
         bool forcePlanCache = false;
+
+        // Indicates if query is IDHACK query.
+        bool isIdHackQuery = false;
+
+        // Indicates if query contains encryption information as part of the request.
+        bool isFleQuery = false;
+
+        // Indicates if query can be rejected via query settings.
+        bool canBeRejected = true;
+
+        // Allows the foreign collection of a lookup to be in a different database than the local
+        // collection using "from: {db: ..., coll: ...}" syntax. Currently, this should only be used
+        // for streams since this isn't allowed in MQL beyond some exemptions for internal
+        // collection in the local database.
+        bool allowGenericForeignDbLookup = false;
+
+        // Indicates that the pipeline is a desugared representation of a user's $rankFusion
+        // pipeline. This is necessary for guarding that $rankFusion is not yet allowed to be run
+        // over views.
+        // TODO SERVER-101661 Remove this internal flag once $rankFusion works on views.
+        bool isRankFusion = false;
     };
 
     ExpressionContextParams _params;
 
     /**
      * Construct an expression context using ExpressionContextParams. Consider using
-     * ExpressonContextBuilder instead.
+     * ExpressionContextBuilder instead.
      */
     ExpressionContext(ExpressionContextParams&& config);
 
@@ -1077,6 +1150,9 @@ protected:
     DocumentComparator _documentComparator;
     ValueComparator _valueComparator;
 
+    // A map from namespace to the resolved namespace, in case any views are involved.
+    ResolvedNamespaceMap _resolvedNamespaces;
+
     int _interruptCounter = kInterruptCheckPeriod;
 
     bool _isCappedDelete = false;
@@ -1091,8 +1167,6 @@ private:
     // is being executed (if the variable was referenced, it is an element of this set).
     stdx::unordered_set<Variables::Id> _systemVarsReferencedInQuery;
 
-    std::once_flag _querySettingsAttached;
-
     boost::optional<query_settings::QuerySettings> _querySettings = boost::none;
 
     DeferredFn<QueryKnobConfiguration, const query_settings::QuerySettings&>
@@ -1100,20 +1174,23 @@ private:
             return QueryKnobConfiguration(querySettings);
         }};
 
-    Deferred<bool (*)()> _featureFlagShardFilteringDistinctScan{[] {
-        return feature_flags::gFeatureFlagShardFilteringDistinctScan
-            .isEnabledUseLastLTSFCVWhenUninitialized(
-                serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
-    }};
+    Deferred<bool (*)(const VersionContext&)> _featureFlagShardFilteringDistinctScan{
+        [](const VersionContext& vCtx) {
+            return feature_flags::gFeatureFlagShardFilteringDistinctScan
+                .isEnabledUseLastLTSFCVWhenUninitialized(
+                    vCtx, serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+        }};
 
-    Deferred<bool (*)()> _featureFlagRankFusionBasic{[] {
-        return feature_flags::gFeatureFlagRankFusionBasic.isEnabledUseLastLTSFCVWhenUninitialized(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
-    }};
+    Deferred<bool (*)(const VersionContext&)> _featureFlagRankFusionBasic{
+        [](const VersionContext& vCtx) {
+            return feature_flags::gFeatureFlagRankFusionBasic
+                .isEnabledUseLastLTSFCVWhenUninitialized(
+                    vCtx, serverGlobalParams.featureCompatibility.acquireFCVSnapshot());
+        }};
 
     // Initialized in constructor to avoid including server_feature_flags_gen.h
     // in this header file.
-    Deferred<bool (*)()> _featureFlagStreams;
+    Deferred<bool (*)(const VersionContext&)> _featureFlagStreams;
 
     DeferredFn<boost::optional<NamespaceString>> _featureFlagGuardedMongotIndexedViewNs{
         [this]() -> boost::optional<NamespaceString> {
@@ -1130,7 +1207,7 @@ public:
     ExpressionContextBuilder& collator(std::unique_ptr<CollatorInterface>&&);
     ExpressionContextBuilder& mongoProcessInterface(std::shared_ptr<MongoProcessInterface>);
     ExpressionContextBuilder& ns(NamespaceString);
-    ExpressionContextBuilder& resolvedNamespace(StringMap<ResolvedNamespace>);
+    ExpressionContextBuilder& resolvedNamespace(ResolvedNamespaceMap);
     ExpressionContextBuilder& serializationContext(SerializationContext);
     ExpressionContextBuilder& collUUID(boost::optional<UUID>);
     ExpressionContextBuilder& explain(boost::optional<ExplainOptions::Verbosity>);
@@ -1154,10 +1231,14 @@ public:
     ExpressionContextBuilder& isParsingViewDefinition(bool);
     ExpressionContextBuilder& isParsingPipelineUpdate(bool);
     ExpressionContextBuilder& isParsingCollectionValidator(bool);
+    ExpressionContextBuilder& isIdHackQuery(bool);
+    ExpressionContextBuilder& isFleQuery(bool);
+    ExpressionContextBuilder& canBeRejected(bool);
     ExpressionContextBuilder& exprUnstableForApiV1(bool);
     ExpressionContextBuilder& exprDeprecatedForApiV1(bool);
     ExpressionContextBuilder& enabledCounters(bool);
     ExpressionContextBuilder& forcePlanCache(bool);
+    ExpressionContextBuilder& allowGenericForeignDbLookup(bool);
     ExpressionContextBuilder& jsHeapLimitMB(boost::optional<int>);
     ExpressionContextBuilder& timeZoneDatabase(const TimeZoneDatabase*);
     ExpressionContextBuilder& changeStreamTokenVersion(int);

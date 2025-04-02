@@ -3,9 +3,11 @@
  *
  * @tags: [
  *   featureFlagQETextSearchPreview,
+ *   requires_fcv_81
  * ]
  */
 import {
+    codeFailsInClientWithError,
     codeFailsInQueryAnalysisWithError,
     EncryptedClient
 } from "jstests/fle2/libs/encrypted_client_util.js";
@@ -170,8 +172,50 @@ const schemaWithMissingRequiredField = {
     }
 };
 
+const schemaWithGoodStrEncodeVersion = {
+    encryptedFields: {
+        "fields": [{
+            path: "firstName",
+            bsonType: "string",
+            queries: {
+                queryType: "substringPreview",
+                contention: NumberLong(1),
+                strMaxLength: NumberLong(100),
+                strMinQueryLength: NumberLong(1),
+                strMaxQueryLength: NumberLong(100),
+                caseSensitive: false,
+                diacriticSensitive: false,
+            }
+        }],
+        "strEncodeVersion": NumberInt(1)
+    }
+};
+
+const schemaWithBadStrEncodeVersion = {
+    encryptedFields: {
+        "fields": [{
+            path: "firstName",
+            bsonType: "string",
+            queries: {
+                queryType: "substringPreview",
+                contention: NumberLong(1),
+                strMaxLength: NumberLong(100),
+                strMinQueryLength: NumberLong(1),
+                strMaxQueryLength: NumberLong(100),
+                caseSensitive: false,
+                diacriticSensitive: false,
+            }
+        }],
+        "strEncodeVersion": NumberInt(99)
+    }
+};
+
 jsTestLog("Test createCollection with various text search query types works");
 assert.commandWorked(client.createEncryptionCollection("basic", validSchema));
+
+jsTestLog("Test with strEncodeVersion");
+assert.commandWorked(
+    client.createEncryptionCollection("basic_str_encode", schemaWithGoodStrEncodeVersion));
 
 jsTestLog("Test too many elements in QueryTypes list");
 assert(codeFailsInQueryAnalysisWithError(
@@ -192,6 +236,11 @@ jsTestLog("Test missing required field");
 assert(codeFailsInQueryAnalysisWithError(
     () => client.createEncryptionCollection("bad_coll", schemaWithMissingRequiredField),
     "strMaxQueryLength parameter is required"));
+
+jsTestLog("Test bad strEncodeVersion");
+assert(codeFailsInClientWithError(
+    () => client.createEncryptionCollection("bad_coll", schemaWithBadStrEncodeVersion),
+    "strEncodeVersion' of 99 is not supported"));
 
 jsTestLog("Test inconsistent case folding parameter in prefix+suffix");
 prefixSuffixField.queries[0].caseSensitive = !prefixSuffixField.queries[1].caseSensitive;

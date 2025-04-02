@@ -31,7 +31,8 @@ IDPJWKSRefresher::IDPJWKSRefresher(const JWKSFetcherFactory& factory, const IDPC
 
 
 StatusWith<bool> IDPJWKSRefresher::refreshKeys(const JWKSFetcherFactory& factory,
-                                               RefreshOption option) try {
+                                               RefreshOption option,
+                                               bool ignoreQuiescePeriod) try {
     if ((option == RefreshOption::kIfDue) && (getNextRefreshTime() > Date_t::now())) {
         return false;
     }
@@ -54,10 +55,23 @@ StatusWith<bool> IDPJWKSRefresher::refreshKeys(const JWKSFetcherFactory& factory
     // `use after free` in the case where oidcRefreshKeys is called and the underlying JWKManager
     // is deleted while we were comparing old keys with new ones.
     auto oldKeyManager = getKeyManager();
+
+    // We check the oldKeyManager quiesce state and set a Date::now() value if
+    // newKeyManager->loadKeys() fails since the newKeyManager->quiesce() will always be false since
+    // it's a new manager created during this call.
+    if (!ignoreQuiescePeriod && oldKeyManager->quiesce()) {
+        return {ErrorCodes::OperationFailed, "Skipping refresh due to IdP quiesce"};
+    }
+
     auto newKeyManager = std::make_shared<crypto::JWKManager>(factory.makeJWKSFetcher(_issuer));
 
     auto keyRefreshStatus = newKeyManager->loadKeys();
     if (!keyRefreshStatus.isOK()) {
+        // newKeyManager probably failed while fetching the IDP due to its server being down or
+        // a malformed request, we set a quiesce time so the host performance is not affected by the
+        // subsequent calls that will be made until successful.
+        oldKeyManager->setQuiesce(Date_t::now());
+
         LOGV2_DEBUG(7938404,
                     3,
                     "JWK refresh failed for identity provider",

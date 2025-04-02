@@ -9,7 +9,7 @@ at creation. Optionally, a meta-data field may also be specified to help group
 measurements in the buckets. MongoDB also supports an expiration mechanism on measurements through
 the `expireAfterSeconds` option.
 
-A time-series collection `mytscoll` in the `mydb` database is represented in the [catalog](../catalog/README.md) by a
+A (viewful) time-series collection `mytscoll` in the `mydb` database is represented in the [catalog](../catalog/README.md) by a
 combination of a view and a system collection:
 
 - The non-materialized view `mydb.mytscoll` is defined with the bucket collection as the source collection with
@@ -206,6 +206,11 @@ This may cause queries using object equality filters not to find all documents t
 expect, as object equality is field-order sensitive. Due to this field-order sensitivity, object
 equality filters are generally not recommended, and doubly-so for time series `metaField` data.
 Queries should instead match on specific nested fields.
+
+### CRUD Operations
+
+CRUD operations can interact directly with the bucketed data format by setting the `rawData` command
+parameter.
 
 ## Indexes
 
@@ -456,9 +461,6 @@ See:
 - **active bucket**: A bucket that is either archived or open. It forms the cardinality managed by the
   BucketCatalog.
 
-- **alternate bucket**: Used in the context of [useAlternateBucket()](https://github.com/mongodb/mongo/blob/4fb9fe8ef26cde41d3fe1c261bae1ef75c2c3bfc/src/mongo/db/timeseries/bucket_catalog/bucket_catalog_internal.h#L158-L163) and refers to any eligible bucket
-  that can be found in memory for reopening.
-
 - **archived bucket**: A bucket that resides on-disk with a crumb of info [still in memory](https://github.com/10gen/mongo/blob/883a40fdd73056c88221aa668a627cd2e6c621a6/src/mongo/db/timeseries/bucket_catalog/bucket_catalog.h#L166-L175)
   to support efficient reopening without querying. Adding new measurements to this
   bucket will require materializing data from disk.
@@ -486,5 +488,15 @@ identify the time-series as a whole.
 
 **time-series**: A sequence of measurements over a period of time.
 
-**time-series collection**: A collection type representing a writable non-materialized view that
+**time-series collection**: A collection containing time-series data, which can be implemented as
+viewful time-series or viewless time-series. By default, refers to a viewful time-series
+implementation's view.
+
+**viewful time-series**: A time-series collection setup where time-series data is made available
+through a collection type representing a writable non-materialized view. This view
 allows storing and querying a number of time-series, each with different meta-data.
+
+[TODO (SERVER-102458)]: # "Update documentation on viewful vs viewless timeseries collections."
+
+**viewless time-series**: A time-series collection setup where time-series data and buckets use the
+same namespace, without the use of a view.

@@ -83,11 +83,13 @@ public:
                const BSONObj& cmdObj,
                const PrivilegeVector& privileges,
                const std::vector<std::pair<NamespaceString, std::vector<ExternalDataSourceInfo>>>&
-                   usedExternalDataSources)
+                   usedExternalDataSources,
+               const boost::optional<ExplainOptions::Verbosity>& verbosity)
         : _aggReqDerivatives(new AggregateRequestDerivatives(request, liteParsedPipeline, cmdObj)),
           _opCtx(opCtx),
           _executionNss(request.getNamespace()),
           _privileges(privileges),
+          _verbosity(verbosity),
           _originalAggReqDerivatives(request, liteParsedPipeline, cmdObj) {
         // Create virtual collections and drop them when aggregate command is done.
         // If a cursor is registered, the ExternalDataSourceScopeGuard will be stored in the cursor;
@@ -146,6 +148,10 @@ public:
         return _externalDataSourceGuard;
     }
 
+    boost::optional<ExplainOptions::Verbosity> getVerbosity() const {
+        return _verbosity;
+    }
+
     /**
      * Returns all the namespaces that the aggregation involves.
      */
@@ -169,7 +175,7 @@ public:
         }
     }
 
-    StatusWith<StringMap<ResolvedNamespace>> resolveInvolvedNamespaces() const;
+    StatusWith<ResolvedNamespaceMap> resolveInvolvedNamespaces() const;
 
     /**
      * Setter functions
@@ -189,7 +195,7 @@ public:
      *
      * TODO SERVER-93539 remove this function and construct a ResolvedViewAggExState instead.
      */
-    void setView(std::unique_ptr<AggCatalogState>& catalog, const ViewDefinition* view);
+    void setView(std::unique_ptr<AggCatalogState>& catalog, const ViewDefinition& view);
 
     /**
      * Only to be used after this class has been set as a resolved view.
@@ -209,6 +215,21 @@ public:
      */
     bool hasChangeStream() const {
         return _aggReqDerivatives->liteParsedPipeline.hasChangeStream();
+    }
+
+    /**
+     * True iff aggregation represents a $rankFusion pipeline.
+     *
+     * If the $rankFusion request came from the router, that will get annotated on the request from
+     * the router (which is necessary to distinguish it as $rankFusion since the pipeline dispatched
+     * will be the desugared representation). If the $rankFusion request came straight from the
+     * user, we'll identify via the lite-parsed pipeline.
+     *
+     * TODO SERVER-101661 Remove once $rankFusion works on views.
+     */
+    bool isRankFusionStage() const {
+        return _aggReqDerivatives->request.getIsRankFusion() ||
+            _aggReqDerivatives->liteParsedPipeline.startsWithRankFusionStage();
     }
 
     /**
@@ -323,6 +344,10 @@ private:
 
     std::shared_ptr<ExternalDataSourceScopeGuard> _externalDataSourceGuard;
 
+    // Has a value if the aggregation has explain: true, to be used in
+    // AggCatalogState::createExpressionContext to populate verbosity on the expression context.
+    boost::optional<ExplainOptions::Verbosity> _verbosity;
+
     /* The following member variables are added to support views */
 
     // An 'original' copy of the request derivatives struct is kept for the case where the
@@ -380,17 +405,10 @@ public:
     virtual bool lockAcquired() const = 0;
 
     /**
-     * Return the primary collection for this pipeline. This will fail an invariant if called for a
-     * collectionless pipeline.
+     * Return the main collection or view for this pipeline. This will fail an invariant if called
+     * for a collectionless pipeline.
      */
-    virtual const CollectionPtr& getPrimaryCollection() const = 0;
-
-
-    /**
-     * Return the view on primary namespace for this pipeline. This will fail an invariant if
-     * called for a collectionless pipeline.
-     */
-    virtual const ViewDefinition* getPrimaryView() const = 0;
+    virtual const CollectionOrViewAcquisition& getMainCollectionOrView() const = 0;
 
     /**
      * Collectionless pipelines may need an 'AutoStatsTracker' to track stats. This method will
@@ -417,14 +435,20 @@ public:
         const NamespaceString& nss,
         boost::optional<BSONObj> timeSeriesCollator) const = 0;
     /**
-     * Get the UUID, if any, for the primary collection of the pipeline.
+     * Get the UUID, if any, for the main collection of the pipeline.
      */
     virtual boost::optional<UUID> getUUID() const = 0;
 
     /**
-     * Free any catalog locks acquired by the constructor.
+     * Free any catalog resources acquired by the constructor.
      */
-    virtual void relinquishLocks() = 0;
+    virtual void relinquishResources() = 0;
+
+    /**
+     * Stash any catalog resources acquired by the constructor.
+     * 'transactionResourcesStasher' must not be nullptr.
+     */
+    virtual void stashResources(TransactionResourcesStasher* transactionResourcesStasher) = 0;
 
     query_shape::CollectionType determineCollectionType() const;
 
@@ -441,10 +465,10 @@ protected:
     explicit AggCatalogState(const AggExState& aggExState) : _aggExState{aggExState} {}
 
     /**
-     * Return the primary collection type for this pipeline. This will fail an invariant if called
-     * for a collectionless pipeline.
+     * Return the main collection type for this pipeline. This will fail an invariant if called for
+     * a collectionless pipeline.
      */
-    virtual query_shape::CollectionType getPrimaryCollectionType() const = 0;
+    virtual query_shape::CollectionType getMainCollectionType() const = 0;
 
     // Reference to the aggregation execution state, which is owned by the caller of
     // _runAggregate(). Since AggCatalogState is always allocated from within _runAggregate(),

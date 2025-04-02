@@ -30,12 +30,14 @@
 
 #include "mongo/transport/asio/asio_session_impl.h"
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/config.h"
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/connection_health_metrics_parameter_gen.h"
 #include "mongo/db/server_feature_flags_gen.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/logv2/log.h"
+#include "mongo/transport/asio/asio_session_manager.h"
 #include "mongo/transport/asio/asio_utils.h"
 #include "mongo/transport/proxy_protocol_header_parser.h"
 #include "mongo/transport/session_util.h"
@@ -52,7 +54,8 @@ MONGO_FAIL_POINT_DEFINE(asioTransportLayerShortOpportunisticReadWrite);
 MONGO_FAIL_POINT_DEFINE(asioTransportLayerSessionPauseBeforeSetSocketOption);
 MONGO_FAIL_POINT_DEFINE(asioTransportLayerBlockBeforeOpportunisticRead);
 MONGO_FAIL_POINT_DEFINE(asioTransportLayerBlockBeforeAddSession);
-MONGO_FAIL_POINT_DEFINE(clientIsFromLoadBalancer);
+MONGO_FAIL_POINT_DEFINE(clientIsConnectedToLoadBalancerPort);
+MONGO_FAIL_POINT_DEFINE(clientIsLoadBalancedPeer);
 
 namespace {
 
@@ -190,7 +193,7 @@ CommonAsioSession::CommonAsioSession(
     try {
         _local = HostAndPort(_localAddr.toString(true));
         if (tl->loadBalancerPort()) {
-            _isFromLoadBalancer = _local.port() == *tl->loadBalancerPort();
+            _isConnectedToLoadBalancerPort = _local.port() == *tl->loadBalancerPort();
         }
     } catch (...) {
         LOGV2_DEBUG(9079002,
@@ -225,60 +228,84 @@ CommonAsioSession::CommonAsioSession(
 #endif
 }
 
-bool CommonAsioSession::isFromLoadBalancer() const {
-    return MONGO_unlikely(clientIsFromLoadBalancer.shouldFail()) || _isFromLoadBalancer;
+bool CommonAsioSession::isConnectedToLoadBalancerPort() const {
+    return MONGO_unlikely(clientIsConnectedToLoadBalancerPort.shouldFail()) ||
+        _isConnectedToLoadBalancerPort;
+}
+
+bool CommonAsioSession::isLoadBalancerPeer() const {
+    return MONGO_unlikely(clientIsLoadBalancedPeer.shouldFail()) || _isLoadBalancerPeer;
+}
+
+void CommonAsioSession::setisLoadBalancerPeer(bool helloHasLoadBalancedOption) {
+    tassert(ErrorCodes::BadValue,
+            "Client claimed to be from a loadBalancer, but is not on load balancer port",
+            isConnectedToLoadBalancerPort() || !helloHasLoadBalancedOption);
+
+    if (_isLoadBalancerPeer == helloHasLoadBalancedOption) {
+        return;
+    }
+    _isLoadBalancerPeer = helloHasLoadBalancedOption;
+
+    auto sessionManager = getSessionManager();
+    if (auto asioSessionManager = checked_pointer_cast<AsioSessionManager>(sessionManager)) {
+        if (helloHasLoadBalancedOption) {
+            asioSessionManager->incrementLBConnections();
+        } else {
+            asioSessionManager->decrementLBConnections();
+        }
+    }
 }
 
 void CommonAsioSession::end() {
     std::error_code ec;
     {
         stdx::lock_guard lg(_sslSocketLock);
-        getSocket().shutdown(GenericSocket::shutdown_both, ec);
+        (void)getSocket().shutdown(GenericSocket::shutdown_both, ec);
     }
     if ((ec) && (ec != asio::error::not_connected)) {
         LOGV2_ERROR(23841, "Error shutting down socket", "error"_attr = ec.message());
     }
 }
 
-StatusWith<Message> CommonAsioSession::sourceMessage() noexcept try {
+StatusWith<Message> CommonAsioSession::sourceMessage() try {
     ensureSync();
     return sourceMessageImpl().getNoThrow();
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
-Future<Message> CommonAsioSession::asyncSourceMessage(const BatonHandle& baton) noexcept try {
+Future<Message> CommonAsioSession::asyncSourceMessage(const BatonHandle& baton) try {
     ensureAsync();
     return sourceMessageImpl(baton);
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
-Status CommonAsioSession::waitForData() noexcept try {
+Status CommonAsioSession::waitForData() try {
     ensureSync();
     asio::error_code ec;
-    getSocket().wait(asio::ip::tcp::socket::wait_read, ec);
+    (void)getSocket().wait(asio::ip::tcp::socket::wait_read, ec);
     return errorCodeToStatus(ec, "waitForData");
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
-Future<void> CommonAsioSession::asyncWaitForData() noexcept try {
+Future<void> CommonAsioSession::asyncWaitForData() try {
     ensureAsync();
     return getSocket().async_wait(asio::ip::tcp::socket::wait_read, UseFuture{});
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
-Status CommonAsioSession::sinkMessage(Message message) noexcept try {
+Status CommonAsioSession::sinkMessage(Message message) try {
     ensureSync();
     return sinkMessageImpl(std::move(message)).getNoThrow();
 } catch (const DBException& ex) {
     return ex.toStatus();
 }
 
-Future<void> CommonAsioSession::asyncSinkMessage(Message message, const BatonHandle& baton) noexcept
-    try {
+Future<void> CommonAsioSession::asyncSinkMessage(Message message, const BatonHandle& baton) try {
     ensureAsync();
     return sinkMessageImpl(std::move(message), baton);
 } catch (const DBException& ex) {
@@ -382,7 +409,7 @@ Future<void> CommonAsioSession::handshakeSSLForEgress(const HostAndPort& target,
     auto doHandshake = [&] {
         if (_blockingMode == sync) {
             std::error_code ec;
-            _sslSocket->handshake(asio::ssl::stream_base::client, ec);
+            (void)_sslSocket->handshake(asio::ssl::stream_base::client, ec);
             return futurize(ec);
         } else {
             return _sslSocket->async_handshake(asio::ssl::stream_base::client, UseFuture{});
@@ -406,7 +433,7 @@ void AsyncAsioSession::ensureSync() {
 void SyncAsioSession::ensureSync() {
     asio::error_code ec;
     if (_blockingMode != sync) {
-        getSocket().non_blocking(false, ec);
+        (void)getSocket().non_blocking(false, ec);
         fassert(40490, errorCodeToStatus(ec, "ensureSync non_blocking"));
         _blockingMode = sync;
     }
@@ -442,7 +469,7 @@ void AsyncAsioSession::ensureAsync() {
     invariant(!_configuredTimeout);
 
     asio::error_code ec;
-    getSocket().non_blocking(true, ec);
+    (void)getSocket().non_blocking(true, ec);
     fassert(50706, errorCodeToStatus(ec, "ensureAsync non_blocking"));
     _blockingMode = async;
 }
@@ -479,13 +506,15 @@ ExecutorFuture<void> CommonAsioSession::parseProxyProtocolHeader(const ReactorHa
             // There may not be any endpoints if this connection is directly
             // from the proxy itself or the information isn't available.
             if (results->endpoints) {
-                const auto& sourceEndpointAddr = results->endpoints->sourceAddress;
-                const auto& dstEndpointAddr = results->endpoints->destinationAddress;
+                _proxiedSrcRemoteAddr = results->endpoints->sourceAddress;
                 _proxiedSrcEndpoint =
-                    HostAndPort(sourceEndpointAddr.getAddr(), sourceEndpointAddr.getPort());
+                    HostAndPort(_proxiedSrcRemoteAddr->getAddr(), _proxiedSrcRemoteAddr->getPort());
+
+                const auto& dstEndpointAddr = results->endpoints->destinationAddress;
                 _proxiedDstEndpoint =
                     HostAndPort(dstEndpointAddr.getAddr(), dstEndpointAddr.getPort());
             } else {
+                _proxiedSrcRemoteAddr = {};
                 _proxiedSrcEndpoint = {};
                 _proxiedDstEndpoint = {};
             }
@@ -515,10 +544,6 @@ Future<Message> CommonAsioSession::sourceMessageImpl(const BatonHandle& baton) {
     _asyncOpState.start();
     return read(asio::buffer(ptr, kHeaderSize), baton)
         .then([headerBuffer = std::move(headerBuffer), this, baton]() mutable {
-            if (checkForHTTPRequest(asio::buffer(headerBuffer.get(), kHeaderSize))) {
-                return sendHTTPResponse(baton);
-            }
-
             const auto msgLen = size_t(MSGHEADER::View(headerBuffer.get()).getMessageLength());
             if (msgLen < kHeaderSize || msgLen > MaxMessageSizeBytes) {
                 StringBuilder sb;
@@ -748,6 +773,15 @@ Future<bool> CommonAsioSession::maybeHandshakeSSLForIngress(const MutableBufferS
     if (checkForHTTPRequest(buffer)) {
         return Future<bool>::makeReady(false);
     }
+
+    if (maybeProxyProtocolHeader(
+            StringData(asio::buffer_cast<const char*>(buffer), asio::buffer_size(buffer)))) {
+        // Protocol requirements mean that neither raw mongorpc nor TLS client hello will look like
+        // Proxy.
+        return Future<bool>::makeReady(
+            Status(ErrorCodes::OperationFailed, "ProxyProtocol message detected on mongorpc port"));
+    }
+
     // This logic was taken from the old mongo/util/net/sock.cpp.
     //
     // It lets us run both TLS and unencrypted mongo over the same port.
@@ -839,36 +873,10 @@ bool CommonAsioSession::checkForHTTPRequest(const Buffer& buffers) {
     return (bufferAsStr == "GET "_sd);
 }
 
-Future<Message> CommonAsioSession::sendHTTPResponse(const BatonHandle& baton) {
-    constexpr auto userMsg =
-        "It looks like you are trying to access MongoDB over HTTP"
-        " on the native driver port.\r\n"_sd;
-
-    static const std::string httpResp = str::stream() << "HTTP/1.0 200 OK\r\n"
-                                                         "Connection: close\r\n"
-                                                         "Content-Type: text/plain\r\n"
-                                                         "Content-Length: "
-                                                      << userMsg.size() << "\r\n\r\n"
-                                                      << userMsg;
-
-    return write(asio::buffer(httpResp.data(), httpResp.size()), baton)
-        .onError([](const Status& status) {
-            return Status(ErrorCodes::ProtocolError,
-                          str::stream()
-                              << "Client sent an HTTP request over a native MongoDB connection, "
-                                 "but there was an error sending a response: "
-                              << status.toString());
-        })
-        .then([] {
-            return StatusWith<Message>(
-                ErrorCodes::ProtocolError,
-                "Client sent an HTTP request over a native MongoDB connection");
-        });
-}
-
 bool CommonAsioSession::shouldOverrideMaxConns(
     const std::vector<std::variant<CIDR, std::string>>& exemptions) const {
-    return transport::util::shouldOverrideMaxConns(remoteAddr(), localAddr(), exemptions);
+    return transport::util::shouldOverrideMaxConns(
+        getProxiedSrcRemoteAddr(), localAddr(), exemptions);
 }
 
 }  // namespace mongo::transport

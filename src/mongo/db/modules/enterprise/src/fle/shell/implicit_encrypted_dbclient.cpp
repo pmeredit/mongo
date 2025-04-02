@@ -6,6 +6,7 @@
 #include "mongo/base/data_cursor.h"
 #include "mongo/base/data_type_validated.h"
 #include "mongo/bson/bson_depth.h"
+#include "mongo/bson/json.h"
 #include "mongo/client/dbclient_base.h"
 #include "mongo/crypto/aead_encryption.h"
 #include "mongo/crypto/fle_crypto.h"
@@ -17,6 +18,7 @@
 #include "mongo/db/commands/query_cmd/bulk_write_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/repl/read_concern_args.h"
+#include "mongo/logv2/log.h"
 #include "mongo/rpc/object_check.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/scripting/mozjs/bindata.h"
@@ -32,6 +34,9 @@
 #include "mongo/shell/kms_gen.h"
 #include "mongo/shell/shell_options.h"
 #include "mongo/util/lru_cache.h"
+#include "mongo/util/testing_proctor.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 namespace mongo {
 
@@ -57,22 +62,37 @@ class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
     class SchemaInfoContainer {
     public:
         explicit SchemaInfoContainer(std::map<NamespaceString, SchemaInfo>&& schemaMap)
-            : _schemas(std::move(schemaMap)) {}
+            : _schemas(std::move(schemaMap)) {
+            tassert(9862700, "Invalid empty schemas", !_schemas.empty());
+        }
 
         ~SchemaInfoContainer() {}
 
-        bool isFLE2() const {
-            tassert(9862700, "Invalid empty schemas", !_schemas.empty());
-            // We don't allow mixing FLE1/FLE2, so it should be sufficient to check the first
-            // schema.
-            return _schemas.begin()->second.isFLE2();
+        bool hasFLE2() const {
+            // If we have at least one FLE2 schema, then we are dealing with a FLE2 query.
+            // We may also have additional schemas that are not FLE2, but these can't be encryption
+            // schemas. This is enforced by query analysis.
+            for (const auto& nsAndSchema : _schemas) {
+                if (nsAndSchema.second.isFLE2()) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         const std::map<NamespaceString, SchemaInfo>& getSchemas() const {
             return _schemas;
         }
 
-        bool isEmpty() const {
+        BSONObj toBSONFle2Schemas() const {
+            return _toBSON(true);
+        }
+
+        BSONObj toBSONFle1Schemas() const {
+            return _toBSON(false);
+        }
+
+        bool allSchemaInfosEmpty() const {
             bool wasEmpty{true};
             for (auto&& nsAndSchemaInfo : _schemas) {
                 wasEmpty &= nsAndSchemaInfo.second.schema.isEmpty();
@@ -81,6 +101,37 @@ class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
         }
 
     private:
+        /**
+         * _toBSON is used to generate the BSON schema map of schemas of a specific type, either
+         * FLE1 or FLE2. A query may reference both FLE2 schemas and unencrypted schemas, but the
+         * query api does not support providing them in the same schema map. For this reason,
+         * callers must call either toBSONFle2Schemas or toBSONFle1Schemas based on the calling
+         * context.
+         */
+        BSONObj _toBSON(bool isFle2) const {
+            BSONObjBuilder bsonBuilder;
+            for (auto&& nsAndSchema : _schemas) {
+                const auto& schemaInfo = nsAndSchema.second;
+                // Do not include tenant id in nss in the schema as the command request has
+                // unsigned security token.
+                if (isFle2) {
+                    if (schemaInfo.isFLE2()) {
+                        bsonBuilder << nsAndSchema.first.serializeWithoutTenantPrefix_UNSAFE()
+                                    << nsAndSchema.second.schema;
+                    }
+                } else {
+                    if (!schemaInfo.isFLE2()) {
+                        bsonBuilder
+                            << nsAndSchema.first.serializeWithoutTenantPrefix_UNSAFE()
+                            << BSON(query_analysis::kJsonSchema << nsAndSchema.second.schema
+                                                                << query_analysis::kIsRemoteSchema
+                                                                << nsAndSchema.second.remote);
+                    }
+                }
+            }
+            return bsonBuilder.obj();
+        }
+
         const std::map<NamespaceString, SchemaInfo> _schemas;
     };
 
@@ -92,8 +143,7 @@ public:
         : EncryptedDBClientBase(std::move(conn), encryptionOptions, collection, cx) {}
 
 
-    SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request,
-                                      NamespaceString ns,
+    SchemaInfo getRemoteOrInputSchema(NamespaceString ns,
                                       boost::optional<auth::ValidatedTenancyScope> vts) {
         // Check for a client provided schema first
         if (_encryptionOptions.getSchemaMap()) {
@@ -153,9 +203,7 @@ public:
         return SchemaInfo{BSONObj(), Date_t::now(), true, SchemaInfo::SchemaType::none};
     }
 
-    SchemaInfo getSchema(const OpMsgRequest& request,
-                         NamespaceString ns,
-                         boost::optional<auth::ValidatedTenancyScope>& vts) {
+    SchemaInfo getSchema(NamespaceString ns, boost::optional<auth::ValidatedTenancyScope>& vts) {
         if (_schemaCache.hasKey(ns)) {
             auto schemaInfo = _schemaCache.find(ns)->second;
             auto ts_new = Date_t::now();
@@ -167,7 +215,7 @@ public:
             _schemaCache.erase(ns);
         }
 
-        auto schemaInfo = getRemoteOrInputSchema(request, ns, vts);
+        auto schemaInfo = getRemoteOrInputSchema(ns, vts);
         if (!schemaInfo.schema.isEmpty()) {
             _schemaCache.add(ns, schemaInfo);
         }
@@ -231,25 +279,9 @@ public:
             commandBuilder.appendElementsUnique(request.body);
         }
 
-        const auto& schemas = schemaInfo.getSchemas();
-        auto getSchemaMap = [&](bool isFle2) {
-            BSONObjBuilder bsonBuilder;
-            for (auto&& nsAndSchema : schemas) {
-                // Do not include tenant id in nss in the schema as the command request has
-                // unsigned security token.
-                bsonBuilder << nsAndSchema.first.serializeWithoutTenantPrefix_UNSAFE()
-                            << (isFle2 ? nsAndSchema.second.schema
-                                       : BSON(query_analysis::kJsonSchema
-                                              << nsAndSchema.second.schema
-                                              << query_analysis::kIsRemoteSchema
-                                              << nsAndSchema.second.remote));
-            }
-            return bsonBuilder.obj();
-        };
-
-        if (schemaInfo.isFLE2()) {
-            BSONObj ei =
-                EncryptionInformationHelpers::encryptionInformationSerialize(getSchemaMap(true));
+        if (schemaInfo.hasFLE2()) {
+            BSONObj ei = EncryptionInformationHelpers::encryptionInformationSerialize(
+                schemaInfo.toBSONFle2Schemas());
             if (commandName == "bulkWrite"_sd) {
                 // bulkWrite has different requirements here.
                 // It has an array<NamespaceInfoEntry> field `nsInfo` with
@@ -262,16 +294,29 @@ public:
             } else {
                 commandBuilder.append(query_analysis::kEncryptionInformation, ei);
             }
+
+            // In an aggregate command, it's possible that we may have a $lookup that references a
+            // FLE2 schema and additional unencrypted FLE1 format schemas.
+            if (commandName == "aggregate"_sd) {
+                auto unencryptedCsfleSchemas = schemaInfo.toBSONFle1Schemas();
+                if (!unencryptedCsfleSchemas.isEmpty()) {
+                    commandBuilder.append(query_analysis::kCsfleEncryptionSchemas,
+                                          unencryptedCsfleSchemas);
+                }
+            }
+
         } else {
             uassert(ErrorCodes::BadValue,
                     "The bulkWrite command only supports Queryable Encryption",
                     commandName != "bulkWrite"_sd);
-            if (schemas.size() == 1) {
-                commandBuilder.append(query_analysis::kJsonSchema, schemas.begin()->second.schema);
+            if (schemaInfo.getSchemas().size() == 1) {
+                commandBuilder.append(query_analysis::kJsonSchema,
+                                      schemaInfo.getSchemas().begin()->second.schema);
                 commandBuilder.append(query_analysis::kIsRemoteSchema,
-                                      schemas.begin()->second.remote);
+                                      schemaInfo.getSchemas().begin()->second.remote);
             } else {
-                commandBuilder.append(query_analysis::kCsfleEncryptionSchemas, getSchemaMap(false));
+                commandBuilder.append(query_analysis::kCsfleEncryptionSchemas,
+                                      schemaInfo.toBSONFle1Schemas());
             }
         }
 
@@ -392,6 +437,44 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    void checkAllTextSearchSchemasHaveStrEncodeVersion(const BSONObj& cmd) {
+        auto commandName = cmd.firstElementFieldNameStringData();
+        if (commandName == "create"_sd) {
+            if (cmd.hasField("encryptedFields")) {
+                auto efc = EncryptedFieldConfig::parse(IDLParserContext("encryptedFields"),
+                                                       cmd["encryptedFields"].Obj());
+                bool hasTextSearchQueryType = hasQueryTypeMatching(efc, [](QueryTypeEnum qt) {
+                    return qt == QueryTypeEnum::SubstringPreview ||
+                        qt == QueryTypeEnum::SuffixPreview || qt == QueryTypeEnum::PrefixPreview;
+                });
+                tassert(9794101,
+                        "Must have strEncodeVersion in encryptedFields when there is at least one "
+                        "text search query type",
+                        !hasTextSearchQueryType ||
+                            (efc.getStrEncodeVersion() && *efc.getStrEncodeVersion() > 0));
+            }
+        }
+        if (cmd.hasField(query_analysis::kEncryptionInformation)) {
+            auto ei = EncryptionInformation::parse(
+                IDLParserContext(query_analysis::kEncryptionInformation),
+                cmd[query_analysis::kEncryptionInformation].Obj());
+            for (const auto& elem : ei.getSchema()) {
+                auto efc = EncryptedFieldConfig::parse(IDLParserContext("schema"), elem.Obj());
+                bool hasTextSearchQueryType = hasQueryTypeMatching(efc, [](QueryTypeEnum qt) {
+                    return qt == QueryTypeEnum::SubstringPreview ||
+                        qt == QueryTypeEnum::SuffixPreview || qt == QueryTypeEnum::PrefixPreview;
+                });
+
+                tassert(
+                    9794102,
+                    "Must have strEncodeVersion in encryptionInformation for EFCs with at least "
+                    "one text search query type",
+                    !hasTextSearchQueryType ||
+                        (efc.getStrEncodeVersion() && *efc.getStrEncodeVersion() > 0));
+            }
+        }
+    }
+
     using EncryptedDBClientBase::handleEncryptionRequest;
     RunCommandReturn handleEncryptionRequest(RunCommandParams params) final {
         auto& request = params.request;
@@ -475,16 +558,16 @@ public:
                 referencedNs.emplace(ns);
                 findPipelineReferencedNamespaces(ns.dbName(), request.body, referencedNs);
                 for (auto&& usedNs : referencedNs) {
-                    schemaMap.emplace(std::piecewise_construct,
-                                      std::forward_as_tuple(usedNs),
-                                      std::forward_as_tuple(getSchema(
-                                          request, usedNs, request.validatedTenancyScope)));
+                    schemaMap.emplace(
+                        std::piecewise_construct,
+                        std::forward_as_tuple(usedNs),
+                        std::forward_as_tuple(getSchema(usedNs, request.validatedTenancyScope)));
                 }
             } else {
                 schemaMap.emplace(
                     std::piecewise_construct,
                     std::forward_as_tuple(ns),
-                    std::forward_as_tuple(getSchema(request, ns, request.validatedTenancyScope)));
+                    std::forward_as_tuple(getSchema(ns, request.validatedTenancyScope)));
             }
             return schemaMap;
         }());
@@ -497,10 +580,10 @@ public:
         }
 
         // Check the schema.
-        if (schemaInfoContainer.isEmpty()) {
+        if (schemaInfoContainer.allSchemaInfosEmpty()) {
             // Always attempt to decrypt - could have encrypted data
             auto result = doRunCommand(std::move(params));
-            if (schemaInfoContainer.isFLE2()) {
+            if (schemaInfoContainer.hasFLE2()) {
                 return processResponseFLE2(std::move(result));
             }
             return processResponseFLE1(std::move(result), dbName);
@@ -519,7 +602,14 @@ public:
             return doRunCommand(params);
         }
 
-        BSONObj finalRequestObj = preprocessRequest(schemaInfo, dbName);
+        BSONObj finalRequestObj =
+            preprocessRequest(request.body, schemaInfo, dbName, schemaInfoContainer);
+
+        if (TestingProctor::instance().isEnabled() && schemaInfoContainer.hasFLE2()) {
+            // We expect libmongocrypt to append the current strEncodeVersion for any schemas which
+            // don't have it.
+            checkAllTextSearchSchemasHaveStrEncodeVersion(finalRequestObj);
+        }
 
         OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
         finalReq.validatedTenancyScope = vtsOrig;
@@ -527,20 +617,31 @@ public:
 
         auto result = doRunCommand(newParam);
 
-        if (schemaInfoContainer.isFLE2()) {
+        if (schemaInfoContainer.hasFLE2()) {
             return processResponseFLE2(std::move(result));
         }
         return processResponseFLE1(std::move(result), dbName);
     }
 
-    BSONObj preprocessRequest(const BSONObj& schemaInfo, const DatabaseName& dbName) {
+    BSONObj preprocessRequest(const BSONObj& originalCmd,
+                              const BSONObj& schemaInfo,
+                              const DatabaseName& dbName,
+                              const SchemaInfoContainer& schemas) {
+        auto commandName = originalCmd.firstElementFieldNameStringData();
+        // TODO MONGOCRYPT-723 Pass aggregates through the new transformPlaceholders once we support
+        // multi-schema $lookup
+        if (commandName != "aggregate"_sd && schemas.hasFLE2()) {
+            return FLEClientCrypto::transformPlaceholders(originalCmd,
+                                                          schemaInfo,
+                                                          schemas.toBSONFle2Schemas(),
+                                                          this,
+                                                          dbName.toString_forTest());
+        }
         BSONElement field = schemaInfo.getField("result"_sd);
         uassert(31060,
                 "Query preprocessing of command yielded error. Result object not found.",
                 field.isABSONObj());
-
         auto obj = encryptDecryptCommand(field.Obj(), true, dbName);
-
         return FLEClientCrypto::transformPlaceholders(obj, this);
     }
 

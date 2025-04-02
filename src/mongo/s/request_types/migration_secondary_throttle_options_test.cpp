@@ -38,9 +38,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/write_concern_options.h"
 #include "mongo/s/request_types/migration_secondary_throttle_options.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/duration.h"
 
 namespace mongo {
@@ -185,8 +183,7 @@ TEST(MigrationSecondaryThrottleOptions, IgnoreWriteConcernWhenSecondaryThrottleO
     MigrationSecondaryThrottleOptions options =
         assertGet(MigrationSecondaryThrottleOptions::createFromCommand(
             BSON("someOtherField" << 1 << "_secondaryThrottle" << false << "writeConcern"
-                                  << BSON("w"
-                                          << "majority"))));
+                                  << BSON("w" << "majority"))));
     ASSERT_EQ(MigrationSecondaryThrottleOptions::kOff, options.getSecondaryThrottle());
     ASSERT(!options.isWriteConcernSpecified());
 }
@@ -194,9 +191,7 @@ TEST(MigrationSecondaryThrottleOptions, IgnoreWriteConcernWhenSecondaryThrottleO
 TEST(MigrationSecondaryThrottleOptions, IgnoreWriteConcernWhenSecondaryThrottleAbsent) {
     MigrationSecondaryThrottleOptions options =
         assertGet(MigrationSecondaryThrottleOptions::createFromCommand(
-            BSON("someOtherField" << 1 << "writeConcern"
-                                  << BSON("w"
-                                          << "majority"))));
+            BSON("someOtherField" << 1 << "writeConcern" << BSON("w" << "majority"))));
     ASSERT_EQ(MigrationSecondaryThrottleOptions::kDefault, options.getSecondaryThrottle());
     ASSERT(!options.isWriteConcernSpecified());
 }

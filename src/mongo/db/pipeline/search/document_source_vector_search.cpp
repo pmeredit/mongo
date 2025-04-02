@@ -40,6 +40,7 @@
 #include "mongo/db/query/search/mongot_cursor.h"
 #include "mongo/db/query/search/search_task_executors.h"
 #include "mongo/db/s/operation_sharding_state.h"
+#include "mongo/db/views/resolved_view.h"
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
@@ -57,10 +58,12 @@ ALLOCATE_DOCUMENT_SOURCE_ID(vectorSearch, DocumentSourceVectorSearch::id)
 DocumentSourceVectorSearch::DocumentSourceVectorSearch(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     std::shared_ptr<executor::TaskExecutor> taskExecutor,
-    BSONObj originalSpec)
+    BSONObj originalSpec,
+    boost::optional<MongotQueryViewInfo> view)
     : DocumentSource(kStageName, expCtx),
       _taskExecutor(taskExecutor),
-      _originalSpec(originalSpec.getOwned()) {
+      _originalSpec(originalSpec.getOwned()),
+      _view(view) {
     if (auto limitElem = _originalSpec.getField(kLimitFieldName)) {
         uassert(
             8575100, "Expected limit field to be a number in $vectorSearch", limitElem.isNumber());
@@ -94,7 +97,7 @@ void DocumentSourceVectorSearch::initializeOpDebugVectorSearchMetrics() {
 }
 
 Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) const {
-    if (opts.literalPolicy != LiteralSerializationPolicy::kUnchanged) {
+    if (!opts.isKeepingLiteralsUnchanged()) {
         BSONObjBuilder builder;
 
         // For the query shape we only care about the filter expression and 'index' field. We treat
@@ -116,7 +119,16 @@ Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) co
     // We don't want router to make a remote call to mongot even though it can generate explain
     // output.
     if (!opts.verbosity || pExpCtx->getInRouter()) {
-        return Value(Document{{kStageName, _originalSpec}});
+        MutableDocument spec{Document(_originalSpec)};
+        // If the request is on a view, include the view information when mongos is serializing the
+        // query to the shards, but do not include in explain output for this stage as the view
+        // information will be present in $_internalSearchIdLookup and thus would be redundant.
+        if (!opts.verbosity && pExpCtx->getInRouter()) {
+            if (_view) {
+                spec["view"] = Value(_view->toBSON());
+            }
+        }
+        return Value(Document{{kStageName, spec.freezeToValue()}});
     }
 
     // If the query is an explain that executed the query, we obtain the explain object from the
@@ -127,19 +139,24 @@ Value DocumentSourceVectorSearch::serialize(const SerializationOptions& opts) co
         explainResponse = _cursor->getCursorExplain();
     }
 
+    auto explainSpec = _originalSpec;
     BSONObj explainInfo = explainResponse.value_or_eval([&] {
+        // If the request was on a view over a sharded collection, _originalSpec will include the
+        // view field. Remove it from explain output as it will be included in $_internalIdLookup
+        // and thus redundant.
+        if (explainSpec.hasField("view")) {
+            explainSpec = explainSpec.removeField("view");
+        }
         return search_helpers::getVectorSearchExplainResponse(
-            pExpCtx, _originalSpec, _taskExecutor.get());
+            pExpCtx, explainSpec, _taskExecutor.get());
     });
 
-    auto explainObj =
-        _originalSpec.addFields(BSON("explain" << opts.serializeLiteral(explainInfo)));
+    auto explainObj = explainSpec.addFields(BSON("explain" << opts.serializeLiteral(explainInfo)));
 
     // Redact queryVector (embeddings field) if it exists to avoid including all
     // embeddings values and keep explainObj data concise.
-    if (opts.verbosity && explainObj.hasField("queryVector")) {
-        explainObj = explainObj.addFields(BSON("queryVector"
-                                               << "redacted"));
+    if (opts.isSerializingForExplain() && explainObj.hasField("queryVector")) {
+        explainObj = explainObj.addFields(BSON("queryVector" << "redacted"));
     }
     return Value(Document{{kStageName, explainObj}});
 }
@@ -201,8 +218,7 @@ DocumentSource::GetNextResult DocumentSourceVectorSearch::doGetNext() {
     }
 
     if (pExpCtx->getExplain() &&
-        !feature_flags::gFeatureFlagSearchExplainExecutionStats.isEnabled(
-            serverGlobalParams.featureCompatibility.acquireFCVSnapshot())) {
+        !feature_flags::gFeatureFlagSearchExplainExecutionStats.isEnabled()) {
         return DocumentSource::GetNextResult::makeEOF();
     }
 
@@ -224,10 +240,14 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromB
                           << " value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
 
+    auto spec = elem.embeddedObject();
+
+    auto view = search_helpers::getViewFromBSONObj(expCtx, spec);
+
     auto serviceContext = expCtx->getOperationContext()->getServiceContext();
     std::list<intrusive_ptr<DocumentSource>> desugaredPipeline = {
         make_intrusive<DocumentSourceVectorSearch>(
-            expCtx, executor::getMongotTaskExecutor(serviceContext), elem.embeddedObject())};
+            expCtx, executor::getMongotTaskExecutor(serviceContext), elem.embeddedObject(), view)};
 
     // TODO: SERVER-85426 Remove this block of code (it's the original location id lookup
     // was added to $vectorSearch, but that needed to be changed to support sharded
@@ -243,9 +263,13 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromB
              !expCtx->getMongoProcessInterface()->inShardedEnvironment(
                  expCtx->getOperationContext())) ||
             OperationShardingState::isComingFromRouter(expCtx->getOperationContext())) {
-            desugaredPipeline.insert(std::next(desugaredPipeline.begin()),
-                                     make_intrusive<DocumentSourceInternalSearchIdLookUp>(
-                                         expCtx, 0, buildExecShardFilterPolicy(shardFilterer)));
+            desugaredPipeline.insert(
+                std::next(desugaredPipeline.begin()),
+                make_intrusive<DocumentSourceInternalSearchIdLookUp>(
+                    expCtx,
+                    0,
+                    buildExecShardFilterPolicy(shardFilterer),
+                    view ? boost::make_optional(view->getEffectivePipeline()) : boost::none));
             if (shardFilterer)
                 desugaredPipeline.push_back(std::move(shardFilterer));
         }
@@ -256,15 +280,25 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::createFromB
 
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceVectorSearch::desugar() {
+    if (_view) {
+        // This function will throw if the view violates validation rules for supporting
+        // mongot-indexed views.
+        search_helpers::validateViewPipeline(*_view);
+    }
+
     auto executor =
         executor::getMongotTaskExecutor(pExpCtx->getOperationContext()->getServiceContext());
 
     std::list<intrusive_ptr<DocumentSource>> desugaredPipeline = {
-        make_intrusive<DocumentSourceVectorSearch>(pExpCtx, executor, _originalSpec.getOwned())};
+        make_intrusive<DocumentSourceVectorSearch>(
+            pExpCtx, executor, _originalSpec.getOwned(), _view)};
 
     auto shardFilterer = DocumentSourceInternalShardFilter::buildIfNecessary(pExpCtx);
     auto idLookupStage = make_intrusive<DocumentSourceInternalSearchIdLookUp>(
-        pExpCtx, _limit.value_or(0), buildExecShardFilterPolicy(shardFilterer));
+        pExpCtx,
+        _limit.value_or(0),
+        buildExecShardFilterPolicy(shardFilterer),
+        _view ? boost::make_optional(_view->getEffectivePipeline()) : boost::none);
     desugaredPipeline.insert(std::next(desugaredPipeline.begin()), idLookupStage);
     if (shardFilterer)
         desugaredPipeline.push_back(std::move(shardFilterer));

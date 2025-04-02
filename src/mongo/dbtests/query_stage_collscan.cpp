@@ -93,10 +93,7 @@
 #include "mongo/db/transaction_resources.h"
 #include "mongo/dbtests/dbtests.h"  // IWYU pragma: keep
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/intrusive_counter.h"
@@ -136,7 +133,10 @@ public:
     }
 
     int countResults(CollectionScanParams::Direction direction, const BSONObj& filterObj) {
-        AutoGetCollectionForReadCommand collection(&_opCtx, kNss);
+        const auto collection = acquireCollectionMaybeLockFree(
+            &_opCtx,
+            CollectionAcquisitionRequest::fromOpCtx(
+                &_opCtx, kNss, AcquisitionPrerequisites::OperationType::kRead));
 
         // Configure the scan.
         CollectionScanParams params;
@@ -152,13 +152,13 @@ public:
         // Make a scan and have the runner own it.
         std::unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
         std::unique_ptr<PlanStage> ps = std::make_unique<CollectionScan>(
-            _expCtx.get(), &collection.getCollection(), params, ws.get(), filterExpr.get());
+            _expCtx.get(), collection, params, ws.get(), filterExpr.get());
 
         auto statusWithPlanExecutor =
             plan_executor_factory::make(_expCtx,
                                         std::move(ws),
                                         std::move(ps),
-                                        &collection.getCollection(),
+                                        collection,
                                         PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY,
                                         QueryPlannerParams::DEFAULT);
         ASSERT_OK(statusWithPlanExecutor.getStatus());
@@ -174,7 +174,7 @@ public:
         return count;
     }
 
-    void getRecordIds(const CollectionPtr& collection,
+    void getRecordIds(const CollectionAcquisition& collection,
                       CollectionScanParams::Direction direction,
                       std::vector<RecordId>* out) {
         WorkingSet ws;
@@ -184,7 +184,7 @@ public:
         params.tailable = false;
 
         std::unique_ptr<CollectionScan> scan(
-            new CollectionScan(_expCtx.get(), &collection, params, &ws, nullptr));
+            new CollectionScan(_expCtx.get(), collection, params, &ws, nullptr));
         while (!scan->isEOF()) {
             WorkingSetID id = WorkingSet::INVALID_ID;
             PlanStage::StageState state = scan->work(&id);
@@ -267,10 +267,12 @@ public:
                               RecordId minRecord,
                               RecordId maxRecord,
                               int expectedNumMatches) {
-        AutoGetCollectionForRead autoColl(&_opCtx, ns);
+        const auto coll = acquireCollectionMaybeLockFree(
+            &_opCtx,
+            CollectionAcquisitionRequest::fromOpCtx(
+                &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-        const CollectionPtr& coll = autoColl.getCollection();
-        ASSERT(coll->isClustered());
+        ASSERT(coll.getCollectionPtr()->isClustered());
 
         // Configure the scan.
         CollectionScanParams params;
@@ -280,7 +282,7 @@ public:
         params.maxRecord = RecordIdBound(maxRecord);
 
         WorkingSet ws;
-        auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, nullptr);
+        auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, nullptr);
 
         int count = 0;
         while (!scan->isEOF()) {
@@ -311,11 +313,12 @@ public:
         CollectionScanParams::ScanBoundInclusion boundInclusion,
         const std::vector<BSONObj>& expectedResults,
         const MatchExpression* filter = nullptr) {
+        const auto coll = acquireCollectionMaybeLockFree(
+            &_opCtx,
+            CollectionAcquisitionRequest::fromOpCtx(
+                &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-        AutoGetCollectionForRead autoColl(&_opCtx, ns);
-
-        const CollectionPtr& coll = autoColl.getCollection();
-        ASSERT(coll->isClustered());
+        ASSERT(coll.getCollectionPtr()->isClustered());
 
         CollectionScanParams params;
         params.tailable = false;
@@ -325,7 +328,7 @@ public:
         params.boundInclusion = boundInclusion;
 
         WorkingSet ws;
-        auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, filter);
+        auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, filter);
 
         int idx = 0;
         while (!scan->isEOF()) {
@@ -392,9 +395,11 @@ TEST_F(QueryStageCollectionScanTest,
         insertDocument(ns, BSON("_id" << i << "foo" << i));
     }
 
-    AutoGetCollectionForRead autoColl(&_opCtx, ns);
-    const CollectionPtr& coll = autoColl.getCollection();
-    ASSERT(coll->isClustered());
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
+    ASSERT(coll.getCollectionPtr()->isClustered());
 
     // Configure the threshold and the expected number of scanned documents.
     const int threshold = numObj() / 2;
@@ -405,7 +410,7 @@ TEST_F(QueryStageCollectionScanTest,
     params.shouldReturnEofOnFilterMismatch = true;
     WorkingSet ws;
     LTEMatchExpression filter{"foo"_sd, Value(threshold)};
-    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, &filter);
+    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, &filter);
 
     // Scan all matching documents.
     WorkingSetID id = WorkingSet::INVALID_ID;
@@ -418,7 +423,10 @@ TEST_F(QueryStageCollectionScanTest,
 
 // Get objects in the order we inserted them.
 TEST_F(QueryStageCollectionScanTest, QueryStageCollscanObjectsInOrderForward) {
-    AutoGetCollectionForReadCommand collection(&_opCtx, kNss);
+    const auto collection = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, kNss, AcquisitionPrerequisites::OperationType::kRead));
 
     // Configure the scan.
     CollectionScanParams params;
@@ -427,14 +435,14 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanObjectsInOrderForward) {
 
     // Make a scan and have the runner own it.
     std::unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
-    std::unique_ptr<PlanStage> ps = std::make_unique<CollectionScan>(
-        _expCtx.get(), &collection.getCollection(), params, ws.get(), nullptr);
+    std::unique_ptr<PlanStage> ps =
+        std::make_unique<CollectionScan>(_expCtx.get(), collection, params, ws.get(), nullptr);
 
     auto statusWithPlanExecutor =
         plan_executor_factory::make(_expCtx,
                                     std::move(ws),
                                     std::move(ps),
-                                    &collection.getCollection(),
+                                    collection,
                                     PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY,
                                     QueryPlannerParams::DEFAULT);
     ASSERT_OK(statusWithPlanExecutor.getStatus());
@@ -453,21 +461,24 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanObjectsInOrderForward) {
 
 // Get objects in the reverse order we inserted them when we go backwards.
 TEST_F(QueryStageCollectionScanTest, QueryStageCollscanObjectsInOrderBackward) {
-    AutoGetCollectionForReadCommand collection(&_opCtx, kNss);
+    const auto collection = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, kNss, AcquisitionPrerequisites::OperationType::kRead));
 
     CollectionScanParams params;
     params.direction = CollectionScanParams::BACKWARD;
     params.tailable = false;
 
     std::unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
-    std::unique_ptr<PlanStage> ps = std::make_unique<CollectionScan>(
-        _expCtx.get(), &collection.getCollection(), params, ws.get(), nullptr);
+    std::unique_ptr<PlanStage> ps =
+        std::make_unique<CollectionScan>(_expCtx.get(), collection, params, ws.get(), nullptr);
 
     auto statusWithPlanExecutor =
         plan_executor_factory::make(_expCtx,
                                     std::move(ws),
                                     std::move(ps),
-                                    &collection.getCollection(),
+                                    collection,
                                     PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY,
                                     QueryPlannerParams::DEFAULT);
     ASSERT_OK(statusWithPlanExecutor.getStatus());
@@ -488,7 +499,8 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanObjectsInOrderBackward) {
 TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObject) {
     dbtests::WriteContextForTests ctx(&_opCtx, kNss.ns_forTest());
 
-    const CollectionPtr& coll = ctx.getCollection();
+    const auto& coll = ctx.getCollection();
+    const auto& collPtr = coll.getCollectionPtr();
 
     // Get the RecordIds that would be returned by an in-order scan.
     std::vector<RecordId> recordIds;
@@ -500,7 +512,7 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObject) {
     params.tailable = false;
 
     WorkingSet ws;
-    std::unique_ptr<PlanStage> scan(new CollectionScan(_expCtx.get(), &coll, params, &ws, nullptr));
+    std::unique_ptr<PlanStage> scan(new CollectionScan(_expCtx.get(), coll, params, &ws, nullptr));
 
     int count = 0;
     while (count < 10) {
@@ -508,7 +520,7 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObject) {
         PlanStage::StageState state = scan->work(&id);
         if (PlanStage::ADVANCED == state) {
             WorkingSetMember* member = ws.get(id);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(collPtr->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
                           member->doc.value()["foo"].getInt());
             ++count;
         }
@@ -516,8 +528,8 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObject) {
 
     // Remove recordIds[count].
     scan->saveState();
-    remove(coll->docFor(&_opCtx, recordIds[count]).value());
-    scan->restoreState(&coll);
+    remove(collPtr->docFor(&_opCtx, recordIds[count]).value());
+    scan->restoreState(RestoreContext(nullptr));
 
     // Skip over recordIds[count].
     ++count;
@@ -528,7 +540,7 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObject) {
         PlanStage::StageState state = scan->work(&id);
         if (PlanStage::ADVANCED == state) {
             WorkingSetMember* member = ws.get(id);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(collPtr->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
                           member->doc.value()["foo"].getInt());
             ++count;
         }
@@ -541,7 +553,8 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObject) {
 // object we would have gotten after that.  But, do it in reverse!
 TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObjectBackward) {
     dbtests::WriteContextForTests ctx(&_opCtx, kNss.ns_forTest());
-    const CollectionPtr& coll = ctx.getCollection();
+    const auto& coll = ctx.getCollection();
+    const auto& collPtr = coll.getCollectionPtr();
 
     // Get the RecordIds that would be returned by an in-order scan.
     std::vector<RecordId> recordIds;
@@ -553,7 +566,7 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObjectBackw
     params.tailable = false;
 
     WorkingSet ws;
-    std::unique_ptr<PlanStage> scan(new CollectionScan(_expCtx.get(), &coll, params, &ws, nullptr));
+    std::unique_ptr<PlanStage> scan(new CollectionScan(_expCtx.get(), coll, params, &ws, nullptr));
 
     int count = 0;
     while (count < 10) {
@@ -561,7 +574,7 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObjectBackw
         PlanStage::StageState state = scan->work(&id);
         if (PlanStage::ADVANCED == state) {
             WorkingSetMember* member = ws.get(id);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(collPtr->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
                           member->doc.value()["foo"].getInt());
             ++count;
         }
@@ -569,8 +582,8 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObjectBackw
 
     // Remove recordIds[count].
     scan->saveState();
-    remove(coll->docFor(&_opCtx, recordIds[count]).value());
-    scan->restoreState(&coll);
+    remove(collPtr->docFor(&_opCtx, recordIds[count]).value());
+    scan->restoreState(RestoreContext(nullptr));
 
     // Skip over recordIds[count].
     ++count;
@@ -581,7 +594,7 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObjectBackw
         PlanStage::StageState state = scan->work(&id);
         if (PlanStage::ADVANCED == state) {
             WorkingSetMember* member = ws.get(id);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(collPtr->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
                           member->doc.value()["foo"].getInt());
             ++count;
         }
@@ -593,11 +606,14 @@ TEST_F(QueryStageCollectionScanTest, QueryStageCollscanDeleteUpcomingObjectBackw
 // Verify that successfully seeking to the resumeAfterRecordId returns PlanStage::NEED_TIME and
 // that we can complete the collection scan afterwards.
 TEST_F(QueryStageCollectionScanTest, QueryTestCollscanResumeAfterRecordIdSeekSuccess) {
-    AutoGetCollectionForReadCommand collection(&_opCtx, kNss);
+    const auto collection = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, kNss, AcquisitionPrerequisites::OperationType::kRead));
 
     // Get the RecordIds that would be returned by an in-order scan.
     std::vector<RecordId> recordIds;
-    getRecordIds(collection.getCollection(), CollectionScanParams::FORWARD, &recordIds);
+    getRecordIds(collection, CollectionScanParams::FORWARD, &recordIds);
 
     // We will resume the collection scan this many results in.
     auto offset = 10;
@@ -613,15 +629,15 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanResumeAfterRecordIdSeekSuc
 
     // Create plan stage.
     std::unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
-    std::unique_ptr<PlanStage> ps = std::make_unique<CollectionScan>(
-        _expCtx.get(), &collection.getCollection(), params, ws.get(), nullptr);
+    std::unique_ptr<PlanStage> ps =
+        std::make_unique<CollectionScan>(_expCtx.get(), collection, params, ws.get(), nullptr);
 
     // Run the rest of the scan and verify the results.
     auto statusWithPlanExecutor =
         plan_executor_factory::make(_expCtx,
                                     std::move(ws),
                                     std::move(ps),
-                                    &collection.getCollection(),
+                                    collection,
                                     PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY,
                                     QueryPlannerParams::DEFAULT);
     ASSERT_OK(statusWithPlanExecutor.getStatus());
@@ -657,7 +673,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanResumeAfterRecordIdSeekFai
     // Pick a recordId that is known to be in the collection and then delete it, so that we can
     // guarantee it does not exist.
     auto recordId = recordIds[offset - 1];
-    remove(coll->docFor(&_opCtx, recordId).value());
+    remove(coll.getCollectionPtr()->docFor(&_opCtx, recordId).value());
     params.resumeScanPoint = ResumeScanPoint{
         recordId, false /* tolerateKeyNotFound */
     };
@@ -665,7 +681,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanResumeAfterRecordIdSeekFai
     // Create plan stage.
     std::unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
     std::unique_ptr<PlanStage> ps = std::make_unique<CollectionScan>(
-        _expCtx.get(), &coll, params, ws.get(), nullptr /* filter */);
+        _expCtx.get(), coll, params, ws.get(), nullptr /* filter */);
 
     WorkingSetID id = WorkingSet::INVALID_ID;
 
@@ -673,6 +689,29 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanResumeAfterRecordIdSeekFai
     ASSERT_THROWS_CODE(ps->work(&id), DBException, ErrorCodes::KeyNotFound);
 }
 
+// Verify that using resume tokens in collscan fails with a backward natural scan.
+TEST_F(QueryStageCollectionScanTest, QueryTestCollscanResumeFailsBackwardScan) {
+    dbtests::WriteContextForTests ctx(&_opCtx, kNss.ns_forTest());
+    auto coll = ctx.getCollection();
+
+    std::vector<RecordId> recordIds;
+    getRecordIds(coll, CollectionScanParams::FORWARD, &recordIds);
+
+    CollectionScanParams params;
+    params.direction = CollectionScanParams::BACKWARD;
+    params.resumeScanPoint =
+        ResumeScanPoint{recordIds[numObj() / 2], true /* tolerateKeyNotFound */};
+
+    std::unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
+    auto constructCollectionScan = [&]() {
+        return std::make_unique<CollectionScan>(_expCtx.get(), coll, params, ws.get(), nullptr);
+    };
+
+    ASSERT_THROWS_WITH_CHECK(constructCollectionScan(), DBException, [](const DBException& ex) {
+        ASSERT_EQUALS(ex.code(), 6521003);
+        assertionCount.tripwire.subtractAndFetch(1);
+    });
+}
 
 // Verify resuming with tolerateKeyNotFound set to true can handle deleted records by skipping to
 // next valid one.
@@ -685,7 +724,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanStartAtDeletedRecord) {
 
     auto offset = numObj() / 2;
     auto recordId = recordIds[offset - 1];
-    remove(coll->docFor(&_opCtx, recordId).value());
+    remove(coll.getCollectionPtr()->docFor(&_opCtx, recordId).value());
 
     CollectionScanParams params;
     params.direction = CollectionScanParams::FORWARD;
@@ -693,13 +732,13 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanStartAtDeletedRecord) {
 
     std::unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
     std::unique_ptr<PlanStage> ps =
-        std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, ws.get(), nullptr);
+        std::make_unique<CollectionScan>(_expCtx.get(), coll, params, ws.get(), nullptr);
 
     auto statusWithPlanExecutor =
         plan_executor_factory::make(_expCtx,
                                     std::move(ws),
                                     std::move(ps),
-                                    &coll,
+                                    coll,
                                     PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY,
                                     QueryPlannerParams::DEFAULT);
 
@@ -725,10 +764,12 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanStartAtDeletedRecord) {
 TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMax) {
     auto ns = NamespaceString::createNamespaceString_forTest("a.b");
     auto collDeleter = createClusteredCollection(ns);
-    AutoGetCollectionForRead autoColl(&_opCtx, ns);
-    const CollectionPtr& coll = autoColl.getCollection();
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-    ASSERT(coll->isClustered());
+    ASSERT(coll.getCollectionPtr()->isClustered());
 
     // Get the RecordIds that would be returned by an in-order scan.
     std::vector<RecordId> recordIds;
@@ -743,7 +784,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMax) {
     params.maxRecord = RecordIdBound(recordIds[recordIds.size() - 1]);
 
     WorkingSet ws;
-    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, nullptr);
+    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, nullptr);
 
     // Expect to see all RecordIds.
     int count = 0;
@@ -755,7 +796,10 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMax) {
             ASSERT(member->hasRecordId());
             ASSERT(member->hasObj());
             ASSERT_EQ(member->recordId, recordIds[count]);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(coll.getCollectionPtr()
+                              ->docFor(&_opCtx, recordIds[count])
+                              .value()["foo"]
+                              .numberInt(),
                           member->doc.value()["foo"].getInt());
             count++;
         }
@@ -885,8 +929,10 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMaxDateExclusi
             insertDocument(ns, doc);
         }
 
-        AutoGetCollectionForRead autoColl(&_opCtx, ns);
-        const CollectionPtr& coll = autoColl.getCollection();
+        const auto coll = acquireCollectionMaybeLockFree(
+            &_opCtx,
+            CollectionAcquisitionRequest::fromOpCtx(
+                &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
         CollectionScanParams params;
         params.tailable = false;
@@ -904,7 +950,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMaxDateExclusi
 
         WorkingSet ws;
         auto scan =
-            std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, filter.get());
+            std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, filter.get());
 
         int count = 0;
         while (!scan->isEOF()) {
@@ -929,10 +975,12 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMaxDateExclusi
 TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredReverse) {
     auto ns = NamespaceString::createNamespaceString_forTest("a.b");
     auto collDeleter = createClusteredCollection(ns);
-    AutoGetCollectionForRead autoColl(&_opCtx, ns);
-    const CollectionPtr& coll = autoColl.getCollection();
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-    ASSERT(coll->isClustered());
+    ASSERT(coll.getCollectionPtr()->isClustered());
 
     // Get the RecordIds that would be returned by a backwards scan.
     std::vector<RecordId> recordIds;
@@ -949,7 +997,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredReverse) {
     params.maxRecord = RecordIdBound(recordIds[0]);
 
     WorkingSet ws;
-    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, nullptr);
+    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, nullptr);
 
     // Expect to see all RecordIds.
     int count = 0;
@@ -961,7 +1009,10 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredReverse) {
             ASSERT(member->hasRecordId());
             ASSERT(member->hasObj());
             ASSERT_EQ(member->recordId, recordIds[count]);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(coll.getCollectionPtr()
+                              ->docFor(&_opCtx, recordIds[count])
+                              .value()["foo"]
+                              .numberInt(),
                           member->doc.value()["foo"].getInt());
             count++;
         }
@@ -973,10 +1024,12 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredReverse) {
 TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMaxFullObjectIdRange) {
     auto ns = NamespaceString::createNamespaceString_forTest("a.b");
     auto collDeleter = createClusteredCollection(ns);
-    AutoGetCollectionForRead autoColl(&_opCtx, ns);
-    const CollectionPtr& coll = autoColl.getCollection();
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-    ASSERT(coll->isClustered());
+    ASSERT(coll.getCollectionPtr()->isClustered());
 
     // Get the RecordIds that would be returned by an in-order scan.
     std::vector<RecordId> recordIds;
@@ -993,7 +1046,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMaxFullObjectI
     params.maxRecord = RecordIdBound(record_id_helpers::keyForOID(OID::max()));
 
     WorkingSet ws;
-    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, nullptr);
+    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, nullptr);
 
     // Expect to see all RecordIds.
     int count = 0;
@@ -1005,7 +1058,10 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMaxFullObjectI
             ASSERT(member->hasRecordId());
             ASSERT(member->hasObj());
             ASSERT_EQ(member->recordId, recordIds[count]);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(coll.getCollectionPtr()
+                              ->docFor(&_opCtx, recordIds[count])
+                              .value()["foo"]
+                              .numberInt(),
                           member->doc.value()["foo"].getInt());
             count++;
         }
@@ -1017,10 +1073,12 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredMinMaxFullObjectI
 TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRange) {
     auto ns = NamespaceString::createNamespaceString_forTest("a.b");
     auto collDeleter = createClusteredCollection(ns);
-    AutoGetCollectionForRead autoColl(&_opCtx, ns);
-    const CollectionPtr& coll = autoColl.getCollection();
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-    ASSERT(coll->isClustered());
+    ASSERT(coll.getCollectionPtr()->isClustered());
 
     // Get the RecordIds that would be returned by an in-order scan.
     std::vector<RecordId> recordIds;
@@ -1041,7 +1099,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRange) {
     params.maxRecord = RecordIdBound(recordIds[endOffset]);
 
     WorkingSet ws;
-    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, nullptr);
+    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, nullptr);
 
     int count = 0;
     while (!scan->isEOF()) {
@@ -1053,8 +1111,9 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRange) {
             ASSERT(member->hasObj());
             int i = startOffset + count;
             ASSERT_EQ(member->recordId, recordIds[i]);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, recordIds[i]).value()["foo"].numberInt(),
-                          member->doc.value()["foo"].getInt());
+            ASSERT_EQUALS(
+                coll.getCollectionPtr()->docFor(&_opCtx, recordIds[i]).value()["foo"].numberInt(),
+                member->doc.value()["foo"].getInt());
             count++;
         }
     }
@@ -1066,10 +1125,12 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRange) {
 TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRangeExclusiveFilter) {
     auto ns = NamespaceString::createNamespaceString_forTest("a.b");
     auto collDeleter = createClusteredCollection(ns);
-    AutoGetCollectionForRead autoColl(&_opCtx, ns);
-    const CollectionPtr& coll = autoColl.getCollection();
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-    ASSERT(coll->isClustered());
+    ASSERT(coll.getCollectionPtr()->isClustered());
 
     // Get the RecordIds that would be returned by an in-order scan.
     std::vector<RecordId> recordIds;
@@ -1105,7 +1166,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRangeExclusi
     auto filter = std::move(swMatch.getValue());
 
     WorkingSet ws;
-    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, filter.get());
+    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, filter.get());
 
     // The expected range should not include the first or last records.
     std::vector<RecordId> expectedIds{recordIds.begin() + startOffset + 1,
@@ -1119,7 +1180,10 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRangeExclusi
             ASSERT(member->hasRecordId());
             ASSERT(member->hasObj());
             ASSERT_EQ(member->recordId, expectedIds[count]);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, expectedIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(coll.getCollectionPtr()
+                              ->docFor(&_opCtx, expectedIds[count])
+                              .value()["foo"]
+                              .numberInt(),
                           member->doc.value()["foo"].getInt());
             count++;
         }
@@ -1131,10 +1195,12 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRangeExclusi
 TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRangeExclusiveFilterReverse) {
     auto ns = NamespaceString::createNamespaceString_forTest("a.b");
     auto collDeleter = createClusteredCollection(ns);
-    AutoGetCollectionForRead autoColl(&_opCtx, ns);
-    const CollectionPtr& coll = autoColl.getCollection();
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, ns, AcquisitionPrerequisites::OperationType::kRead));
 
-    ASSERT(coll->isClustered());
+    ASSERT(coll.getCollectionPtr()->isClustered());
 
     // Get the RecordIds that would be returned by a reverse scan.
     std::vector<RecordId> recordIds;
@@ -1172,7 +1238,7 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRangeExclusi
     auto filter = std::move(swMatch.getValue());
 
     WorkingSet ws;
-    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, filter.get());
+    auto scan = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, filter.get());
 
     // The expected range should not include the first or last records.
     std::vector<RecordId> expectedIds{recordIds.begin() + startOffset + 1,
@@ -1186,7 +1252,10 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanClusteredInnerRangeExclusi
             ASSERT(member->hasRecordId());
             ASSERT(member->hasObj());
             ASSERT_EQ(member->recordId, expectedIds[count]);
-            ASSERT_EQUALS(coll->docFor(&_opCtx, expectedIds[count]).value()["foo"].numberInt(),
+            ASSERT_EQUALS(coll.getCollectionPtr()
+                              ->docFor(&_opCtx, expectedIds[count])
+                              .value()["foo"]
+                              .numberInt(),
                           member->doc.value()["foo"].getInt());
             count++;
         }
@@ -1468,14 +1537,16 @@ TEST_F(QueryStageCollectionScanTest, QueryTestCollscanChangeCollectionLatestTime
         RecoveryUnit::ReadSource::kProvided, Timestamp(16, 1));
 
     // Build the collection scan stage.
-    AutoGetCollectionForRead autoColl(&_opCtx, collectionName);
-    const CollectionPtr& coll = autoColl.getCollection();
+    const auto coll = acquireCollectionMaybeLockFree(
+        &_opCtx,
+        CollectionAcquisitionRequest::fromOpCtx(
+            &_opCtx, collectionName, AcquisitionPrerequisites::OperationType::kRead));
     CollectionScanParams params;
     params.tailable = true;
     params.direction = CollectionScanParams::FORWARD;
     params.shouldTrackLatestOplogTimestamp = true;
     WorkingSet ws;
-    auto scanStage = std::make_unique<CollectionScan>(_expCtx.get(), &coll, params, &ws, nullptr);
+    auto scanStage = std::make_unique<CollectionScan>(_expCtx.get(), coll, params, &ws, nullptr);
     WorkingSetID id = WorkingSet::INVALID_ID;
     auto advance = [&]() {
         PlanStage::StageState state;

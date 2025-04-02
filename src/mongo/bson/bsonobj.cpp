@@ -59,8 +59,6 @@
 #include "mongo/bson/util/builder.h"
 #include "mongo/bson/util/builder_fwd.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/hex.h"
 #include "mongo/util/shared_buffer.h"
@@ -326,7 +324,7 @@ BSONObj BSONObj::_jsonStringGenerator(const Generator& g,
     }
 
     if (pretty)
-        fmt::format_to(buffer, "\n{:<{}}", "", (pretty - 1) * 4);
+        fmt::format_to(std::back_inserter(buffer), "\n{:<{}}", "", (pretty - 1) * 4);
     buffer.push_back(isArray ? ']' : '}');
     return truncation;
 }
@@ -391,35 +389,16 @@ int BSONObj::woCompare(const BSONObj& r,
                        const Ordering& o,
                        ComparisonRulesSet rules,
                        const StringDataComparator* comparator) const {
-    if (isEmpty())
-        return r.isEmpty() ? 0 : -1;
-    if (r.isEmpty())
-        return 1;
-
     BSONObjIterator i(*this);
     BSONObjIterator j(r);
-    unsigned mask = 1;
-    while (1) {
-        // so far, equal...
-
-        BSONElement l = i.next();
-        BSONElement r = j.next();
-        if (l.eoo())
-            return r.eoo() ? 0 : -1;
-        if (r.eoo())
-            return 1;
-
-        int x;
-        {
-            x = l.woCompare(r, rules, comparator);
-            if (o.descending(mask))
-                x = -x;
-        }
-        if (x != 0)
-            return x;
-        mask <<= 1;
+    for (int pos = 0;; ++pos) {
+        bool im = i.more();
+        bool jm = j.more();
+        if (!im || !jm)
+            return im - jm;
+        if (int x = i.next().woCompare(j.next(), rules, comparator))
+            return x * o.get(pos);
     }
-    return -1;
 }
 
 /* well ordered compare */

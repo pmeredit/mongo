@@ -28,13 +28,11 @@
  */
 #pragma once
 
-#include <algorithm>
 #include <boost/move/utility_core.hpp>
 #include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <cstddef>
-#include <set>
 #include <utility>
 #include <vector>
 
@@ -48,7 +46,6 @@
 #include "mongo/db/pipeline/field_path.h"
 #include "mongo/db/query/query_shape/serialization_options.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/intrusive_counter.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -163,8 +160,8 @@ public:
      * available. In this case, throws a UserException if any unavailable metadata type is also a
      * metadata dependency.
      */
-    QueryMetadataBitSet metadataDeps(
-        QueryMetadataBitSet unavailableMetadata = QueryMetadataBitSet{}) const;
+    QueryMetadataBitSet metadataDeps(DepsTracker::MetadataDependencyValidation availableMetadata =
+                                         DepsTracker::NoMetadataValidation()) const;
 
 private:
     std::vector<SortPatternPart> _sortPattern;

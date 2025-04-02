@@ -49,8 +49,6 @@
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/client/shard.h"
 #include "mongo/s/client/shard_registry.h"
@@ -155,8 +153,11 @@ StatusWith<TaskExecutor::CallbackHandle> ShardingTaskExecutor::scheduleRemoteCom
             // BSONObj must outlive BSONElement. See BSONElement, BSONObj::getField().
             auto lsidObj = lsidElem.Obj();
             if (auto lsidUIDElem = lsidObj.getField(LogicalSessionFromClient::kUidFieldName)) {
-                invariant(SHA256Block::fromBinData(lsidUIDElem._binDataVector()) ==
-                          request.opCtx->getLogicalSessionId()->getUid());
+                tassert(10090100,
+                        "User digest in the logical session ID from opCtx does not match with the "
+                        "command request",
+                        SHA256Block::fromBinData(lsidUIDElem._binDataVector()) ==
+                            request.opCtx->getLogicalSessionId()->getUid());
                 return newRequest;
             }
 

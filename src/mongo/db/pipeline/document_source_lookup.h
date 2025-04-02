@@ -96,7 +96,8 @@ public:
     class LiteParsed final : public LiteParsedDocumentSourceNestedPipelines {
     public:
         static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec);
+                                                 const BSONElement& spec,
+                                                 const LiteParserOptions& options);
 
         LiteParsed(std::string parseTimeName,
                    NamespaceString foreignNss,
@@ -293,10 +294,6 @@ public:
 
     const boost::intrusive_ptr<DocumentSourceUnwind>& getUnwindSource() const {
         return _unwindSrc;
-    }
-
-    const boost::optional<BSONObj>& getAdditionalFilter() const {
-        return _additionalFilter;
     }
 
     /*

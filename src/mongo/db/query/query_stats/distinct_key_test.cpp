@@ -34,9 +34,8 @@
 #include "mongo/db/query/distinct_command_gen.h"
 #include "mongo/db/query/query_stats/distinct_key.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include <memory>
-#include <ostream>
 
 namespace mongo::query_stats {
 
@@ -61,7 +60,12 @@ public:
 
         auto parsedDistinct =
             parsed_distinct_command::parse(expCtx, std::move(dcr), ExtensionsCallbackNoop(), {});
-        return std::make_unique<DistinctKey>(expCtx, *parsedDistinct, collectionType);
+        auto distinctShape =
+            std::make_unique<query_shape::DistinctCmdShape>(*parsedDistinct, expCtx);
+        return std::make_unique<DistinctKey>(expCtx,
+                                             *parsedDistinct->distinctCommandRequest,
+                                             std::move(distinctShape),
+                                             collectionType);
     }
 };
 
@@ -154,8 +158,7 @@ TEST_F(DistinctKeyTest, ExtractKeyFromDistinctComplex) {
         })");
     // For this test, the comment must be set individually outside of the original command BSON
     // because it is not set when being parsed into a DistinctCommandRequest.
-    expCtx->getOperationContext()->setComment(BSON("comment"
-                                                   << "hello"));
+    expCtx->getOperationContext()->setComment(BSON("comment" << "hello"));
 
     auto key = makeDistinctKeyFromQuery(distinct, expCtx);
     auto keyBSON =

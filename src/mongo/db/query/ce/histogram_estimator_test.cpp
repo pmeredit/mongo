@@ -28,10 +28,12 @@
  */
 
 #include "mongo/bson/json.h"
+#include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/query/ce/histogram_estimation_impl.h"
 #include "mongo/db/query/ce/histogram_estimator.h"
 #include "mongo/db/query/ce/test_utils.h"
 #include "mongo/db/query/cost_based_ranker/estimates.h"
+#include "mongo/db/query/stats/max_diff.h"
 #include "mongo/unittest/death_test.h"
 
 namespace mongo::ce {
@@ -767,10 +769,9 @@ TEST(HistogramPredicateEstimationTest, StrHistogramIntervalEstimation) {
     value::ValueGuard vgLow(tagLow, valLow);
 
     {  // {a: "TTV"}
-        Interval interval(BSON(""
-                               << "TTV"
-                               << ""
-                               << "TTV"),
+        Interval interval(BSON("" << "TTV"
+                                  << ""
+                                  << "TTV"),
                           true,
                           true);
         auto estimatedCard =
@@ -786,10 +787,9 @@ TEST(HistogramPredicateEstimationTest, StrHistogramIntervalEstimation) {
     {  // {a: {$gte: "TTV", $lte: "YtzS"}}
         auto [tagHigh, valHigh] = value::makeNewString("YtzS"_sd);
         value::ValueGuard vgHigh(tagHigh, valHigh);
-        Interval interval(BSON(""
-                               << "TTV"
-                               << ""
-                               << "YtzS"),
+        Interval interval(BSON("" << "TTV"
+                                  << ""
+                                  << "YtzS"),
                           true,
                           true);
         auto estimatedCard = estimateCardinalityRange(*ceHist,
@@ -813,10 +813,9 @@ TEST(HistogramPredicateEstimationTest, StrHistogramIntervalEstimation) {
     {  // {a: {$gte: "TTV", $lte: "VtzSlajdkajda"}} (tests for memory leaks for a large string)
         auto [tagHigh, valHigh] = value::makeNewString("VtzSlajdkajda"_sd);
         value::ValueGuard vgHigh(tagHigh, valHigh);
-        Interval interval(BSON(""
-                               << "TTV"
-                               << ""
-                               << "VtzSlajdkajda"),
+        Interval interval(BSON("" << "TTV"
+                                  << ""
+                                  << "VtzSlajdkajda"),
                           true,
                           true);
         auto estimatedCard = estimateCardinalityRange(*ceHist,
@@ -838,10 +837,9 @@ TEST(HistogramPredicateEstimationTest, StrHistogramIntervalEstimation) {
     }
 
     {  // {a: {$gte: "YtzS", $lte: "o9cD4"}}
-        Interval interval(BSON(""
-                               << "YtzS"
-                               << ""
-                               << "o9cD4"),
+        Interval interval(BSON("" << "YtzS"
+                                  << ""
+                                  << "o9cD4"),
                           true,
                           true);
         ASSERT_EQ(34.0,
@@ -854,9 +852,8 @@ TEST(HistogramPredicateEstimationTest, StrHistogramIntervalEstimation) {
     }
 
     {  // {a: {$gte: "YtzS"}}
-        Interval interval(BSON(""
-                               << "YtzS"
-                               << "" << BSONObj()),
+        Interval interval(BSON("" << "YtzS"
+                                  << "" << BSONObj()),
                           true,
                           false);
         ASSERT_EQ(45.0,
@@ -906,10 +903,9 @@ TEST(HistogramPredicateEstimationTest, IntStrHistogramIntervalEstimation) {
     {  // {a: "04e"}
         auto [tag, value] = sbe::value::makeNewString("04e"_sd);
         sbe::value::ValueGuard vg(tag, value);
-        Interval interval(BSON(""
-                               << "04e"
-                               << ""
-                               << "04e"),
+        Interval interval(BSON("" << "04e"
+                                  << ""
+                                  << "04e"),
                           true /*startIncluded*/,
                           true /*endIncluded*/);
         auto estimatedCard =
@@ -943,10 +939,9 @@ TEST(HistogramPredicateEstimationTest, IntStrHistogramIntervalEstimation) {
         auto [tagHigh, valHigh] = sbe::value::makeNewString("04e"_sd);
         sbe::value::ValueGuard vgLow(tagLow, valLow);
         sbe::value::ValueGuard vgHigh(tagHigh, valHigh);
-        Interval interval(BSON(""
-                               << ""
-                               << ""
-                               << "04e"),
+        Interval interval(BSON("" << ""
+                                  << ""
+                                  << "04e"),
                           true,
                           false);
         auto estimatedCard = estimateCardinalityRange(*ceHist,
@@ -1153,11 +1148,7 @@ DEATH_TEST(HistogramPredicateEstimationTest,
                                           5,
                                           20);
     {  // check estimation for Object (expected to fail)
-        Interval interval(BSON("" << BSON(""
-                                          << "")
-                                  << ""
-                                  << BSON(""
-                                          << "")),
+        Interval interval(BSON("" << BSON("" << "") << "" << BSON("" << "")),
                           true /*startIncluded*/,
                           true /*endIncluded*/);
         ASSERT_FALSE(HistogramEstimator::canEstimateInterval(*ceHist, interval));

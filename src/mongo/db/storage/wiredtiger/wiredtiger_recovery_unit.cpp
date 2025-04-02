@@ -43,6 +43,8 @@
 #include "mongo/bson/util/builder_fwd.h"
 #include "mongo/db/concurrency/exception_util.h"
 #include "mongo/db/server_options.h"
+#include "mongo/db/storage/execution_context.h"
+#include "mongo/db/storage/storage_parameters_gen.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_begin_transaction_block.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_connection.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_error_util.h"
@@ -51,8 +53,6 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_stats.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_severity.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/fail_point.h"
@@ -150,7 +150,6 @@ void WiredTigerRecoveryUnit::prepareUnitOfWork() {
     invariant(!_prepareTimestamp.isNull());
 
     auto session = getSession();
-    WT_SESSION* s = session->getSession();
 
     LOGV2_DEBUG(22410,
                 1,
@@ -159,7 +158,15 @@ void WiredTigerRecoveryUnit::prepareUnitOfWork() {
 
     const std::string conf = "prepare_timestamp=" + unsignedHex(_prepareTimestamp.asULL());
     // Prepare the transaction.
-    invariantWTOK(s->prepare_transaction(s, conf.c_str()), s);
+    invariantWTOK(session->prepare_transaction(conf.c_str()), *session);
+    if (feature_flags::gStorageEngineInterruptibility.isEnabled()) {
+        // Avoids a situation where committing or rolling back a prepared transaction hangs with
+        // concurrent operations trying to read documents modified by the prepared transaction. This
+        // avoids the prepared transaction from being opted into optional eviction to avoid the
+        // situation where it's unable to evict anything due to pages being pinned by the concurrent
+        // operations hitting a prepare conflict.
+        setNoEvictionAfterCommitOrRollback();
+    }
 }
 
 void WiredTigerRecoveryUnit::doCommitUnitOfWork() {
@@ -173,11 +180,17 @@ void WiredTigerRecoveryUnit::doAbortUnitOfWork() {
 }
 
 void WiredTigerRecoveryUnit::_ensureSession() {
-    if (!_unique_session) {
-        invariant(!_session);
-        _unique_session = _connection->getSession();
-        _session = _unique_session.get();
+    if (_managedSession) {
+        return;
     }
+
+    invariant(!_session);
+    if (_opCtx) {
+        _managedSession = _connection->getSession(*_opCtx);
+    } else {
+        _managedSession = _connection->getUninterruptibleSession();
+    }
+    _session = _managedSession.get();
 }
 
 void WiredTigerRecoveryUnit::setPrefetching(bool enable) {
@@ -299,7 +312,6 @@ void WiredTigerRecoveryUnit::_txnClose(bool commit) {
         }
     }
 
-    WT_SESSION* s = _session->getSession();
     if (_timer) {
         const int transactionTime = _timer->millis();
         // `serverGlobalParams.slowMs` can be set to values <= 0. In those cases, give logging a
@@ -322,33 +334,44 @@ void WiredTigerRecoveryUnit::_txnClose(bool commit) {
             invariant(_readAtTimestamp.isNull() || _commitTimestamp >= _readAtTimestamp);
 
             if (MONGO_likely(!doUntimestampedWritesForIdempotencyTests.shouldFail())) {
-                s->timestamp_transaction_uint(s, WT_TS_TXN_TYPE_COMMIT, _commitTimestamp.asULL());
+                _session->timestamp_transaction_uint(WT_TS_TXN_TYPE_COMMIT,
+                                                     _commitTimestamp.asULL());
             }
             _isTimestamped = true;
         }
 
         if (!_durableTimestamp.isNull()) {
-            s->timestamp_transaction_uint(s, WT_TS_TXN_TYPE_DURABLE, _durableTimestamp.asULL());
+            _session->timestamp_transaction_uint(WT_TS_TXN_TYPE_DURABLE, _durableTimestamp.asULL());
         }
 
-        wtRet = s->commit_transaction(s, nullptr);
+        if (_noEvictionAfterCommitOrRollback) {
+            // The only point at which commit_transaction() can time out is in the bonus-eviction
+            // phase. If the timeout expires here, the function will stop the eviction and return
+            // success. It cannot return an error due to timeout.
+            _session->modifyConfiguration("cache_max_wait_ms=1", "cache_max_wait_ms=0");
+        }
+
+        wtRet = _session->commit_transaction(nullptr);
 
         LOGV2_DEBUG(
             22412, 3, "WT commit_transaction", "snapshotId"_attr = getSnapshotId().toNumber());
     } else {
         invariant(_abandonSnapshotMode == AbandonSnapshotMode::kAbort);
-        const char* config = nullptr;
-        if (_noEvictionAfterRollback) {
+        if (_noEvictionAfterCommitOrRollback) {
             // The only point at which rollback_transaction() can time out is in the bonus-eviction
             // phase. If the timeout expires here, the function will stop the eviction and return
             // success. It cannot return an error due to timeout.
-            config = "operation_timeout_ms=1,";
+            _session->modifyConfiguration("cache_max_wait_ms=1", "cache_max_wait_ms=0");
         }
 
-        wtRet = s->rollback_transaction(s, config);
+        wtRet = _session->rollback_transaction(nullptr);
 
         LOGV2_DEBUG(
             22413, 3, "WT rollback_transaction", "snapshotId"_attr = getSnapshotId().toNumber());
+    }
+
+    if (_noEvictionAfterCommitOrRollback) {
+        _session->modifyConfiguration("cache_max_wait_ms=0", "cache_max_wait_ms=0");
     }
 
     if (_isTimestamped) {
@@ -359,12 +382,11 @@ void WiredTigerRecoveryUnit::_txnClose(bool commit) {
             // prompt the oplog read timestamp to be forwarded.
             //
             // This should happen only on primary nodes.
-            auto commitTs = _lastTimestampSet ? _lastTimestampSet.value() : _commitTimestamp;
-            _oplogManager->triggerOplogVisibilityUpdate(_connection->getKVEngine(), commitTs);
+            _oplogManager->triggerOplogVisibilityUpdate();
         }
         _isTimestamped = false;
     }
-    invariantWTOK(wtRet, s);
+    invariantWTOK(wtRet, *_session);
 
     invariant(!_lastTimestampSet || _commitTimestamp.isNull(),
               str::stream() << "Cannot have both a _lastTimestampSet and a "
@@ -381,6 +403,7 @@ void WiredTigerRecoveryUnit::_txnClose(bool commit) {
     _durableTimestamp = Timestamp();
     _oplogVisibleTs = boost::none;
     _orderedCommit = true;  // Default value is true; we assume all writes are ordered.
+    _noEvictionAfterCommitOrRollback = false;
     if (_untimestampedWriteAssertionLevel !=
         RecoveryUnit::UntimestampedWriteAssertionLevel::kSuppressAlways) {
         _untimestampedWriteAssertionLevel =
@@ -468,6 +491,11 @@ void WiredTigerRecoveryUnit::_txnOpen() {
 
     ensureSnapshot();
     _ensureSession();
+
+    // WiredTiger's transaction stats are reset after a transaction is completed either by commit or
+    // abort, so we need to reset the base value in case this recovery unit is used for more than
+    // one transaction to be able to compute the difference correctly.
+    _sessionStatsAfterLastOperation = WiredTigerStats();
 
     // Only start a timer for transaction's lifetime if we're going to log it.
     if (shouldLog(MONGO_LOGV2_DEFAULT_COMPONENT, kSlowTransactionSeverity)) {
@@ -669,9 +697,8 @@ Timestamp WiredTigerRecoveryUnit::_beginTransactionAtNoOverlapTimestamp() {
 
 Timestamp WiredTigerRecoveryUnit::_getTransactionReadTimestamp() {
     char buf[(2 * 8 /*bytes in hex*/) + 1 /*nul terminator*/];
-    WT_SESSION* session = _session->getSession();
-    auto wtStatus = session->query_timestamp(session, buf, "get=read");
-    invariantWTOK(wtStatus, session);
+    auto wtStatus = _session->query_timestamp(buf, "get=read");
+    invariantWTOK(wtStatus, *_session);
     uint64_t read_timestamp;
     fassert(50949, NumberParser().base(16)(buf, &read_timestamp));
     return Timestamp(read_timestamp);
@@ -693,7 +720,6 @@ Status WiredTigerRecoveryUnit::setTimestamp(Timestamp timestamp) {
                 3,
                 "WT set timestamp of future write operations to {timestamp}",
                 "timestamp"_attr = timestamp);
-    WT_SESSION* session = _session->getSession();
     invariant(_inUnitOfWork(), toString(_getState()));
     invariant(_prepareTimestamp.isNull());
     invariant(_commitTimestamp.isNull(),
@@ -719,12 +745,11 @@ Status WiredTigerRecoveryUnit::setTimestamp(Timestamp timestamp) {
         return Status::OK();
     }
 
-    auto rc =
-        session->timestamp_transaction_uint(session, WT_TS_TXN_TYPE_COMMIT, timestamp.asULL());
+    auto rc = _session->timestamp_transaction_uint(WT_TS_TXN_TYPE_COMMIT, timestamp.asULL());
     if (rc == 0) {
         _isTimestamped = true;
     }
-    return wtRCToStatus(rc, session, "timestamp_transaction");
+    return wtRCToStatus(rc, *_session, "timestamp_transaction");
 }
 
 void WiredTigerRecoveryUnit::setCommitTimestamp(Timestamp timestamp) {
@@ -898,6 +923,16 @@ void WiredTigerRecoveryUnit::storeWriteContextForDebugging(const BSONObj& info) 
     _writeContextForDebugging.push_back(info);
 }
 
+void WiredTigerRecoveryUnit::setOperationContext(OperationContext* opCtx) {
+    if (_opCtx && _session) {
+        _session->detachOperationContext();
+    }
+    RecoveryUnit::setOperationContext(opCtx);
+    if (_opCtx && _session) {
+        _session->attachOperationContext(*opCtx);
+    }
+}
+
 void WiredTigerRecoveryUnit::setCacheMaxWaitTimeout(Milliseconds timeout) {
     _cacheMaxWaitTimeout = timeout;
     auto session = getSessionNoTxn();
@@ -906,4 +941,19 @@ void WiredTigerRecoveryUnit::setCacheMaxWaitTimeout(Milliseconds timeout) {
         fmt::format("cache_max_wait_ms={}", durationCount<Milliseconds>(_cacheMaxWaitTimeout)),
         "cache_max_wait_ms=0");
 }
+
+WiredTigerCursor::Params getWiredTigerCursorParams(WiredTigerRecoveryUnit& wtRu,
+                                                   uint64_t tableID,
+                                                   bool allowOverwrite,
+                                                   bool random) {
+    WiredTigerCursor::Params cursorParams;
+    cursorParams.tableID = tableID;
+    cursorParams.isCheckpoint =
+        (wtRu.getTimestampReadSource() == WiredTigerRecoveryUnit::ReadSource::kCheckpoint);
+    cursorParams.readOnce = wtRu.getReadOnce();
+    cursorParams.allowOverwrite = allowOverwrite;
+    cursorParams.random = random;
+    return cursorParams;
+}
+
 }  // namespace mongo

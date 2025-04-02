@@ -439,6 +439,7 @@ WTI
 WTPERF
 WaitForSingleObject
 WaitOn
+Warray
 Wconditional
 Wduplicated
 WeakHashLen
@@ -510,7 +511,6 @@ bInheritHandle
 backoff
 bal
 basecfg
-basename
 bb
 bba
 bbb
@@ -857,6 +857,7 @@ idx
 ie
 iface
 ifdef's
+iff
 iiSii
 iiiS
 ikey
@@ -880,6 +881,7 @@ inmem
 inmemory
 inserters
 instantiation
+interruptible
 intl
 intnum
 intpack
@@ -1017,6 +1019,7 @@ multiblock
 multicycle
 multiprocess
 multithreaded
+multithreading
 munmap
 mutex
 mutexes
@@ -1363,7 +1366,6 @@ uintAny
 ulock
 umount
 unallocated
-unbacked
 unbare
 unbuffered
 uncached

@@ -65,6 +65,7 @@ public:
 
     void writesDone(GRPCReactor::CompletionQueueEntry* tag) override;
 
+    void startCall(GRPCReactor::CompletionQueueEntry* tag) override;
 
     // The below sync APIs are provided to enable easier unit testing.
     boost::optional<SharedBuffer> syncRead(const std::shared_ptr<GRPCReactor>& reactor);
@@ -95,6 +96,6 @@ private:
 
     BidirectionalPipe::End _pipe;
 
-    const std::shared_ptr<GRPCReactor>& _reactor;
+    std::shared_ptr<GRPCReactor> _reactor;
 };
 }  // namespace mongo::transport::grpc

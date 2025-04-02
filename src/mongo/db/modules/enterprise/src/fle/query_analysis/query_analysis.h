@@ -83,20 +83,28 @@ struct QueryAnalysisParams {
                         FleVersion fleVersion,
                         bool isMultiSchema);
 
+    // This constructor should only be used in multi-schema scenarios, when both
+    // encryptionInformation and csfleEncryptionSchemas are present.
+    // In this case, the fleVersion is FLE2, and all csfle schemas must be unencrypted.
+    QueryAnalysisParams(const NamespaceString& ns,
+                        const BSONObj& encryptionInformationSchemas,
+                        const BSONObj& csfleEncryptionSchemas,
+                        BSONObj strippedObj);
+
     FleVersion fleVersion() const {
-        return visit(OverloadedVisitor{
-                         [](const FLE1SchemaMap&) { return FleVersion::kFle1; },
-                         [](const FLE2SchemaMap&) { return FleVersion::kFle2; },
-                     },
-                     schema);
+        return _fleVersion;
     }
 
-    std::variant<FLE1SchemaMap, FLE2SchemaMap> schema;
+    FLE1SchemaMap fle1SchemaMap;
+    FLE2SchemaMap fle2SchemaMap;
 
     /**
      * Command object without the encryption-related fields.
      */
     BSONObj strippedObj;
+
+private:
+    FleVersion _fleVersion;
 };
 
 QueryAnalysisParams extractCryptdParameters(const BSONObj& obj,
@@ -126,6 +134,9 @@ PlaceHolderResult parsePlaceholderResult(BSONObj obj);
 enum class EncryptionPlaceholderContext {
     kComparison,
     kWrite,
+    kTextPrefixComparison,
+    kTextSuffixComparison,
+    kTextSubstringComparison,
 };
 
 /*
@@ -269,6 +280,13 @@ Value buildEncryptPlaceholder(Value input,
  * written to mongod, callers must pass the 'kWrite' EncryptionPlaceholderContext. Conversely, if
  * 'elem' is a constant against which we're making a comparison in a query, then callers should pass
  * the 'kComparison' context.
+ *
+ * There are also special comparison contexts, such as 'kTextPrefixComparison' used for text search
+ * comparisons. These comparison contexts are required because we need to identify the comparison
+ * type in order to generate the corresponding placeholder payload. Although it's possible to
+ * identify the encrypted index type from the ResolvedEncryptionInfo, a single encrypted text search
+ * indexed field supports multiple text search indexes (i.e. prefix and suffix). This means it's not
+ * possible to deduce the comparison type purely based on the index in the encryption metadata.
  *
  * If the 'placeholderContext' is 'kComparison', callers must pass the appropriate 'collator'. This
  * function will throw an assertion if a collation-aware comparison would be required against an

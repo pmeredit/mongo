@@ -53,9 +53,6 @@
 #include "mongo/db/update/update_oplog_entry_serialization.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/s/catalog/type_chunk.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
@@ -73,10 +70,8 @@ void registerTaskWithOngoingQueriesOnOpLogEntryCommit(OperationContext* opCtx,
     shard_role_details::getRecoveryUnit(opCtx)->onCommit([rdt](OperationContext* opCtx,
                                                                boost::optional<Timestamp>) {
         try {
-            AutoGetCollection autoColl(opCtx, rdt.getNss(), MODE_IS);
             auto waitForActiveQueriesToComplete =
-                CollectionShardingRuntime::assertCollectionLockedAndAcquireShared(opCtx,
-                                                                                  rdt.getNss())
+                CollectionShardingRuntime::acquireShared(opCtx, rdt.getNss())
                     ->getOngoingQueriesCompletionFuture(rdt.getCollectionUuid(), rdt.getRange())
                     .semi();
             if (!waitForActiveQueriesToComplete.isReady()) {
@@ -104,6 +99,16 @@ void registerTaskWithOngoingQueriesOnOpLogEntryCommit(OperationContext* opCtx,
             }
         }
     });
+}
+
+void invalidateRangePreservers(OperationContext* opCtx, const RangeDeletionTask& rdt) {
+    auto preMigrationShardVersion = rdt.getPreMigrationShardVersion();
+
+    if (preMigrationShardVersion && preMigrationShardVersion.get() != ChunkVersion::IGNORED()) {
+        auto scopedScr = CollectionShardingRuntime::acquireExclusive(opCtx, rdt.getNss());
+        scopedScr->invalidateRangePreserversOlderThanShardVersion(opCtx,
+                                                                  preMigrationShardVersion.get());
+    }
 }
 
 }  // namespace
@@ -134,6 +139,12 @@ void RangeDeleterServiceOpObserver::onUpdate(OperationContext* opCtx,
                                              const OplogUpdateEntryArgs& args,
                                              OpStateAccumulator* opAccumulator) {
     if (args.coll->ns() == NamespaceString::kRangeDeletionNamespace) {
+        const bool processingFieldUpdatedToTrue = [&] {
+            const auto newValueProcessingForField = update_oplog_entry::extractNewValueForField(
+                args.updateArgs->update, RangeDeletionTask::kProcessingFieldName);
+            return (!newValueProcessingForField.eoo() && newValueProcessingForField.Bool());
+        }();
+
         const bool pendingFieldIsRemoved = [&] {
             return update_oplog_entry::isFieldRemovedByUpdate(
                        args.updateArgs->update, RangeDeletionTask::kPendingFieldName) ==
@@ -146,10 +157,18 @@ void RangeDeleterServiceOpObserver::onUpdate(OperationContext* opCtx,
             return (!newValueForPendingField.eoo() && newValueForPendingField.Bool() == false);
         }();
 
-        if (pendingFieldIsRemoved || pendingFieldUpdatedToFalse) {
+        if (processingFieldUpdatedToTrue || pendingFieldIsRemoved || pendingFieldUpdatedToFalse) {
             auto deletionTask = RangeDeletionTask::parse(
                 IDLParserContext("RangeDeleterServiceOpObserver"), args.updateArgs->updatedDoc);
-            registerTaskWithOngoingQueriesOnOpLogEntryCommit(opCtx, deletionTask);
+            if (processingFieldUpdatedToTrue) {
+                // Invalidates all RangePreservers when shardPlacementVersion is lower than or
+                // equal to the preMigrationShardVersion. This ensures that reads on secondaries are
+                // terminated, preventing them from potentially targeting orphaned documents.
+                invalidateRangePreservers(opCtx, deletionTask);
+            }
+            if (pendingFieldIsRemoved || pendingFieldUpdatedToFalse) {
+                registerTaskWithOngoingQueriesOnOpLogEntryCommit(opCtx, deletionTask);
+            }
         }
     }
 }

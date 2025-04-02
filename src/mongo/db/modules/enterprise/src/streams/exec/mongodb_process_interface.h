@@ -28,10 +28,10 @@ namespace streams {
 // instance.
 class MongoDBProcessInterface : public mongo::MongoProcessInterface {
 public:
-    MongoDBProcessInterface(const streams::MongoCxxClientOptions& options);
+    MongoDBProcessInterface(const MongoCxxClientOptions& options, const Context* context);
 
     // Test-only constructor.
-    MongoDBProcessInterface();
+    MongoDBProcessInterface(const Context* context);
 
     std::unique_ptr<mongo::TransactionHistoryIteratorBase> createTransactionHistoryIterator(
         mongo::repl::OpTime time) const override {
@@ -155,6 +155,11 @@ public:
 
     mongo::BSONObj getCollectionOptions(mongo::OperationContext* opCtx,
                                         const mongo::NamespaceString& nss) override {
+        MONGO_UNREACHABLE;
+    }
+
+    mongo::UUID fetchCollectionUUIDFromPrimary(mongo::OperationContext* opCtx,
+                                               const mongo::NamespaceString& nss) final {
         MONGO_UNREACHABLE;
     }
 
@@ -442,6 +447,7 @@ private:
     // The collecion cache as a map from db name & collName pair to a CollectionInfo object.
     mongo::stdx::unordered_map<std::pair<std::string, std::string>, std::unique_ptr<CollectionInfo>>
         _collectionCache;
+    const Context* const _context;
 };
 
 }  // namespace streams

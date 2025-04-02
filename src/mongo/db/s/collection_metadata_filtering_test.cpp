@@ -67,8 +67,7 @@
 #include "mongo/s/shard_version.h"
 #include "mongo/s/shard_version_factory.h"
 #include "mongo/s/type_collection_common_types_gen.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/framework.h"
+#include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/uuid.h"
 
@@ -150,10 +149,7 @@ protected:
                 return std::vector<ChunkType>{chunk1, chunk2, chunk3, chunk4};
             }());
 
-        ChunkManager cm(ShardId("0"),
-                        DatabaseVersion(UUID::gen(), Timestamp(1, 1)),
-                        makeStandaloneRoutingTableHistory(std::move(rt)),
-                        boost::none);
+        ChunkManager cm(makeStandaloneRoutingTableHistory(std::move(rt)), boost::none);
         ASSERT_EQ(4, cm.numChunks());
 
         {
@@ -184,9 +180,9 @@ TEST_F(CollectionMetadataFilteringTest, FilterDocumentsInTheFuture) {
         ASSERT_FALSE(collectionFilter.keyBelongsToMe(BSON("_id" << 500)));
     };
 
-    BSONObj readConcern = BSON("readConcern" << BSON("level"
-                                                     << "snapshot"
-                                                     << "atClusterTime" << Timestamp(100, 0)));
+    BSONObj readConcern =
+        BSON("readConcern" << BSON("level" << "snapshot"
+                                           << "atClusterTime" << Timestamp(100, 0)));
 
     auto&& readConcernArgs = repl::ReadConcernArgs::get(operationContext());
     ASSERT_OK(readConcernArgs.initialize(readConcern["readConcern"]));
@@ -215,9 +211,9 @@ TEST_F(CollectionMetadataFilteringTest, FilterDocumentsInThePast) {
         ASSERT_TRUE(collectionFilter.keyBelongsToMe(BSON("_id" << 500)));
     };
 
-    BSONObj readConcern = BSON("readConcern" << BSON("level"
-                                                     << "snapshot"
-                                                     << "atClusterTime" << Timestamp(50, 0)));
+    BSONObj readConcern =
+        BSON("readConcern" << BSON("level" << "snapshot"
+                                           << "atClusterTime" << Timestamp(50, 0)));
 
     auto&& readConcernArgs = repl::ReadConcernArgs::get(operationContext());
     ASSERT_OK(readConcernArgs.initialize(readConcern["readConcern"]));
@@ -254,9 +250,9 @@ TEST_F(CollectionMetadataFilteringTest, FilterDocumentsTooFarInThePastThrowsStal
                            ErrorCodes::StaleChunkHistory);
     };
 
-    BSONObj readConcern = BSON("readConcern" << BSON("level"
-                                                     << "snapshot"
-                                                     << "atClusterTime" << Timestamp(10, 0)));
+    BSONObj readConcern =
+        BSON("readConcern" << BSON("level" << "snapshot"
+                                           << "atClusterTime" << Timestamp(10, 0)));
 
     auto&& readConcernArgs = repl::ReadConcernArgs::get(operationContext());
     ASSERT_OK(readConcernArgs.initialize(readConcern["readConcern"]));

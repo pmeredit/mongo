@@ -39,12 +39,15 @@ class Constant;
 class Variable;
 class UnaryOp;
 class BinaryOp;
+class NaryOp;
 class If;
 class Let;
+class MultiLet;
 class LambdaAbstraction;
 class LambdaApplication;
 class FunctionCall;
 class Source;
+class Switch;
 
 /**
  * Utility

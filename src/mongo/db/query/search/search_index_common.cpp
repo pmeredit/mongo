@@ -29,14 +29,17 @@
 
 #include "mongo/db/query/search/search_index_common.h"
 #include "mongo/db/query/search/manage_search_index_request_gen.h"
+#include "mongo/db/query/search/mongot_options.h"
 #include "mongo/db/query/search/search_index_options.h"
 #include "mongo/db/query/search/search_index_options_gen.h"
 #include "mongo/db/query/search/search_index_process_interface.h"
 #include "mongo/db/query/search/search_task_executors.h"
+#include "mongo/db/version_context.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 
 namespace mongo {
 namespace {
+
 /**
  * Takes the input for a ManageSearchIndexRequest and turns it into a RemoteCommandRequest targeting
  * the remote search index management endpoint.
@@ -46,7 +49,7 @@ executor::RemoteCommandRequest createManageSearchIndexRemoteCommandRequest(
     const NamespaceString& nss,
     const UUID& uuid,
     const BSONObj& userCmd,
-    boost::optional<StringData> viewName = boost::none,
+    boost::optional<NamespaceString> viewName = boost::none,
     boost::optional<std::vector<BSONObj>> viewPipeline = boost::none) {
     // Fetch the search index management host and port.
     invariant(!globalSearchIndexParams.host.empty());
@@ -60,41 +63,69 @@ executor::RemoteCommandRequest createManageSearchIndexRemoteCommandRequest(
     manageSearchIndexRequest.setCollectionUUID(uuid);
     manageSearchIndexRequest.setUserCommand(userCmd);
     if (viewName) {
-        // The existing viewName field accepted by mongot is now no longer needed due to the view
-        // object serving the same purpose. To protect existing Evergreen e2e tests from failing, we
-        // will continue to support viewName in our code until the mongot team officially deprecates
-        // it.
-        // TODO SERVER-98368: remove this line as the view name is passed through the `view` object
-        // below.
-        manageSearchIndexRequest.setViewName(viewName);
-
         SearchIndexRequestView view;
-        // TODO SERVER-98368: get the name directly from `viewName` as it's no longer set on
-        // `manageSearchIndexRequest`.
+
         // Always append the view name.
-        view.setName(manageSearchIndexRequest.getViewName()->toString());
+        view.setName(viewName->coll());
 
         // Only append the view pipeline if it exists.
+        // TODO SERVER-100553: replace this conditional with a tassert that viewPipeline exists.
         if (viewPipeline) {
             view.setEffectivePipeline(viewPipeline.value());
         }
 
         manageSearchIndexRequest.setView(view);
     }
-
     // Create a RemoteCommandRequest with the request and host-and-port.
     executor::RemoteCommandRequest remoteManageSearchIndexRequest(executor::RemoteCommandRequest(
         swHostAndPort.getValue(), nss.dbName(), manageSearchIndexRequest.toBSON(), opCtx));
-    remoteManageSearchIndexRequest.sslMode = transport::ConnectSSLMode::kDisableSSL;
+    remoteManageSearchIndexRequest.sslMode = globalMongotParams.sslMode;
     return remoteManageSearchIndexRequest;
 }
 }  // namespace
+
+std::tuple<const UUID,
+           const NamespaceString,
+           boost::optional<NamespaceString>,
+           boost::optional<std::vector<BSONObj>>>
+retrieveCollectionUUIDAndResolveViewOrThrow(OperationContext* opCtx,
+                                            const NamespaceString& currentOperationNss) {
+    // If the index management command is being run on a view, this call will return the
+    // underlying source collection UUID and ResolvedView. If not, it will just return a UUID.
+    auto collUUIDResolvedViewPair =
+        SearchIndexProcessInterface::get(opCtx)->fetchCollectionUUIDAndResolveViewOrThrow(
+            opCtx, currentOperationNss);
+    // If the query is on a normal collection, the source collection will be the same as
+    // the current NS.
+    auto sourceCollectionNss = currentOperationNss;
+    boost::optional<NamespaceString> viewNss;
+    auto collUUID = collUUIDResolvedViewPair.first;
+    boost::optional<std::vector<BSONObj>> viewPipeline;
+    if (auto resolvedView = collUUIDResolvedViewPair.second) {
+        uassert(
+            ErrorCodes::QueryFeatureNotAllowed,
+            "search index commands on views are not allowed in the current configuration. "
+            "You may need to enable the "
+            "correponding feature flag",
+            feature_flags::gFeatureFlagMongotIndexedViews.isEnabledUseLatestFCVWhenUninitialized(
+                VersionContext::getDecoration(opCtx),
+                serverGlobalParams.featureCompatibility.acquireFCVSnapshot()));
+        // The request is on a view! Therefore, currentOperationNss refers to the view
+        // NS and the namespace on resolvedView refers to the underlying source collection.
+        sourceCollectionNss = resolvedView.value().getNamespace();
+        viewNss.emplace(currentOperationNss);
+
+        viewPipeline.emplace(resolvedView.value().getPipeline());
+    }
+
+    return std::make_tuple(collUUID, sourceCollectionNss, viewNss, viewPipeline);
+}
 
 BSONObj getSearchIndexManagerResponse(OperationContext* opCtx,
                                       const NamespaceString& nss,
                                       const UUID& uuid,
                                       const BSONObj& userCmd,
-                                      boost::optional<StringData> viewName,
+                                      boost::optional<NamespaceString> viewName,
                                       boost::optional<std::vector<BSONObj>> viewPipeline) {
     // Create the RemoteCommandRequest.
     auto request = createManageSearchIndexRemoteCommandRequest(
@@ -159,12 +190,8 @@ BSONObj runSearchIndexCommand(OperationContext* opCtx,
                               boost::optional<NamespaceString> viewNss) {
     throwIfNotRunningWithRemoteSearchIndexManagement();
 
-    BSONObj manageSearchIndexResponse = getSearchIndexManagerResponse(
-        opCtx,
-        nss,
-        collUUID,
-        cmdObj,
-        viewNss ? boost::make_optional(viewNss->coll()) : boost::none);
+    BSONObj manageSearchIndexResponse =
+        getSearchIndexManagerResponse(opCtx, nss, collUUID, cmdObj, viewNss);
 
     return manageSearchIndexResponse;
 }

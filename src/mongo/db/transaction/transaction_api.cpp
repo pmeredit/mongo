@@ -71,9 +71,6 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/logv2/attribute_storage.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
-#include "mongo/logv2/redaction.h"
 #include "mongo/platform/compiler.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/rpc/op_msg.h"
@@ -91,12 +88,7 @@
 MONGO_FAIL_POINT_DEFINE(overrideTransactionApiMaxRetriesToThree);
 
 namespace mongo {
-using namespace fmt::literals;
-
-
 namespace txn_api {
-
-
 namespace details {
 
 void Transaction::TransactionState::transitionTo(StateFlag newState) {
@@ -207,12 +199,16 @@ SemiFuture<CommitResult> Transaction::commit() {
         .semi();
 }
 
-SemiFuture<void> Transaction::abort() {
+SemiFuture<AbortResult> Transaction::abort() {
     return _commitOrAbort(DatabaseName::kAdmin, AbortTransaction::kCommandName)
         .thenRunOn(_executor)
         .then([](BSONObj res) {
-            uassertStatusOK(getStatusFromCommandResult(res));
-            uassertStatusOK(getWriteConcernStatusFromCommandResult(res));
+            auto wcErrorHolder = getWriteConcernErrorDetailFromBSONObj(res);
+            WriteConcernErrorDetail wcError;
+            if (wcErrorHolder) {
+                wcErrorHolder->cloneTo(&wcError);
+            }
+            return AbortResult{getStatusFromCommandResult(res), wcError};
         })
         .semi();
 }
@@ -234,7 +230,7 @@ SemiFuture<BSONObj> Transaction::_commitOrAbort(const DatabaseName& dbName, Stri
             return BSON("ok" << 1);
         }
         uassert(5875902,
-                "Internal transaction not in progress, state: {}"_format(_state.toString()),
+                fmt::format("Internal transaction not in progress, state: {}", _state.toString()),
                 _state.is(TransactionState::kStarted) ||
                     // Allows retrying commit.
                     (_state.isInCommit() && cmdName == CommitTransaction::kCommandName) ||

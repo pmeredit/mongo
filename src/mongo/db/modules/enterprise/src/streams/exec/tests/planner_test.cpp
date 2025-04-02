@@ -2,12 +2,14 @@
  *    Copyright (C) 2023-present MongoDB, Inc. and subject to applicable commercial license.
  */
 
-#include <algorithm>
+#include "streams/exec/planner.h"
+
+#include <aws/core/Aws.h>
 #include <boost/none.hpp>
 #include <boost/optional/optional.hpp>
 #include <chrono>
 #include <fmt/format.h>
-#include <iostream>
+#include <memory>
 #include <rdkafkacpp.h>
 #include <string>
 #include <utility>
@@ -17,44 +19,39 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/bson/json.h"
 #include "mongo/bson/oid.h"
-#include "mongo/db/pipeline/aggregate_command_gen.h"
+#include "mongo/bson/timestamp.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
-#include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/pipeline/document_source_change_stream_gen.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/idl/idl_parser.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/s/sharding_state.h"
-#include "mongo/unittest/assert.h"
-#include "mongo/unittest/bson_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/scopeguard.h"
-#include "streams/commands/stream_ops_gen.h"
 #include "streams/exec/add_fields_operator.h"
 #include "streams/exec/change_stream_source_operator.h"
 #include "streams/exec/constants.h"
 #include "streams/exec/context.h"
-#include "streams/exec/https_operator.h"
-#include "streams/exec/in_memory_sink_operator.h"
+#include "streams/exec/external_function_operator.h"
+#include "streams/exec/external_function_sink_operator.h"
 #include "streams/exec/in_memory_source_operator.h"
 #include "streams/exec/json_event_deserializer.h"
 #include "streams/exec/kafka_consumer_operator.h"
 #include "streams/exec/kafka_emit_operator.h"
 #include "streams/exec/limit_operator.h"
-#include "streams/exec/log_sink_operator.h"
 #include "streams/exec/message.h"
 #include "streams/exec/mongocxx_utils.h"
+#include "streams/exec/noop_dead_letter_queue.h"
 #include "streams/exec/noop_sink_operator.h"
 #include "streams/exec/operator.h"
 #include "streams/exec/operator_dag.h"
-#include "streams/exec/planner.h"
+#include "streams/exec/s3_emit_operator.h"
 #include "streams/exec/stages_gen.h"
-#include "streams/exec/tenant_feature_flags.h"
-#include "streams/exec/test_constants.h"
 #include "streams/exec/tests/test_utils.h"
 #include "streams/exec/util.h"
 #include "streams/util/metric_manager.h"
@@ -69,6 +66,11 @@ public:
         ShardingState::create(getServiceContext());
         _metricManager = std::make_unique<MetricManager>();
         _context = get<0>(getTestContext(nullptr));
+        Aws::InitAPI(_sdkOptions);
+    }
+
+    ~PlannerTest() override {
+        Aws::ShutdownAPI(_sdkOptions);
     }
 
     void setupConnections() {
@@ -81,8 +83,7 @@ public:
         Connection httpsConn{};
         httpsConn.setName("https1");
         HttpsConnectionOptions httpsConnOptions{"https://mongodb.com"};
-        httpsConnOptions.setHeaders(BSON("httpsHeader"
-                                         << "foobar"));
+        httpsConnOptions.setHeaders(BSON("httpsHeader" << "foobar"));
         httpsConn.setOptions(httpsConnOptions.toBSON());
         httpsConn.setType(ConnectionTypeEnum::HTTPS);
 
@@ -99,15 +100,27 @@ public:
         httpsConnWithFragment.setOptions(httpsConnOptionsWithFragment.toBSON());
         httpsConnWithFragment.setType(ConnectionTypeEnum::HTTPS);
 
-        _context->connections = {
-            {atlasConn.getName().toString(), atlasConn},
-            {httpsConn.getName().toString(), httpsConn},
-            {httpsConnWithQuery.getName().toString(), httpsConnWithQuery},
-            {httpsConnWithFragment.getName().toString(), httpsConnWithFragment},
-        };
+        Connection awsIAMConn{};
+        awsIAMConn.setName("awsIAMLambda1");
+        AWSIAMConnectionOptions awsIAMConnOptions{
+            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
+        awsIAMConn.setOptions(awsIAMConnOptions.toBSON());
+        awsIAMConn.setType(ConnectionTypeEnum::AWSIAMLambda);
 
-        auto inMemoryConnection = testInMemoryConnectionRegistry();
-        _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+        Connection awsS3Conn{};
+        awsS3Conn.setName("awsS3Conn1");
+        AWSIAMConnectionOptions awsS3ConnOptions{
+            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
+        awsS3Conn.setOptions(awsS3ConnOptions.toBSON());
+        awsS3Conn.setType(ConnectionTypeEnum::AWSS3);
+
+        std::vector<Connection> connectionsVector{
+            atlasConn, httpsConn, httpsConnWithQuery, httpsConnWithFragment, awsIAMConn, awsS3Conn};
+
+        auto inMemoryConnection = testInMemoryConnections();
+        connectionsVector.insert(
+            connectionsVector.end(), inMemoryConnection.begin(), inMemoryConnection.end());
+        _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
     }
 
     std::unique_ptr<OperatorDag> addSourceSinkAndParse(std::vector<BSONObj> rawPipeline) {
@@ -148,9 +161,7 @@ public:
     }
 
     BSONObj groupStage() {
-        return BSON("$group" << BSON("_id" << BSONNULL << "sum"
-                                           << BSON("$sum"
-                                                   << "$field")));
+        return BSON("$group" << BSON("_id" << BSONNULL << "sum" << BSON("$sum" << "$field")));
     }
 
     BSONObj sortStage() {
@@ -159,6 +170,69 @@ public:
 
     BSONObj limitStage() {
         return BSON("$limit" << 10);
+    }
+
+    // Parse and optimize the user pipeline, which returns an OperatorDag and
+    // executionPlan. Then the test supplies the executionPlan to another Planner instance with
+    // optimization turned off, and verifies the resulting OperatorDag matches the first one.
+    void executionPlanCommonTest(
+        std::string userPipeline,
+        std::vector<std::string> expectedOperators,
+        std::function<void(std::unique_ptr<OperatorDag>& dag)> extraValidation,
+        mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap) {
+        auto context = get<0>(getTestContext(nullptr));
+        StreamProcessorFeatureFlags spFeatureFlags{
+            featureFlagsMap,
+            std::chrono::time_point<std::chrono::system_clock>{
+                std::chrono::system_clock::now().time_since_epoch()}};
+        context->featureFlags->updateFeatureFlags(spFeatureFlags);
+        context->isEphemeral = false;
+        KafkaConnectionOptions options1{"localhost:9092"};
+        options1.setIsTestKafka(true);
+        AtlasConnectionOptions options2{"mongodb://localhost:270"};
+        HttpsConnectionOptions options3{"https://localhost:12345"};
+        AWSIAMConnectionOptions options4{
+            "access_key", "access_secret", "session_token", Date_t::now() + Minutes(10)};
+        context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+            Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
+            Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()},
+            Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()},
+            Connection{"s3Bucket1", ConnectionTypeEnum::AWSS3, options4.toBSON()},
+            Connection{"awsIAMLambda1", ConnectionTypeEnum::AWSIAMLambda, options4.toBSON()}});
+
+        Planner planner(context.get(), Planner::Options{});
+        auto bson = parsePipeline(userPipeline);
+        auto dag = planInner(&planner, bson);
+
+        // Print some information to make debugging easier.
+        fmt::print("User pipeline\n{}\n", userPipeline);
+        fmt::print("Plan\n{}\n", Value(dag->optimizedPipeline()).toString());
+        BSONArrayBuilder opArr;
+        for (const auto& op : dag->operators()) {
+            opArr.append(op->getName());
+        }
+        fmt::print("Operators\n{}\n", serializeJson(opArr.obj()));
+
+        ASSERT_EQ(expectedOperators.size(), dag->operators().size());
+        for (size_t i = 0; i < expectedOperators.size(); ++i) {
+            ASSERT_EQ(expectedOperators[i], dag->operators()[i]->getName());
+        }
+
+        extraValidation(dag);
+
+        Planner plannerAfterRestore(context.get(), Planner::Options{.planningUserPipeline = false});
+        auto dag2 = planInner(&plannerAfterRestore, dag->optimizedPipeline());
+        // Assert the operators produced from plan with no optimization are equal to the operators
+        // produced from the user's BSON pipeline with optimization
+        ASSERT_EQ(expectedOperators.size(), dag2->operators().size());
+        for (size_t i = 0; i < expectedOperators.size(); ++i) {
+            ASSERT_EQ(expectedOperators[i], dag2->operators()[i]->getName());
+        }
+        // Assert the execution plan equals plan
+        ASSERT_EQ(dag2->optimizedPipeline().size(), dag->optimizedPipeline().size());
+        for (size_t i = 0; i < dag->optimizedPipeline().size(); ++i) {
+            ASSERT_BSONOBJ_EQ(dag->optimizedPipeline()[i], dag2->optimizedPipeline()[i]);
+        }
     }
 
     KafkaConsumerOperator::ConsumerInfo& getConsumerInfo(
@@ -175,6 +249,8 @@ public:
 protected:
     std::unique_ptr<MetricManager> _metricManager;
     std::unique_ptr<Context> _context;
+    Aws::SDKOptions _sdkOptions;
+    mongo::RAIIServerParameterControllerForTest _featureFlagController{"featureFlagStreams", true};
 };
 
 namespace {
@@ -352,11 +428,9 @@ TEST_F(PlannerTest, SupportedStagesWork2) {
                                                    << "$$DESCEND"
                                                    << "else"
                                                    << "$$PRUNE"))),
-        BSON("$replaceRoot" << BSON("newRoot"
-                                    << "$name")),
+        BSON("$replaceRoot" << BSON("newRoot" << "$name")),
         BSON("$set" << BSON("b" << 1)),
-        BSON("$unwind"
-             << "$sizes"),
+        BSON("$unwind" << "$sizes"),
         BSON("$validate" << BSON("validator"
                                  << BSON("$jsonSchema" << BSON("required" << BSON_ARRAY("a"))))),
 
@@ -385,10 +459,9 @@ TEST_F(PlannerTest, MergeStageParsing) {
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{atlasConn.getName().toString(), atlasConn}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(atlasConn);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     std::vector<BSONObj> rawPipeline{
         getTestSourceSpec(), fromjson("{ $addFields: { a: 5 } }"), fromjson(R"(
@@ -416,10 +489,9 @@ TEST_F(PlannerTest, LookUpStageParsing) {
     AtlasConnectionOptions atlasConnOptions{"mongodb://localhost:270"};
     atlasConn.setOptions(atlasConnOptions.toBSON());
     atlasConn.setType(ConnectionTypeEnum::Atlas);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{atlasConn.getName().toString(), atlasConn}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(atlasConn);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     auto addFieldsObj = fromjson("{ $addFields: { leftKey: 5 } }");
     auto lookupObj = fromjson(R"(
@@ -577,7 +649,7 @@ TEST_F(PlannerTest, LookUpStageParsing) {
 }
 
 TEST_F(PlannerTest, WindowStageParsing) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
 
     {
         auto windowObj = fromjson(R"(
@@ -664,7 +736,7 @@ TEST_F(PlannerTest, WindowStageParsing) {
 }
 
 TEST_F(PlannerTest, WindowStageParsingUnnested) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
 
     {
         auto windowObj = fromjson(R"(
@@ -803,19 +875,18 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
     kafka3.setOptions(options3.toBSON());
     kafka3.setType(ConnectionTypeEnum::Kafka);
 
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1},
-                                                     {kafka2.getName().toString(), kafka2},
-                                                     {kafka3.getName().toString(), kafka3}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    std::vector connectionsVector{kafka1, kafka2, kafka3};
+    auto inMemConnections = testInMemoryConnections();
+    connectionsVector.insert(
+        connectionsVector.end(), inMemConnections.begin(), inMemConnections.end());
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
     _context->streamProcessorId = streamProcessorId;
 
     struct ExpectedResults {
         std::string bootstrapServers;
         std::vector<std::string> topicNames;
         bool hasTimestampExtractor = false;
-        std::string timestampOutputFieldName = std::string(kDefaultTsFieldName);
+        boost::optional<std::string> timestampOutputFieldName;
         int partitionCount = 1;
         int64_t startOffset{RdKafka::Topic::OFFSET_END};
         BSONObj auth;
@@ -887,11 +958,11 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                .topicNames = {topicName},
                .auth = options3.getAuth()->toBSON(),
                .enableAutoCommit = true});
-    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
-                                                      << "testOnlyPartitionCount" << 1 << "config"
-                                                      << BSON("group_id"
-                                                              << "consumer-group-1"
-                                                              << "enable_auto_commit" << false))),
+    innerTest(BSON("$source" << BSON("connectionName"
+                                     << kafka1.getName() << "topic" << topicName
+                                     << "testOnlyPartitionCount" << 1 << "config"
+                                     << BSON("group_id" << "consumer-group-1"
+                                                        << "enable_auto_commit" << false))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
                .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-1"),
@@ -910,8 +981,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
     // by default if the user defined the group_id.
     innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
                                                       << "testOnlyPartitionCount" << 1 << "config"
-                                                      << BSON("group_id"
-                                                              << "consumer-group-2"))),
+                                                      << BSON("group_id" << "consumer-group-2"))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
                .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-2"),
@@ -927,11 +997,11 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                .enableAutoCommit = true});
 
     // Setting group_id and enable_auto_should be respected.
-    innerTest(BSON("$source" << BSON("connectionName" << kafka1.getName() << "topic" << topicName
-                                                      << "testOnlyPartitionCount" << 1 << "config"
-                                                      << BSON("group_id"
-                                                              << "consumer-group-2"
-                                                              << "enable_auto_commit" << false))),
+    innerTest(BSON("$source" << BSON("connectionName"
+                                     << kafka1.getName() << "topic" << topicName
+                                     << "testOnlyPartitionCount" << 1 << "config"
+                                     << BSON("group_id" << "consumer-group-2"
+                                                        << "enable_auto_commit" << false))),
               {.bootstrapServers = options1.getBootstrapServers().toString(),
                .topicNames = {topicName},
                .consumerGroupId = boost::make_optional<std::string>("consumer-group-2"),
@@ -951,7 +1021,7 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
               {options2.getBootstrapServers().toString(),
                {topic2},
                true,
-               tsField,
+               boost::optional<std::string>(tsField),
                partitionCount,
                RdKafka::Topic::OFFSET_END,
                options2.getAuth()->toBSON()});
@@ -963,12 +1033,12 @@ TEST_F(PlannerTest, KafkaSourceParsing) {
                      << kafka2.getName() << "topic" << topic2 << "timeField"
                      << BSON("$toDate"
                              << BSON("$multiply" << BSONArrayBuilder().append("").append(5).arr()))
-                     << "tsFieldName" << tsField << "testOnlyPartitionCount" << partitionCount
-                     << "config" << BSON("auto_offset_reset" << autoOffsetReset))),
+                     << "testOnlyPartitionCount" << partitionCount << "config"
+                     << BSON("auto_offset_reset" << autoOffsetReset))),
             {options2.getBootstrapServers().toString(),
              {topic2},
              true,
-             tsField,
+             boost::none,
              partitionCount,
              expectedOffset,
              options2.getAuth()->toBSON()});
@@ -1021,13 +1091,13 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
     options.setUri(kUriString);
     changeStreamConn.setOptions(options.toBSON());
     changeStreamConn.setType(mongo::ConnectionTypeEnum::Atlas);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {changeStreamConn.getName().toString(), changeStreamConn}};
+    _context->connections =
+        std::make_unique<ConnectionCollection>(std::vector<Connection>{changeStreamConn});
 
     struct ExpectedResults {
         std::string expectedUri;
         bool hasTimestampExtractor = false;
-        std::string expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);
+        boost::optional<std::string> expectedTimestampOutputFieldName;
 
         std::string expectedDatabase;
         std::string expectedCollection;
@@ -1102,7 +1172,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
                          results);
 
     // Reset 'expectedTimestampOutputFieldName' and 'hasTimestampExtractor'.
-    results.expectedTimestampOutputFieldName = std::string(kDefaultTsFieldName);
+    results.expectedTimestampOutputFieldName = boost::none;
     results.hasTimestampExtractor = false;
 
     // Configure options specific to change streams $source.
@@ -1140,7 +1210,7 @@ TEST_F(PlannerTest, ChangeStreamsSource) {
 }
 
 TEST_F(PlannerTest, EphemeralSink) {
-    _context->connections = testInMemoryConnectionRegistry();
+    _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
     Planner planner(_context.get(), /*options*/ {});
     // A pipeline without a sink.
     std::vector<BSONObj> pipeline{sourceStage()};
@@ -1194,10 +1264,9 @@ TEST_F(PlannerTest, KafkaEmitParsing) {
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
 
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(kafka1);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -1224,7 +1293,7 @@ TEST_F(PlannerTest, KafkaEmitParsing) {
     auto options = kafkaEmitOperator->getOptions();
     ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
     ASSERT_EQ(expected.topicName, options.topicName.getLiteral());
-    ASSERT_EQ(mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, options.jsonStringFormat);
+    ASSERT_EQ(JsonStringFormat::Relaxed, options.jsonStringFormat);
 
     // Validate the expected auth related fields.
     ASSERT_EQ(expected.auth.getFieldNames<stdx::unordered_set<std::string>>().size(),
@@ -1268,10 +1337,9 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonCanonical) {
     })")));
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(kafka1);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -1295,7 +1363,7 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonCanonical) {
     auto kafkaEmitOperator = dynamic_cast<KafkaEmitOperator*>(dag->operators().back().get());
     ASSERT(kafkaEmitOperator);
     auto options = kafkaEmitOperator->getOptions();
-    ASSERT_EQ(mongo::JsonStringFormat::ExtendedCanonicalV2_0_0, options.jsonStringFormat);
+    ASSERT_EQ(JsonStringFormat::Canonical, options.jsonStringFormat);
 }
 
 /**
@@ -1321,10 +1389,9 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonRelaxed) {
     })")));
     kafka1.setOptions(options1.toBSON());
     kafka1.setType(ConnectionTypeEnum::Kafka);
-    _context->connections =
-        stdx::unordered_map<std::string, Connection>{{kafka1.getName().toString(), kafka1}};
-    auto inMemoryConnection = testInMemoryConnectionRegistry();
-    _context->connections.insert(inMemoryConnection.begin(), inMemoryConnection.end());
+    auto connectionsVector = testInMemoryConnections();
+    connectionsVector.push_back(kafka1);
+    _context->connections = std::make_unique<ConnectionCollection>(connectionsVector);
 
     struct ExpectedResults {
         std::string bootstrapServers;
@@ -1350,7 +1417,7 @@ TEST_F(PlannerTest, KafkaEmitConfigParsingJsonRelaxed) {
     auto options = kafkaEmitOperator->getOptions();
     ASSERT_EQ(expected.bootstrapServers, options.bootstrapServers);
     ASSERT_EQ(expected.topicName, options.topicName.getLiteral());
-    ASSERT_EQ(mongo::JsonStringFormat::ExtendedRelaxedV2_0_0, options.jsonStringFormat);
+    ASSERT_EQ(JsonStringFormat::Relaxed, options.jsonStringFormat);
 }
 
 TEST_F(PlannerTest, OperatorId) {
@@ -1363,7 +1430,7 @@ TEST_F(PlannerTest, OperatorId) {
         int32_t expectedMainOperators{0};
     };
     auto innerTest = [&](TestSpec spec) {
-        _context->connections = testInMemoryConnectionRegistry();
+        _context->connections = std::make_unique<ConnectionCollection>(testInMemoryConnections());
         Planner planner(_context.get(), {});
         std::vector<BSONObj> pipeline{spec.pipeline};
         auto dag = planner.plan(pipeline);
@@ -1497,12 +1564,11 @@ TEST_F(PlannerTest, OperatorId) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
-        {"atlas1",
-         Connection{"atlas1",
-                    ConnectionTypeEnum::Atlas,
-                    AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
+        Connection{"atlas1",
+                   ConnectionTypeEnum::Atlas,
+                   AtlasConnectionOptions{"mongodb://localhost"}.toBSON()}});
     Planner planner(_context.get(), Planner::Options{});
     auto dag = planner.plan(bson);
     ASSERT_EQ(0, dag->operators()[0]->getOperatorId());
@@ -1542,8 +1608,8 @@ TEST_F(PlannerTest, NotAllowedInMainPipelineErrorMessage) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1579,8 +1645,8 @@ TEST_F(PlannerTest, LookupFromIsNotObject) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1613,8 +1679,8 @@ TEST_F(PlannerTest, LookupFromDoesNotExist) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1654,8 +1720,8 @@ TEST_F(PlannerTest, LookupStagingWithPipeline) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1691,8 +1757,8 @@ TEST_F(PlannerTest, LookupStagingWithPipelineMissingDocuments) {
     auto bson = parsePipeline(pipeline);
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
 
     Planner planner(_context.get(), Planner::Options{});
     try {
@@ -1709,65 +1775,41 @@ TEST_F(PlannerTest, LookupStagingWithPipelineMissingDocuments) {
 // Test the execution plan the Planner chooses for various pipelines.
 // Currently, Planner changes that create different execution plans for existing stream
 // processors will cause issues in checkpoint restore.
-// WARNING: If your changes break this test, your changes might cause issues with stream processors
-// running in production. Don't change this test without consulting the streams engine team in
-// #streams-engine.
 TEST_F(PlannerTest, ExecutionPlan) {
-    // The test parses and optimies the user pipeline, which returns an OperatorDag and
-    // executionPlan. Then the test supplies the executionPlan to another Planner instance with
-    // optimization turned off, and verifies the resulting OperatorDag matches the first one.
     auto innerTest = [&](std::string userPipeline, std::vector<std::string> expectedOperators) {
-        // Setup the context.
-        auto context = get<0>(getTestContext(nullptr));
         mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-        featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
-        StreamProcessorFeatureFlags spFeatureFlags{
-            featureFlagsMap,
-            std::chrono::time_point<std::chrono::system_clock>{
-                std::chrono::system_clock::now().time_since_epoch()}};
-        context->featureFlags->updateFeatureFlags(spFeatureFlags);
-        context->isEphemeral = false;
-        KafkaConnectionOptions options1{"localhost:9092"};
-        options1.setIsTestKafka(true);
-        AtlasConnectionOptions options2{"mongodb://localhost:270"};
-        HttpsConnectionOptions options3{"https://localhost:12345"};
-        context->connections = stdx::unordered_map<std::string, Connection>{
-            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}},
-            {"atlas1", Connection{"atlas1", ConnectionTypeEnum::Atlas, options2.toBSON()}},
-            {"https1", Connection{"https1", ConnectionTypeEnum::HTTPS, options3.toBSON()}}};
-
-        Planner planner(context.get(), Planner::Options{});
-        auto bson = parsePipeline(userPipeline);
-        auto dag = planInner(&planner, bson);
-
-        // Print some information to make debugging easier.
-        fmt::print("User pipeline\n{}\n", userPipeline);
-        fmt::print("Plan\n{}\n", Value(dag->optimizedPipeline()).toString());
-        BSONArrayBuilder opArr;
-        for (const auto& op : dag->operators()) {
-            opArr.append(op->getName());
-        }
-        fmt::print("Operators\n{}\n", tojson(opArr.obj()));
-
-        ASSERT_EQ(expectedOperators.size(), dag->operators().size());
-        for (size_t i = 0; i < expectedOperators.size(); ++i) {
-            ASSERT_EQ(expectedOperators[i], dag->operators()[i]->getName());
-        }
-
-        Planner plannerAfterRestore(context.get(), Planner::Options{.planningUserPipeline = false});
-        auto dag2 = planInner(&plannerAfterRestore, dag->optimizedPipeline());
-        // Assert the operators produced from plan with no optimization are equal to the operators
-        // produced from the user's BSON pipeline with optimization
-        ASSERT_EQ(expectedOperators.size(), dag2->operators().size());
-        for (size_t i = 0; i < expectedOperators.size(); ++i) {
-            ASSERT_EQ(expectedOperators[i], dag2->operators()[i]->getName());
-        }
-        // Assert the execution plan equals plan
-        ASSERT_EQ(dag2->optimizedPipeline().size(), dag->optimizedPipeline().size());
-        for (size_t i = 0; i < dag->optimizedPipeline().size(); ++i) {
-            ASSERT_BSONOBJ_EQ(dag->optimizedPipeline()[i], dag2->optimizedPipeline()[i]);
-        }
+        featureFlagsMap.emplace(std::make_pair(FeatureFlags::kEnableS3Emit.name, true));
+        featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
+        featureFlagsMap[FeatureFlags::kChangestreamPredicatePushdown.name] = mongo::Value(true);
+        executionPlanCommonTest(userPipeline, expectedOperators, [](auto& dag) {}, featureFlagsMap);
     };
+
+    // match should get absorbed
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "MergeOperator"});
 
     innerTest(R"(
     [
@@ -2000,7 +2042,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
     ])",
               {"ChangeStreamConsumerOperator", "MergeOperator"});
 
-    // $project and $match get re-ordered
+    // $project and $match get re-ordered, match gets absorbed into changestream.config.pipeline
     innerTest(
         R"(
     [
@@ -2017,11 +2059,6 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         },
         {
-            $match: {
-                a: 1
-            }
-        },
-        {
             $merge: {
                 into: {
                     connectionName: "atlas1",
@@ -2031,7 +2068,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         }
     ])",
-        {"ChangeStreamConsumerOperator", "MatchOperator", "ProjectOperator", "MergeOperator"});
+        {"ChangeStreamConsumerOperator", "ProjectOperator", "MergeOperator"});
 
     // Validate the window unnesting logic will prepend a window assigner before a $match that
     // depends on the window boundaries.
@@ -2047,6 +2084,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         { $tumblingWindow: {
             interval: { size: 1, unit: "hour" },
             pipeline: [
+                { $addFields: { "_stream_meta":  {$meta: "stream"} } },
                 { $match: { "_stream_meta.window.start": "foo" } },
                 { $group: { 
                     _id: "$customerId", 
@@ -2069,6 +2107,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
               // The LimitOperator is a dummy window assigning operator, it's limit is infinity.
               {"ChangeStreamConsumerOperator",
                "LimitOperator",
+               "AddFieldsOperator",
                "MatchOperator",
                "GroupOperator",
                "MergeOperator"});
@@ -2087,7 +2126,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
         { $tumblingWindow: {
             interval: { size: 1, unit: "hour" },
             pipeline: [
-                { $project: { a: "$_stream_meta.window.start" } },
+                { $project: { a: {$meta: "stream.window"} } },
                 { $group: { 
                     _id: "$customerId", 
                     sum: { $sum: "$value" }, 
@@ -2265,7 +2304,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         }
     ])",
-              {"ChangeStreamConsumerOperator", "MatchOperator", "LookUpOperator", "MergeOperator"});
+              {"ChangeStreamConsumerOperator", "LookUpOperator", "MergeOperator"});
 
     innerTest(R"(
     [
@@ -2310,7 +2349,8 @@ TEST_F(PlannerTest, ExecutionPlan) {
                "UnwindOperator",
                "MergeOperator"});
 
-    innerTest(R"(
+    innerTest(
+        R"(
     [
         {
             $source: {
@@ -2347,11 +2387,7 @@ TEST_F(PlannerTest, ExecutionPlan) {
             }
         }
     ])",
-              {"ChangeStreamConsumerOperator",
-               "MatchOperator",
-               "LookUpOperator",
-               "UnwindOperator",
-               "MergeOperator"});
+        {"ChangeStreamConsumerOperator", "LookUpOperator", "UnwindOperator", "MergeOperator"});
 
     innerTest(R"(
     [
@@ -2418,6 +2454,85 @@ TEST_F(PlannerTest, ExecutionPlan) {
         }
     ])",
               {"ChangeStreamConsumerOperator", "AddFieldsOperator", "MergeOperator"});
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+
+        {
+            $externalFunction: {
+              connectionName: "awsIAMLambda1",
+              functionName: "foo",
+              as: "bar"
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "ExternalFunctionOperator", "MergeOperator"});
+    innerTest(R"(
+                [
+                    {
+                        $source: {
+                            connectionName: "atlas1",
+                            db: "testDb",
+                            coll: "testColl"
+                        }
+                    },
+            
+                    {
+                        $externalFunction: {
+                          connectionName: "awsIAMLambda1",
+                          functionName: "foo"
+                        }
+                    }
+                ])",
+              {"ChangeStreamConsumerOperator", "ExternalFunctionSinkOperator"});
+    // Ensure the planner is properly planning an S3EmitOperator
+    innerTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $addFields: {
+                a: {
+                    $and: [
+                        true,
+                        false,
+                        true,
+                        false
+                    ]
+                }
+            }
+        },
+        {
+            $emit: {
+              connectionName: "s3Bucket1",
+              bucket: "foo",
+              path: "bar",
+              region: "us-east-1",
+              delimiter: "\n"
+            }
+        }
+    ])",
+              {"ChangeStreamConsumerOperator", "AddFieldsOperator", "S3EmitOperator"});
 
 #if LIBCURL_VERSION_NUM >= 0x074e00
     innerTest(R"(
@@ -2458,8 +2573,19 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
         KafkaConnectionOptions options1{"localhost:9092"};
         options1.setIsTestKafka(true);
         _context->isEphemeral = false;
-        _context->connections = stdx::unordered_map<std::string, Connection>{
-            {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+
+        HttpsConnectionOptions httpsConnOptions{"https://mongodb.com"};
+        _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+            Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()},
+            Connection{"https1", ConnectionTypeEnum::HTTPS, httpsConnOptions.toBSON()}});
+
+        _context->dlq = std::make_unique<NoOpDeadLetterQueue>(_context.get());
+        mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+        StreamProcessorFeatureFlags spFeatureFlags{
+            featureFlagsMap,
+            std::chrono::time_point<std::chrono::system_clock>{
+                std::chrono::system_clock::now().time_since_epoch()}};
+        _context->featureFlags->updateFeatureFlags(spFeatureFlags);
         auto bson = parsePipeline(userPipeline);
 
         ASSERT_THROWS_CODE_AND_WHAT(planner.plan(bson),
@@ -2516,14 +2642,72 @@ TEST_F(PlannerTest, StreamProcessorInvalidOptions) {
     ])",
                    "StreamProcessorInvalidOptions: Cannot use $text in $match stage in Atlas "
                    "Stream Processing.");
+
+    /*
+    // TODO(SERVER-99672): Enable these tests.
+
+    // This test fails because $validate.validationAction=dlq but no dlq has been defined
+    runFailureTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $validate: {
+                validator: {},
+                validationAction: "dlq"
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+                   "StreamProcessorInvalidOptions: DLQ must be specified if "
+                   "$validate.validationAction is dlq");
+
+
+    // This test fails because $https.onError=dlq but no dlq has been defined
+    runFailureTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "kafka1",
+                topic: "topic1",
+                testOnlyPartitionCount: 5
+            }
+        },
+        {
+            $https: {
+                connectionName: "https1",
+                as: "response",
+                onError: "dlq"
+            }
+        },
+        {
+            $emit: {
+                connectionName: "kafka1",
+                topic: "topic2"
+            }
+        }
+    ])",
+                   "StreamProcessorInvalidOptions: DLQ must be specified if $https.onError is dlq");
+
+    */
 }
 
 TEST_F(PlannerTest, KafkaEmitInvalidConfigType) {
     Planner planner(_context.get(), Planner::Options{});
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
     auto bson = parsePipeline(R"(
     [
         {
@@ -2556,8 +2740,8 @@ TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
     Planner planner(_context.get(), Planner::Options{});
     KafkaConnectionOptions options1{"localhost:9092"};
     options1.setIsTestKafka(true);
-    _context->connections = stdx::unordered_map<std::string, Connection>{
-        {"kafka1", Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}}};
+    _context->connections = std::make_unique<ConnectionCollection>(std::vector<Connection>{
+        Connection{"kafka1", ConnectionTypeEnum::Kafka, options1.toBSON()}});
     auto bson = parsePipeline(R"(
     [
         {
@@ -2589,68 +2773,23 @@ TEST_F(PlannerTest, KafkaEmitInvalidHeaderType) {
 #if LIBCURL_VERSION_NUM >= 0x074e00
 
 /**
-Parse a pipeline containing $https in it. Verify that it fails when not supplied the correct
-feature flag.
-*/
-TEST_F(PlannerTest, HttpsFailsWithoutFeatureFlag) {
-    std::string pipeline = R"(
-[
-    { $https: {} }
-]
-    )";
-
-    ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
-                                DBException,
-                                ErrorCodes::StreamProcessorInvalidOptions,
-                                "StreamProcessorInvalidOptions: Unsupported stage: $https");
-}
-
-/**
-Parse a pipeline containing $https in it. Verify that it still fails when the feature flag is
-defined but set to false.
-*/
-TEST_F(PlannerTest, HttpsWithFalseFeatureFlag) {
-    std::string pipeline = R"(
-[
-    { $https: {} }
-]
-    )";
-    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(false);
-    StreamProcessorFeatureFlags spFeatureFlags{
-        featureFlagsMap,
-        std::chrono::time_point<std::chrono::system_clock>{
-            std::chrono::system_clock::now().time_since_epoch()}};
-    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
-
-    ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(pipeline),
-                                DBException,
-                                ErrorCodes::StreamProcessorInvalidOptions,
-                                "StreamProcessorInvalidOptions: Unsupported stage: $https");
-}
-
-/**
-Parse a pipeline containing $https in it, the expected feature flag, but missing required
-arguments.
+Parse a pipeline containing $https in it, but missing required arguments.
 */
 TEST_F(PlannerTest, HttpsWithMissingRequiredArgs) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
     StreamProcessorFeatureFlags spFeatureFlags{
         featureFlagsMap,
         std::chrono::time_point<std::chrono::system_clock>{
             std::chrono::system_clock::now().time_since_epoch()}};
     _context->featureFlags->updateFeatureFlags(spFeatureFlags);
 
-    auto prevConnections = _context->connections;
     ScopeGuard guard([&] {
         // Unset feature flags to avoid corrupting other tests.
         _context->featureFlags->updateFeatureFlags(
             StreamProcessorFeatureFlags{prevFeatureFlags,
                                         std::chrono::time_point<std::chrono::system_clock>{
                                             std::chrono::system_clock::now().time_since_epoch()}});
-        _context->connections = prevConnections;
     });
     setupConnections();
 
@@ -2712,24 +2851,21 @@ TEST_F(PlannerTest, HttpsWithMissingRequiredArgs) {
 Parse a pipeline containing $https in it. Verify that it does not fail when not supplied
 the expected feature flag.
 */
-TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
+TEST_F(PlannerTest, Https) {
     auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
     mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
-    featureFlagsMap[FeatureFlags::kEnableHttpsOperator.name] = mongo::Value(true);
     StreamProcessorFeatureFlags spFeatureFlags{
         featureFlagsMap,
         std::chrono::time_point<std::chrono::system_clock>{
             std::chrono::system_clock::now().time_since_epoch()}};
     _context->featureFlags->updateFeatureFlags(spFeatureFlags);
 
-    auto prevConnections = _context->connections;
     ScopeGuard guard([&] {
         // Unset feature flags to avoid corrupting other tests.
         _context->featureFlags->updateFeatureFlags(
             StreamProcessorFeatureFlags{prevFeatureFlags,
                                         std::chrono::time_point<std::chrono::system_clock>{
                                             std::chrono::system_clock::now().time_since_epoch()}});
-        _context->connections = prevConnections;
     });
 
     auto planHttpsTest = [&](const std::vector<BSONObj>& spec,
@@ -2748,6 +2884,7 @@ TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
         ASSERT_EQ(actualOper->getOptions().requestTimeoutSecs, expectedOpts.requestTimeoutSecs);
         ASSERT_EQ(actualOper->getOptions().connectionTimeoutSecs,
                   expectedOpts.connectionTimeoutSecs);
+        ASSERT_EQ(actualOper->getOptions().urlEncodePath, expectedOpts.urlEncodePath);
 
         // The following assertions require evaluating the nested expressions with an input
         // document.
@@ -2985,6 +3122,7 @@ TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
             $https: {
                 connectionName: "https1",
                 path: "$bar",
+                urlEncodePath: true,
                 as: "response",
                 method: "POST",
                 headers: {
@@ -3012,18 +3150,677 @@ TEST_F(PlannerTest, HttpsWithTrueFeatureFlag) {
                       {
                           .method = mongo::HttpClient::HttpMethod::kPOST,
                           .url = "https://mongodb.com",
+                          .urlEncodePath = true,
                           .pathExpr = barExpr,
                           .connectionHeaders = std::vector<std::string>{"httpsHeader: foobar"},
                           .queryParams = expectedParameters,
                           .operatorHeaders = expectedHeaders,
                           .as = "response",
                       },
-                      Document{BSON("bar"
-                                    << "baz")});
+                      Document{BSON("bar" << "baz")});
     }
 }
 
 #endif
+
+/**
+Parse a pipeline containing $externalFunction in it. Verify that it fails when not supplied the
+correct feature flag.
+*/
+TEST_F(PlannerTest, ExternalFunctionFailsWithoutFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $externalFunction: {} }
+]
+    )";
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+
+
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+    {
+      $externalFunction: {}
+    })")};
+
+    Planner planner(_context.get(), /*options*/ {});
+    ASSERT_THROWS_CODE_AND_WHAT(
+        planner.plan(rawPipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+}
+
+/**
+Parse a pipeline containing $externalFunction in it. Verify that it still fails when the feature
+flag is defined but set to false.
+*/
+TEST_F(PlannerTest, ExternalFunctionWithFalseFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $externalFunction: {} }
+]
+    )";
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(false);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+
+
+    std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+              $externalFunction: {}
+            })")};
+    Planner planner(_context.get(), /*options*/ {});
+    ASSERT_THROWS_CODE_AND_WHAT(
+        planner.plan(rawPipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Unsupported stage: $externalFunction");
+}
+
+/**
+Parse a pipeline containing $externalFunction in it, the expected feature flag, but missing
+required arguments.
+*/
+TEST_F(PlannerTest, ExternalFunctionWithMissingRequiredArgs) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+    setupConnections();
+
+    {
+        // This pipeline is missing 'connectionName'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                functionName: "foo",
+                as: "response"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'externalFunction.connectionName' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+
+    {
+        // This pipeline passes in an unexpected connectionName.
+        ASSERT_THROWS_CODE_AND_WHAT(addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "unseenbeforelegendaryconnectionname",
+                functionName: "foo",
+                as: "response"
+            }
+        }
+    ])")),
+                                    DBException,
+                                    mongo::ErrorCodes::StreamProcessorInvalidOptions,
+                                    "StreamProcessorInvalidOptions: Unknown connectionName "
+                                    "'unseenbeforelegendaryconnectionname' in $externalFunction");
+    }
+
+    {
+        // This pipeline is missing 'functionName'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'externalFunction.functionName' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+
+    {
+        // This pipeline is missing 'as'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                functionName: "foo"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: BSON field 'externalFunction.as' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse from
+                                              // reason.
+    }
+}
+
+/**
+Parse a pipeline containing $externalFunction in it. Verify that it does not fail when not
+supplied the expected feature flag.
+*/
+TEST_F(PlannerTest, ExternalFunctionWithTrueFeatureFlag) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableExternalFunctionOperator.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+
+    auto planExternalFunctionTest = [&](const std::vector<BSONObj>& spec,
+                                        streams::ExternalFunction::Options expectedOpts) {
+        auto dag = addSourceSinkAndParse(spec);
+        auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 1 /* pipeline stages */ + 2 /* Source and Sink */);
+
+        auto actualOper = dynamic_cast<ExternalFunctionOperator*>(dag->operators().at(1).get());
+
+        ASSERT_EQ(actualOper->getOptions().functionName, expectedOpts.functionName);
+        ASSERT_EQ(actualOper->getOptions().execution, expectedOpts.execution);
+        ASSERT_EQ(actualOper->getOptions().as, expectedOpts.as);
+        ASSERT_EQ(actualOper->getOptions().onError, expectedOpts.onError);
+    };
+
+    {
+        // unknown field
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalFunctionTest(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                as: "response",
+                randomField: "foo"
+            }
+        }
+    ])"),
+                                     {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLUnknownField: BSON field 'externalFunction.randomField' is an unknown field.");
+    }
+
+    {
+        // `as` is not supported when using async execution
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planExternalFunctionTest(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                functionName: "foo",
+                execution: "async",
+                as: "response"
+            }
+        }
+    ])"),
+                                     {}),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: BSON field 'externalFunction.as' is not "
+            "supported with 'externalFunction.execution: async'");
+    }
+
+    {
+        // `as` is not supported when using async execution in sink
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+              $externalFunction: {
+                    connectionName: "awsIAMLambda1",
+                    functionName: "foo",
+                    execution: "async",
+                    as: "response"
+                }
+            })")};
+        Planner planner(_context.get(), /*options*/ {});
+        ASSERT_THROWS_CODE_AND_WHAT(
+            planner.plan(rawPipeline),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: BSON field 'externalFunction.as' is not "
+            "supported with 'externalFunction.execution: async'");
+    }
+
+    {
+        planExternalFunctionTest(parsePipeline(R"(
+    [
+        {
+            $externalFunction: {
+                connectionName: "awsIAMLambda1",
+                functionName: "foo",
+                as: "response"
+            }
+        }
+    ])"),
+                                 {
+                                     .functionName = "foo",
+                                     .execution = mongo::ExternalFunctionExecutionEnum::Sync,
+                                     .as = boost::optional<std::string>("response"),
+                                 });
+    }
+
+    {
+        // `as` is ignored when using sync execution in sink
+        std::vector<BSONObj> rawPipeline{getTestSourceSpec(), fromjson(R"(
+            {
+              $externalFunction: {
+                    connectionName: "awsIAMLambda1",
+                    functionName: "foo",
+                    execution: "sync",
+                    as: "response"
+                }
+            })")};
+        Planner planner(_context.get(), /*options*/ {});
+        auto dag = planner.plan(rawPipeline);
+        auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 1 /* pipeline stage */ + 1 /* Source */);
+
+        auto actualOper = dynamic_cast<ExternalFunctionSinkOperator*>(dag->operators().at(1).get());
+
+        ASSERT_EQ(actualOper->getOptions().functionName, "foo");
+        ASSERT_EQ(actualOper->getOptions().execution, mongo::ExternalFunctionExecutionEnum::Sync);
+        ASSERT_EQ(actualOper->getOptions().as, boost::none);
+        ASSERT_EQ(actualOper->getOptions().onError, OnErrorEnum::DLQ);
+    }
+}
+
+/**
+ * Test changestream $match pushdown.
+ */
+TEST_F(PlannerTest, Optimize_ChangestreamPredicatePushdown) {
+    executionPlanCommonTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+                            {"ChangeStreamConsumerOperator", "MergeOperator"},
+                            [](auto& dag) {
+                                auto source =
+                                    dynamic_cast<ChangeStreamSourceOperator*>(dag->source());
+                                ASSERT(source->getOptions().internalPredicate);
+                                ASSERT_BSONOBJ_EQ(*source->getOptions().internalPredicate,
+                                                  BSON("$match" << BSON("fullDocument.a" << 5)));
+                            },
+                            {{FeatureFlags::kChangestreamPredicatePushdown.name, Value(true)}});
+
+    executionPlanCommonTest(
+        R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl",
+                timeField: "$foo"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $tumblingWindow: {
+                interval: {size: 5, unit: "second"},
+                pipeline: [
+                    { $group: { _id : null, sum: {$sum: "$a"} }}
+                ]
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+        {"ChangeStreamConsumerOperator", "MatchOperator", "GroupOperator", "MergeOperator"},
+        [](auto& dag) {
+            auto source = dynamic_cast<ChangeStreamSourceOperator*>(dag->source());
+            ASSERT(!source->getOptions().internalPredicate);
+        },
+        {{FeatureFlags::kChangestreamPredicatePushdown.name, Value(true)}});
+
+    executionPlanCommonTest(R"(
+    [
+        {
+            $source: {
+                connectionName: "atlas1",
+                db: "testDb",
+                coll: "testColl"
+            }
+        },
+        {
+            $match: {
+                "fullDocument.a": 5
+            }
+        },
+        {
+            $merge: {
+                into: {
+                    connectionName: "atlas1",
+                    db: "outDb",
+                    coll: "outColl"
+                }
+            }
+        }
+    ])",
+                            {"ChangeStreamConsumerOperator", "MatchOperator", "MergeOperator"},
+                            [](auto& dag) {},
+                            {{FeatureFlags::kChangestreamPredicatePushdown.name, Value(false)}});
+}
+
+/**
+ * Parse a pipeline containing $externalFunction in it. Verify that it fails when not supplied the
+ * correct feature flag.
+ */
+TEST_F(PlannerTest, S3EmitFailsWithoutFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $emit: {
+        connectionName: "awsS3Conn1",
+        bucket: "foo",
+        path: "bar"
+        } }
+]
+    )";
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Creating an S3 $emit stage is not yet supported");
+}
+
+/**
+ * Parse a pipeline containing an S3 $emit in it. Verify that it still fails when the feature
+ * flag is defined but set to false.
+ */
+TEST_F(PlannerTest, S3EmitWithFalseFeatureFlag) {
+    std::string pipeline = R"(
+[
+    { $emit: {
+        connectionName: "awsS3Conn1",
+        bucket: "foo",
+        path: "bar"
+        } }
+]
+    )";
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableS3Emit.name] = mongo::Value(false);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ASSERT_THROWS_CODE_AND_WHAT(
+        addSourceSinkAndParse(pipeline),
+        DBException,
+        ErrorCodes::StreamProcessorInvalidOptions,
+        "StreamProcessorInvalidOptions: Creating an S3 $emit stage is not yet supported");
+}
+
+/**
+ * Parse a pipeline containing S3 $emit in it, the expected feature flag, but missing
+ * required arguments.
+ */
+TEST_F(PlannerTest, S3EmitWithMissingRequiredArgs) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableS3Emit.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+    setupConnections();
+
+    {
+        // This pipeline is missing 'connectionName'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                bucket: "foo",
+                path: "bar"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: $emit must contain 'connectionName' field in it");
+    }
+
+    {
+        // This pipeline passes in an unexpected connectionName.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "unseenbeforelegendaryconnectionname",
+                bucket: "foo",
+                path: "bar"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "StreamProcessorInvalidOptions: Invalid connectionName in $emit { connectionName: "
+            "\"unseenbeforelegendaryconnectionname\", bucket: \"foo\", path: \"bar\" }");
+    }
+
+    {
+        // This pipeline is missing 'bucket'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'emit.bucket' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse
+                                              // from reason.
+    }
+    {
+        // This pipeline is missing 'path'.
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo"
+            }
+        }
+    ])")),
+            DBException,
+            mongo::ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLFailedToParse: BSON field 'emit.path' is "
+            "missing but a required field");  // TODO(SERVER-95638): remove IDLFailedToParse
+                                              // from reason.
+    }
+
+    {
+        // unknown field
+        ASSERT_THROWS_CODE_AND_WHAT(
+            addSourceSinkAndParse(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo",
+                path: "bar",
+                randomField: "foo"
+            }
+        }
+    ])")),
+            DBException,
+            ErrorCodes::StreamProcessorInvalidOptions,
+            "IDLUnknownField: BSON field 'emit.randomField' is an unknown field.");
+    }
+}
+
+/**
+ * Parse a pipeline containing an S3 $emit in it. Verify that it does not fail when not
+ * supplied the expected feature flag.
+ */
+TEST_F(PlannerTest, S3EmitWithTrueFeatureFlag) {
+    auto prevFeatureFlags = _context->featureFlags->testOnlyGetFeatureFlags();
+    mongo::stdx::unordered_map<std::string, mongo::Value> featureFlagsMap;
+    featureFlagsMap[FeatureFlags::kEnableS3Emit.name] = mongo::Value(true);
+    StreamProcessorFeatureFlags spFeatureFlags{
+        featureFlagsMap,
+        std::chrono::time_point<std::chrono::system_clock>{
+            std::chrono::system_clock::now().time_since_epoch()}};
+    _context->featureFlags->updateFeatureFlags(spFeatureFlags);
+
+    ScopeGuard guard([&] {
+        // Unset feature flags to avoid corrupting other tests.
+        _context->featureFlags->updateFeatureFlags(
+            StreamProcessorFeatureFlags{prevFeatureFlags,
+                                        std::chrono::time_point<std::chrono::system_clock>{
+                                            std::chrono::system_clock::now().time_since_epoch()}});
+    });
+
+    struct Expectation {
+        std::string bucket;
+        std::string path;
+        std::string delimiter;
+    };
+
+    auto planS3EmitTest = [&](const std::vector<BSONObj>& spec, const Expectation& expected) {
+        auto dag = addSourceSinkAndParse(spec);
+        auto& ops = dag->operators();
+        ASSERT_EQ(ops.size(), 2 /* Source and Sink */);
+
+        auto actualOper = dynamic_cast<S3EmitOperator*>(dag->operators().at(1).get());
+
+        ASSERT_EQ(actualOper->options_forTest().bucket.getLiteral(), expected.bucket);
+        ASSERT_EQ(actualOper->options_forTest().path.getLiteral(), expected.path);
+        ASSERT_EQ(actualOper->options_forTest().delimiter, expected.delimiter);
+    };
+
+    // delimiter defaults to \n
+    {
+        planS3EmitTest(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo",
+                path: "bar"
+            }
+        }
+    ])"),
+                       {
+                           .bucket = "foo",
+                           .path = "bar",
+                           .delimiter = "\n",
+                       });
+    }
+
+    // delimiter is correctly parsed
+    {
+        planS3EmitTest(parsePipeline(R"(
+    [
+        {
+            $emit: {
+                connectionName: "awsS3Conn1",
+                bucket: "foo",
+                path: "bar",
+                delimiter: "\t"
+            }
+        }
+    ])"),
+                       {
+                           .bucket = "foo",
+                           .path = "bar",
+                           .delimiter = "\t",
+                       });
+    }
+}
 
 }  // namespace
 }  // namespace streams

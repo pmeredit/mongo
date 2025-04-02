@@ -50,10 +50,8 @@
 #include "mongo/db/storage/flow_control.h"
 #include "mongo/db/storage/flow_control_parameters_gen.h"
 #include "mongo/logv2/log.h"
-#include "mongo/logv2/log_attr.h"
-#include "mongo/logv2/log_component.h"
 #include "mongo/platform/compiler.h"
-#include "mongo/util/assert_util_core.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/decorable.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/fail_point.h"
@@ -278,13 +276,13 @@ int FlowControl::_calculateNewTicketsForLag(const std::vector<repl::MemberData>&
                                             std::uint64_t lagMillis,
                                             std::uint64_t thresholdLagMillis) {
     invariant(lagMillis >= thresholdLagMillis);
-    using namespace fmt::literals;
 
     const auto currSustainerAppliedTs = getMedianAppliedTimestamp(currMemberData);
     const auto prevSustainerAppliedTs = getMedianAppliedTimestamp(prevMemberData);
     invariant(prevSustainerAppliedTs <= currSustainerAppliedTs,
-              "PrevSustainer: {} CurrSustainer: {}"_format(prevSustainerAppliedTs.toString(),
-                                                           currSustainerAppliedTs.toString()));
+              fmt::format("PrevSustainer: {} CurrSustainer: {}",
+                          prevSustainerAppliedTs.toString(),
+                          currSustainerAppliedTs.toString()));
 
     const std::int64_t sustainerAppliedCount =
         _approximateOpsBetween(prevSustainerAppliedTs, currSustainerAppliedTs);
