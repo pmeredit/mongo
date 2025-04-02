@@ -22,10 +22,10 @@ http_archive(
     ] * 5,
 )
 
-bazel_dep(name = "platforms", version = "0.0.9")
+bazel_dep(name = "platforms", version = "0.0.11")
 single_version_override(
     module_name = "platforms",
-    version = "0.0.9",
+    version = "0.0.11",
 )
 
 # TODO move over from WORKSPACE
