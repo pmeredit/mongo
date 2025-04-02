@@ -77,23 +77,6 @@ impl AggregationStage for PluginSort {
         "$pluginSort"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
-        let field = match stage_definition {
-            RawBsonRef::String(i) => i.to_string(),
-            _ => {
-                return Err(Error::new(
-                    1,
-                    "$pluginSort should be followed with a string.",
-                ))
-            }
-        };
-        Ok(Self {
-            field,
-            source: None,
-            docs: None,
-        })
-    }
-
     fn set_source(&mut self, source: AggregationSource) {
         self.source = Some(source);
     }

@@ -85,12 +85,6 @@ impl AggregationStage for AddSomeCrabs {
         "$addSomeCrabs"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
-        Ok(Self::with_crabs(Self::parse_stage_definition(
-            stage_definition,
-        )?))
-    }
-
     fn set_source(&mut self, source: AggregationSource) {
         self.source = Some(source);
     }

@@ -1,22 +1,57 @@
-use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
-use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
-use bson::{Document, RawBsonRef};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::env;
 use std::num::NonZero;
 use std::sync::OnceLock;
+
+use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
+use bson::{Document, RawBsonRef};
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use tokio::runtime::{Builder, Runtime};
+
+use crate::sdk::{
+    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
+    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
+};
+use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 
 static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static RUNTIME_THREADS: usize = 4;
 
-pub struct VoyageRerank {
-    source: Option<AggregationSource>,
-    documents: Option<VecDeque<Document>>,
+// TODO: API key should be read in the stage descriptor.
+// This will require re-plumbing ExtensionPortal and StageDescriptor interfaces to allow accessing
+// &self to get this information.
+pub struct VoyageRerankDescriptor;
+
+impl AggregationStageDescriptor for VoyageRerankDescriptor {
+    fn name() -> &'static str {
+        "$voyageRerank"
+    }
+
+    fn properties() -> AggregationStageProperties {
+        AggregationStageProperties {
+            stream_type: stage_constraints::StreamType::Blocking,
+            position: stage_constraints::PositionRequirement::None,
+            host_type: stage_constraints::HostTypeRequirement::Router,
+        }
+    }
+}
+
+impl TransformAggregationStageDescriptor for VoyageRerankDescriptor {
+    type BoundDescriptor = VoyageRerankBoundDescriptor;
+
+    fn bind(
+        stage_definition: RawBsonRef<'_>,
+        _context: &RawDocument,
+    ) -> Result<Self::BoundDescriptor, Error> {
+        VoyageRerankBoundDescriptor::from_stage_definition(stage_definition)
+    }
+}
+
+#[derive(Clone)]
+pub struct VoyageRerankBoundDescriptor {
     query: String,
     fields: Vec<String>,
     model: String,
@@ -24,12 +59,8 @@ pub struct VoyageRerank {
     api_key: String,
 }
 
-impl AggregationStage for VoyageRerank {
-    fn name() -> &'static str {
-        "$voyageRerank"
-    }
-
-    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
+impl VoyageRerankBoundDescriptor {
+    fn from_stage_definition(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
         let document = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
@@ -82,6 +113,34 @@ impl AggregationStage for VoyageRerank {
         // TODO implement plugin config management to access settings and secrets
         let api_key = env::var("VOYAGE_API_KEY").expect("$VOYAGE_API_KEY not set");
 
+        Ok(Self {
+            query,
+            fields,
+            model,
+            limit,
+            api_key,
+        })
+    }
+}
+
+impl TransformBoundAggregationStageDescriptor for VoyageRerankBoundDescriptor {
+    type Executor = VoyageRerank;
+
+    /// Create a new executor based on bound state from creation.
+    // TODO: this should accept a source to read from.
+    fn create_executor(&self) -> Result<Self::Executor, Error> {
+        Ok(VoyageRerank::with_descriptor(self.clone()))
+    }
+}
+
+pub struct VoyageRerank {
+    descriptor: VoyageRerankBoundDescriptor,
+    source: Option<AggregationSource>,
+    documents: Option<VecDeque<Document>>,
+}
+
+impl VoyageRerank {
+    fn with_descriptor(descriptor: VoyageRerankBoundDescriptor) -> Self {
         // TODO init only once at stage registration
         RUNTIME.get_or_init(|| {
             Builder::new_multi_thread()
@@ -93,15 +152,17 @@ impl AggregationStage for VoyageRerank {
                 .unwrap()
         });
 
-        Ok(Self {
+        Self {
+            descriptor,
             source: None,
             documents: None,
-            query,
-            fields,
-            model,
-            limit,
-            api_key,
-        })
+        }
+    }
+}
+
+impl AggregationStage for VoyageRerank {
+    fn name() -> &'static str {
+        "$voyageRerank"
     }
 
     fn set_source(&mut self, source: AggregationSource) {
@@ -121,7 +182,9 @@ impl AggregationStage for VoyageRerank {
                     return Ok(GetNextResult::EOF);
                 }
                 let next = documents.pop_front().unwrap();
-                Ok(GetNextResult::Advanced(to_raw_document_buf(&next).unwrap().into()))
+                Ok(GetNextResult::Advanced(
+                    to_raw_document_buf(&next).unwrap().into(),
+                ))
             }
             None => Ok(GetNextResult::EOF),
         }
@@ -152,19 +215,20 @@ impl VoyageRerank {
         let projected_input: Vec<String> = input
             .iter()
             .map(|doc| {
-                self.fields
+                self.descriptor
+                    .fields
                     .iter()
-                    .fold(String::new(), |s, field|
+                    .fold(String::new(), |s, field| {
                         format!("{} {}:{},", s, field, doc.get_str(field).unwrap_or(""))
-                    )
+                    })
             })
             .collect();
 
         let payload = RerankRequest {
-            query: self.query.clone(),
+            query: self.descriptor.query.clone(),
             documents: projected_input,
-            model: self.model.clone(),
-            top_k: self.limit,
+            model: self.descriptor.model.clone(),
+            top_k: self.descriptor.limit,
         };
 
         let response = RUNTIME
@@ -173,7 +237,10 @@ impl VoyageRerank {
             .block_on(async {
                 let response = client
                     .post(VOYAGE_API_URL)
-                    .header("Authorization", format!("Bearer {}", self.api_key))
+                    .header(
+                        "Authorization",
+                        format!("Bearer {}", self.descriptor.api_key),
+                    )
                     .header("Content-Type", "application/json")
                     .json(&payload)
                     .send()

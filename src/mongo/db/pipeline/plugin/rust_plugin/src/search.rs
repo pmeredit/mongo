@@ -3,7 +3,11 @@ use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotCursorBatch, SearchCommand,
     MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
 };
-use crate::sdk::{AggregationStageDescriptor, AggregationStageProperties, DesugarAggregationStageDescriptor, stage_constraints};
+use crate::sdk::{
+    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
+    DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
+    SourceBoundAggregationStageDescriptor,
+};
 use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 use bson::{doc, to_raw_document_buf};
@@ -20,33 +24,48 @@ use tonic::{Status, Streaming};
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
 
-pub struct InternalPluginSearch {
-    initialized: bool,
-    client: CommandServiceClient<Channel>,
-    context: AggregationStageContext,
-    source: Option<AggregationSource>,
-    query: Document,
-    stored_source: bool,
-    result_tx: Sender<Payload>,
-    result_rx: Receiver<Payload>,
-    shutdown_tx: watch::Sender<bool>,
-    shutdown_rx: watch::Receiver<bool>,
-}
+pub struct InternalPluginSearchDescriptor;
 
-type Payload = Option<Document>;
-
-impl Drop for InternalPluginSearch {
-    fn drop(&mut self) {
-        let _ = self.shutdown_tx.send(true);
-    }
-}
-
-impl AggregationStage for InternalPluginSearch {
+impl AggregationStageDescriptor for InternalPluginSearchDescriptor {
     fn name() -> &'static str {
         "$_internalPluginSearch"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>, context: &RawDocument) -> Result<Self, Error> {
+    fn properties() -> AggregationStageProperties {
+        AggregationStageProperties {
+            stream_type: stage_constraints::StreamType::Streaming,
+            position: stage_constraints::PositionRequirement::First,
+            host_type: stage_constraints::HostTypeRequirement::AnyShard,
+        }
+    }
+}
+
+impl SourceAggregationStageDescriptor for InternalPluginSearchDescriptor {
+    type BoundDescriptor = InternalPluginSearchBoundDescriptor;
+
+    fn bind(
+        stage_definition: RawBsonRef<'_>,
+        context: &RawDocument,
+    ) -> Result<Self::BoundDescriptor, Error> {
+        InternalPluginSearchBoundDescriptor::from_stage_definition_and_context(
+            stage_definition,
+            context,
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct InternalPluginSearchBoundDescriptor {
+    query: Document,
+    stored_source: bool,
+    context: AggregationStageContext,
+}
+
+impl InternalPluginSearchBoundDescriptor {
+    fn from_stage_definition_and_context(
+        stage_definition: RawBsonRef<'_>,
+        context: &RawDocument,
+    ) -> Result<Self, Error> {
         let query = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
@@ -61,14 +80,57 @@ impl AggregationStage for InternalPluginSearch {
 
         let context = AggregationStageContext::try_from(context)?;
         if context.collection.is_none() {
-            return Err(Error::new(1, "$pluginSearch context must contain a collection name"));
+            return Err(Error::new(
+                1,
+                "$pluginSearch context must contain a collection name",
+            ));
         }
         if context.collection_uuid.is_none() {
-            return Err(Error::new(1, "$pluginSearch context must contain a collection UUID"));
+            return Err(Error::new(
+                1,
+                "$pluginSearch context must contain a collection UUID",
+            ));
         }
 
         let stored_source = query.get_bool("returnStoredSource").unwrap_or(false);
 
+        Ok(Self {
+            query,
+            stored_source,
+            context,
+        })
+    }
+}
+
+impl SourceBoundAggregationStageDescriptor for InternalPluginSearchBoundDescriptor {
+    type Executor = InternalPluginSearch;
+
+    fn create_executor(&self) -> Result<Self::Executor, Error> {
+        Ok(InternalPluginSearch::with_descriptor(self.clone()))
+    }
+}
+
+pub struct InternalPluginSearch {
+    descriptor: InternalPluginSearchBoundDescriptor,
+    initialized: bool,
+    client: CommandServiceClient<Channel>,
+    source: Option<AggregationSource>,
+    result_tx: Sender<Payload>,
+    result_rx: Receiver<Payload>,
+    shutdown_tx: watch::Sender<bool>,
+    shutdown_rx: watch::Receiver<bool>,
+}
+
+type Payload = Option<Document>;
+
+impl Drop for InternalPluginSearch {
+    fn drop(&mut self) {
+        let _ = self.shutdown_tx.send(true);
+    }
+}
+
+impl InternalPluginSearch {
+    fn with_descriptor(descriptor: InternalPluginSearchBoundDescriptor) -> Self {
         let client = RUNTIME
             .get_or_init(|| {
                 Builder::new_multi_thread()
@@ -87,18 +149,22 @@ impl AggregationStage for InternalPluginSearch {
         // watch channel used for shutdown signal to stop async getmore polling
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        Ok(Self {
+        Self {
+            descriptor,
             initialized: false,
-            context,
             client,
             source: None,
-            query,
-            stored_source,
             result_tx,
             result_rx,
             shutdown_tx,
             shutdown_rx,
-        })
+        }
+    }
+}
+
+impl AggregationStage for InternalPluginSearch {
+    fn name() -> &'static str {
+        "$_internalPluginSearch"
     }
 
     fn set_source(&mut self, source: AggregationSource) {
@@ -119,17 +185,15 @@ impl AggregationStage for InternalPluginSearch {
         let result = self.result_rx.blocking_recv().unwrap();
 
         match result {
-            Some(doc) => {
-                Ok(GetNextResult::Advanced(to_raw_document_buf(&doc).unwrap().into()))
-            }
+            Some(doc) => Ok(GetNextResult::Advanced(
+                to_raw_document_buf(&doc).unwrap().into(),
+            )),
             None => Ok(GetNextResult::EOF),
         }
     }
 
     fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
-        Ok(vec![
-            doc! {"$sort": {"$meta": "searchScore"}}
-        ])
+        Ok(vec![doc! {"$sort": {"$meta": "searchScore"}}])
     }
 }
 
@@ -146,10 +210,19 @@ impl InternalPluginSearch {
         // execute the initial request to fetch first batch and obtain the cursor id
         sender
             .send(SearchCommand::Initial(InitialSearchCommand {
-                search: self.context.collection.clone().expect("init verified collection name is present"),
-                db: self.context.db.clone(),
-                collection_uuid: self.context.collection_uuid.expect("verified collection UUID present at initialization"),
-                query: self.query.clone(),
+                search: self
+                    .descriptor
+                    .context
+                    .collection
+                    .clone()
+                    .expect("init verified collection name is present"),
+                db: self.descriptor.context.db.clone(),
+                collection_uuid: self
+                    .descriptor
+                    .context
+                    .collection_uuid
+                    .expect("verified collection UUID present at initialization"),
+                query: self.descriptor.query.clone(),
                 // small batch_size is for test purposes, this allows us to send getMores
                 cursor_options: Some(CursorOptions { batch_size: 5 }),
             }))
@@ -164,7 +237,7 @@ impl InternalPluginSearch {
             InternalPluginSearch::flush_batch_into_channel(
                 received,
                 self.result_tx.clone(),
-                self.stored_source,
+                self.descriptor.stored_source,
             )
             .await
         } else {
@@ -180,7 +253,7 @@ impl InternalPluginSearch {
         // init an async getmore prefetch loop
         let mut shutdown_rx = self.shutdown_rx.clone();
         let result_tx = self.result_tx.clone();
-        let stored_source = self.stored_source;
+        let stored_source = self.descriptor.stored_source;
 
         // spawn a background task that is terminated on the stage drop
         tokio::spawn(async move {
@@ -256,7 +329,6 @@ impl AggregationStageDescriptor for PluginSearchDescriptor {
     }
 
     fn properties() -> AggregationStageProperties {
-        // TODO: this should return the value value as the internal remote stage.
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,

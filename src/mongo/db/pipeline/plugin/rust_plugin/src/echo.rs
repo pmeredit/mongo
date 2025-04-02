@@ -59,19 +59,6 @@ impl AggregationStage for EchoOxideExecutor {
         "$echoOxide"
     }
 
-    fn new(stage_definition: RawBsonRef<'_>, _context: &RawDocument) -> Result<Self, Error> {
-        let document = match stage_definition {
-            RawBsonRef::Document(doc) => doc.to_owned(),
-            _ => {
-                return Err(Error::new(
-                    1,
-                    "$echoOxide stage definition must contain a document.",
-                ))
-            }
-        };
-        Ok(Self(Some(document)))
-    }
-
     fn set_source(&mut self, _source: AggregationSource) {
         // Do nothing
     }

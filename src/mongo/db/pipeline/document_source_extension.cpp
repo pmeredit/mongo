@@ -8,7 +8,6 @@
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/db/pipeline/document_source_plugin.h"
 #include "mongo/db/pipeline/plugin/plugin.h"
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/serialization_context.h"
@@ -62,6 +61,16 @@ BSONObj createContext(const ExpressionContext& ctx) {
 }
 
 }  // anonymous namespace
+
+MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
+                          ("BeginDocumentSourceRegistration"),
+                          ("EndDocumentSourceRegistration"))
+(InitializerContext*) {
+    MongoExtensionPortal portal;
+    portal.version = MONGODB_PLUGIN_VERSION_0;
+    portal.registerStageDescriptor = &DocumentSourceExtension::registerStageDescriptor;
+    mongodb_initialize_plugin(&portal);
+}
 
 // static
 void DocumentSourceExtension::registerStageDescriptor(

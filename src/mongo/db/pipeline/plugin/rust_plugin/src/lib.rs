@@ -17,7 +17,7 @@ use std::ffi::{c_int, c_void};
 use std::num::NonZero;
 
 use bson::{doc, to_vec};
-use bson::{Bson, Document, RawBsonRef, RawDocument, Uuid};
+use bson::{Bson, Document, RawDocument, Uuid};
 use serde::{Deserialize, Serialize};
 
 use plugin_api_bindgen::{
@@ -30,9 +30,9 @@ use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
 use crate::custom_sort::PluginSortDescriptor;
 use crate::echo::EchoOxideDescriptor;
 use crate::sdk::ExtensionPortal;
-use crate::search::{InternalPluginSearch, PluginSearchDescriptor};
-use crate::vector::{InternalPluginVectorSearch, PluginVectorSearchDescriptor};
-use crate::voyage::VoyageRerank;
+use crate::search::{InternalPluginSearchDescriptor, PluginSearchDescriptor};
+use crate::vector::{InternalPluginVectorSearchDescriptor, PluginVectorSearchDescriptor};
+use crate::voyage::VoyageRerankDescriptor;
 
 #[derive(Debug)]
 pub struct Error {
@@ -184,7 +184,7 @@ impl AggregationSource {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AggregationStageContext {
     // NB: this may contain a raw ObjectId so it probably shouldn't be a String.
     // This isn't an issue in the C++ code base because std::string can be an arbitrary byte buffer
@@ -215,14 +215,6 @@ pub trait AggregationStage: Sized {
     /// Return the name of this aggregation stage, useful for registration.
     fn name() -> &'static str;
 
-    /// Create a new stage from a document containing the stage definition.
-    /// The stage definition is a bson value associated with the stage name.
-    /// `context`` is a document containing additional data about this aggregation pipeline. It
-    /// is convertible to [AggregationStageContext].
-    // TODO: should we always parse Context? It depend on whether or not any non-trival agg stage
-    // would need access to the parsed context.
-    fn new(stage_definition: RawBsonRef<'_>, context: &RawDocument) -> Result<Self, Error>;
-
     /// Set a source for this stage. Used by intermediate stages to fetch documents to transform.
     fn set_source(&mut self, source: AggregationSource);
 
@@ -244,7 +236,7 @@ pub trait AggregationStage: Sized {
 pub struct PluginAggregationStage<S: AggregationStage> {
     vtable: &'static MongoExtensionAggregationStageVTable,
     stage_impl: S,
-    // This is a place to put errors or other things that might leak.
+    // This is a place to put errors or other things that might otherwise leak.
     buf: Vec<u8>,
 }
 
@@ -270,20 +262,6 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
         close: Some(Self::close),
     };
 
-    pub fn register(portal: &mut MongoExtensionPortal) {
-        let stage_name = S::name();
-        let stage_view = MongoExtensionByteView {
-            data: stage_name.as_bytes().as_ptr(),
-            len: stage_name.as_bytes().len(),
-        };
-        unsafe {
-            portal.add_aggregation_stage.expect("add stage")(
-                stage_view,
-                Some(Self::parse_external),
-            );
-        }
-    }
-
     pub fn new(stage: S) -> Self {
         Self {
             vtable: &Self::VTABLE,
@@ -294,76 +272,6 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
 
     pub fn into_raw_interface(self: Box<Self>) -> *mut MongoExtensionAggregationStage {
         Box::into_raw(self) as *mut MongoExtensionAggregationStage
-    }
-
-    unsafe extern "C-unwind" fn parse_external(
-        stage_bson: MongoExtensionByteView,
-        context_bson: MongoExtensionByteView,
-        stage: *mut *mut MongoExtensionAggregationStage,
-        error: *mut *mut MongoExtensionByteBuf,
-    ) -> c_int {
-        let (stage_slice, context_slice) = unsafe {
-            (
-                byte_view_as_slice(stage_bson),
-                byte_view_as_slice(context_bson),
-            )
-        };
-        *stage = std::ptr::null_mut();
-        *error = std::ptr::null_mut();
-        match Self::parse(stage_slice, context_slice) {
-            Ok(stage_impl) => {
-                let plugin_stage = Box::new(Self {
-                    vtable: &Self::VTABLE,
-                    stage_impl,
-                    buf: vec![],
-                });
-                *stage = Box::into_raw(plugin_stage) as *mut MongoExtensionAggregationStage;
-                0
-            }
-            Err(Error { code, message, .. }) => {
-                *error =
-                    Box::into_raw(VecByteBuf::from_string(message)) as *mut MongoExtensionByteBuf;
-                code.into()
-            }
-        }
-    }
-
-    /// Parse a generic [AggregationStage] from raw bson document bytes.
-    fn parse(stage_doc_bytes: &[u8], context_doc_bytes: &[u8]) -> Result<S, Error> {
-        let stage_doc = RawDocument::from_bytes(stage_doc_bytes).map_err(|e| {
-            Error::with_source(
-                1,
-                format!("Error parsing stage definition for {}", S::name()),
-                e,
-            )
-        })?;
-        let element = stage_doc
-            .iter()
-            .next()
-            .map(|el| {
-                el.map_err(|e| {
-                    Error::with_source(
-                        1,
-                        format!("Error parsing stage definition for {}", S::name()),
-                        Box::new(e),
-                    )
-                })
-            })
-            .unwrap_or(Err(Error::new(
-                1,
-                format!(
-                    "Error parsing stage defintion for {}: no stage definition element present",
-                    S::name()
-                ),
-            )))?;
-        let context_doc = RawDocument::from_bytes(context_doc_bytes).map_err(|e| {
-            Error::with_source(
-                1,
-                format!("Error parsing context for stage {}", S::name()),
-                e,
-            )
-        })?;
-        S::new(element.1, context_doc)
     }
 
     unsafe extern "C-unwind" fn get_next(
@@ -457,13 +365,6 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
 unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {
-    let portal = portal_ptr
-        .as_mut()
-        .expect("extension portal pointer may not be null!");
-    PluginAggregationStage::<InternalPluginSearch>::register(portal);
-    PluginAggregationStage::<InternalPluginVectorSearch>::register(portal);
-    PluginAggregationStage::<VoyageRerank>::register(portal);
-
     let mut sdk_portal =
         ExtensionPortal::from_raw(portal_ptr).expect("extension portal pointer may not be null");
     sdk_portal.register_source_aggregation_stage::<EchoOxideDescriptor>();
@@ -471,5 +372,8 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtens
     sdk_portal.register_desugar_aggregation_stage::<EchoWithSomeCrabsDescriptor>();
     sdk_portal.register_transform_aggregation_stage::<PluginSortDescriptor>();
     sdk_portal.register_desugar_aggregation_stage::<PluginSearchDescriptor>();
+    sdk_portal.register_source_aggregation_stage::<InternalPluginSearchDescriptor>();
     sdk_portal.register_desugar_aggregation_stage::<PluginVectorSearchDescriptor>();
+    sdk_portal.register_source_aggregation_stage::<InternalPluginVectorSearchDescriptor>();
+    sdk_portal.register_transform_aggregation_stage::<VoyageRerankDescriptor>();
 }
