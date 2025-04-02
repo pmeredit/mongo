@@ -138,7 +138,7 @@ void DocumentSourceExtension::registerConcreteStage(
                                                                     std::move(boundDescriptor),
                                                                     std::move(executor)));
         },
-        boost::none);
+        kDoesNotRequireFeatureFlag);
 }
 
 // static
@@ -175,7 +175,7 @@ void DocumentSourceExtension::registerDesugarStage(
             }
             return desugared_sources;
         },
-        boost::none);
+        kDoesNotRequireFeatureFlag);
 }
 
 // static
