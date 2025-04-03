@@ -4,13 +4,32 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
 use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 use tonic::Status;
 
 pub(crate) static MONGOT_ENDPOINT: &str = "http://localhost:27030";
 pub(crate) static RUNTIME_THREADS: usize = 4;
 pub(crate) static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+
+pub struct MongotClientState {
+    pub runtime: Runtime,
+    // TODO: this should also contain a client connection/channel, but not until client state is
+    // optional in the descriptor. Ideally we would only create mongot connections from hosts that
+    // are executing queries; some hosts only participate in planning.
+}
+
+impl MongotClientState {
+    pub fn new(runtime_threads: usize) -> Self {
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(runtime_threads)
+            .thread_name("search-extension")
+            .enable_io()
+            .build()
+            .unwrap();
+        Self { runtime }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MongotCursorBatch {

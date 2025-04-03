@@ -15,6 +15,7 @@ mod voyage;
 use std::borrow::Cow;
 use std::ffi::{c_int, c_void};
 use std::num::NonZero;
+use std::sync::Arc;
 
 use bson::{doc, to_vec};
 use bson::{Bson, Document, RawDocument, Uuid};
@@ -29,7 +30,8 @@ use plugin_api_bindgen::{
 use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
 use crate::custom_sort::PluginSortDescriptor;
 use crate::echo::EchoOxideDescriptor;
-use crate::sdk::ExtensionPortal;
+use crate::mongot_client::MongotClientState;
+use crate::sdk::{AggregationStageDescriptor, ExtensionPortal};
 use crate::search::{InternalPluginSearchDescriptor, PluginSearchDescriptor};
 use crate::vector::{InternalPluginVectorSearchDescriptor, PluginVectorSearchDescriptor};
 use crate::voyage::VoyageRerankDescriptor;
@@ -367,13 +369,26 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
 unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {
     let mut sdk_portal =
         ExtensionPortal::from_raw(portal_ptr).expect("extension portal pointer may not be null");
-    sdk_portal.register_source_aggregation_stage::<EchoOxideDescriptor>();
-    sdk_portal.register_transform_aggregation_stage::<AddSomeCrabsDescriptor>();
-    sdk_portal.register_desugar_aggregation_stage::<EchoWithSomeCrabsDescriptor>();
-    sdk_portal.register_transform_aggregation_stage::<PluginSortDescriptor>();
-    sdk_portal.register_desugar_aggregation_stage::<PluginSearchDescriptor>();
-    sdk_portal.register_source_aggregation_stage::<InternalPluginSearchDescriptor>();
-    sdk_portal.register_desugar_aggregation_stage::<PluginVectorSearchDescriptor>();
-    sdk_portal.register_source_aggregation_stage::<InternalPluginVectorSearchDescriptor>();
-    sdk_portal.register_transform_aggregation_stage::<VoyageRerankDescriptor>();
+    let mongot_client_state = Arc::new(MongotClientState::new(4));
+
+    sdk_portal.register_source_aggregation_stage(EchoOxideDescriptor);
+    sdk_portal.register_transform_aggregation_stage(AddSomeCrabsDescriptor);
+    sdk_portal.register_desugar_aggregation_stage(EchoWithSomeCrabsDescriptor);
+    sdk_portal.register_transform_aggregation_stage(PluginSortDescriptor);
+    sdk_portal.register_desugar_aggregation_stage(PluginSearchDescriptor);
+    sdk_portal.register_source_aggregation_stage(InternalPluginSearchDescriptor::new(Arc::clone(
+        &mongot_client_state,
+    )));
+    sdk_portal.register_desugar_aggregation_stage(PluginVectorSearchDescriptor);
+    sdk_portal.register_source_aggregation_stage(InternalPluginVectorSearchDescriptor::new(
+        Arc::clone(&mongot_client_state),
+    ));
+    if let Ok(api_key) = std::env::var("VOYAGE_API_KEY") {
+        sdk_portal.register_transform_aggregation_stage(VoyageRerankDescriptor::new(4, api_key));
+    } else {
+        eprintln!(
+            "Skipping registration of {}; VOYAGE_API_KEY unset",
+            VoyageRerankDescriptor::name()
+        );
+    }
 }

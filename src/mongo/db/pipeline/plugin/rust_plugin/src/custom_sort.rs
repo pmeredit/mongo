@@ -14,7 +14,7 @@ impl AggregationStageDescriptor for PluginSortDescriptor {
         "$pluginSort"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Blocking,
             position: stage_constraints::PositionRequirement::None,
@@ -27,6 +27,7 @@ impl TransformAggregationStageDescriptor for PluginSortDescriptor {
     type BoundDescriptor = PluginSortBoundDescriptor;
 
     fn bind(
+        &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Self::BoundDescriptor, Error> {

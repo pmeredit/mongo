@@ -13,7 +13,7 @@ impl AggregationStageDescriptor for EchoOxideDescriptor {
         "$echoOxide"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
@@ -26,6 +26,7 @@ impl SourceAggregationStageDescriptor for EchoOxideDescriptor {
     type BoundDescriptor = EchoOxideBoundDescriptor;
 
     fn bind(
+        &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Self::BoundDescriptor, Error> {

@@ -1,8 +1,9 @@
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
-    MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
+    MongotClientState, MongotCursorBatch, VectorSearchCommand, MONGOT_ENDPOINT,
 };
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
@@ -12,18 +13,17 @@ use crate::sdk::{
 use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 use bson::{doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument};
-use tokio::runtime::Builder;
 use tonic::transport::Channel;
 use tonic::{Request, Response};
 
-pub struct InternalPluginVectorSearchDescriptor;
+pub struct InternalPluginVectorSearchDescriptor(Arc<MongotClientState>);
 
 impl AggregationStageDescriptor for InternalPluginVectorSearchDescriptor {
     fn name() -> &'static str {
         "$_internalPluginVectorSearch"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
@@ -32,14 +32,22 @@ impl AggregationStageDescriptor for InternalPluginVectorSearchDescriptor {
     }
 }
 
+impl InternalPluginVectorSearchDescriptor {
+    pub fn new(client_state: Arc<MongotClientState>) -> Self {
+        Self(client_state)
+    }
+}
+
 impl SourceAggregationStageDescriptor for InternalPluginVectorSearchDescriptor {
     type BoundDescriptor = InternalPluginVectorSearchBoundDescriptor;
 
     fn bind(
+        &self,
         stage_definition: RawBsonRef<'_>,
         context: &RawDocument,
     ) -> Result<Self::BoundDescriptor, Error> {
-        InternalPluginVectorSearchBoundDescriptor::from_stage_definition_and_context(
+        InternalPluginVectorSearchBoundDescriptor::new(
+            Arc::clone(&self.0),
             stage_definition,
             context,
         )
@@ -48,6 +56,7 @@ impl SourceAggregationStageDescriptor for InternalPluginVectorSearchDescriptor {
 
 #[derive(Clone)]
 pub struct InternalPluginVectorSearchBoundDescriptor {
+    client_state: Arc<MongotClientState>,
     index: String,
     query_vector: RawArrayBuf,
     path: String,
@@ -57,7 +66,8 @@ pub struct InternalPluginVectorSearchBoundDescriptor {
 }
 
 impl InternalPluginVectorSearchBoundDescriptor {
-    fn from_stage_definition_and_context(
+    fn new(
+        client_state: Arc<MongotClientState>,
         stage_definition: RawBsonRef<'_>,
         context: &RawDocument,
     ) -> Result<Self, Error> {
@@ -110,6 +120,7 @@ impl InternalPluginVectorSearchBoundDescriptor {
             .map_err(|_| Error::new(1, "Missing 'limit' field"))? as i64;
 
         Ok(Self {
+            client_state,
             index,
             query_vector,
             path,
@@ -137,15 +148,9 @@ pub struct InternalPluginVectorSearch {
 
 impl InternalPluginVectorSearch {
     fn with_descriptor(descriptor: InternalPluginVectorSearchBoundDescriptor) -> Self {
-        let client = RUNTIME
-            .get_or_init(|| {
-                Builder::new_multi_thread()
-                    .worker_threads(RUNTIME_THREADS)
-                    .thread_name("search-extension")
-                    .enable_io()
-                    .build()
-                    .unwrap()
-            })
+        let client = descriptor
+            .client_state
+            .runtime
             .block_on(CommandServiceClient::connect(MONGOT_ENDPOINT))
             .expect("Failed to connect to CommandService");
 
@@ -194,9 +199,9 @@ impl AggregationStage for InternalPluginVectorSearch {
 
 impl InternalPluginVectorSearch {
     fn populate_documents(&mut self) -> Result<(), Error> {
-        let result = RUNTIME
-            .get()
-            .unwrap()
+        let client_state = Arc::clone(&self.descriptor.client_state);
+        let result = client_state
+            .runtime
             .block_on(async { self.query_mongot().await });
 
         let binding =
@@ -265,7 +270,7 @@ impl AggregationStageDescriptor for PluginVectorSearchDescriptor {
         "$pluginVectorSearch"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
         // TODO: this should return the value value as the internal remote stage.
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Streaming,
@@ -277,6 +282,7 @@ impl AggregationStageDescriptor for PluginVectorSearchDescriptor {
 
 impl DesugarAggregationStageDescriptor for PluginVectorSearchDescriptor {
     fn desugar(
+        &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Vec<Document>, Error> {

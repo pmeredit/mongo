@@ -1,18 +1,7 @@
-use crate::command_service::command_service_client::CommandServiceClient;
-use crate::mongot_client::{
-    CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotCursorBatch, SearchCommand,
-    MONGOT_ENDPOINT, RUNTIME, RUNTIME_THREADS,
-};
-use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
-    SourceBoundAggregationStageDescriptor,
-};
-use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
+use std::sync::Arc;
 
 use bson::{doc, to_raw_document_buf};
 use bson::{Document, RawBsonRef, RawDocument};
-use tokio::runtime::Builder;
 use tokio::select;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, watch};
@@ -21,17 +10,35 @@ use tonic::codegen::tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::{Status, Streaming};
 
+use crate::command_service::command_service_client::CommandServiceClient;
+use crate::mongot_client::{
+    CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotClientState,
+    MongotCursorBatch, SearchCommand, MONGOT_ENDPOINT,
+};
+use crate::sdk::{
+    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
+    DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
+    SourceBoundAggregationStageDescriptor,
+};
+use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
+
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
 
-pub struct InternalPluginSearchDescriptor;
+pub struct InternalPluginSearchDescriptor(Arc<MongotClientState>);
+
+impl InternalPluginSearchDescriptor {
+    pub fn new(client_state: Arc<MongotClientState>) -> Self {
+        Self(client_state)
+    }
+}
 
 impl AggregationStageDescriptor for InternalPluginSearchDescriptor {
     fn name() -> &'static str {
         "$_internalPluginSearch"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
@@ -44,25 +51,25 @@ impl SourceAggregationStageDescriptor for InternalPluginSearchDescriptor {
     type BoundDescriptor = InternalPluginSearchBoundDescriptor;
 
     fn bind(
+        &self,
         stage_definition: RawBsonRef<'_>,
         context: &RawDocument,
     ) -> Result<Self::BoundDescriptor, Error> {
-        InternalPluginSearchBoundDescriptor::from_stage_definition_and_context(
-            stage_definition,
-            context,
-        )
+        InternalPluginSearchBoundDescriptor::new(Arc::clone(&self.0), stage_definition, context)
     }
 }
 
 #[derive(Clone)]
 pub struct InternalPluginSearchBoundDescriptor {
+    client_state: Arc<MongotClientState>,
     query: Document,
     stored_source: bool,
     context: AggregationStageContext,
 }
 
 impl InternalPluginSearchBoundDescriptor {
-    fn from_stage_definition_and_context(
+    fn new(
+        client_state: Arc<MongotClientState>,
         stage_definition: RawBsonRef<'_>,
         context: &RawDocument,
     ) -> Result<Self, Error> {
@@ -95,6 +102,7 @@ impl InternalPluginSearchBoundDescriptor {
         let stored_source = query.get_bool("returnStoredSource").unwrap_or(false);
 
         Ok(Self {
+            client_state,
             query,
             stored_source,
             context,
@@ -131,15 +139,9 @@ impl Drop for InternalPluginSearch {
 
 impl InternalPluginSearch {
     fn with_descriptor(descriptor: InternalPluginSearchBoundDescriptor) -> Self {
-        let client = RUNTIME
-            .get_or_init(|| {
-                Builder::new_multi_thread()
-                    .worker_threads(RUNTIME_THREADS)
-                    .thread_name("search-extension")
-                    .enable_io()
-                    .build()
-                    .unwrap()
-            })
+        let client = descriptor
+            .client_state
+            .runtime
             .block_on(CommandServiceClient::connect(MONGOT_ENDPOINT))
             .expect("Failed to connect to CommandService");
 
@@ -175,9 +177,15 @@ impl AggregationStage for InternalPluginSearch {
         if !self.initialized {
             // TODO figure out if start_fetching_results should be executed
             // earlier at stage creation
-            RUNTIME
-                .get()
-                .unwrap()
+
+            // Clone client state to avoid taking both mutable and immutable refs to self.
+            // Alternatives:
+            // * Initialize connection/channel and only wrap it in a stub once we fetch results.
+            //   The connection could be initialized any time before get_next().
+            // * Defer connecting until the first call to get_next().
+            let client_state = Arc::clone(&self.descriptor.client_state);
+            client_state
+                .runtime
                 .block_on(async { Self::start_fetching_results(self).await })?;
             self.initialized = true;
         }
@@ -328,7 +336,8 @@ impl AggregationStageDescriptor for PluginSearchDescriptor {
         "$pluginSearch"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
+        // TODO: this should return the value value as the internal remote stage.
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
@@ -339,6 +348,7 @@ impl AggregationStageDescriptor for PluginSearchDescriptor {
 
 impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
     fn desugar(
+        &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Vec<Document>, Error> {

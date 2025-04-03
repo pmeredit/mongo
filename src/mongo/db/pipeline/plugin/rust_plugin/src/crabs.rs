@@ -1,3 +1,4 @@
+use crate::echo::EchoOxideDescriptor;
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
     DesugarAggregationStageDescriptor, TransformAggregationStageDescriptor,
@@ -20,7 +21,7 @@ impl AggregationStageDescriptor for AddSomeCrabsDescriptor {
         "$addSomeCrabs"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::None,
@@ -33,6 +34,7 @@ impl TransformAggregationStageDescriptor for AddSomeCrabsDescriptor {
     type BoundDescriptor = AddSomeCrabsBoundDescriptor;
 
     fn bind(
+        &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Self::BoundDescriptor, Error> {
@@ -115,13 +117,14 @@ impl AggregationStageDescriptor for EchoWithSomeCrabsDescriptor {
         "$echoWithSomeCrabs"
     }
 
-    fn properties() -> AggregationStageProperties {
-        crate::echo::EchoOxideDescriptor::properties()
+    fn properties(&self) -> AggregationStageProperties {
+        EchoOxideDescriptor.properties()
     }
 }
 
 impl DesugarAggregationStageDescriptor for EchoWithSomeCrabsDescriptor {
     fn desugar(
+        &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Vec<Document>, Error> {

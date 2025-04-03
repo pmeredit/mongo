@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
-use std::env;
 use std::num::NonZero;
-use std::sync::OnceLock;
+use std::sync::Arc;
 
 use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
 use bson::{Document, RawBsonRef};
@@ -17,20 +16,38 @@ use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
 
 static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static RUNTIME_THREADS: usize = 4;
 
-// TODO: API key should be read in the stage descriptor.
-// This will require re-plumbing ExtensionPortal and StageDescriptor interfaces to allow accessing
-// &self to get this information.
-pub struct VoyageRerankDescriptor;
+// TODO: consider requiring descriptors are Arc wrapped so that they may be easily carried to
+// the descriptor of an executor. Alternatives to the current shape and Arc wrapper:
+// * Rc. Host doesn't provide many guarantees about threading so unwise.
+// * Reference to descriptor and lifetime. This would bleed into the trait interfaces.
+// * Raw pointers and an initialization function. Descriptor would need explicit initialization.
+struct RerankState {
+    runtime: Runtime,
+    api_key: String,
+}
+
+pub struct VoyageRerankDescriptor(Arc<RerankState>);
+
+impl VoyageRerankDescriptor {
+    pub fn new(runtime_threads: usize, api_key: String) -> Self {
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(runtime_threads)
+            .thread_name("search-extension-voyage")
+            .enable_time()
+            .enable_io()
+            .build()
+            .unwrap();
+        Self(Arc::new(RerankState { runtime, api_key }))
+    }
+}
 
 impl AggregationStageDescriptor for VoyageRerankDescriptor {
     fn name() -> &'static str {
         "$voyageRerank"
     }
 
-    fn properties() -> AggregationStageProperties {
+    fn properties(&self) -> AggregationStageProperties {
         AggregationStageProperties {
             stream_type: stage_constraints::StreamType::Blocking,
             position: stage_constraints::PositionRequirement::None,
@@ -43,24 +60,25 @@ impl TransformAggregationStageDescriptor for VoyageRerankDescriptor {
     type BoundDescriptor = VoyageRerankBoundDescriptor;
 
     fn bind(
+        &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Self::BoundDescriptor, Error> {
-        VoyageRerankBoundDescriptor::from_stage_definition(stage_definition)
+        VoyageRerankBoundDescriptor::new(Arc::clone(&self.0), stage_definition)
     }
 }
 
 #[derive(Clone)]
 pub struct VoyageRerankBoundDescriptor {
+    state: Arc<RerankState>,
     query: String,
     fields: Vec<String>,
     model: String,
     limit: i64,
-    api_key: String,
 }
 
 impl VoyageRerankBoundDescriptor {
-    fn from_stage_definition(stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
+    fn new(state: Arc<RerankState>, stage_definition: RawBsonRef<'_>) -> Result<Self, Error> {
         let document = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
@@ -110,15 +128,12 @@ impl VoyageRerankBoundDescriptor {
             source: None,
         })? as i64;
 
-        // TODO implement plugin config management to access settings and secrets
-        let api_key = env::var("VOYAGE_API_KEY").expect("$VOYAGE_API_KEY not set");
-
         Ok(Self {
+            state,
             query,
             fields,
             model,
             limit,
-            api_key,
         })
     }
 }
@@ -126,8 +141,6 @@ impl VoyageRerankBoundDescriptor {
 impl TransformBoundAggregationStageDescriptor for VoyageRerankBoundDescriptor {
     type Executor = VoyageRerank;
 
-    /// Create a new executor based on bound state from creation.
-    // TODO: this should accept a source to read from.
     fn create_executor(&self) -> Result<Self::Executor, Error> {
         Ok(VoyageRerank::with_descriptor(self.clone()))
     }
@@ -141,17 +154,6 @@ pub struct VoyageRerank {
 
 impl VoyageRerank {
     fn with_descriptor(descriptor: VoyageRerankBoundDescriptor) -> Self {
-        // TODO init only once at stage registration
-        RUNTIME.get_or_init(|| {
-            Builder::new_multi_thread()
-                .worker_threads(RUNTIME_THREADS)
-                .thread_name("search-extension")
-                .enable_time()
-                .enable_io()
-                .build()
-                .unwrap()
-        });
-
         Self {
             descriptor,
             source: None,
@@ -231,15 +233,13 @@ impl VoyageRerank {
             top_k: self.descriptor.limit,
         };
 
-        let response = RUNTIME
-            .get()
-            .unwrap()
+        let response = self.descriptor.state.runtime
             .block_on(async {
                 let response = client
                     .post(VOYAGE_API_URL)
                     .header(
                         "Authorization",
-                        format!("Bearer {}", self.descriptor.api_key),
+                        format!("Bearer {}", self.descriptor.state.api_key),
                     )
                     .header("Content-Type", "application/json")
                     .json(&payload)
