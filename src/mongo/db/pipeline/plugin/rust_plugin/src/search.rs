@@ -13,7 +13,7 @@ use tonic::{Status, Streaming};
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotClientState,
-    MongotCursorBatch, SearchCommand, MONGOT_ENDPOINT,
+    MongotCursorBatch, SearchCommand,
 };
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
@@ -92,10 +92,11 @@ impl InternalPluginSearchBoundDescriptor {
                 "$pluginSearch context must contain a collection name",
             ));
         }
-        if context.collection_uuid.is_none() {
+
+        if context.mongot_host.is_none() {
             return Err(Error::new(
                 1,
-                "$pluginSearch context must contain a collection UUID",
+                "$pluginSearch context must contain a mongot host",
             ));
         }
 
@@ -139,10 +140,19 @@ impl Drop for InternalPluginSearch {
 
 impl InternalPluginSearch {
     fn with_descriptor(descriptor: InternalPluginSearchBoundDescriptor) -> Self {
+        let mongot_host = format!(
+            "http://{}",
+            descriptor
+                .context
+                .mongot_host
+                .clone()
+                .expect("mongot host should be present")
+        );
+
         let client = descriptor
             .client_state
             .runtime
-            .block_on(CommandServiceClient::connect(MONGOT_ENDPOINT))
+            .block_on(CommandServiceClient::connect(mongot_host))
             .expect("Failed to connect to CommandService");
 
         // bounded channel used for async result push / sync result poll
@@ -174,6 +184,13 @@ impl AggregationStage for InternalPluginSearch {
     }
 
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
+        if self.descriptor.context.collection_uuid.is_none() {
+            return Err(Error::new(
+                1,
+                "$pluginSearch context must contain a collection UUID",
+            ));
+        }
+
         if !self.initialized {
             // TODO figure out if start_fetching_results should be executed
             // earlier at stage creation
@@ -201,7 +218,7 @@ impl AggregationStage for InternalPluginSearch {
     }
 
     fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
-        Ok(vec![doc! {"$sort": {"$meta": "searchScore"}}])
+        Ok(vec![doc! {"$sort": {"score": {"$meta": "searchScore"}}}])
     }
 }
 

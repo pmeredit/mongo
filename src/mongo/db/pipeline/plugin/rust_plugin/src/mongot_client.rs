@@ -8,7 +8,6 @@ use tokio::runtime::{Builder, Runtime};
 use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 use tonic::Status;
 
-pub(crate) static MONGOT_ENDPOINT: &str = "http://localhost:27030";
 pub(crate) static RUNTIME_THREADS: usize = 4;
 pub(crate) static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 

@@ -140,11 +140,11 @@ pub mod command_service_client {
                 })?;
             let codec = BsonCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/mongodb.CommandService/vectorSearch",
+                "/mongodb.BsonCommandService/vectorSearch",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("mongodb.CommandService", "vectorSearch"));
+                .insert(GrpcMethod::new("mongodb.BsonCommandService", "vectorSearch"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn search(
@@ -164,11 +164,11 @@ pub mod command_service_client {
                 })?;
             let codec = BsonCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/mongodb.CommandService/search",
+                "/mongodb.BsonCommandService/search",
             );
             let mut req = request.into_streaming_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("mongodb.CommandService", "search"));
+                .insert(GrpcMethod::new("mongodb.BsonCommandService", "search"));
             self.inner.streaming(req, path, codec).await
         }
     }

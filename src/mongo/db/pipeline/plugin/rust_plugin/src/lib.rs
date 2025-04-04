@@ -187,6 +187,7 @@ impl AggregationSource {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AggregationStageContext {
     // NB: this may contain a raw ObjectId so it probably shouldn't be a String.
     // This isn't an issue in the C++ code base because std::string can be an arbitrary byte buffer
@@ -196,8 +197,9 @@ pub struct AggregationStageContext {
     pub collection: Option<String>,
     #[serde(rename = "collectionUUID")]
     pub collection_uuid: Option<Uuid>,
-    #[serde(rename = "inRouter")]
     pub in_router: bool,
+    // TODO remove mongotHost in favor of extension-specific config
+    pub mongot_host: Option<String>
 }
 
 impl TryFrom<&RawDocument> for AggregationStageContext {

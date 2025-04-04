@@ -7,11 +7,13 @@
 #include "absl/base/nullability.h"
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/pipeline/plugin/plugin.h"
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/serialization_context.h"
 #include "mongo/util/string_map.h"
+#include "mongo/db/query/search/mongot_options.h"
 
 namespace mongo {
 
@@ -57,6 +59,7 @@ BSONObj createContext(const ExpressionContext& ctx) {
         (*ctx.getUUID()).appendToBuilder(&b, "collectionUUID");
     }
     b.append("inRouter", ctx.getInRouter());
+    b.append("mongotHost", globalMongotParams.host);
     return b.obj();
 }
 
@@ -233,8 +236,6 @@ boost::optional<DocumentSource::DistributedPlanLogic>
 DocumentSourceExtension::distributedPlanLogic() {
     // TODO Can the plugin modify "shardsStages"?
     // TODO Handle stages that must execute on the merging node ($voyageRerank)
-    // TODO If first stage is a $sort, we should extract the sort pattern for the
-    // "mergeSortPattern" field.
     // TODO More potential optimization through "needsSplit"/"canMovePast" fields for $search.
 
     MongoExtensionByteBuf* result_ptr = nullptr;
@@ -242,20 +243,33 @@ DocumentSourceExtension::distributedPlanLogic() {
     std::unique_ptr<MongoExtensionByteBuf, ExtensionObjectDeleter> result(result_ptr);
     BSONObj mergeStagesBson(byteBufAsStringData(*result).data());
 
+    DistributedPlanLogic logic;
     auto elem = mergeStagesBson.firstElement();
     std::list<boost::intrusive_ptr<DocumentSource>> merge_sources;
     uassert(9999999,
             "Merging stages provided by extension stage must be array.",
             elem.type() == BSONType::Array);
+
+    bool firstStage = true;
     for (auto stageElem : elem.embeddedObject()) {
         for (auto stage : DocumentSource::parse(pExpCtx, stageElem.embeddedObject())) {
-            merge_sources.push_back(stage);
+            if (firstStage) {
+                firstStage = false;
+                // If this is a $sort stage, set it as mergeSortPattern
+                if (stage->getId() == DocumentSourceSort::id) {
+                    auto sortStage = static_cast<DocumentSourceSort*>(stage.get());
+                    logic.mergeSortPattern = sortStage->getSortKeyPattern()
+                        .serialize(SortPattern::SortKeySerialization::kForPipelineSerialization)
+                        .toBson();
+                }
+            } else {
+                merge_sources.push_back(stage);
+            }
         }
     }
 
-    DistributedPlanLogic logic;
-    logic.shardsStage = this;
     logic.mergingStages = std::move(merge_sources);
+    logic.shardsStage = this;
 
     return logic;
 }

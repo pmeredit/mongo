@@ -539,6 +539,7 @@ be invoked as either:
             minor_version = mongot_version.split(".")[1]
             mongot_version = major_version + "." + str(int(minor_version) + 1) + ".0"
 
+    if mongot_version != "local":
         mongot_excluded_versions = get_excluded_mongot_versions(mongot_version)
         _config.EXCLUDE_WITH_ANY_TAGS.extend(mongot_excluded_versions)
 
