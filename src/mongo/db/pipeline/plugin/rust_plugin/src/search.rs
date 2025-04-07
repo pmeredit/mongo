@@ -114,6 +114,10 @@ impl InternalPluginSearchBoundDescriptor {
 impl SourceBoundAggregationStageDescriptor for InternalPluginSearchBoundDescriptor {
     type Executor = InternalPluginSearch;
 
+    fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
+        Ok(vec![doc! {"$sort": {"score": {"$meta": "searchScore"}}}])
+    }
+
     fn create_executor(&self) -> Result<Self::Executor, Error> {
         Ok(InternalPluginSearch::with_descriptor(self.clone()))
     }
@@ -215,10 +219,6 @@ impl AggregationStage for InternalPluginSearch {
             )),
             None => Ok(GetNextResult::EOF),
         }
-    }
-
-    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
-        Ok(vec![doc! {"$sort": {"score": {"$meta": "searchScore"}}}])
     }
 }
 

@@ -4,7 +4,9 @@ use std::ptr::NonNull;
 
 use crate::{AggregationStage, Error, PluginAggregationStage, VecByteBuf};
 
-use bson::{to_raw_document_buf, Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf};
+use bson::{
+    doc, to_raw_document_buf, to_vec, Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf,
+};
 use plugin_api_bindgen::{
     MongoExtensionAggregationStage, MongoExtensionAggregationStageDescriptor,
     MongoExtensionAggregationStageDescriptorVTable, MongoExtensionAggregationStageType,
@@ -136,6 +138,14 @@ pub trait SourceBoundAggregationStageDescriptor {
     /// This object will be wrapped so that it can be used by the extension host.
     type Executor: AggregationStage + Sized;
 
+    /// Return a pipeline fragment used to merge the output of this stage in a sharded query.
+    ///
+    /// If this returns an empty list of stages then result documents are merged by a well defined
+    /// shard key. This is the average case; most won't need to override this.
+    fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
+        Ok(vec![])
+    }
+
     /// Create a new executor based on bound state from creation.
     fn create_executor(&self) -> Result<Self::Executor, Error>;
 }
@@ -146,6 +156,14 @@ pub trait TransformBoundAggregationStageDescriptor {
     ///
     /// This object will be wrapped so that it can be used by the extension host.
     type Executor: AggregationStage + Sized;
+
+    /// Return a pipeline fragment used to merge the output of this stage in a sharded query.
+    ///
+    /// If this returns an empty list of stages then result documents are merged by a well defined
+    /// shard key. This is the average case; most won't need to override this.
+    fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
+        Ok(vec![])
+    }
 
     /// Create a new executor based on bound state from creation.
     // TODO: this should accept a source to read from.
@@ -457,6 +475,28 @@ impl<D: TransformAggregationStageDescriptor> ExtensionAggregationStageDescriptor
     }
 }
 
+fn serialize_merging_stages(stages: Vec<Document>) -> Result<Vec<u8>, Error> {
+    to_vec(&doc! {
+        "mergingStages":
+        Bson::Array(
+            stages
+                .into_iter()
+                .map(Bson::from)
+                .collect(),
+        ),
+    })
+    .map_err(|e| Error::with_source(1, "failed to serialize merging stages", e))
+}
+
+fn process_merging_stages(
+    result: Result<Vec<Document>, Error>,
+) -> (std::os::raw::c_int, Box<VecByteBuf>) {
+    match result.and_then(serialize_merging_stages) {
+        Ok(s) => (0, VecByteBuf::from_vec(s)),
+        Err(e) => (e.code.into(), VecByteBuf::from_string(e.to_string())),
+    }
+}
+
 #[repr(C)]
 struct ExtensionSourceBoundAggregationStageDescriptor<D> {
     vtable: &'static MongoExtensionBoundAggregationStageDescriptorVTable,
@@ -469,6 +509,7 @@ impl<D: SourceBoundAggregationStageDescriptor + Sized>
     const VTABLE: MongoExtensionBoundAggregationStageDescriptorVTable =
         MongoExtensionBoundAggregationStageDescriptorVTable {
             drop: Some(Self::drop),
+            getMergingStages: Some(Self::get_merging_stages),
             createExecutor: Some(Self::create_executor),
         };
 
@@ -485,6 +526,18 @@ impl<D: SourceBoundAggregationStageDescriptor + Sized>
 
     unsafe extern "C-unwind" fn drop(descp: *mut MongoExtensionBoundAggregationStageDescriptor) {
         let _ = Box::from_raw(descp as *mut Self);
+    }
+
+    unsafe extern "C-unwind" fn get_merging_stages(
+        descp: *const MongoExtensionBoundAggregationStageDescriptor,
+        result: *mut *mut MongoExtensionByteBuf,
+    ) -> std::os::raw::c_int {
+        let ffi_desc = (descp as *const Self)
+            .as_ref()
+            .expect("descriptor non-null");
+        let (code, buf) = process_merging_stages(ffi_desc.descriptor.get_merging_stages());
+        *result = buf.into_byte_buf();
+        code
     }
 
     unsafe extern "C-unwind" fn create_executor(
@@ -518,6 +571,7 @@ impl<D: TransformBoundAggregationStageDescriptor + Sized>
     const VTABLE: MongoExtensionBoundAggregationStageDescriptorVTable =
         MongoExtensionBoundAggregationStageDescriptorVTable {
             drop: Some(Self::drop),
+            getMergingStages: Some(Self::get_merging_stages),
             createExecutor: Some(Self::create_executor),
         };
 
@@ -534,6 +588,18 @@ impl<D: TransformBoundAggregationStageDescriptor + Sized>
 
     unsafe extern "C-unwind" fn drop(descp: *mut MongoExtensionBoundAggregationStageDescriptor) {
         let _ = Box::from_raw(descp as *mut Self);
+    }
+
+    unsafe extern "C-unwind" fn get_merging_stages(
+        descp: *const MongoExtensionBoundAggregationStageDescriptor,
+        result: *mut *mut MongoExtensionByteBuf,
+    ) -> std::os::raw::c_int {
+        let ffi_desc = (descp as *const Self)
+            .as_ref()
+            .expect("descriptor non-null");
+        let (code, buf) = process_merging_stages(ffi_desc.descriptor.get_merging_stages());
+        *result = buf.into_byte_buf();
+        code
     }
 
     unsafe extern "C-unwind" fn create_executor(

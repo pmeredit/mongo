@@ -49,6 +49,10 @@ pub struct PluginSortBoundDescriptor(String);
 impl TransformBoundAggregationStageDescriptor for PluginSortBoundDescriptor {
     type Executor = PluginSort;
 
+    fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
+        Ok(vec![doc! {"$sort": {self.0.clone(): 1}}])
+    }
+
     fn create_executor(&self) -> Result<Self::Executor, Error> {
         Ok(PluginSort::from_bound_descriptor(self))
     }
@@ -100,10 +104,6 @@ impl AggregationStage for PluginSort {
             }
             None => Ok(GetNextResult::EOF),
         }
-    }
-
-    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
-        Ok(vec![doc! {"$sort": {self.field.clone(): 1}}])
     }
 }
 

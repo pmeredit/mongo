@@ -174,6 +174,18 @@ struct MongoExtensionBoundAggregationStageDescriptorVTable {
     void (*drop)(MongoExtensionBoundAggregationStageDescriptor* descriptor);
 
     /**
+     * Get a merging pipeline that describes logic by which to merge streams during distributed
+     * query execution. This may be called if the host is planning a query over a distributed
+     * collection and the planner would like to attempt to push the extension stage to the shards.
+     *
+     * If the return code is 0, *result will contain a valid BSON document that contains the
+     * structure { mergingStages: [<stages>] } which will be parsed as an aggregation.
+     * If the return code is non-zero, an error occurred and result contains an error string.
+     */
+    int (*getMergingStages)(const MongoExtensionBoundAggregationStageDescriptor* stage,
+                            MongoExtensionByteBuf** result);
+
+    /**
      * Create an executor for this stage.
      *
      * If return code is 0, *executor will be filled with an execution instance.
@@ -238,19 +250,6 @@ struct MongoExtensionAggregationStageVTable {
     void (*set_source)(MongoExtensionAggregationStage* stage,
                        void* source_ptr,
                        mongodb_source_get_next source_get_next);
-
-    // Get a merging pipeline that describes logic by which to merge streams during distributed
-    // query execution. This is only called if query planning would like to attempt to push the
-    // plugin stage to the shards.
-    //
-    // Returns a BSON document with the structure { mergingStages: [<stages>] }, where the stages
-    // must form a valid aggregation pipeline. The contents of the merging pipeline may vary based
-    // on the stage definition.
-    //
-    // If the stage doesn't require special merging logic, this function can return an empty
-    // pipeline { mergingStages: [] }.
-    void (*get_merging_stages)(MongoExtensionAggregationStage* stage,
-                               MongoExtensionByteBuf** result);
 
     // Close this stage and free any memory associated with it. It is an error to use stage after
     // closing.

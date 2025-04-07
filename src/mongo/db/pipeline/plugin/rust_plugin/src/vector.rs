@@ -135,6 +135,10 @@ impl InternalPluginVectorSearchBoundDescriptor {
 impl SourceBoundAggregationStageDescriptor for InternalPluginVectorSearchBoundDescriptor {
     type Executor = InternalPluginVectorSearch;
 
+    fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
+        Ok(vec![doc! {"$sort": {"score": {"$meta": "vectorSearchScore"}}}])
+    }
+
     fn create_executor(&self) -> Result<Self::Executor, Error> {
         Ok(InternalPluginVectorSearch::with_descriptor(self.clone()))
     }
@@ -148,7 +152,7 @@ pub struct InternalPluginVectorSearch {
 }
 
 impl InternalPluginVectorSearch {
-    fn with_descriptor(descriptor: InternalPluginVectorSearchBoundDescriptor) -> Self {     
+    fn with_descriptor(descriptor: InternalPluginVectorSearchBoundDescriptor) -> Self {
         let mongot_host = format!(
             "http://{}",
             descriptor
@@ -209,10 +213,6 @@ impl AggregationStage for InternalPluginVectorSearch {
             }
             None => Ok(GetNextResult::EOF),
         }
-    }
-
-    fn get_merging_stages(&mut self) -> Result<Vec<Document>, Error> {
-        Ok(vec![doc! {"$sort": {"score": {"$meta": "vectorSearchScore"}}}])
     }
 }
 

@@ -7,13 +7,13 @@
 #include "absl/base/nullability.h"
 #include "mongo/base/init.h"  // IWYU pragma: keep
 #include "mongo/bson/bsonobj.h"
-#include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/plugin/plugin.h"
+#include "mongo/db/query/search/mongot_options.h"
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/serialization_context.h"
 #include "mongo/util/string_map.h"
-#include "mongo/db/query/search/mongot_options.h"
 
 namespace mongo {
 
@@ -239,8 +239,9 @@ DocumentSourceExtension::distributedPlanLogic() {
     // TODO More potential optimization through "needsSplit"/"canMovePast" fields for $search.
 
     MongoExtensionByteBuf* result_ptr = nullptr;
-    _executor->vtable->get_merging_stages(_executor.get(), &result_ptr);
+    int code = _boundDescriptor->vtable->getMergingStages(_boundDescriptor.get(), &result_ptr);
     std::unique_ptr<MongoExtensionByteBuf, ExtensionObjectDeleter> result(result_ptr);
+    uassert(code, str::stream() << byteBufAsStringData(*result), code == 0);
     BSONObj mergeStagesBson(byteBufAsStringData(*result).data());
 
     DistributedPlanLogic logic;
@@ -258,9 +259,10 @@ DocumentSourceExtension::distributedPlanLogic() {
                 // If this is a $sort stage, set it as mergeSortPattern
                 if (stage->getId() == DocumentSourceSort::id) {
                     auto sortStage = static_cast<DocumentSourceSort*>(stage.get());
-                    logic.mergeSortPattern = sortStage->getSortKeyPattern()
-                        .serialize(SortPattern::SortKeySerialization::kForPipelineSerialization)
-                        .toBson();
+                    logic.mergeSortPattern =
+                        sortStage->getSortKeyPattern()
+                            .serialize(SortPattern::SortKeySerialization::kForPipelineSerialization)
+                            .toBson();
                 }
             } else {
                 merge_sources.push_back(stage);
