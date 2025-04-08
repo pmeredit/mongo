@@ -188,6 +188,9 @@ struct MongoExtensionBoundAggregationStageDescriptorVTable {
     /**
      * Create an executor for this stage.
      *
+     * If this stage is of kTransform type then source is expected to contain a valid stage pointer,
+     * otherwise source should be nullptr. In all cases this call takes ownership of source.
+     *
      * If return code is 0, *executor will be filled with an execution instance.
      * Otherwise, *error will be returned with an error string.
      *
@@ -197,6 +200,7 @@ struct MongoExtensionBoundAggregationStageDescriptorVTable {
     // This would be unpleasant for the plugin host to deal with, but logically there's no need for
     // the bound descriptor after the executor is created.
     int (*createExecutor)(MongoExtensionBoundAggregationStageDescriptor* descriptor,
+                          MongoExtensionAggregationStage* source,
                           MongoExtensionAggregationStage** executor,
                           MongoExtensionByteBuf** error);
 
@@ -205,13 +209,6 @@ struct MongoExtensionBoundAggregationStageDescriptorVTable {
     // * modified paths for transform stages.
     // Like descriptor properties() this would be returned as a BSON message.
 };
-
-// A function to get data from a source stage.
-//
-// Return codes <= 0 are a mongodb_get_next_result, codes > 0 are errors.
-// On GET_NEXT_ADVANCED (*result, *len) are filled with a BSON document, on error (result, len) may
-// be filled with a utf8 error string. On non-zero codes (result, len) may be set to (NULL, 0).
-typedef int (*mongodb_source_get_next)(void* source_ptr, const unsigned char** result, size_t* len);
 
 struct MongoExtensionAggregationStageVTable;
 /// An opaque type to be used with a C++ style polymorphic object.
@@ -245,11 +242,6 @@ struct MongoExtensionAggregationStageVTable {
     // Any positive value indicates an error. result will be filled with a utf8 string
     // describing the error.
     int (*get_next)(MongoExtensionAggregationStage* stage, MongoExtensionByteView* result);
-
-    // Set a source pointer and a source function for intermediate stages.
-    void (*set_source)(MongoExtensionAggregationStage* stage,
-                       void* source_ptr,
-                       mongodb_source_get_next source_get_next);
 
     // Close this stage and free any memory associated with it. It is an error to use stage after
     // closing.

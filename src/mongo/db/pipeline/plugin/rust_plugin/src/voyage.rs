@@ -10,9 +10,10 @@ use tokio::runtime::{Builder, Runtime};
 
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
+    HostAggregationStageExecutor, TransformAggregationStageDescriptor,
+    TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
+use crate::{AggregationStage, Error, GetNextResult};
 
 static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
@@ -146,36 +147,34 @@ impl TransformBoundAggregationStageDescriptor for VoyageRerankBoundDescriptor {
         Ok(vec![])
     }
 
-    fn create_executor(&self) -> Result<Self::Executor, Error> {
-        Ok(VoyageRerank::with_descriptor(self.clone()))
+    fn create_executor(
+        &self,
+        source: HostAggregationStageExecutor,
+    ) -> Result<Self::Executor, Error> {
+        Ok(VoyageRerank::with_descriptor(self.clone(), source))
     }
 }
 
 pub struct VoyageRerank {
     descriptor: VoyageRerankBoundDescriptor,
-    source: Option<AggregationSource>,
+    source: HostAggregationStageExecutor,
     documents: Option<VecDeque<Document>>,
 }
 
 impl VoyageRerank {
-    fn with_descriptor(descriptor: VoyageRerankBoundDescriptor) -> Self {
+    fn with_descriptor(
+        descriptor: VoyageRerankBoundDescriptor,
+        source: HostAggregationStageExecutor,
+    ) -> Self {
         Self {
             descriptor,
-            source: None,
+            source,
             documents: None,
         }
     }
 }
 
 impl AggregationStage for VoyageRerank {
-    fn name() -> &'static str {
-        "$voyageRerank"
-    }
-
-    fn set_source(&mut self, source: AggregationSource) {
-        self.source = Some(source);
-    }
-
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.documents.is_none() {
             let accumulated = Self::accumulate_documents(self)?;
@@ -200,10 +199,9 @@ impl AggregationStage for VoyageRerank {
 
 impl VoyageRerank {
     fn accumulate_documents(&mut self) -> Result<Vec<Document>, Error> {
-        let source = self.source.as_mut().expect("source should be present");
         let mut accumulated: Vec<Document> = Vec::new();
 
-        while let GetNextResult::Advanced(input_doc) = source.get_next()? {
+        while let GetNextResult::Advanced(input_doc) = self.source.get_next()? {
             let doc = Document::try_from(input_doc.as_ref()).unwrap();
             accumulated.push(doc);
         }
@@ -233,7 +231,10 @@ impl VoyageRerank {
             top_k: self.descriptor.limit,
         };
 
-        let response = self.descriptor.state.runtime
+        let response = self
+            .descriptor
+            .state
+            .runtime
             .block_on(async {
                 let response = client
                     .post(VOYAGE_API_URL)

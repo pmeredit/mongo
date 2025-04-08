@@ -2,7 +2,7 @@
 
 use std::ptr::NonNull;
 
-use crate::{AggregationStage, Error, PluginAggregationStage, VecByteBuf};
+use crate::{AggregationStage, Error, GetNextResult, PluginAggregationStage, VecByteBuf};
 
 use bson::{
     doc, to_raw_document_buf, to_vec, Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf,
@@ -166,8 +166,10 @@ pub trait TransformBoundAggregationStageDescriptor {
     }
 
     /// Create a new executor based on bound state from creation.
-    // TODO: this should accept a source to read from.
-    fn create_executor(&self) -> Result<Self::Executor, Error>;
+    fn create_executor(
+        &self,
+        source: HostAggregationStageExecutor,
+    ) -> Result<Self::Executor, Error>;
 }
 
 /// Bindings for `MongoExtensionPortal`.
@@ -542,11 +544,14 @@ impl<D: SourceBoundAggregationStageDescriptor + Sized>
 
     unsafe extern "C-unwind" fn create_executor(
         descp: *mut MongoExtensionBoundAggregationStageDescriptor,
+        source: *mut MongoExtensionAggregationStage,
         executor: *mut *mut MongoExtensionAggregationStage,
         error: *mut *mut MongoExtensionByteBuf,
     ) -> std::os::raw::c_int {
-        let ffi_desc = (descp as *mut Self).as_mut().expect("descriptor non-null");
-        match ffi_desc.descriptor.create_executor() {
+        let ext_descriptor = (descp as *mut Self).as_mut().expect("descriptor non-null");
+        match ext_descriptor
+            .create_executor_internal(HostAggregationStageExecutor::from_raw(source))
+        {
             Ok(e) => {
                 *executor = Box::new(PluginAggregationStage::new(e)).into_raw_interface();
                 0
@@ -556,6 +561,20 @@ impl<D: SourceBoundAggregationStageDescriptor + Sized>
                 e.code.into()
             }
         }
+    }
+
+    fn create_executor_internal(
+        &mut self,
+        source: Option<HostAggregationStageExecutor>,
+    ) -> Result<D::Executor, Error> {
+        if source.is_some() {
+            return Err(Error::new(
+                1,
+                "create_executor on source bound descriptor received a source stage",
+            ));
+        }
+
+        self.descriptor.create_executor()
     }
 }
 
@@ -604,11 +623,14 @@ impl<D: TransformBoundAggregationStageDescriptor + Sized>
 
     unsafe extern "C-unwind" fn create_executor(
         descp: *mut MongoExtensionBoundAggregationStageDescriptor,
+        source: *mut MongoExtensionAggregationStage,
         executor: *mut *mut MongoExtensionAggregationStage,
         error: *mut *mut MongoExtensionByteBuf,
     ) -> std::os::raw::c_int {
-        let ext_desc = (descp as *mut Self).as_mut().expect("descriptor non-null");
-        match ext_desc.descriptor.create_executor() {
+        let ext_descriptor = (descp as *mut Self).as_mut().expect("descriptor non-null");
+        match ext_descriptor
+            .create_executor_internal(HostAggregationStageExecutor::from_raw(source))
+        {
             Ok(e) => {
                 *executor = Box::new(PluginAggregationStage::new(e)).into_raw_interface();
                 0
@@ -617,6 +639,85 @@ impl<D: TransformBoundAggregationStageDescriptor + Sized>
                 *error = VecByteBuf::from_string(e.to_string()).into_byte_buf();
                 e.code.into()
             }
+        }
+    }
+
+    fn create_executor_internal(
+        &mut self,
+        source: Option<HostAggregationStageExecutor>,
+    ) -> Result<D::Executor, Error> {
+        let source = source.ok_or_else(|| {
+            Error::new(
+                1,
+                "create_executor on transform bound descriptor must receive a source stage",
+            )
+        })?;
+        self.descriptor.create_executor(source)
+    }
+}
+
+/// Interface to an stage owned by the host, used by transform stages.
+pub struct HostAggregationStageExecutor(NonNull<MongoExtensionAggregationStage>);
+
+impl HostAggregationStageExecutor {
+    pub fn from_raw(ptr: *mut MongoExtensionAggregationStage) -> Option<Self> {
+        NonNull::new(ptr).map(Self)
+    }
+}
+
+impl AggregationStage for HostAggregationStageExecutor {
+    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
+        let mut doc_view = MongoExtensionByteView {
+            data: std::ptr::null(),
+            len: 0,
+        };
+        match unsafe {
+            self.0
+                .as_mut()
+                .vtable
+                .as_ref()
+                .expect("non-nullptr vtable")
+                .get_next
+                .expect("non-nullptr executor get_next")(self.0.as_mut(), &mut doc_view)
+        } {
+            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED => {
+                let raw_doc = RawDocument::from_bytes(unsafe {
+                    std::slice::from_raw_parts(doc_view.data, doc_view.len)
+                })
+                .map_err(|e| {
+                    Error::with_source(1, "Host stage provided invalid BSON document", e)
+                })?;
+                Ok(GetNextResult::Advanced(raw_doc.into()))
+            }
+            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF => Ok(GetNextResult::EOF),
+            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION => {
+                Ok(GetNextResult::PauseExecution)
+            }
+            code => {
+                // TODO: this should pass through an external error without coercing it to an
+                // internal type to better handle host-generated exceptions. This requires changes
+                // across the extension API, host code, and SDK.
+                Err(Error::new(
+                    code,
+                    String::from_utf8_lossy(unsafe {
+                        std::slice::from_raw_parts(doc_view.data, doc_view.len)
+                    }),
+                ))
+            }
+        }
+    }
+}
+
+impl Drop for HostAggregationStageExecutor {
+    fn drop(&mut self) {
+        unsafe {
+            self.0
+                .as_mut()
+                .vtable
+                .as_ref()
+                .expect("non-nullptr vtable")
+                .close
+                .expect("non-nullptr executor close")(self.0.as_mut());
         }
     }
 }

@@ -125,21 +125,12 @@ void DocumentSourceExtension::registerConcreteStage(
             auto error = ByteBufPtr(errorPtr);
             uassert(code, str::stream() << byteBufAsStringData(*error), code == 0);
 
-            // TODO: defer creation of agg stage until the first getNext() call.
-            MongoExtensionAggregationStage* executorPtr = nullptr;
-            code = boundDescriptor->vtable->createExecutor(
-                boundDescriptor.get(), &executorPtr, &errorPtr);
-            auto executor = ExecutorPtr(executorPtr);
-            error = ByteBufPtr(errorPtr);
-            uassert(code, str::stream() << byteBufAsStringData(*error), code == 0);
-
             return boost::intrusive_ptr(new DocumentSourceExtension(specElem.fieldNameStringData(),
                                                                     expCtx,
                                                                     id,
                                                                     std::move(stageDef),
                                                                     descriptor,
-                                                                    std::move(boundDescriptor),
-                                                                    std::move(executor)));
+                                                                    std::move(boundDescriptor)));
         },
         kDoesNotRequireFeatureFlag);
 }
@@ -181,42 +172,26 @@ void DocumentSourceExtension::registerDesugarStage(
         kDoesNotRequireFeatureFlag);
 }
 
-// static
-int DocumentSourceExtension::externalSourceGetNext(void* source_ptr,
-                                                   const unsigned char** result,
-                                                   size_t* len) {
-    return reinterpret_cast<DocumentSourceExtension*>(source_ptr)->sourceGetNext(result, len);
-}
-
-void DocumentSourceExtension::setSource(DocumentSource* source) {
-    pSource = source;
-    _executor->vtable->set_source(
-        _executor.get(), this, &DocumentSourceExtension::externalSourceGetNext);
-}
-
-int DocumentSourceExtension::sourceGetNext(const unsigned char** result, size_t* len) {
-    // TODO: if this call throws we need to turn it into an error. As-is an exception would unwind
-    // through extension stack frames. This is fine for the rust SDK because they use C-unwind ABI
-    // but arbitrary extensions might have a problem.
-    GetNextResult get_next_result = pSource->getNext();
-    switch (get_next_result.getStatus()) {
-        case GetNextResult::ReturnStatus::kAdvanced:
-            _source_doc = get_next_result.releaseDocument().toBson();
-            *result = reinterpret_cast<const unsigned char*>(_source_doc.objdata());
-            *len = _source_doc.objsize();
-            return GET_NEXT_ADVANCED;
-        case GetNextResult::ReturnStatus::kEOF:
-            *result = nullptr;
-            *len = 0;
-            return GET_NEXT_EOF;
-        case GetNextResult::ReturnStatus::kPauseExecution:
-            *result = nullptr;
-            *len = 0;
-            return GET_NEXT_PAUSE_EXECUTION;
-    }
-}
-
 DocumentSource::GetNextResult DocumentSourceExtension::doGetNext() {
+    if (_executor == nullptr) {
+        // Create an executor from _boundDescriptor. DocumentSource doesn't provide any signal that
+        // execution is about to begin, unlike SBE.
+        MongoExtensionAggregationStage* sourcePtr = nullptr;
+        if (_descriptor->vtable->type(_descriptor) ==
+            MongoExtensionAggregationStageType::kTransform) {
+            uassert(1, "Transform stage does not have a source pointer", pSource != nullptr);
+            _source = std::make_unique<SourceAggregationStageExecutor>(pSource);
+            sourcePtr = _source.get();
+        }
+        MongoExtensionAggregationStage* executorPtr = nullptr;
+        MongoExtensionByteBuf* errorPtr = nullptr;
+        const int code = _boundDescriptor->vtable->createExecutor(
+            _boundDescriptor.get(), sourcePtr, &executorPtr, &errorPtr);
+        _executor = ExecutorPtr(executorPtr);
+        auto error = ByteBufPtr(errorPtr);
+        uassert(code, str::stream() << byteBufAsStringData(*error), code == 0);
+    }
+
     MongoExtensionByteView result{nullptr, 0};
     int code = _executor->vtable->get_next(_executor.get(), &result);
     switch (code) {
@@ -329,5 +304,43 @@ StageConstraints DocumentSourceExtension::constraints(Pipeline::SplitState pipeS
     }
     return constraints;
 }
+
+extern "C" int _mongoSourceAggregationStageExecutorGetNext(MongoExtensionAggregationStage* executor,
+                                                           MongoExtensionByteView* result) {
+    // TODO: if this call throws we need to turn it into an error. As-is an exception would
+    // unwind through extension stack frames. This is fine for the rust SDK because they use
+    // the C-unwind ABI but arbitrary extensions might have a problem.
+    return static_cast<DocumentSourceExtension::SourceAggregationStageExecutor*>(executor)->getNext(
+        result);
+}
+
+DocumentSourceExtension::SourceAggregationStageExecutor::SourceAggregationStageExecutor(
+    DocumentSource* source)
+    : _source(source) {
+    this->vtable = &VTABLE;
+}
+
+int DocumentSourceExtension::SourceAggregationStageExecutor::getNext(MongoExtensionByteView* doc) {
+    *doc = MongoExtensionByteView{nullptr, 0};
+    auto result = _source->getNext();
+    switch (result.getStatus()) {
+        case DocumentSource::GetNextResult::ReturnStatus::kAdvanced:
+            _source_doc = result.releaseDocument().toBson();
+            doc->data = reinterpret_cast<const unsigned char*>(_source_doc.objdata());
+            doc->len = _source_doc.objsize();
+            return GET_NEXT_ADVANCED;
+        case DocumentSource::GetNextResult::ReturnStatus::kEOF:
+            return GET_NEXT_EOF;
+        case DocumentSource::GetNextResult::ReturnStatus::kPauseExecution:
+            return GET_NEXT_PAUSE_EXECUTION;
+    }
+}
+
+const MongoExtensionAggregationStageVTable
+    DocumentSourceExtension::SourceAggregationStageExecutor::VTABLE = {
+        &_mongoSourceAggregationStageExecutorGetNext,
+        // NB: this method does nothing as a DocumentSource does not own pSource
+        [](MongoExtensionAggregationStage*) {
+        }};
 
 }  // namespace mongo

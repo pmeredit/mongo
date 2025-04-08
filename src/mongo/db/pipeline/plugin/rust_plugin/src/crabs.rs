@@ -1,10 +1,10 @@
 use crate::echo::EchoOxideDescriptor;
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, TransformAggregationStageDescriptor,
-    TransformBoundAggregationStageDescriptor,
+    DesugarAggregationStageDescriptor, HostAggregationStageExecutor,
+    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
+use crate::{AggregationStage, Error, GetNextResult};
 
 use bson::{doc, to_raw_document_buf, Document, RawBsonRef, RawDocument};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -51,14 +51,17 @@ pub struct AddSomeCrabsBoundDescriptor {
 impl TransformBoundAggregationStageDescriptor for AddSomeCrabsBoundDescriptor {
     type Executor = AddSomeCrabs;
 
-    fn create_executor(&self) -> Result<Self::Executor, Error> {
-        Ok(AddSomeCrabs::with_crabs(self.num_crabs))
+    fn create_executor(
+        &self,
+        source: HostAggregationStageExecutor,
+    ) -> Result<Self::Executor, Error> {
+        Ok(AddSomeCrabs::with_crabs(self.num_crabs, source))
     }
 }
 
 pub struct AddSomeCrabs {
     crabs: String,
-    source: Option<AggregationSource>,
+    source: HostAggregationStageExecutor,
 }
 
 impl AddSomeCrabs {
@@ -74,30 +77,17 @@ impl AddSomeCrabs {
         }
     }
 
-    fn with_crabs(num_crabs: usize) -> Self {
+    fn with_crabs(num_crabs: usize, source: HostAggregationStageExecutor) -> Self {
         Self {
             crabs: String::from_iter(std::iter::repeat('🦀').take(num_crabs)),
-            source: None,
+            source,
         }
     }
 }
 
 impl AggregationStage for AddSomeCrabs {
-    fn name() -> &'static str {
-        "$addSomeCrabs"
-    }
-
-    fn set_source(&mut self, source: AggregationSource) {
-        self.source = Some(source);
-    }
-
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
-        let source = self
-            .source
-            .as_mut()
-            .expect("intermediate stage must have source");
-        let source_result = source.get_next()?;
-        match source_result {
+        match self.source.get_next()? {
             GetNextResult::Advanced(input_doc) => {
                 let mut doc = Document::try_from(input_doc.as_ref()).unwrap();
                 doc.insert("someCrabs", self.crabs.clone());
@@ -105,7 +95,7 @@ impl AggregationStage for AddSomeCrabs {
                     to_raw_document_buf(&doc).unwrap().into(),
                 ))
             }
-            _ => Ok(source_result),
+            source_result => Ok(source_result),
         }
     }
 }

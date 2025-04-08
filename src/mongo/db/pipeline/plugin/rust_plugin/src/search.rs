@@ -20,7 +20,7 @@ use crate::sdk::{
     DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
     SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
+use crate::{AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
@@ -127,7 +127,6 @@ pub struct InternalPluginSearch {
     descriptor: InternalPluginSearchBoundDescriptor,
     initialized: bool,
     client: CommandServiceClient<Channel>,
-    source: Option<AggregationSource>,
     result_tx: Sender<Payload>,
     result_rx: Receiver<Payload>,
     shutdown_tx: watch::Sender<bool>,
@@ -169,7 +168,6 @@ impl InternalPluginSearch {
             descriptor,
             initialized: false,
             client,
-            source: None,
             result_tx,
             result_rx,
             shutdown_tx,
@@ -179,14 +177,6 @@ impl InternalPluginSearch {
 }
 
 impl AggregationStage for InternalPluginSearch {
-    fn name() -> &'static str {
-        "$_internalPluginSearch"
-    }
-
-    fn set_source(&mut self, source: AggregationSource) {
-        self.source = Some(source);
-    }
-
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.descriptor.context.collection_uuid.is_none() {
             return Err(Error::new(

@@ -4,7 +4,7 @@ use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
     SourceAggregationStageDescriptor, SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
+use crate::{AggregationStage, Error, GetNextResult};
 
 pub struct EchoOxideDescriptor;
 
@@ -56,14 +56,6 @@ impl SourceBoundAggregationStageDescriptor for EchoOxideBoundDescriptor {
 pub struct EchoOxideExecutor(Option<RawDocumentBuf>);
 
 impl AggregationStage for EchoOxideExecutor {
-    fn name() -> &'static str {
-        "$echoOxide"
-    }
-
-    fn set_source(&mut self, _source: AggregationSource) {
-        // Do nothing
-    }
-
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         Ok(if let Some(doc) = self.0.take() {
             GetNextResult::Advanced(doc.into())

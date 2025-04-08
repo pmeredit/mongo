@@ -16,8 +16,6 @@ public:
         return _id;
     }
 
-    void setSource(DocumentSource* source) override;
-
     GetNextResult doGetNext() override;
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() override;
@@ -31,6 +29,21 @@ public:
         // if optimizations change the shape of the stage definition.
         return Value(_raw_stage);
     }
+
+    // For transform stages the source is wrapped as another executor and passed to the extension
+    // stage so that they may read input data.
+    class SourceAggregationStageExecutor : public MongoExtensionAggregationStage {
+    public:
+        explicit SourceAggregationStageExecutor(DocumentSource* source);
+
+        int getNext(MongoExtensionByteView* doc);
+
+    private:
+        static const MongoExtensionAggregationStageVTable VTABLE;
+
+        DocumentSource* _source;
+        BSONObj _source_doc;
+    };
 
     // This method is invoked by extensions via MongoExtensionPortal.
     // TODO: make this private.
@@ -71,25 +84,19 @@ private:
         Id id,
         BSONObj rawStage,
         absl::Nonnull<const MongoExtensionAggregationStageDescriptor*> descriptor,
-        BoundDescriptorPtr boundDescriptor,
-        ExecutorPtr executor)
+        BoundDescriptorPtr boundDescriptor)
         : DocumentSource(name, exprCtx),
           _stage_name(name.toString()),
           _id(id),
           _raw_stage(rawStage.getOwned()),
           _descriptor(descriptor),
-          _boundDescriptor(std::move(boundDescriptor)),
-          _executor(std::move(executor)) {}
+          _boundDescriptor(std::move(boundDescriptor)) {}
 
     // Do not support copy or move.
     DocumentSourceExtension(const DocumentSourceExtension&) = delete;
     DocumentSourceExtension(DocumentSourceExtension&&) = delete;
     DocumentSourceExtension& operator=(const DocumentSourceExtension&) = delete;
     DocumentSourceExtension& operator=(DocumentSourceExtension&&) = delete;
-
-    // FFI binding for extension to use.
-    static int externalSourceGetNext(void* source_ptr, const unsigned char** result, size_t* len);
-    int sourceGetNext(const unsigned char** result, size_t* len);
 
     // NB: the stage name could be stored statically, but I would have to add it to the C plugin
     // interface. I could re-use the name that is passed to the constructor but that is sketchy
@@ -103,6 +110,7 @@ private:
     BSONObj _source_doc;
     absl::Nonnull<const MongoExtensionAggregationStageDescriptor*> _descriptor;
     BoundDescriptorPtr _boundDescriptor;
+    std::unique_ptr<SourceAggregationStageExecutor> _source;
     ExecutorPtr _executor;
 };
 

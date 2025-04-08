@@ -1,8 +1,9 @@
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
+    HostAggregationStageExecutor, TransformAggregationStageDescriptor,
+    TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationSource, AggregationStage, Error, GetNextResult};
+use crate::{AggregationStage, Error, GetNextResult};
 use bson::{doc, to_raw_document_buf};
 use bson::{Document, RawBsonRef, RawDocument};
 use std::collections::VecDeque;
@@ -53,22 +54,28 @@ impl TransformBoundAggregationStageDescriptor for PluginSortBoundDescriptor {
         Ok(vec![doc! {"$sort": {self.0.clone(): 1}}])
     }
 
-    fn create_executor(&self) -> Result<Self::Executor, Error> {
-        Ok(PluginSort::from_bound_descriptor(self))
+    fn create_executor(
+        &self,
+        source: HostAggregationStageExecutor,
+    ) -> Result<Self::Executor, Error> {
+        Ok(PluginSort::from_bound_descriptor(self, source))
     }
 }
 
 pub struct PluginSort {
     field: String,
-    source: Option<AggregationSource>,
+    source: HostAggregationStageExecutor,
     docs: Option<VecDeque<Document>>,
 }
 
 impl PluginSort {
-    fn from_bound_descriptor(descriptor: &PluginSortBoundDescriptor) -> Self {
+    fn from_bound_descriptor(
+        descriptor: &PluginSortBoundDescriptor,
+        source: HostAggregationStageExecutor,
+    ) -> Self {
         PluginSort {
             field: descriptor.0.clone(),
-            source: None,
+            source,
             docs: None,
         }
     }
@@ -78,14 +85,6 @@ impl PluginSort {
  * $pluginSort accepts one field by which to sort the document; the field values must be numeric.
  */
 impl AggregationStage for PluginSort {
-    fn name() -> &'static str {
-        "$pluginSort"
-    }
-
-    fn set_source(&mut self, source: AggregationSource) {
-        self.source = Some(source);
-    }
-
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.docs.is_none() {
             Self::populate_and_sort_documents(self)?;
@@ -109,14 +108,9 @@ impl AggregationStage for PluginSort {
 
 impl PluginSort {
     fn populate_and_sort_documents(&mut self) -> Result<(), Error> {
-        let source = self
-            .source
-            .as_mut()
-            .expect("intermediate stage must have source");
-
         // Retrieve all results from the source stage.
         let mut documents = VecDeque::new();
-        while let GetNextResult::Advanced(input_doc) = source.get_next()? {
+        while let GetNextResult::Advanced(input_doc) = self.source.get_next()? {
             let doc = Document::try_from(input_doc.as_ref()).unwrap();
             documents.push_back(doc);
         }

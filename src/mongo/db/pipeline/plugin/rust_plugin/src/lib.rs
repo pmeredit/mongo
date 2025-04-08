@@ -13,7 +13,7 @@ mod vector;
 mod voyage;
 
 use std::borrow::Cow;
-use std::ffi::{c_int, c_void};
+use std::ffi::c_int;
 use std::num::NonZero;
 use std::sync::Arc;
 
@@ -22,9 +22,8 @@ use bson::{RawDocument, Uuid};
 use serde::{Deserialize, Serialize};
 
 use plugin_api_bindgen::{
-    mongodb_source_get_next, MongoExtensionAggregationStage, MongoExtensionAggregationStageVTable,
-    MongoExtensionByteBuf, MongoExtensionByteBufVTable, MongoExtensionByteView,
-    MongoExtensionPortal,
+    MongoExtensionAggregationStage, MongoExtensionAggregationStageVTable, MongoExtensionByteBuf,
+    MongoExtensionByteBufVTable, MongoExtensionByteView, MongoExtensionPortal,
 };
 
 use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
@@ -138,52 +137,12 @@ unsafe fn byte_view_as_slice<'a>(buf: MongoExtensionByteView) -> &'a [u8] {
     std::slice::from_raw_parts(buf.data, buf.len)
 }
 
+// TODO handle unknown codes as another state.
 #[derive(Debug)]
 pub enum GetNextResult<'a> {
     Advanced(Cow<'a, RawDocument>),
     PauseExecution,
     EOF,
-}
-
-/// Represents an input for an aggregation stage.
-pub struct AggregationSource {
-    ptr: *mut c_void,
-    get_next_fn: plugin_api_bindgen::mongodb_source_get_next,
-}
-
-impl AggregationSource {
-    pub fn new(ptr: *mut c_void, get_next_fn: plugin_api_bindgen::mongodb_source_get_next) -> Self {
-        Self { ptr, get_next_fn }
-    }
-
-    pub fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
-        let mut result_ptr = std::ptr::null();
-        let mut result_len = 0usize;
-        let code = unsafe {
-            self.get_next_fn.expect("non-null")(self.ptr, &mut result_ptr, &mut result_len)
-        };
-        match code {
-            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF => Ok(GetNextResult::EOF),
-            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION => {
-                Ok(GetNextResult::PauseExecution)
-            }
-            plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED => {
-                Ok(GetNextResult::Advanced(
-                    RawDocument::from_bytes(unsafe {
-                        std::slice::from_raw_parts(result_ptr, result_len)
-                    })
-                    .unwrap()
-                    .into(),
-                ))
-            }
-            _ => Err(Error::new(
-                code,
-                std::str::from_utf8(unsafe { std::slice::from_raw_parts(result_ptr, result_len) })
-                    .unwrap()
-                    .to_owned(),
-            )),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -199,7 +158,7 @@ pub struct AggregationStageContext {
     pub collection_uuid: Option<Uuid>,
     pub in_router: bool,
     // TODO remove mongotHost in favor of extension-specific config
-    pub mongot_host: Option<String>
+    pub mongot_host: Option<String>,
 }
 
 impl TryFrom<&RawDocument> for AggregationStageContext {
@@ -216,12 +175,6 @@ impl TryFrom<&RawDocument> for AggregationStageContext {
 /// A struct that implements this interfaces can be used with [PluginAggregationStage] to register
 /// with the C plugin API without writing any additional unsafe code.
 pub trait AggregationStage: Sized {
-    /// Return the name of this aggregation stage, useful for registration.
-    fn name() -> &'static str;
-
-    /// Set a source for this stage. Used by intermediate stages to fetch documents to transform.
-    fn set_source(&mut self, source: AggregationSource);
-
     /// Get the next result from this stage.
     /// This may contain a document or another stream marker, including EOF.
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error>;
@@ -253,7 +206,6 @@ impl<S: AggregationStage> std::ops::DerefMut for PluginAggregationStage<S> {
 impl<S: AggregationStage> PluginAggregationStage<S> {
     const VTABLE: MongoExtensionAggregationStageVTable = MongoExtensionAggregationStageVTable {
         get_next: Some(Self::get_next),
-        set_source: Some(Self::set_source),
         close: Some(Self::close),
     };
 
@@ -308,17 +260,6 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
                 code.get()
             }
         }
-    }
-
-    unsafe extern "C-unwind" fn set_source(
-        stage: *mut MongoExtensionAggregationStage,
-        source_ptr: *mut c_void,
-        source_get_next: mongodb_source_get_next,
-    ) {
-        let rust_stage = (stage as *mut PluginAggregationStage<S>)
-            .as_mut()
-            .expect("non-null stage pointer");
-        rust_stage.set_source(AggregationSource::new(source_ptr, source_get_next))
     }
 
     unsafe extern "C-unwind" fn close(stage: *mut MongoExtensionAggregationStage) {

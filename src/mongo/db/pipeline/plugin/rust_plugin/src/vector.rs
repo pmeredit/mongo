@@ -10,7 +10,7 @@ use crate::sdk::{
     DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
     SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationSource, AggregationStage, AggregationStageContext, Error, GetNextResult};
+use crate::{AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 use bson::{doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument};
 use tonic::transport::Channel;
@@ -146,7 +146,6 @@ impl SourceBoundAggregationStageDescriptor for InternalPluginVectorSearchBoundDe
 
 pub struct InternalPluginVectorSearch {
     client: CommandServiceClient<Channel>,
-    source: Option<AggregationSource>,
     documents: Option<VecDeque<Document>>,
     descriptor: InternalPluginVectorSearchBoundDescriptor,
 }
@@ -171,7 +170,6 @@ impl InternalPluginVectorSearch {
 
         Self {
             client,
-            source: None,
             documents: None,
             descriptor,
         }
@@ -179,14 +177,6 @@ impl InternalPluginVectorSearch {
 }
 
 impl AggregationStage for InternalPluginVectorSearch {
-    fn name() -> &'static str {
-        "$_internalPluginVectorSearch"
-    }
-
-    fn set_source(&mut self, source: AggregationSource) {
-        self.source = Some(source);
-    }
-
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
 
         if self.descriptor.context.collection_uuid.is_none() {
