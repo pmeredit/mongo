@@ -17,10 +17,10 @@ use crate::mongot_client::{
 };
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
+    DesugarAggregationStageDescriptor, Error, SourceAggregationStageDescriptor,
     SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, AggregationStageContext, Error, GetNextResult};
+use crate::{AggregationStage, AggregationStageContext, GetNextResult};
 
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
@@ -364,7 +364,7 @@ impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
             _ => {
                 return Err(Error::new(
                     1,
-                    "$pluginSearch stage definition must contain a document.".to_string(),
+                    "$pluginSearch stage definition must contain a document.",
                 ))
             }
         }

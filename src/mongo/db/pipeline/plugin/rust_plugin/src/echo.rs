@@ -1,10 +1,10 @@
 use bson::{RawBsonRef, RawDocument, RawDocumentBuf};
 
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
+    stage_constraints, AggregationStageDescriptor, AggregationStageProperties, Error,
     SourceAggregationStageDescriptor, SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, Error, GetNextResult};
+use crate::{AggregationStage, GetNextResult};
 
 pub struct EchoOxideDescriptor;
 

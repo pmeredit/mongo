@@ -2,15 +2,13 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::command_service::command_service_client::CommandServiceClient;
-use crate::mongot_client::{
-    MongotClientState, MongotCursorBatch, VectorSearchCommand,
-};
+use crate::mongot_client::{MongotClientState, MongotCursorBatch, VectorSearchCommand};
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
+    DesugarAggregationStageDescriptor, Error, SourceAggregationStageDescriptor,
     SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, AggregationStageContext, Error, GetNextResult};
+use crate::{AggregationStage, AggregationStageContext, GetNextResult};
 
 use bson::{doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument};
 use tonic::transport::Channel;
@@ -136,7 +134,9 @@ impl SourceBoundAggregationStageDescriptor for InternalPluginVectorSearchBoundDe
     type Executor = InternalPluginVectorSearch;
 
     fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
-        Ok(vec![doc! {"$sort": {"score": {"$meta": "vectorSearchScore"}}}])
+        Ok(vec![
+            doc! {"$sort": {"score": {"$meta": "vectorSearchScore"}}},
+        ])
     }
 
     fn create_executor(&self) -> Result<Self::Executor, Error> {
@@ -165,7 +165,6 @@ impl InternalPluginVectorSearch {
             .client_state
             .runtime
             .block_on(CommandServiceClient::connect(mongot_host))
-
             .expect("Failed to connect to CommandService");
 
         Self {
@@ -178,7 +177,6 @@ impl InternalPluginVectorSearch {
 
 impl AggregationStage for InternalPluginVectorSearch {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
-
         if self.descriptor.context.collection_uuid.is_none() {
             return Err(Error::new(
                 1,
@@ -300,7 +298,7 @@ impl DesugarAggregationStageDescriptor for PluginVectorSearchDescriptor {
             _ => {
                 return Err(Error::new(
                     1,
-                    "$pluginVectorSearch stage definition must contain a document.".to_string(),
+                    "$pluginVectorSearch stage definition must contain a document.",
                 ))
             }
         }

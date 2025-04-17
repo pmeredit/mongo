@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::num::NonZero;
 use std::sync::Arc;
 
 use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
@@ -9,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::{Builder, Runtime};
 
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
+    stage_constraints, AggregationStageDescriptor, AggregationStageProperties, Error,
     HostAggregationStageExecutor, TransformAggregationStageDescriptor,
     TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, Error, GetNextResult};
+use crate::{AggregationStage, GetNextResult};
 
 static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
@@ -92,25 +91,17 @@ impl VoyageRerankBoundDescriptor {
 
         let query = document
             .get_str("query")
-            .map_err(|_| Error {
-                code: NonZero::new(1).unwrap(),
-                message: String::from("Missing 'query' field"),
-                source: None,
-            })?
+            .map_err(|_| Error::new(1, "Missing 'query' field"))?
             .to_owned();
 
         let model = document
             .get_str("model")
-            .map_err(|_| Error {
-                code: NonZero::new(1).unwrap(),
-                message: String::from("Missing 'model' field"),
-                source: None,
-            })?
+            .map_err(|_| Error::new(1, "Missing 'model' field"))?
             .to_string();
 
         let fields_arr: &RawArray = document
             .get_array("fields")
-            .map_err(|_| Error::new(1, String::from("Missing 'fields' field")))?;
+            .map_err(|_| Error::new(1, "Missing 'fields' field"))?;
 
         let mut fields = Vec::new();
         for field in fields_arr {
@@ -123,11 +114,9 @@ impl VoyageRerankBoundDescriptor {
             );
         }
 
-        let limit = document.get_f64("limit").map_err(|_| Error {
-            code: NonZero::new(1).unwrap(),
-            message: String::from("Missing 'limit' field"),
-            source: None,
-        })? as i64;
+        let limit = document
+            .get_f64("limit")
+            .map_err(|_| Error::new(1, "Missing 'limit' field"))? as i64;
 
         Ok(Self {
             state,

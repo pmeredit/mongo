@@ -4,22 +4,17 @@
 
 extern "C" {
 
-struct MongoExtensionByteBufVTable;
 struct MongoExtensionAggregationStage;
-struct MongoExtensionAggregationStageVTable;
 struct MongoExtensionAggregationStageDescriptor;
 struct MongoExtensionAggregationStageDescriptorVTable;
+struct MongoExtensionAggregationStageVTable;
 struct MongoExtensionBoundAggregationStageDescriptor;
 struct MongoExtensionBoundAggregationStageDescriptorVTable;
+struct MongoExtensionByteBufVTable;
+struct MongoExtensionErrorVTable;
 
 enum MongoDBPluginVersion {
     MONGODB_PLUGIN_VERSION_0 = 0,
-};
-
-enum mongodb_get_next_result {
-    GET_NEXT_ADVANCED = 0,
-    GET_NEXT_EOF = -1,
-    GET_NEXT_PAUSE_EXECUTION = -2,
 };
 
 /**
@@ -44,7 +39,7 @@ struct MongoExtensionByteBuf {
  */
 struct MongoExtensionByteBufVTable {
     /**
-     * Drop `buf` and free any associate resources.
+     * Drop `buf` and free all associated resources.
      */
     void (*drop)(MongoExtensionByteBuf* buf);
 
@@ -52,6 +47,37 @@ struct MongoExtensionByteBufVTable {
      * Get a read-only view of the contents of `buf`.
      */
     MongoExtensionByteView (*get)(const MongoExtensionByteBuf* buf);
+};
+
+/**
+ * A type for errors that may be passed across the extension boundary.
+ *
+ * This is typically returned by extension APIs to pass errors to the server side, but may be
+ * provided to the extension as well in some cases, like when a transform aggregation stage
+ * consumes input from a host provided aggregation stage.
+ */
+struct MongoExtensionError {
+    const MongoExtensionErrorVTable* vtable;
+};
+
+/**
+ * Virtual function table for MongoExtensionError
+ */
+struct MongoExtensionErrorVTable {
+    /**
+     * Drop `error` and free all associated resources.
+     */
+    void (*drop)(MongoExtensionError* error);
+
+    /**
+     * Return a non-zero code associated with `error`.
+     */
+    int (*code)(const MongoExtensionError* error);
+
+    /**
+     * Return a utf-8 string associated with `error`. May be empty.
+     */
+    MongoExtensionByteView (*reason)(const MongoExtensionError* error);
 };
 
 /**
@@ -210,7 +236,24 @@ struct MongoExtensionBoundAggregationStageDescriptorVTable {
     // Like descriptor properties() this would be returned as a BSON message.
 };
 
-struct MongoExtensionAggregationStageVTable;
+/**
+ * Code indicating the result of a getNext() call.
+ */
+enum MongoExtensionGetNextResultCode {
+    /**
+     * getNext() yielded a document.
+     */
+    kAdvanced = 0,
+    /**
+     * getNext() did not yield a document and will never yield another document.
+     */
+    kEOF = -1,
+    /**
+     * getNext() did not yield a document, but may yield another document in the future.
+     */
+    kPauseExecution = -2,
+};
+
 /// An opaque type to be used with a C++ style polymorphic object.
 struct MongoExtensionAggregationStage {
     const MongoExtensionAggregationStageVTable* vtable;
@@ -231,22 +274,22 @@ struct MongoExtensionAggregationStage {
 // Your aggregation stage parser will heap allocate a `MyAggregationStage` and return it as a
 // `mongodb_aggregation_stage*`.
 struct MongoExtensionAggregationStageVTable {
-    // Get the next result from stage and typically filling result. Memory pointed to by result is
-    // owned by the stage and only valid until the next call on stage.
-    //
-    // Returns GET_NEXT_ADVANCED (0) on success fills result with a binary coded bson document.
-    // Returns GET_NEXT_EOF if exhausted and fills result an empty view.
-    // Returns GET_NEXT_PAUSE_EXECUTION if there are no results now but there may be in the future,
-    // and fills result with an empty view. If a source stage returns this it must be propagated.
-    //
-    // Any positive value indicates an error. result will be filled with a utf8 string
-    // describing the error.
-    int (*get_next)(MongoExtensionAggregationStage* stage, MongoExtensionByteView* result);
+    /**
+     * Drop `stage` and free any related resources.
+     */
+    void (*drop)(MongoExtensionAggregationStage* stage);
 
-    // Close this stage and free any memory associated with it. It is an error to use stage after
-    // closing.
-    // TODO: rename to drop and make it first in the vtable ABI.
-    void (*close)(MongoExtensionAggregationStage* stage);
+    /**
+     * Pull the next result from the stage executor.
+     *
+     * On success returns a nullptr and fills `code` and `doc` if `code == kAdvanced`. The memory
+     * `doc` points to is only valid until the next `getNext()` call.
+     *
+     * On error the returned pointer belongs to the caller.
+     */
+    MongoExtensionError* (*getNext)(MongoExtensionAggregationStage* stage,
+                                    MongoExtensionGetNextResultCode* code,
+                                    MongoExtensionByteView* doc);
 };
 
 // The portal allows plugin functionality to register with the server.

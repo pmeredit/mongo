@@ -14,7 +14,6 @@ mod voyage;
 
 use std::borrow::Cow;
 use std::ffi::c_int;
-use std::num::NonZero;
 use std::sync::Arc;
 
 use bson::doc;
@@ -23,69 +22,17 @@ use serde::{Deserialize, Serialize};
 
 use plugin_api_bindgen::{
     MongoExtensionAggregationStage, MongoExtensionAggregationStageVTable, MongoExtensionByteBuf,
-    MongoExtensionByteBufVTable, MongoExtensionByteView, MongoExtensionPortal,
+    MongoExtensionByteBufVTable, MongoExtensionByteView, MongoExtensionError, MongoExtensionPortal,
 };
 
 use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
 use crate::custom_sort::PluginSortDescriptor;
 use crate::echo::EchoOxideDescriptor;
 use crate::mongot_client::MongotClientState;
-use crate::sdk::{AggregationStageDescriptor, ExtensionPortal};
+use crate::sdk::{AggregationStageDescriptor, Error, ExtensionPortal};
 use crate::search::{InternalPluginSearchDescriptor, PluginSearchDescriptor};
 use crate::vector::{InternalPluginVectorSearchDescriptor, PluginVectorSearchDescriptor};
 use crate::voyage::VoyageRerankDescriptor;
-
-#[derive(Debug)]
-pub struct Error {
-    pub code: NonZero<i32>,
-    pub message: String,
-    pub source: Option<Box<dyn std::error::Error + 'static>>,
-}
-
-impl Error {
-    pub fn new<S: Into<String>>(code: i32, message: S) -> Self {
-        Self {
-            code: NonZero::new(code).unwrap(),
-            message: message.into(),
-            source: None,
-        }
-    }
-
-    // TODO: source could be <E: Error + 'static> and this method could box it.
-    pub fn with_source<S: Into<String>, E: std::error::Error + 'static>(
-        code: i32,
-        message: S,
-        source: E,
-    ) -> Self {
-        Self {
-            code: NonZero::new(code).unwrap(),
-            message: message.into(),
-            source: Some(Box::new(source)),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_ref().map(|e| e.as_ref())
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        if let Some(source) = self.source.as_ref() {
-            std::write!(
-                f,
-                "Plugin error code {}: {} (source: {})",
-                self.code.get(),
-                self.message,
-                source
-            )
-        } else {
-            std::write!(f, "Plugin error code {}: {}", self.code.get(), self.message)
-        }
-    }
-}
 
 // TODO: structs like this that are cast to an extension type should have a lint that errors if
 // they are not #[repr(C)]. When using the rust ABI they may be reordered(!) which is problematic
@@ -166,7 +113,7 @@ impl TryFrom<&RawDocument> for AggregationStageContext {
 
     fn try_from(value: &RawDocument) -> Result<AggregationStageContext, Self::Error> {
         bson::from_slice(value.as_bytes())
-            .map_err(|e| Error::with_source(1, "Could not parse AggregationStageContext", e))
+            .map_err(|e| Self::Error::with_source(1, "Could not parse AggregationStageContext", e))
     }
 }
 
@@ -174,7 +121,7 @@ impl TryFrom<&RawDocument> for AggregationStageContext {
 ///
 /// A struct that implements this interfaces can be used with [PluginAggregationStage] to register
 /// with the C plugin API without writing any additional unsafe code.
-pub trait AggregationStage: Sized {
+pub trait AggregationStage {
     /// Get the next result from this stage.
     /// This may contain a document or another stream marker, including EOF.
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error>;
@@ -205,8 +152,8 @@ impl<S: AggregationStage> std::ops::DerefMut for PluginAggregationStage<S> {
 
 impl<S: AggregationStage> PluginAggregationStage<S> {
     const VTABLE: MongoExtensionAggregationStageVTable = MongoExtensionAggregationStageVTable {
-        get_next: Some(Self::get_next),
-        close: Some(Self::close),
+        drop: Some(Self::drop),
+        getNext: Some(Self::get_next),
     };
 
     pub fn new(stage: S) -> Self {
@@ -223,46 +170,45 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
 
     unsafe extern "C-unwind" fn get_next(
         stage: *mut MongoExtensionAggregationStage,
-        result: *mut MongoExtensionByteView,
-    ) -> c_int {
+        code: *mut c_int,
+        doc: *mut MongoExtensionByteView,
+    ) -> *mut MongoExtensionError {
         let rust_stage = (stage as *mut PluginAggregationStage<S>)
             .as_mut()
             .expect("non-null stage pointer");
-        *result = MongoExtensionByteView {
+        *doc = MongoExtensionByteView {
             data: std::ptr::null(),
             len: 0,
         };
         match rust_stage.get_next() {
-            Ok(GetNextResult::EOF) => plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_EOF,
-            Ok(GetNextResult::PauseExecution) => {
-                plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_PAUSE_EXECUTION
+            Ok(GetNextResult::EOF) => {
+                *code = plugin_api_bindgen::MongoExtensionGetNextResultCode_kEOF;
+                std::ptr::null_mut()
             }
-            Ok(GetNextResult::Advanced(doc)) => {
-                let doc_bytes = match doc {
+            Ok(GetNextResult::PauseExecution) => {
+                *code = plugin_api_bindgen::MongoExtensionGetNextResultCode_kPauseExecution;
+                std::ptr::null_mut()
+            }
+            Ok(GetNextResult::Advanced(raw_doc)) => {
+                let doc_bytes = match raw_doc {
                     Cow::Owned(rdoc_buf) => {
                         rust_stage.buf = rdoc_buf.into_bytes();
                         rust_stage.buf.as_slice()
                     }
                     Cow::Borrowed(rdoc) => rdoc.as_bytes(),
                 };
-                *result = MongoExtensionByteView {
+                *doc = MongoExtensionByteView {
                     data: doc_bytes.as_ptr(),
                     len: doc_bytes.len(),
                 };
-                plugin_api_bindgen::mongodb_get_next_result_GET_NEXT_ADVANCED
+                *code = plugin_api_bindgen::MongoExtensionGetNextResultCode_kAdvanced;
+                std::ptr::null_mut()
             }
-            Err(Error { code, message, .. }) => {
-                rust_stage.buf = message.into_bytes();
-                *result = MongoExtensionByteView {
-                    data: rust_stage.buf.as_ptr(),
-                    len: rust_stage.buf.len(),
-                };
-                code.get()
-            }
+            Err(e) => e.into_raw_interface(),
         }
     }
 
-    unsafe extern "C-unwind" fn close(stage: *mut MongoExtensionAggregationStage) {
+    unsafe extern "C-unwind" fn drop(stage: *mut MongoExtensionAggregationStage) {
         let _ = Box::from_raw(stage as *mut PluginAggregationStage<S>);
     }
 }
