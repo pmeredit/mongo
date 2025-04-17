@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
 use bson::{Document, RawBsonRef};
@@ -18,27 +18,39 @@ static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
 
 // TODO: consider requiring descriptors are Arc wrapped so that they may be easily carried to
-// the descriptor of an executor. Alternatives to the current shape and Arc wrapper:
+// the descriptor or an executor. Alternatives to the current shape and Arc wrapper:
 // * Rc. Host doesn't provide many guarantees about threading so unwise.
 // * Reference to descriptor and lifetime. This would bleed into the trait interfaces.
 // * Raw pointers and an initialization function. Descriptor would need explicit initialization.
 struct RerankState {
-    runtime: Runtime,
+    runtime_threads: usize,
+    runtime: OnceLock<Runtime>,
     api_key: String,
+}
+
+impl RerankState {
+    pub fn runtime(&self) -> &Runtime {
+        self.runtime.get_or_init(|| {
+            Builder::new_multi_thread()
+                .worker_threads(self.runtime_threads)
+                .thread_name("search-extension-voyage")
+                .enable_time()
+                .enable_io()
+                .build()
+                .unwrap()
+        })
+    }
 }
 
 pub struct VoyageRerankDescriptor(Arc<RerankState>);
 
 impl VoyageRerankDescriptor {
     pub fn new(runtime_threads: usize, api_key: String) -> Self {
-        let runtime = Builder::new_multi_thread()
-            .worker_threads(runtime_threads)
-            .thread_name("search-extension-voyage")
-            .enable_time()
-            .enable_io()
-            .build()
-            .unwrap();
-        Self(Arc::new(RerankState { runtime, api_key }))
+        Self(Arc::new(RerankState {
+            runtime_threads,
+            runtime: OnceLock::new(),
+            api_key,
+        }))
     }
 }
 
@@ -223,7 +235,7 @@ impl VoyageRerank {
         let response = self
             .descriptor
             .state
-            .runtime
+            .runtime()
             .block_on(async {
                 let response = client
                     .post(VOYAGE_API_URL)

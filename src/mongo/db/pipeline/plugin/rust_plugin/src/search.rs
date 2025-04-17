@@ -154,7 +154,7 @@ impl InternalPluginSearch {
 
         let client = descriptor
             .client_state
-            .runtime
+            .runtime()
             .block_on(CommandServiceClient::connect(mongot_host))
             .expect("Failed to connect to CommandService");
 
@@ -196,7 +196,7 @@ impl AggregationStage for InternalPluginSearch {
             // * Defer connecting until the first call to get_next().
             let client_state = Arc::clone(&self.descriptor.client_state);
             client_state
-                .runtime
+                .runtime()
                 .block_on(async { Self::start_fetching_results(self).await })?;
             self.initialized = true;
         }

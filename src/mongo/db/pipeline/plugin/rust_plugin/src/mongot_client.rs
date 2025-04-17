@@ -8,11 +8,17 @@ use tokio::runtime::{Builder, Runtime};
 use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 use tonic::Status;
 
-pub(crate) static RUNTIME_THREADS: usize = 4;
-pub(crate) static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-
 pub struct MongotClientState {
-    pub runtime: Runtime,
+    runtime_threads: usize,
+    // TODO: initialize up-front rather than deferring.
+    //
+    // Stage descriptors are registered by mongo global initializers, which are run before the
+    // signal processing thread is setup. This causes threads created during global initializers to
+    // have an incorrect signal mask, so they may capture SIGTERM and other signals that they should
+    // not, which may cause the wrong signal handler to be invoked. This may be fixed by dynamic
+    // loading as we would likely choose to perform that task after the signal handling thread is
+    // started.
+    runtime: OnceLock<Runtime>,
     // TODO: this should also contain a client connection/channel, but not until client state is
     // optional in the descriptor. Ideally we would only create mongot connections from hosts that
     // are executing queries; some hosts only participate in planning.
@@ -20,13 +26,22 @@ pub struct MongotClientState {
 
 impl MongotClientState {
     pub fn new(runtime_threads: usize) -> Self {
-        let runtime = Builder::new_multi_thread()
-            .worker_threads(runtime_threads)
-            .thread_name("search-extension")
-            .enable_io()
-            .build()
-            .unwrap();
-        Self { runtime }
+        Self {
+            runtime_threads,
+            runtime: OnceLock::new(),
+        }
+    }
+
+    pub fn runtime(&self) -> &Runtime {
+        self.runtime.get_or_init(|| {
+            // TODO: hook into the idle thread mechanism that the server uses.
+            Builder::new_multi_thread()
+                .worker_threads(self.runtime_threads)
+                .thread_name("search-extension")
+                .enable_io()
+                .build()
+                .unwrap()
+        })
     }
 }
 

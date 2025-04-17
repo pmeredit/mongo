@@ -163,7 +163,7 @@ impl InternalPluginVectorSearch {
 
         let client = descriptor
             .client_state
-            .runtime
+            .runtime()
             .block_on(CommandServiceClient::connect(mongot_host))
             .expect("Failed to connect to CommandService");
 
@@ -208,7 +208,7 @@ impl InternalPluginVectorSearch {
     fn populate_documents(&mut self) -> Result<(), Error> {
         let client_state = Arc::clone(&self.descriptor.client_state);
         let result = client_state
-            .runtime
+            .runtime()
             .block_on(async { self.query_mongot().await });
 
         let binding =
