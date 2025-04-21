@@ -2,7 +2,9 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::command_service::command_service_client::CommandServiceClient;
-use crate::mongot_client::{MongotClientState, MongotCursorBatch, VectorSearchCommand};
+use crate::mongot_client::{
+    MongotClientState, MongotCursorBatch, VectorSearchCommand, MongotResult
+};
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
     DesugarAggregationStageDescriptor, Error, SourceAggregationStageDescriptor,
@@ -10,7 +12,7 @@ use crate::sdk::{
 };
 use crate::{AggregationStage, AggregationStageContext, GetNextResult};
 
-use bson::{doc, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument};
+use bson::{doc, from_document, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument};
 use tonic::transport::Channel;
 use tonic::{Request, Response};
 
@@ -230,6 +232,7 @@ impl InternalPluginVectorSearch {
             cursor
                 .next_batch
                 .iter()
+                .map(|doc| from_document::<MongotResult>(doc.clone()).unwrap())
                 .map(|result| doc!("_id": result.id.clone(), "$vectorSearchScore": result.score))
                 .collect()
         });

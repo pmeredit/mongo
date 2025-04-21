@@ -10,6 +10,7 @@ mod echo;
 mod mongot_client;
 pub mod sdk;
 mod search;
+mod meta;
 mod vector;
 mod voyage;
 
@@ -33,6 +34,7 @@ use crate::count_nodes::CountNodesDescriptor;
 use crate::mongot_client::MongotClientState;
 use crate::sdk::{AggregationStageDescriptor, Error, ExtensionPortal};
 use crate::search::{InternalPluginSearchDescriptor, PluginSearchDescriptor};
+use crate::meta::{InternalPluginMetaDescriptor, PluginMetaDescriptor};
 use crate::vector::{InternalPluginVectorSearchDescriptor, PluginVectorSearchDescriptor};
 use crate::voyage::VoyageRerankDescriptor;
 
@@ -267,6 +269,10 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtens
     sdk_portal.register_transform_aggregation_stage(PluginSortDescriptor);
     sdk_portal.register_desugar_aggregation_stage(PluginSearchDescriptor);
     sdk_portal.register_source_aggregation_stage(InternalPluginSearchDescriptor::new(Arc::clone(
+        &mongot_client_state,
+    )));
+    sdk_portal.register_desugar_aggregation_stage(PluginMetaDescriptor);
+    sdk_portal.register_source_aggregation_stage(InternalPluginMetaDescriptor::new(Arc::clone(
         &mongot_client_state,
     )));
     sdk_portal.register_desugar_aggregation_stage(PluginVectorSearchDescriptor);

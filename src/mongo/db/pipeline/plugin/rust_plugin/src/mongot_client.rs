@@ -2,6 +2,7 @@ use std::io::Write;
 use std::marker::PhantomData;
 
 use bson::{Bson, Document, RawArrayBuf, Uuid};
+use bson::oid::ObjectId;
 use bytes::{Buf, BufMut};
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
@@ -43,20 +44,22 @@ pub struct MongotCursorBatch {
     pub ok: u8,
     pub errmsg: Option<String>,
     pub cursor: Option<MongotCursorResult>,
+    pub cursors: Option<Vec<MongotCursorBatch>>,
     pub explain: Option<Bson>,
     pub vars: Option<Bson>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct MongotCursorResult {
     pub id: u64,
-    #[serde(rename = "nextBatch")]
-    pub next_batch: Vec<MongotResult>,
-    ns: String,
-    r#type: Option<ResultType>,
+    pub next_batch: Vec<Document>,
+    pub ns: String,
+    pub r#type: Option<ResultType>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub enum ResultType {
     Results,
     Meta,
@@ -74,19 +77,17 @@ pub struct MongotResult {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VectorSearchCommand {
-    #[serde(rename = "vectorSearch")]
     pub vector_search: String,
     #[serde(rename = "$db")]
     pub db: String,
     #[serde(rename = "collectionUUID")]
     pub collection_uuid: Uuid,
     pub path: String,
-    #[serde(rename = "queryVector")]
     pub query_vector: RawArrayBuf,
     pub index: String,
     pub limit: i64,
-    #[serde(rename = "numCandidates")]
     pub num_candidates: i64,
 }
 
@@ -98,17 +99,16 @@ pub enum SearchCommand {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct InitialSearchCommand {
-    #[serde(rename = "search")]
     pub search: String,
     #[serde(rename = "$db")]
     pub db: String,
     #[serde(rename = "collectionUUID")]
     pub collection_uuid: Uuid,
-    #[serde(rename = "query")]
     pub query: Document,
-    #[serde(rename = "cursorOptions")]
     pub cursor_options: Option<CursorOptions>,
+    pub intermediate: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -119,10 +119,15 @@ pub struct GetMoreSearchCommand {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CursorOptions {
-    #[serde(rename = "batchSize")]
     pub batch_size: i64,
+    // Allows synchronizing between stages by passing a shared token in independent requests
+    // to mongot. This ensures that lucene query is executed only once, allowing mongot cursors
+    // to be reused for fetching documents and metadata in separate mongod stages.
+    pub lookup_token: Option<ObjectId>,
 }
+
 #[derive(Debug)]
 pub struct BsonEncoder<T>(PhantomData<T>);
 
@@ -168,9 +173,9 @@ impl<T, U> Default for BsonCodec<T, U> {
 }
 
 impl<T, U> Codec for BsonCodec<T, U>
-where
-    T: serde::Serialize + Send + 'static,
-    U: serde::de::DeserializeOwned + Send + 'static,
+    where
+        T: serde::Serialize + Send + 'static,
+        U: serde::de::DeserializeOwned + Send + 'static,
 {
     type Encode = T;
     type Decode = U;

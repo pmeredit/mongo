@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use bson::{doc, to_raw_document_buf, from_document};
+use bson::{doc, to_raw_document_buf};
 use bson::{Bson, Document, RawBsonRef, RawDocument};
-use bson::oid::ObjectId;
 use tokio::select;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, watch};
@@ -14,29 +13,29 @@ use tonic::{Status, Streaming};
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotClientState,
-    MongotCursorBatch, SearchCommand, ResultType, MongotResult,
+    MongotCursorBatch, SearchCommand, ResultType,
 };
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, Error, SourceAggregationStageDescriptor,
+    DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
     SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, AggregationStageContext, GetNextResult};
+use crate::{AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
 
-pub struct InternalPluginSearchDescriptor(Arc<MongotClientState>);
+pub struct InternalPluginMetaDescriptor(Arc<MongotClientState>);
 
-impl InternalPluginSearchDescriptor {
+impl InternalPluginMetaDescriptor {
     pub fn new(client_state: Arc<MongotClientState>) -> Self {
         Self(client_state)
     }
 }
 
-impl AggregationStageDescriptor for InternalPluginSearchDescriptor {
+impl AggregationStageDescriptor for InternalPluginMetaDescriptor {
     fn name() -> &'static str {
-        "$_internalPluginSearch"
+        "$_internalPluginMeta"
     }
 
     fn properties(&self) -> AggregationStageProperties {
@@ -44,32 +43,30 @@ impl AggregationStageDescriptor for InternalPluginSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
-            can_run_on_shards_pipeline: true
         }
     }
 }
 
-impl SourceAggregationStageDescriptor for InternalPluginSearchDescriptor {
-    type BoundDescriptor = InternalPluginSearchBoundDescriptor;
+impl SourceAggregationStageDescriptor for InternalPluginMetaDescriptor {
+    type BoundDescriptor = InternalPluginMetaBoundDescriptor;
 
     fn bind(
         &self,
         stage_definition: RawBsonRef<'_>,
         context: &RawDocument,
     ) -> Result<Self::BoundDescriptor, Error> {
-        InternalPluginSearchBoundDescriptor::new(Arc::clone(&self.0), stage_definition, context)
+        InternalPluginMetaBoundDescriptor::new(Arc::clone(&self.0), stage_definition, context)
     }
 }
 
 #[derive(Clone)]
-pub struct InternalPluginSearchBoundDescriptor {
+pub struct InternalPluginMetaBoundDescriptor {
     client_state: Arc<MongotClientState>,
     query: Document,
-    stored_source: bool,
     context: AggregationStageContext,
 }
 
-impl InternalPluginSearchBoundDescriptor {
+impl InternalPluginMetaBoundDescriptor {
     fn new(
         client_state: Arc<MongotClientState>,
         stage_definition: RawBsonRef<'_>,
@@ -80,53 +77,48 @@ impl InternalPluginSearchBoundDescriptor {
             _ => {
                 return Err(Error::new(
                     1,
-                    "$_internalPluginSearch stage definition must contain a document.".to_string(),
+                    "$_internalPluginMeta stage definition must contain a document.".to_string(),
                 ));
             }
-        }
-            .to_document()
-            .unwrap();
+        }.to_document().unwrap();
 
         let context = AggregationStageContext::try_from(context)?;
         if context.collection.is_none() {
             return Err(Error::new(
                 1,
-                "$pluginSearch context must contain a collection name",
+                "$_internalPluginMeta context must contain a collection name",
             ));
         }
 
         if context.mongot_host.is_none() {
             return Err(Error::new(
                 1,
-                "$pluginSearch context must contain a mongot host",
+                "$_internalPluginMeta context must contain a mongot host",
             ));
         }
-
-        let stored_source = query.get_bool("returnStoredSource").unwrap_or(false);
 
         Ok(Self {
             client_state,
             query,
-            stored_source,
             context,
         })
     }
 }
 
-impl SourceBoundAggregationStageDescriptor for InternalPluginSearchBoundDescriptor {
-    type Executor = InternalPluginSearch;
+impl SourceBoundAggregationStageDescriptor for InternalPluginMetaBoundDescriptor {
+    type Executor = InternalPluginMeta;
 
     fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
-        Ok(vec![doc! {"$sort": {"score": {"$meta": "searchScore"}}}])
+        Ok(vec![]) // TODO port metadata merging logic from mongot
     }
 
     fn create_executor(&self) -> Result<Self::Executor, Error> {
-        Ok(InternalPluginSearch::with_descriptor(self.clone()))
+        Ok(InternalPluginMeta::with_descriptor(self.clone()))
     }
 }
 
-pub struct InternalPluginSearch {
-    descriptor: InternalPluginSearchBoundDescriptor,
+pub struct InternalPluginMeta {
+    descriptor: InternalPluginMetaBoundDescriptor,
     initialized: bool,
     client: CommandServiceClient<Channel>,
     result_tx: Sender<Payload>,
@@ -137,14 +129,14 @@ pub struct InternalPluginSearch {
 
 type Payload = Option<Document>;
 
-impl Drop for InternalPluginSearch {
+impl Drop for InternalPluginMeta {
     fn drop(&mut self) {
         let _ = self.shutdown_tx.send(true);
     }
 }
 
-impl InternalPluginSearch {
-    fn with_descriptor(descriptor: InternalPluginSearchBoundDescriptor) -> Self {
+impl InternalPluginMeta {
+    fn with_descriptor(descriptor: InternalPluginMetaBoundDescriptor) -> Self {
         let mongot_host = format!(
             "http://{}",
             descriptor
@@ -178,7 +170,7 @@ impl InternalPluginSearch {
     }
 }
 
-impl AggregationStage for InternalPluginSearch {
+impl AggregationStage for InternalPluginMeta {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.descriptor.context.collection_uuid.is_none() {
             return Err(Error::new(
@@ -188,14 +180,6 @@ impl AggregationStage for InternalPluginSearch {
         }
 
         if !self.initialized {
-            // TODO figure out if start_fetching_results should be executed
-            // earlier at stage creation
-
-            // Clone client state to avoid taking both mutable and immutable refs to self.
-            // Alternatives:
-            // * Initialize connection/channel and only wrap it in a stub once we fetch results.
-            //   The connection could be initialized any time before get_next().
-            // * Defer connecting until the first call to get_next().
             let client_state = Arc::clone(&self.descriptor.client_state);
             client_state
                 .runtime()
@@ -214,20 +198,11 @@ impl AggregationStage for InternalPluginSearch {
     }
 }
 
-impl InternalPluginSearch {
-    /// Performs an initial query to mongot and if results are not exhausted in the first batch,
-    /// starts a background getmore loop that is later terminated either when mongot returns
-    /// cursor_id == 0 or when the shutdown signal comes from mongod when the pipeline
-    /// limit is satisfied
+impl InternalPluginMeta {
     async fn start_fetching_results(&mut self) -> Result<(), Error> {
         // mongot expects all requests within stage execution
         // to be sent via a single bidirectional stream
         let (sender, receiver) = mpsc::channel(1);
-        let lookup_token = self
-            .descriptor
-            .query
-            .get("lookup_token")
-            .map(|bson| bson.as_object_id().unwrap().clone());
 
         // execute the initial request to fetch first batch and obtain the cursor id
         sender
@@ -244,18 +219,14 @@ impl InternalPluginSearch {
                     .context
                     .collection_uuid
                     .expect("verified collection UUID present at initialization"),
-                query: self
-                    .descriptor
-                    .query
-                    .get("definition")
-                    .and_then(Bson::as_document)
-                    .cloned()
-                    .unwrap(),
+                query: self.descriptor.query.get("definition").and_then(Bson::as_document).cloned().unwrap(),
+                // small batch_size is for test purposes, this allows us to send getMores
                 cursor_options: Some(CursorOptions {
                     batch_size: 5,
-                    lookup_token,
+                    lookup_token: self.descriptor.query.get("lookup_token")
+                        .map(|bson| bson.as_object_id().unwrap().clone()),
                 }),
-                intermediate: Some(1), // TODO disable if not sharded
+                intermediate: Some(1), // meta query is always intermediate
             }))
             .await
             .unwrap();
@@ -265,26 +236,23 @@ impl InternalPluginSearch {
         let mut inbound_stream: Streaming<MongotCursorBatch> = response.into_inner();
 
         let cursor_id: u64 = if let Some(received) = inbound_stream.next().await {
-            InternalPluginSearch::flush_batch_into_channel(
+            InternalPluginMeta::flush_batch_into_channel(
                 received,
                 self.result_tx.clone(),
-                self.descriptor.stored_source,
-            )
-                .await
+            ).await
         } else {
             0
         };
 
         if cursor_id == 0 {
             // if we have exhausted the cursor in the initial query, flush EOF and return
-            InternalPluginSearch::flush_eof_into_channel(self.result_tx.clone()).await;
+            InternalPluginMeta::flush_eof_into_channel(self.result_tx.clone()).await;
             return Ok(());
         }
 
         // init an async getmore prefetch loop
         let mut shutdown_rx = self.shutdown_rx.clone();
         let result_tx = self.result_tx.clone();
-        let stored_source = self.descriptor.stored_source;
 
         // spawn a background task that is terminated on the stage drop
         tokio::spawn(async move {
@@ -304,17 +272,17 @@ impl InternalPluginSearch {
 
                         if let Err(err) = sender.send(request).await {
                             eprintln!("Failed to send request: {:?}", err);
-                            InternalPluginSearch::flush_eof_into_channel(result_tx.clone()).await;
+                            InternalPluginMeta::flush_eof_into_channel(result_tx.clone()).await;
                             return;
                         }
 
                         if let Some(received) = inbound_stream.next().await {
-                            exhausted = InternalPluginSearch::flush_batch_into_channel(
-                                received, result_tx.clone(), stored_source).await == 0;
+                            exhausted = InternalPluginMeta::flush_batch_into_channel(
+                                received, result_tx.clone()).await == 0;
                         }
                     } => {
                         if exhausted {
-                            InternalPluginSearch::flush_eof_into_channel(result_tx.clone()).await;
+                            InternalPluginMeta::flush_eof_into_channel(result_tx.clone()).await;
                             return;
                         }
                     }
@@ -328,21 +296,20 @@ impl InternalPluginSearch {
     async fn flush_batch_into_channel(
         received: Result<MongotCursorBatch, Status>,
         result_tx: Sender<Payload>,
-        stored_source: bool,
     ) -> u64 {
         let batch = received.unwrap();
 
         // initial intermediate query
         if let Some(cursors) = batch.cursors {
-            let results = cursors.iter()
+            let meta = cursors.iter()
                 .find(|batch| {
                     batch.cursor.as_ref()
                         .and_then(|cursor| cursor.r#type.as_ref())
-                        .map_or(false, |cursor_type| *cursor_type == ResultType::Results)
+                        .map_or(false, |cursor_type| *cursor_type == ResultType::Meta)
                 })
                 .unwrap();
 
-            let cursor = results.cursor.as_ref().unwrap();
+            let cursor = meta.cursor.as_ref().unwrap();
             if cursor.next_batch.len() > 0 {
                 panic!("Initial response with a lookup token should never return results");
             }
@@ -352,12 +319,7 @@ impl InternalPluginSearch {
             // initial non-intermediate query or getmore
         } else if let Some(cursor) = batch.cursor {
             for next in &cursor.next_batch {
-                let result = from_document::<MongotResult>(next.clone()).unwrap();
-                let doc = if stored_source {
-                    result.stored_source.clone().unwrap()
-                } else {
-                    doc! { "_id": result.id.clone(), "$searchScore": result.score }
-                };
+                let doc = next.clone();
                 result_tx.send(Some(doc)).await.unwrap_or_else(|err| {
                     eprintln!("Failed to flush result: {:?}", err);
                 });
@@ -373,11 +335,11 @@ impl InternalPluginSearch {
     }
 }
 
-pub struct PluginSearchDescriptor;
+pub struct PluginMetaDescriptor;
 
-impl AggregationStageDescriptor for PluginSearchDescriptor {
+impl AggregationStageDescriptor for PluginMetaDescriptor {
     fn name() -> &'static str {
-        "$pluginSearch"
+        "$pluginMeta"
     }
 
     fn properties(&self) -> AggregationStageProperties {
@@ -386,56 +348,37 @@ impl AggregationStageDescriptor for PluginSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
-            can_run_on_shards_pipeline: true
         }
     }
 }
 
-// TODO add a sharded flag in AggregationStageContext to determine if we need to
-// run intermediate queries or not (for now, always run them)
-impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
+impl DesugarAggregationStageDescriptor for PluginMetaDescriptor {
     fn desugar(
         &self,
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Vec<Document>, Error> {
-        let query = match stage_definition {
+        let stage = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
                 return Err(Error::new(
                     1,
-                    "$pluginSearch stage definition must contain a document.",
-                ))
+                    "$_internalPluginMeta stage definition must contain a document.".to_string(),
+                ));
             }
         }.to_document().unwrap();
 
-        let lookup_token = ObjectId::new();
-        let stage_and_token = doc! {"definition": query.clone(), "lookup_token": lookup_token};
-
-        let primary_pipeline = if query.get_bool("returnStoredSource").unwrap_or(false) {
-            vec![doc! { "$_internalPluginSearch": stage_and_token.clone() }]
-        } else {
-            vec![
-                doc! { "$_internalPluginSearch": stage_and_token.clone() },
-                doc! { "$_internalSearchIdLookup": doc!{} },
-            ]
-        };
-
-        // TODO remove this block later - it's here to keep pluginSearch.js tests working
-        // until we can switch to always use $betaMultiStream with setVar finishMethod
-        if query.get("facet").is_none() && query.get("count").is_none() {
-            return Ok(primary_pipeline);
+        // if query contains facets or counts, run this stage
+        if let Some(search) = stage
+            .get("definition")
+            .unwrap()
+            .as_document() {
+            if search.get("facet").is_some() || search.get("count").is_some() {
+                return Ok(vec![doc! {"$_internalPluginMeta": stage}]);
+            }
         }
 
-        Ok(vec![
-            doc! {"$betaMultiStream": doc! {
-                "primary": primary_pipeline,
-                "secondary": [
-                    doc! {"$_internalPluginMeta": stage_and_token.clone()}
-                ],
-                // TODO switch to setVar when meta merging logic is implemented
-                "finishMethod": "cursor",
-            }}
-        ])
+        // otherwise, erase itself as operator queries do not output metadata
+        Ok(vec![])
     }
 }
