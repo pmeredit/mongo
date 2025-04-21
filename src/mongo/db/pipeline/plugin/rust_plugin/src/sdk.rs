@@ -393,6 +393,10 @@ impl ExtensionPortal {
         NonNull::new(p).map(Self)
     }
 
+    pub fn install_host_services(&self) {
+        ExtensionHostServices::install(unsafe { self.0.as_ref().hostServices })
+    }
+
     pub fn register_desugar_aggregation_stage<D: DesugarAggregationStageDescriptor>(
         &mut self,
         descriptor: D,

@@ -3,9 +3,9 @@
 #![allow(dead_code)]
 
 mod command_service;
+mod count_nodes;
 mod crabs;
 mod custom_sort;
-mod count_nodes;
 mod echo;
 mod mongot_client;
 pub mod sdk;
@@ -27,10 +27,10 @@ use plugin_api_bindgen::{
     MongoExtensionByteBufVTable, MongoExtensionByteView, MongoExtensionError, MongoExtensionPortal,
 };
 
+use crate::count_nodes::CountNodesDescriptor;
 use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
 use crate::custom_sort::PluginSortDescriptor;
 use crate::echo::EchoOxideDescriptor;
-use crate::count_nodes::CountNodesDescriptor;
 use crate::mongot_client::MongotClientState;
 use crate::sdk::{AggregationStageDescriptor, Error, ExtensionPortal};
 use crate::search::{InternalPluginSearchDescriptor, PluginSearchDescriptor};
@@ -260,6 +260,7 @@ impl LazyRuntime {
 unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {
     let mut sdk_portal =
         ExtensionPortal::from_raw(portal_ptr).expect("extension portal pointer may not be null");
+    sdk_portal.install_host_services();
     let mongot_client_state = Arc::new(MongotClientState::new(4));
 
     sdk_portal.register_source_aggregation_stage(EchoOxideDescriptor);
