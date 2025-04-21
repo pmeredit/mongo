@@ -5,6 +5,7 @@
 mod command_service;
 mod crabs;
 mod custom_sort;
+mod count_nodes;
 mod echo;
 mod mongot_client;
 pub mod sdk;
@@ -28,6 +29,7 @@ use plugin_api_bindgen::{
 use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
 use crate::custom_sort::PluginSortDescriptor;
 use crate::echo::EchoOxideDescriptor;
+use crate::count_nodes::CountNodesDescriptor;
 use crate::mongot_client::MongotClientState;
 use crate::sdk::{AggregationStageDescriptor, Error, ExtensionPortal};
 use crate::search::{InternalPluginSearchDescriptor, PluginSearchDescriptor};
@@ -259,6 +261,7 @@ unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtens
     let mongot_client_state = Arc::new(MongotClientState::new(4));
 
     sdk_portal.register_source_aggregation_stage(EchoOxideDescriptor);
+    sdk_portal.register_source_aggregation_stage(CountNodesDescriptor);
     sdk_portal.register_transform_aggregation_stage(AddSomeCrabsDescriptor);
     sdk_portal.register_desugar_aggregation_stage(EchoWithSomeCrabsDescriptor);
     sdk_portal.register_transform_aggregation_stage(PluginSortDescriptor);

@@ -726,6 +726,8 @@ PipelineD::BuildQueryExecutorResult PipelineD::buildInnerQueryExecutor(
         }
     }
 
+    // TODO Is somewhere in here where we should create the extensions executor ideally?
+
     // If the first stage is $geoNear, prepare a special DocumentSourceGeoNearCursor stage;
     // otherwise, create a generic DocumentSourceCursor.
     const auto geoNearStage =

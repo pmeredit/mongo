@@ -347,6 +347,10 @@ void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline,
         return;
     }
 
+    // TODO Re-enabling $$SEARCH_META validation will require more generic variable dependency
+    // analysis exposed to the extensions API.
+    return;
+
     // If we already validated this pipeline on router, no need to do it again on a shard. Check
     // for $mergeCursors because we could be on a shard doing the merge and only want to validate if
     // we have the whole pipeline.
@@ -360,7 +364,9 @@ void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline,
 void assertSearchMetaAccessValid(const Pipeline::SourceContainer& shardsPipeline,
                                  const Pipeline::SourceContainer& mergePipeline,
                                  ExpressionContext* expCtx) {
-    assertSearchMetaAccessValidHelper({&shardsPipeline, &mergePipeline});
+    // TODO Re-enabling $$SEARCH_META validation will require more generic variable dependency
+    // analysis exposed to the extensions API.
+    // assertSearchMetaAccessValidHelper({&shardsPipeline, &mergePipeline});
 }
 
 std::unique_ptr<Pipeline, PipelineDeleter> prepareSearchForTopLevelPipelineLegacyExecutor(

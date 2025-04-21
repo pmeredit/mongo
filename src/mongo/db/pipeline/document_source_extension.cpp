@@ -259,10 +259,11 @@ DocumentSourceExtension::distributedPlanLogic() {
                         sortStage->getSortKeyPattern()
                             .serialize(SortPattern::SortKeySerialization::kForPipelineSerialization)
                             .toBson();
+                    continue;
                 }
-            } else {
-                merge_sources.push_back(stage);
             }
+
+            merge_sources.push_back(stage);
         }
     }
 

@@ -73,6 +73,8 @@
 #include "mongo/db/pipeline/change_stream_invalidation_info.h"
 #include "mongo/db/pipeline/document_source_exchange.h"
 #include "mongo/db/pipeline/document_source_geo_near.h"
+#include "mongo/db/pipeline/document_source_multi_stream.h"
+#include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/expression_context_diagnostic_printer.h"
 #include "mongo/db/pipeline/pipeline.h"
@@ -307,6 +309,7 @@ void handleMultipleCursorsForExchange(const AggExState& aggExState,
     long long batchSize = aggExState.getRequest().getCursor().getBatchSize().value_or(
         aggregation_request_helper::kDefaultBatchSize);
 
+    // TODO Allow multi cursor to accept other batchSizes.
     uassert(ErrorCodes::BadValue, "the exchange initial batch size must be zero", batchSize == 0);
 
     BSONArrayBuilder cursorsBuilder;
@@ -706,8 +709,45 @@ std::vector<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> prepareExecuto
                 pipelines.push_back(std::move(metadataPipe));
             }
         } else {
-            // Takes ownership of 'pipeline'.
-            pipelines = createExchangePipelinesIfNeeded(aggExState, std::move(pipeline));
+            // If the pipeline begins with a $betaMultiStream stage, transform the pipeline into
+            // valid executable pipelines.
+            if (auto multiStream = boost::dynamic_pointer_cast<mongo::DocumentSourceMultiStream>(
+                    pipeline->popFrontWithName(mongo::DocumentSourceMultiStream::kStageName))) {
+                switch (multiStream->getFinishMethod()) {
+                    // For "cursor" method, produce two separate pipelines, which will each feed
+                    // their own cursor.
+                    case SecondaryStreamFinishMethodEnum::kCursor: {
+                        // Rewrite the primary pipeline by stitching together the $multiStream
+                        // primary pipeline with the remainder of the post-$multiStream pipeline.
+                        auto newPipeline = multiStream->getPrimaryPipeline();
+                        newPipeline->appendPipeline(std::move(pipeline));
+                        pipelines.push_back(std::move(newPipeline));
+
+                        // Take the secondary pipeline as is.
+                        auto secondaryPipeline = multiStream->getSecondaryPipeline();
+                        secondaryPipeline->pipelineType = CursorTypeEnum::SearchMetaResult;
+                        pipelines.push_back(std::move(secondaryPipeline));
+                        break;
+                    }
+
+                    // For "setVar" method, flatten the pipeline so that secondary pipeline feeds
+                    // the $$SEARCH_META variable. The final pipeline will look like [<primary
+                    // pipeline>, <set variable from secondary pipeline>, <remaining stages>].
+                    case SecondaryStreamFinishMethodEnum::kSetVar: {
+                        auto newPipeline = multiStream->getPrimaryPipeline();
+                        auto setVariable = DocumentSourceSetVariableFromSubPipeline::create(
+                            expCtx, multiStream->getSecondaryPipeline(), Variables::kSearchMetaId);
+                        newPipeline->pushBack(std::move(setVariable));
+                        newPipeline->appendPipeline(std::move(pipeline));
+                        auto pipelinePostFix = std::move(pipeline);
+                        pipelines.push_back(std::move(newPipeline));
+                        break;
+                    }
+                }
+            } else {
+                // Takes ownership of 'pipeline'.
+                pipelines = createExchangePipelinesIfNeeded(aggExState, std::move(pipeline));
+            }
         }
 
         for (auto&& pipelineIt : pipelines) {

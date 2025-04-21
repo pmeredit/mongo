@@ -126,17 +126,20 @@ void validateTopLevelPipeline(const Pipeline& pipeline) {
         // {aggregate: 1} is only valid for collectionless sources, and vice-versa.
         const auto firstStageConstraints = sources.front()->constraints();
 
-        uassert(ErrorCodes::InvalidNamespace,
-                str::stream() << "{aggregate: 1} is not valid for '"
-                              << sources.front()->getSourceName() << "'; a collection is required.",
-                !(nss.isCollectionlessAggregateNS() &&
-                  !firstStageConstraints.isIndependentOfAnyCollection));
+        // TODO Re-enable this aggregation namespace validation -- it was disabled since
+        // $betaMultiStream namespace semantics are fuzzy in the original draft.
+        //  uassert(ErrorCodes::InvalidNamespace,
+        //         str::stream() << "{aggregate: 1} is not valid for '"
+        //                       << sources.front()->getSourceName() << "'; a collection is
+        //                       required.",
+        //         !(nss.isCollectionlessAggregateNS() &&
+        //           !firstStageConstraints.isIndependentOfAnyCollection));
 
-        uassert(ErrorCodes::InvalidNamespace,
-                str::stream() << "'" << sources.front()->getSourceName()
-                              << "' can only be run with {aggregate: 1}",
-                !(!nss.isCollectionlessAggregateNS() &&
-                  firstStageConstraints.isIndependentOfAnyCollection));
+        // uassert(ErrorCodes::InvalidNamespace,
+        //         str::stream() << "'" << sources.front()->getSourceName()
+        //                       << "' can only be run with {aggregate: 1}",
+        //         !(!nss.isCollectionlessAggregateNS() &&
+        //           firstStageConstraints.isIndependentOfAnyCollection));
 
         // If the first stage is a $changeStream stage, then all stages in the pipeline must be
         // either $changeStream stages or allowlisted as being able to run in a change stream.
