@@ -4,6 +4,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/plugin/api.h"
+#include "mongo/db/query/util/deferred.h"
 
 namespace mongo {
 
@@ -111,13 +112,7 @@ private:
         Id id,
         BSONObj rawStage,
         absl::Nonnull<const MongoExtensionAggregationStageDescriptor*> descriptor,
-        BoundDescriptorPtr boundDescriptor)
-        : DocumentSource(name, exprCtx),
-          _stage_name(name.toString()),
-          _id(id),
-          _raw_stage(rawStage.getOwned()),
-          _descriptor(descriptor),
-          _boundDescriptor(std::move(boundDescriptor)) {}
+        BoundDescriptorPtr boundDescriptor);
 
     // Do not support copy or move.
     DocumentSourceExtension(const DocumentSourceExtension&) = delete;
@@ -139,6 +134,14 @@ private:
     BoundDescriptorPtr _boundDescriptor;
     std::unique_ptr<SourceAggregationStageExecutor> _source;
     ExecutorPtr _executor;
+
+    // Set of unbound descriptor properties which are guaranteed to remain unchanged throughout the
+    // lifetime of the descriptor.
+    struct StaticProperties {
+        mongo::Deferred<bool (*)(const decltype(_descriptor)&)> canRunOnShardsPipeline;
+    };
+
+    StaticProperties _staticProperties;
 };
 
 }  // namespace mongo

@@ -25,6 +25,7 @@ impl AggregationStageDescriptor for CountNodesDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::None,
+            can_run_on_shards_pipeline: true
         }
     }
 }

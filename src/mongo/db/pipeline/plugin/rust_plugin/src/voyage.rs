@@ -54,6 +54,7 @@ impl AggregationStageDescriptor for VoyageRerankDescriptor {
             stream_type: stage_constraints::StreamType::Blocking,
             position: stage_constraints::PositionRequirement::None,
             host_type: stage_constraints::HostTypeRequirement::Router,
+            can_run_on_shards_pipeline: false
         }
     }
 }

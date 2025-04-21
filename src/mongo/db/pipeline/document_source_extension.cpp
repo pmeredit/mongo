@@ -18,6 +18,8 @@
 
 namespace mongo {
 
+static constexpr StringData kCanRunOnShardsPipeline = "canRunOnShardsPipeline"_sd;
+
 namespace {
 
 StringData byteViewAsStringData(const MongoExtensionByteView view) {
@@ -69,6 +71,48 @@ constexpr auto kHostServices = MongoExtensionHostServices{
     .endIdleThreadBlock = &IdleThreadBlock::endIdleThreadBlock,
 };
 
+// TODO: consider how will all work as we add types. Extension might need to be aware of the server
+// version and use different constraints for older versions.
+StageConstraints::StreamType propertiesStreamType(const BSONObj& properties) {
+    static const auto* kTypes = new StringDataMap<StageConstraints::StreamType>{
+        {"streaming", StageConstraints::StreamType::kStreaming},
+        {"blocking", StageConstraints::StreamType::kBlocking}};
+    auto it = kTypes->find(properties.getStringField("streamType"));
+    tassert(1234567, "unknown streamType", it != kTypes->end());
+    return it->second;
+}
+
+StageConstraints::PositionRequirement propertiesPosition(const BSONObj& properties) {
+    static const auto* kTypes = new StringDataMap<StageConstraints::PositionRequirement>{
+        {"none", StageConstraints::PositionRequirement::kNone},
+        {"first", StageConstraints::PositionRequirement::kFirst},
+        {"last", StageConstraints::PositionRequirement::kLast}};
+    auto it = kTypes->find(properties.getStringField("position"));
+    tassert(1234567, "unknown position", it != kTypes->end());
+    return it->second;
+}
+
+StageConstraints::HostTypeRequirement propertiesHostType(const BSONObj& properties) {
+    static const auto* kTypes = new StringDataMap<StageConstraints::HostTypeRequirement>{
+        {"none", StageConstraints::HostTypeRequirement::kNone},
+        {"localOnly", StageConstraints::HostTypeRequirement::kLocalOnly},
+        {"runOnceAnyNode", StageConstraints::HostTypeRequirement::kRunOnceAnyNode},
+        {"anyShard", StageConstraints::HostTypeRequirement::kAnyShard},
+        {"router", StageConstraints::HostTypeRequirement::kRouter},
+        {"allShards", StageConstraints::HostTypeRequirement::kAllShardHosts},
+    };
+    auto it = kTypes->find(properties.getStringField("hostType"));
+    tassert(1234567, "unknown host type", it != kTypes->end());
+    return it->second;
+}
+
+bool propertiesCanRunOnShardsPipeline(const BSONObj& properties) {
+    auto elem = properties.getField(kCanRunOnShardsPipeline);
+    tassert(1234567,
+            fmt::format("invalid or missing value for property {}", kCanRunOnShardsPipeline),
+            elem.type() == Bool);
+    return elem.boolean();
+}
 }  // anonymous namespace
 
 MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
@@ -179,6 +223,24 @@ void DocumentSourceExtension::registerDesugarStage(
         kDoesNotRequireFeatureFlag);
 }
 
+DocumentSourceExtension::DocumentSourceExtension(
+    StringData name,
+    boost::intrusive_ptr<ExpressionContext> exprCtx,
+    Id id,
+    BSONObj rawStage,
+    absl::Nonnull<const MongoExtensionAggregationStageDescriptor*> descriptor,
+    BoundDescriptorPtr boundDescriptor)
+    : DocumentSource(name, exprCtx),
+      _stage_name(name.toString()),
+      _id(id),
+      _raw_stage(rawStage.getOwned()),
+      _descriptor(descriptor),
+      _boundDescriptor(std::move(boundDescriptor)),
+      _staticProperties{.canRunOnShardsPipeline = {[](const auto& desc) {
+                            return propertiesCanRunOnShardsPipeline(
+                                bsonObjFromByteView(desc->vtable->properties(desc)));
+                        }}} {}
+
 DocumentSource::GetNextResult DocumentSourceExtension::doGetNext() {
     if (_executor == nullptr) {
         // Create an executor from _boundDescriptor. DocumentSource doesn't provide any signal that
@@ -231,9 +293,14 @@ DocumentSource::GetNextResult DocumentSourceExtension::doGetNext() {
 boost::optional<DocumentSource::DistributedPlanLogic>
 DocumentSourceExtension::distributedPlanLogic() {
     // TODO Can the plugin modify "shardsStages"?
-    // TODO Handle stages that must execute on the merging node ($voyageRerank)
     // TODO More potential optimization through "needsSplit"/"canMovePast" fields for $search.
 
+    // If a stage can't be run in parallel on the shards, then it must need to execute on the merge
+    // node (i.e $voyageRerank).
+    if (!_staticProperties.canRunOnShardsPipeline.get(_descriptor)) {
+        // {shardsStage, mergingStage, sortPattern}
+        return DistributedPlanLogic{nullptr, this, boost::none};
+    }
     MongoExtensionByteBuf* result_ptr = nullptr;
     int code = _boundDescriptor->vtable->getMergingStages(_boundDescriptor.get(), &result_ptr);
     std::unique_ptr<MongoExtensionByteBuf, ExtensionObjectDeleter> result(result_ptr);
@@ -272,43 +339,6 @@ DocumentSourceExtension::distributedPlanLogic() {
 
     return logic;
 }
-
-namespace {
-// TODO: consider how will all work as we add types. Extension might need to be aware of the server
-// version and use different constraints for older versions.
-StageConstraints::StreamType propertiesStreamType(const BSONObj& properties) {
-    static const auto* kTypes = new StringDataMap<StageConstraints::StreamType>{
-        {"streaming", StageConstraints::StreamType::kStreaming},
-        {"blocking", StageConstraints::StreamType::kBlocking}};
-    auto it = kTypes->find(properties.getStringField("streamType"));
-    tassert(1234567, "unknown streamType", it != kTypes->end());
-    return it->second;
-}
-
-StageConstraints::PositionRequirement propertiesPosition(const BSONObj& properties) {
-    static const auto* kTypes = new StringDataMap<StageConstraints::PositionRequirement>{
-        {"none", StageConstraints::PositionRequirement::kNone},
-        {"first", StageConstraints::PositionRequirement::kFirst},
-        {"last", StageConstraints::PositionRequirement::kLast}};
-    auto it = kTypes->find(properties.getStringField("position"));
-    tassert(1234567, "unknown position", it != kTypes->end());
-    return it->second;
-}
-
-StageConstraints::HostTypeRequirement propertiesHostType(const BSONObj& properties) {
-    static const auto* kTypes = new StringDataMap<StageConstraints::HostTypeRequirement>{
-        {"none", StageConstraints::HostTypeRequirement::kNone},
-        {"localOnly", StageConstraints::HostTypeRequirement::kLocalOnly},
-        {"runOnceAnyNode", StageConstraints::HostTypeRequirement::kRunOnceAnyNode},
-        {"anyShard", StageConstraints::HostTypeRequirement::kAnyShard},
-        {"router", StageConstraints::HostTypeRequirement::kRouter},
-        {"allShards", StageConstraints::HostTypeRequirement::kAllShardHosts},
-    };
-    auto it = kTypes->find(properties.getStringField("hostType"));
-    tassert(1234567, "unknown host type", it != kTypes->end());
-    return it->second;
-}
-}  // anonymous namespace
 
 StageConstraints DocumentSourceExtension::constraints(Pipeline::SplitState pipeState) const {
     auto properties = bsonObjFromByteView(_descriptor->vtable->properties(_descriptor));

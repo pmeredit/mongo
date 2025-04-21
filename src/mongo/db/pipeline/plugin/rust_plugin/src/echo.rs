@@ -18,6 +18,7 @@ impl AggregationStageDescriptor for EchoOxideDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::LocalOnly,
+            can_run_on_shards_pipeline: false
         }
     }
 }

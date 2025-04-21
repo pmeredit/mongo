@@ -43,6 +43,7 @@ impl AggregationStageDescriptor for InternalPluginSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
+            can_run_on_shards_pipeline: true
         }
     }
 }
@@ -349,6 +350,7 @@ impl AggregationStageDescriptor for PluginSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
+            can_run_on_shards_pipeline: true
         }
     }
 }

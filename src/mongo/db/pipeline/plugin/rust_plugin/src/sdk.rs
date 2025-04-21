@@ -285,6 +285,7 @@ pub struct AggregationStageProperties {
     pub stream_type: stage_constraints::StreamType,
     pub position: stage_constraints::PositionRequirement,
     pub host_type: stage_constraints::HostTypeRequirement,
+    pub can_run_on_shards_pipeline: bool
 }
 
 /// Parent trait for an aggregation stage descriptor.
@@ -497,7 +498,7 @@ macro_rules! idle_thread_block_location {
     () => {
         unsafe {
             std::ffi::CStr::from_ptr::<'static>(
-                concat!(file!(), ":", line!(), "\0").as_ptr() as *const i8
+                concat!(file!(), ":", line!(), "\0").as_ptr() as *const std::os::raw::c_char
             )
         }
     };
