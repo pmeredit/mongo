@@ -1,24 +1,26 @@
+use std::io::Write;
+use std::marker::PhantomData;
+
 use bson::{Bson, Document, RawArrayBuf, Uuid};
 use bytes::{Buf, BufMut};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::marker::PhantomData;
-use std::sync::OnceLock;
-use tokio::runtime::{Builder, Runtime};
+use tokio::runtime::Runtime;
 use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 use tonic::Status;
 
+use crate::LazyRuntime;
+
 pub struct MongotClientState {
-    runtime_threads: usize,
-    // TODO: initialize up-front rather than deferring.
+    // TODO: consider initializing runtime up-front rather than deferring until first use.
     //
     // Stage descriptors are registered by mongo global initializers, which are run before the
     // signal processing thread is setup. This causes threads created during global initializers to
     // have an incorrect signal mask, so they may capture SIGTERM and other signals that they should
     // not, which may cause the wrong signal handler to be invoked. This may be fixed by dynamic
     // loading as we would likely choose to perform that task after the signal handling thread is
-    // started.
-    runtime: OnceLock<Runtime>,
+    // started. Lazy initialization does have an upside in that nodes that do not execute queries
+    // will not create threads, which is not possible to avoid otherwise with current APIs.
+    runtime: LazyRuntime,
     // TODO: this should also contain a client connection/channel, but not until client state is
     // optional in the descriptor. Ideally we would only create mongot connections from hosts that
     // are executing queries; some hosts only participate in planning.
@@ -27,21 +29,12 @@ pub struct MongotClientState {
 impl MongotClientState {
     pub fn new(runtime_threads: usize) -> Self {
         Self {
-            runtime_threads,
-            runtime: OnceLock::new(),
+            runtime: LazyRuntime::new("search-extension", runtime_threads),
         }
     }
 
     pub fn runtime(&self) -> &Runtime {
-        self.runtime.get_or_init(|| {
-            // TODO: hook into the idle thread mechanism that the server uses.
-            Builder::new_multi_thread()
-                .worker_threads(self.runtime_threads)
-                .thread_name("search-extension")
-                .enable_io()
-                .build()
-                .unwrap()
-        })
+        self.runtime.get()
     }
 }
 

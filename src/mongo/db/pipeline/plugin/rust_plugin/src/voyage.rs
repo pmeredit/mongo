@@ -1,18 +1,18 @@
 use std::collections::VecDeque;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use bson::{doc, to_raw_document_buf, RawArray, RawDocument};
 use bson::{Document, RawBsonRef};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tokio::runtime::{Builder, Runtime};
+use tokio::runtime::Runtime;
 
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageProperties, Error,
     HostAggregationStageExecutor, TransformAggregationStageDescriptor,
     TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, GetNextResult};
+use crate::{AggregationStage, GetNextResult, LazyRuntime};
 
 static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
@@ -23,22 +23,13 @@ static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
 // * Reference to descriptor and lifetime. This would bleed into the trait interfaces.
 // * Raw pointers and an initialization function. Descriptor would need explicit initialization.
 struct RerankState {
-    runtime_threads: usize,
-    runtime: OnceLock<Runtime>,
+    runtime: LazyRuntime,
     api_key: String,
 }
 
 impl RerankState {
     pub fn runtime(&self) -> &Runtime {
-        self.runtime.get_or_init(|| {
-            Builder::new_multi_thread()
-                .worker_threads(self.runtime_threads)
-                .thread_name("search-extension-voyage")
-                .enable_time()
-                .enable_io()
-                .build()
-                .unwrap()
-        })
+        self.runtime.get()
     }
 }
 
@@ -47,8 +38,7 @@ pub struct VoyageRerankDescriptor(Arc<RerankState>);
 impl VoyageRerankDescriptor {
     pub fn new(runtime_threads: usize, api_key: String) -> Self {
         Self(Arc::new(RerankState {
-            runtime_threads,
-            runtime: OnceLock::new(),
+            runtime: LazyRuntime::new("search-extension-voyage", runtime_threads),
             api_key,
         }))
     }

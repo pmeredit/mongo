@@ -213,6 +213,44 @@ impl<S: AggregationStage> PluginAggregationStage<S> {
     }
 }
 
+/// A lazily initialized [`tokio::runtime::Runtime`].
+///
+/// The current initialization path in the server invokes plugin registration _before_ it is safe to
+/// start new threads, so this wrapper allows us to defer initialization until the threads are
+/// actually needed. In the long run this may not be necessary.
+pub struct LazyRuntime {
+    name: &'static str,
+    num_threads: usize,
+    runtime: std::sync::OnceLock<tokio::runtime::Runtime>,
+}
+
+impl LazyRuntime {
+    pub fn new(name: &'static str, num_threads: usize) -> Self {
+        Self {
+            name,
+            num_threads,
+            runtime: std::sync::OnceLock::new(),
+        }
+    }
+
+    pub fn get(&self) -> &tokio::runtime::Runtime {
+        self.runtime.get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(self.num_threads)
+                .thread_name(self.name)
+                .on_thread_park(|| {
+                    crate::sdk::ExtensionHostServices::begin_idle_thread_block(
+                        idle_thread_block_location!(),
+                    )
+                })
+                .on_thread_unpark(crate::sdk::ExtensionHostServices::end_idle_thread_block)
+                .enable_io()
+                .build()
+                .unwrap()
+        })
+    }
+}
+
 // #[no_mangle] allows this to be called from C/C++.
 #[no_mangle]
 unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {

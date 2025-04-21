@@ -1,7 +1,8 @@
 // TODO: break up sdk into sub-modules.
 
-use std::ffi::c_int;
+use std::ffi::{c_int, CStr};
 use std::ptr::NonNull;
+use std::sync::OnceLock;
 
 use crate::{AggregationStage, GetNextResult, PluginAggregationStage, VecByteBuf};
 
@@ -13,7 +14,8 @@ use plugin_api_bindgen::{
     MongoExtensionAggregationStageDescriptorVTable, MongoExtensionAggregationStageType,
     MongoExtensionBoundAggregationStageDescriptor,
     MongoExtensionBoundAggregationStageDescriptorVTable, MongoExtensionByteBuf,
-    MongoExtensionByteView, MongoExtensionError, MongoExtensionErrorVTable, MongoExtensionPortal,
+    MongoExtensionByteView, MongoExtensionError, MongoExtensionErrorVTable,
+    MongoExtensionHostServices, MongoExtensionPortal,
 };
 use serde::{Deserialize, Serialize};
 
@@ -435,6 +437,70 @@ impl ExtensionPortal {
             );
         }
     }
+}
+
+static HOST_SERVICES: OnceLock<ExtensionHostServices> = OnceLock::new();
+
+/// Services provided by the host server to extensions that are not connected to the context of
+/// any particular request. These are installed on initialization of the extension.
+// TODO: this implementation does not check presence of host services at creation time and may panic
+// later during an attempt to use services. Think about how this should behave -- crash early,
+// gracefully fail initialization, substitute no-op implementations, etc.
+#[derive(Debug)]
+pub struct ExtensionHostServices(NonNull<MongoExtensionHostServices>);
+
+impl ExtensionHostServices {
+    fn install(host_services: *const MongoExtensionHostServices) {
+        HOST_SERVICES
+            .set(Self(
+                NonNull::new(host_services as *mut MongoExtensionHostServices)
+                    .expect("host_services is non-nullptr"),
+            ))
+            .expect("host_services already installed!");
+    }
+
+    fn get() -> &'static ExtensionHostServices {
+        HOST_SERVICES
+            .get()
+            .expect("host services should have been set on extension initialization")
+    }
+
+    pub fn begin_idle_thread_block(location: &'static CStr) {
+        unsafe {
+            Self::get()
+                .0
+                .as_ref()
+                .beginIdleThreadBlock
+                .expect("host services beginIdleThreadBlock")(location.as_ptr())
+        };
+    }
+
+    pub fn end_idle_thread_block() {
+        unsafe {
+            Self::get()
+                .0
+                .as_ref()
+                .endIdleThreadBlock
+                .expect("host services endIdleThreadBlock")()
+        };
+    }
+}
+
+// Host services API documentation requires that all of the function be thread safe.
+unsafe impl Sync for ExtensionHostServices {}
+unsafe impl Send for ExtensionHostServices {}
+
+/// Generates file:line as a valid c-string usable as the location for
+/// [`ExtensionHostService::begin_idle_thread_block`].
+#[macro_export]
+macro_rules! idle_thread_block_location {
+    () => {
+        unsafe {
+            std::ffi::CStr::from_ptr::<'static>(
+                concat!(file!(), ":", line!(), "\0").as_ptr() as *const i8
+            )
+        }
+    };
 }
 
 mod ffi_utils {

@@ -11,6 +11,7 @@
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/plugin/plugin.h"
 #include "mongo/db/query/search/mongot_options.h"
+#include "mongo/util/concurrency/idle_thread_block.h"
 #include "mongo/util/database_name_util.h"
 #include "mongo/util/serialization_context.h"
 #include "mongo/util/string_map.h"
@@ -63,6 +64,11 @@ BSONObj createContext(const ExpressionContext& ctx) {
     return b.obj();
 }
 
+constexpr auto kHostServices = MongoExtensionHostServices{
+    .beginIdleThreadBlock = &IdleThreadBlock::beginIdleThreadBlock,
+    .endIdleThreadBlock = &IdleThreadBlock::endIdleThreadBlock,
+};
+
 }  // anonymous namespace
 
 MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
@@ -71,6 +77,7 @@ MONGO_INITIALIZER_GENERAL(addToDocSourceParserMap_plugin,
 (InitializerContext*) {
     MongoExtensionPortal portal;
     portal.version = MONGODB_PLUGIN_VERSION_0;
+    portal.hostServices = &kHostServices;
     portal.registerStageDescriptor = &DocumentSourceExtension::registerStageDescriptor;
     mongodb_initialize_plugin(&portal);
 }

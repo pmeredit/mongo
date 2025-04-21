@@ -292,10 +292,35 @@ struct MongoExtensionAggregationStageVTable {
                                     MongoExtensionByteView* doc);
 };
 
+/**
+ * Access to host services.
+ *
+ * The implementation of each of these functions must be safe for concurrent callers.
+ */
+struct MongoExtensionHostServices {
+    /**
+     * Call this method when an extension-owned thread becomes idle. This will cause the thread to
+     * be omitted from stack traces.
+     *
+     * Location should be a valid null-terminated c string.
+     */
+    void (*beginIdleThreadBlock)(const char* location);
+
+    /**
+     * Call this method when an extension-owned thread is activated from idle state.
+     */
+    void (*endIdleThreadBlock)();
+};
+
 // The portal allows plugin functionality to register with the server.
 struct MongoExtensionPortal {
     // Supported version of the plugin API.
     int version;
+
+    /**
+     * Services provided by the host to extensions.
+     */
+    const MongoExtensionHostServices* hostServices;
 
     /**
      * Register an AggregationStageDescriptor.
