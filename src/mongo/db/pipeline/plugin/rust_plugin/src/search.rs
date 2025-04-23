@@ -422,22 +422,16 @@ impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
             vec![
                 doc! { "$_internalPluginSearch": stage_and_token.clone() },
                 doc! { "$_internalSearchIdLookup": doc!{} },
+                doc! { "$sort": {"score": {"$meta": "searchScore"}}},
             ]
         };
-
-        // TODO remove this block later - it's here to keep pluginSearch.js tests working
-        // until we can switch to always use $betaMultiStream with setVar finishMethod
-        if query.get("facet").is_none() && query.get("count").is_none() {
-            return Ok(primary_pipeline);
-        }
 
         Ok(vec![doc! {"$betaMultiStream": doc! {
             "primary": primary_pipeline,
             "secondary": [
                 doc! {"$_internalPluginMeta": stage_and_token.clone()}
             ],
-            // TODO switch to setVar when meta merging logic is implemented
-            "finishMethod": "cursor",
+            "finishMethod": "setVar",
         }}])
     }
 }

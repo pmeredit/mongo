@@ -111,7 +111,12 @@ impl SourceBoundAggregationStageDescriptor for InternalPluginMetaBoundDescriptor
     type Executor = InternalPluginMeta;
 
     fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
-        Ok(vec![]) // TODO port metadata merging logic from mongot
+        let query = self
+            .query
+            .get_document("definition")
+            .map_err(|_| Error::new(1, "Missing or invalid 'definition'".to_string()))?;
+
+        sharded_planner::build_meta_pipeline(query)
     }
 
     fn create_executor(&self) -> Result<Self::Executor, Error> {
@@ -391,5 +396,250 @@ impl DesugarAggregationStageDescriptor for PluginMetaDescriptor {
 
         // otherwise, erase itself as operator queries do not output metadata
         Ok(vec![])
+    }
+}
+
+/// Generates meta results merging logic as an MQL pipeline, similar to the existing
+/// planShardedSearch mongot command. That command was originally implemented in mongot to keep
+/// search-specific logic out of the server and allow easier iteration without server releases.
+/// Extension can cover both points without the latency tradeoff, so the logic now lives here.
+mod sharded_planner {
+    use crate::sdk::Error;
+    use bson::{doc, Bson, Document};
+    use std::collections::HashMap;
+
+    #[derive(Debug, Clone)]
+    enum FacetDefinition {
+        String(StringFacetDefinition),
+        Date(DateFacetDefinition),
+        Numeric(NumericFacetDefinition),
+    }
+
+    #[derive(Debug, Clone)]
+    struct StringFacetDefinition {
+        path: String,
+        num_buckets: i32,
+    }
+
+    #[derive(Debug, Clone)]
+    struct DateFacetDefinition {
+        path: String,
+        boundaries: Vec<Bson>,
+    }
+
+    #[derive(Debug, Clone)]
+    struct NumericFacetDefinition {
+        path: String,
+        boundaries: Vec<Bson>,
+    }
+
+    const FACET_TYPE: &str = "facet";
+
+    pub fn build_meta_pipeline(query: &Document) -> Result<Vec<Document>, Error> {
+        if query.get(FACET_TYPE).is_none() {
+            return Ok(vec![]);
+        }
+
+        let facet_definitions = extract_facet_definitions(query)?;
+
+        Ok(vec![
+            get_group_stage(),
+            get_facet_stage(&facet_definitions),
+            get_replace_with_stage(&facet_definitions),
+        ])
+    }
+
+    fn get_group_stage() -> Document {
+        doc! {
+            "$group": {
+                "_id": {
+                    "type": "$type",
+                    "tag": "$tag",
+                    "bucket": "$bucket"
+                },
+                "value": { "$sum": "$count" }
+            }
+        }
+    }
+
+    fn get_facet_stage(facet_definitions: &HashMap<String, FacetDefinition>) -> Document {
+        let match_doc = doc! {
+            "$match": {
+                "_id.type": { "$eq": "count" }
+            }
+        };
+
+        let count_doc = vec![match_doc];
+        let mut facet_doc = Document::new();
+        facet_doc.insert("count", count_doc);
+
+        for (name, definition) in facet_definitions {
+            facet_doc.insert(name, get_facet_buckets(definition, name));
+        }
+
+        doc! {
+            "$facet": facet_doc
+        }
+    }
+
+    fn get_replace_with_stage(facet_definitions: &HashMap<String, FacetDefinition>) -> Document {
+        let count_doc = doc! {
+            "total": { "$first": "$count.value" }
+        };
+
+        let mut replace_with_doc = Document::new();
+        replace_with_doc.insert("count", count_doc);
+
+        if !facet_definitions.is_empty() {
+            let mut facet_doc = Document::new();
+            for name in facet_definitions.keys() {
+                facet_doc.insert(
+                    name,
+                    doc! {
+                        "buckets": {
+                            "$map": {
+                                "input": format!("${}", name),
+                                "as": "bucket",
+                                "in": {
+                                    "_id": "$$bucket._id.bucket",
+                                    "count": "$$bucket.value"
+                                }
+                            }
+                        }
+                    },
+                );
+            }
+            replace_with_doc.insert("facet", facet_doc);
+        }
+
+        doc! {
+            "$replaceWith": replace_with_doc
+        }
+    }
+
+    fn get_facet_buckets(facet: &FacetDefinition, facet_name: &str) -> Vec<Document> {
+        match facet {
+            FacetDefinition::String(string_facet) => {
+                build_string_facet_bucket(string_facet, facet_name)
+            }
+            FacetDefinition::Date(_facet) => build_numeric_or_date_facet_bucket(facet_name),
+            FacetDefinition::Numeric(_facet) => build_numeric_or_date_facet_bucket(facet_name),
+        }
+    }
+
+    fn build_string_facet_bucket(facet: &StringFacetDefinition, facet_name: &str) -> Vec<Document> {
+        vec![
+            doc! {
+                "$match": {
+                    "_id.type": { "$eq": FACET_TYPE },
+                    "_id.tag": { "$eq": facet_name }
+                }
+            },
+            doc! {
+                "$sort": {
+                    "value": -1,
+                    "_id": 1
+                }
+            },
+            doc! {
+                "$limit": facet.num_buckets
+            },
+        ]
+    }
+
+    fn build_numeric_or_date_facet_bucket(facet_name: &str) -> Vec<Document> {
+        vec![
+            doc! {
+                "$match": {
+                    "_id.type": { "$eq": FACET_TYPE },
+                    "_id.tag": { "$eq": facet_name }
+                }
+            },
+            doc! {
+                "$sort": {
+                    "_id.bucket": 1
+                }
+            },
+        ]
+    }
+
+    fn extract_facet_definitions(
+        definition: &Document,
+    ) -> Result<HashMap<String, FacetDefinition>, Error> {
+        let facet = definition
+            .get_document("facet")
+            .map_err(|_| Error::new(1, "Missing or invalid 'definition.facet'".to_string()))?;
+
+        let facets = facet.get_document("facets").map_err(|_| {
+            Error::new(
+                1,
+                "Missing or invalid 'definition.facet.facets'".to_string(),
+            )
+        })?;
+
+        let mut result = HashMap::new();
+
+        for (facet_name, facet_value) in facets.iter() {
+            if let Some(facet_doc) = facet_value.as_document() {
+                let facet_type = facet_doc.get_str("type").map_err(|_| {
+                    Error::new(
+                        1,
+                        format!("Missing or invalid 'type' field in facet '{}'", facet_name),
+                    )
+                })?;
+
+                let path = facet_doc.get_str("path").map_err(|_| {
+                    Error::new(
+                        1,
+                        format!("Missing or invalid 'path' field in facet '{}'", facet_name),
+                    )
+                })?;
+
+                let facet_definition = match facet_type {
+                    "string" => {
+                        let num_buckets = facet_doc.get_i32("numBuckets").unwrap_or(10);
+                        FacetDefinition::String(StringFacetDefinition {
+                            path: path.to_string(),
+                            num_buckets,
+                        })
+                    }
+                    "date" => {
+                        let boundaries = extract_boundaries(facet_doc)?;
+                        FacetDefinition::Date(DateFacetDefinition {
+                            path: path.to_string(),
+                            boundaries,
+                        })
+                    }
+                    "number" => {
+                        let boundaries = extract_boundaries(facet_doc)?;
+                        FacetDefinition::Numeric(NumericFacetDefinition {
+                            path: path.to_string(),
+                            boundaries,
+                        })
+                    }
+                    _ => {
+                        return Err(Error::new(
+                            1,
+                            format!(
+                                "Unknown facet type '{}' for facet '{}'",
+                                facet_type, facet_name
+                            ),
+                        ));
+                    }
+                };
+
+                result.insert(facet_name.to_string(), facet_definition);
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn extract_boundaries(facet_doc: &Document) -> Result<Vec<Bson>, Error> {
+        let boundaries_array = facet_doc.get_array("boundaries").map_err(|_| {
+            Error::new(1, format!("Missing or invalid 'boundaries' field in facet"))
+        })?;
+
+        Ok(boundaries_array.clone())
     }
 }
