@@ -1,3 +1,15 @@
+//! Extension implementation of `$searchMeta`.
+//!
+//! This consists of two stages:
+//! * [`PluginMetaDescriptor`] implements the` $pluginMeta` de-sugaring stage.
+//! * [`InternalPluginMetaDescriptor`] implements the `$_internalPluginMeta` source stage.
+//!
+//! The former typically de-sugars into the latter, assuming that the stage definition is structured
+//! in a way that would actually produce meta facet results.
+//!
+//! These stages may also be composed as part of `$search` queries if those requests would perform
+//! both document retrieval and faceting.
+
 use std::sync::Arc;
 
 use bson::{doc, to_raw_document_buf};
@@ -24,6 +36,14 @@ use crate::sdk::{
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
 
+/// Descriptor for `$_internalPluginMeta`.
+///
+/// This stage uses a provided tokio `Runtime` to execute remote gRPC queries against `mongot`.
+/// Using an asynchronous runtime allows us to fetch and buffer batches of documents in the
+/// background rather than synchronously fetching when we run out of documents.
+///
+/// The target host is passed in context during descriptor binding, although this mechanism is
+/// likely to change in the future.
 pub struct InternalPluginMetaDescriptor(Arc<MongotClientState>);
 
 impl InternalPluginMetaDescriptor {
@@ -351,6 +371,7 @@ impl InternalPluginMeta {
     }
 }
 
+/// Descriptor for the `$pluginMeta` desugaring stage.
 pub struct PluginMetaDescriptor;
 
 impl AggregationStageDescriptor for PluginMetaDescriptor {

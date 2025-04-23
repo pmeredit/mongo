@@ -1,3 +1,21 @@
+//! A `$voyageRerankScore` stage to use VoyageAI rerank in aggregation.
+//!
+//! This stage expects a definition of the form:
+//! ```
+//! $voyageRerankScore: {
+//!   query: <string>,
+//!   fields: [<string>, ...],
+//!   model: <string>,
+//!   limit: <positive number>,
+//! }
+//! ```
+//!
+//! This stage reads up to `limit` input documents and generates text documents from all of the
+//! named `fields`, then sends this all to the VoyageAI reranking API. The output contains the
+//! original documents ordered by a `$voyageRerankScore` field that is projected into each document.
+//!
+//! To use this stage you must set the `VOYAGE_API_KEY` environment variable to a valid value before
+//! starting the server.
 use std::collections::VecDeque;
 use std::sync::Arc;
 

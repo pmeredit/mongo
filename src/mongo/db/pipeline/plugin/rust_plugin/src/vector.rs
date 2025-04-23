@@ -1,3 +1,15 @@
+//! Extension implementation of `$vectorSearch`.
+//!
+//! The extension itself contains stages:
+//! * [`PluginVectorSearchDescriptor`] implements the `$pluginVectorSearch` desugaring stage.
+//! * [`InternalPluginVectorSearchDescriptor`] implements the `$_internalPluginVectorSearch` stage.
+//!
+//! `$pluginVectorSearch` always desugars to at least a `$_internalPluginVectorSearch` stage, but
+//! may use the host provided stage `_internalSearchIdLookup` to complete queries.
+//!
+//! `_internalPluginVectorSearch` maintains an asynchronous threaded runtime and makes gRPC calls to
+//! a remote `mongot` host that server search queries.
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -17,6 +29,14 @@ use bson::{
 use tonic::transport::Channel;
 use tonic::{Request, Response};
 
+/// Descriptor for `$_internalVectorSearch`.
+///
+/// This stage uses a provided tokio `Runtime` to execute remote gRPC queries against `mongot`.
+/// Remote fetching is less complicated than for text search stages as vector search does not
+/// yield cursors -- all the results appear in the first batch.
+///
+/// The target host is passed in context during descriptor binding, although this mechanism is
+/// likely to change in the future.
 pub struct InternalPluginVectorSearchDescriptor(Arc<MongotClientState>);
 
 impl AggregationStageDescriptor for InternalPluginVectorSearchDescriptor {
@@ -275,6 +295,18 @@ impl InternalPluginVectorSearch {
     }
 }
 
+/// Descriptor for the `$pluginVectorSearch` desugaring stage.
+///
+/// This stage unconditionally de-sugars into a remote vector fetch and id lookup.
+///
+/// This stage interacts with the pipeline differently from the linked-in `$Vector search` stage in
+/// a few important ways:
+/// * De-sugaring is performed through a generic mechanism rather than a hard-coded call invoked
+///   during the creation of an aggregation pipeline.
+/// * The internal vector search stage and `_internalSearchIdLookup` must be run together on the
+///   shard host during sharded queries. In the regular pipeline this implemented using
+///   generic-looking stage constraints (`needsSplit` and `canMovePast`), but here we use
+///   `$betaMultiStream` to create a sub-pipeline which forces this grouping to occur.
 pub struct PluginVectorSearchDescriptor;
 
 impl AggregationStageDescriptor for PluginVectorSearchDescriptor {

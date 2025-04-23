@@ -1,3 +1,8 @@
+//! Bindings for tonic/gRPC communication with `mongot`.
+//!
+//! This code is mostly generated but lightly modified since `mongot` does not use a pure
+//! gRPC + protobuf interface.
+
 /**
 The file below is generated using tonic-build:
 
@@ -28,7 +33,7 @@ fn main() -> () {
         .build();
     tonic_build::manual::Builder::new()
         .out_dir("src")
-        .compile(&[service]);
+        .compile(&\[service\]);
 }
 
 Generated client implementations.

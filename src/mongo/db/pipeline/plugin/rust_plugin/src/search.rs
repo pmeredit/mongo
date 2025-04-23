@@ -1,3 +1,15 @@
+//! Extension implementation of `$search`.
+//!
+//! The extension itself contains stages:
+//! * [`PluginSearchDescriptor`] implements the `$pluginSearch` desugaring stage.
+//! * [`InternalPluginSearchDescriptor`] implements the `$_internalPluginSearch` stage.
+//!
+//! `$pluginSearch` always desugars to at least a `$_internalPluginSearch` stage, but will also
+//! use the extension stage `$_internalPluginMeta` and host provided stages `$betaMultiCursor` and
+//! `_internalSearchIdLookup` to complete queries.
+//!
+//! `_internalPluginSearch` maintains an asynchronous threaded runtime and makes gRPC calls to a
+//! remote `mongot` host that server search queries.
 use std::sync::Arc;
 
 use bson::oid::ObjectId;
@@ -25,9 +37,19 @@ use crate::sdk::{
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
 
+/// Descriptor for `$_internalPluginSearch`.
+///
+/// This stage uses a provided tokio `Runtime` to execute remote gRPC queries against `mongot`.
+/// Using an asynchronous runtime allows us to fetch and buffer batches of documents in the
+/// background rather than synchronously fetching when we run out of documents.
+///
+/// The target host is passed in context during descriptor binding, although this mechanism is
+/// likely to change in the future.
 pub struct InternalPluginSearchDescriptor(Arc<MongotClientState>);
 
 impl InternalPluginSearchDescriptor {
+    /// Create a new descriptor with a reference to the client state. These resources will be used
+    /// for all `$_internalPluginSearch` stages.
     pub fn new(client_state: Arc<MongotClientState>) -> Self {
         Self(client_state)
     }
@@ -375,6 +397,26 @@ impl InternalPluginSearch {
     }
 }
 
+/// Descriptor for the `$pluginSearch` desugaring stage.
+///
+/// This stage may de-sugar in a few different ways depending on parameters:
+/// * By default we replace each document using `$_internalSearchIdLookup` although this may be
+///   disabled by the `returnStoredSource` setting.
+/// * Queries with faceting parameters may need additional setup to return a mix of documents
+///   and facet output as part of the same response.
+///
+/// This stage interacts with the pipeline differently from the linked-in `$search` stage in a few
+/// important ways:
+/// * De-sugaring is performed through a generic mechanism rather than a hard-coded call invoked
+///   during the creation of an aggregation pipeline.
+/// * `$betaMultiStream` is used to handle search+facet cases rather than having a stage that
+///   returns multiple cursors and special casing this. This requires some support from `mongot` in
+///   that we embed token shared between search and facet stages so that the work at the backend
+///   is only done once and the two cursors are cached.
+/// * The internal search stage and `_internalSearchIdLookup` must be run together on the shard host
+///   during sharded queries. In the regular pipeline this implemented using generic-looking
+///   stage constraints (`needsSplit` and `canMovePast`), but here we use `$betaMultiStream` to
+///   create a sub-pipeline which forces this grouping to occur.
 pub struct PluginSearchDescriptor;
 
 impl AggregationStageDescriptor for PluginSearchDescriptor {

@@ -1,6 +1,6 @@
 package(default_visibility = ["//visibility:public"])
 
-load("@rules_rust//rust:defs.bzl", "rust_clippy", "rust_library")
+load("@rules_rust//rust:defs.bzl", "rust_clippy", "rust_library", "rust_doc")
 
 rust_library(
     name = "rust_plugin",
@@ -26,4 +26,9 @@ rust_clippy(
     name = "rust_plugin_clippy_test",
     testonly = True,
     deps = [":rust_plugin"],
+)
+
+rust_doc(
+    name = "extension_doc",
+    crate = ":rust_plugin",
 )

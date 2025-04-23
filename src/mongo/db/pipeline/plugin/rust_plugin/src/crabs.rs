@@ -1,3 +1,8 @@
+//! Sample implementation of custom transform and de-sugaring stages.
+//!
+//! * *Transform*: [`AddSomeCrabsDescriptor`] implements `$addSomeCrabs`.
+//! * *Desugar*: [`EchoWithSomeCrabsDescriptor`] implements `$echoWithSomeCrabs`.
+
 use crate::echo::EchoOxideDescriptor;
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
@@ -12,8 +17,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// Descriptor for the `$addSomeCrabs` transform stage.
 ///
 /// The stage definition is just a number that can be losslessly converted to a non-zero integer, eg
-///   {$addSomeCrabs: 2}
-/// The stage will then add a "someCrabs" field containing that number of crab emojis.
+///   `{$addSomeCrabs: 2}`
+/// The stage will then add a "someCrabs" field containing that number of crab emojis to each
+/// document it receives.
 pub struct AddSomeCrabsDescriptor;
 
 impl AggregationStageDescriptor for AddSomeCrabsDescriptor {
@@ -101,6 +107,18 @@ impl AggregationStageExecutor for AddSomeCrabs {
     }
 }
 
+/// Implements the `$echoWithSomeCrabs` de-sugared stage.
+///
+/// The stage definition is of the form:
+/// ```
+/// $echoWithSomeCrabs: {
+///   document: <bson doc>
+///   numCrabs: <non-negative number>
+/// }
+/// ```
+///
+/// This will de-sugar into an `$echoOxide, $addSomeCrabs` sequence, although the latter may be
+/// omitted if `numCrabs: 0`.
 pub struct EchoWithSomeCrabsDescriptor;
 
 impl AggregationStageDescriptor for EchoWithSomeCrabsDescriptor {

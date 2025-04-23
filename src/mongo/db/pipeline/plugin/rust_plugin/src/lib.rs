@@ -1,18 +1,31 @@
+//! Extension SDK and sample implementation for MongoDB.
+//!
+//! This crate contains an [`sdk`] module that wraps the extension header provided by the database
+//! and provides a mechanism to define and register new aggregation stages.
+//!
+//! It also provides several stage implementations, the stages in [`count_nodes`], [`crabs`],
+//! [`custom_sort`], and [`echo`] are all toy examples; other modules contain reimplementations of
+//! various search-related stages.
+//!
+//! To navigate through all of the provided abstractions it would be best to either start with the
+//! [`sdk`] module or [`ExtensionPortal`]. If you implement a new stage the easiest way to get it
+//! working with `mongod` is to register it in [`initialize_rust_plugins`].
+
 // Dead code analysis doesn't work here.
 // The entry point is an exported function called from a .cpp file.
 #![allow(dead_code)]
 
-mod command_service;
-mod count_nodes;
-mod crabs;
-mod custom_sort;
-mod echo;
-mod meta;
-mod mongot_client;
+pub mod command_service;
+pub mod count_nodes;
+pub mod crabs;
+pub mod custom_sort;
+pub mod echo;
+pub mod meta;
+pub mod mongot_client;
 pub mod sdk;
-mod search;
-mod vector;
-mod voyage;
+pub mod search;
+pub mod vector;
+pub mod voyage;
 
 use std::sync::Arc;
 
@@ -29,7 +42,7 @@ use crate::search::{InternalPluginSearchDescriptor, PluginSearchDescriptor};
 use crate::vector::{InternalPluginVectorSearchDescriptor, PluginVectorSearchDescriptor};
 use crate::voyage::VoyageRerankDescriptor;
 
-/// A lazily initialized [`tokio::runtime::Runtime`].
+/// A lazily initialized `tokio::runtime::Runtime`.
 ///
 /// The current initialization path in the server invokes plugin registration _before_ it is safe to
 /// start new threads, so this wrapper allows us to defer initialization until the threads are
@@ -41,6 +54,9 @@ pub struct LazyRuntime {
 }
 
 impl LazyRuntime {
+    /// Create a new runtime with `num_threads` and associate thread `name`.
+    ///
+    /// The underlying runtime will not be created until the first call to [`get`](Self::get).
     pub fn new(name: &'static str, num_threads: usize) -> Self {
         Self {
             name,
@@ -49,6 +65,7 @@ impl LazyRuntime {
         }
     }
 
+    /// Get the runtime, creating it if needed.
     pub fn get(&self) -> &tokio::runtime::Runtime {
         self.runtime.get_or_init(|| {
             tokio::runtime::Builder::new_multi_thread()
@@ -67,9 +84,15 @@ impl LazyRuntime {
     }
 }
 
-// #[no_mangle] allows this to be called from C/C++.
+/// This is the entry point function invoked by the extension host (server) to hook into the server
+/// and provide functionality like new aggregation stages.
+///
+/// This symbol is unmangled which would allow the server to locate it using `dlsym()` after
+/// using `dlopen()` to access a shared object. Today it is statically linked.
+///
+/// At the moment modifying this function is the easiest way to register a new stage.
 #[no_mangle]
-unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {
+pub unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoExtensionPortal) {
     let mut sdk_portal =
         ExtensionPortal::from_raw(portal_ptr).expect("extension portal pointer may not be null");
     sdk_portal.install_host_services();

@@ -1,3 +1,8 @@
+//! Sample implementation of a custom source stage.
+//!
+//! `$echoOxide` is crude reimplementation of the builtin stage `$documents`. It accepts a single
+//! document as the stage definition and produces that document exactly once.
+
 use bson::{RawBsonRef, RawDocument, RawDocumentBuf};
 
 use crate::sdk::{

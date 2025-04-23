@@ -1,8 +1,9 @@
+//! Utilities and protocol structures for talking to the search service, `mongot`.
 use std::io::Write;
 use std::marker::PhantomData;
 
-use bson::{Bson, Document, RawArrayBuf, Uuid};
 use bson::oid::ObjectId;
+use bson::{Bson, Document, RawArrayBuf, Uuid};
 use bytes::{Buf, BufMut};
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
@@ -11,6 +12,8 @@ use tonic::Status;
 
 use crate::LazyRuntime;
 
+/// State needed to talk to a remote `mongot` service. This may be shared among stages that need to
+/// talk to `mongot`.
 pub struct MongotClientState {
     // TODO: consider initializing runtime up-front rather than deferring until first use.
     //
@@ -173,9 +176,9 @@ impl<T, U> Default for BsonCodec<T, U> {
 }
 
 impl<T, U> Codec for BsonCodec<T, U>
-    where
-        T: serde::Serialize + Send + 'static,
-        U: serde::de::DeserializeOwned + Send + 'static,
+where
+    T: serde::Serialize + Send + 'static,
+    U: serde::de::DeserializeOwned + Send + 'static,
 {
     type Encode = T;
     type Decode = U;

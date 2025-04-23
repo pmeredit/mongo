@@ -1,3 +1,8 @@
+//! Sample implementation of a custom transform stage.
+//!
+//! `$pluginSort` is a crude version of the builtin `$sort` stage that accumulates documents and
+//! sorts them by a field named in the stage definition. The named field is assumed to be a double/
+//! `f64` field, e.g. `{$pluginSort: "price"}`.
 use crate::sdk::{
     stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
     AggregationStageProperties, Error, GetNextResult, HostAggregationStageExecutor,

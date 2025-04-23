@@ -1,9 +1,11 @@
-/**
- * The $countNodes stage will generate a single document with the count of how many data-bearing
- * nodes were involved in executing this query. This is used as a toy example for testing
- * $betaMultiStream, where the secondary stream is expected to produce a single document to populate
- * the $$SEARCH_META variable.
- */
+//! Sample implementation of a custom source stage for testing host stages.
+//!
+//! The `$countNodes` stage will generate a single document with the count of how many data-bearing
+//! nodes were involved in executing this query.
+//!
+//! This is used as a toy example for testing `$betaMultiStream` (provided by the host), where the
+//! secondary stream is expected to produce a single document to populate the `$$SEARCH_META`
+//! variable.
 use bson::{doc, to_raw_document_buf, Bson::Null, Document, RawBsonRef, RawDocument};
 
 use crate::sdk::{
@@ -12,6 +14,9 @@ use crate::sdk::{
     SourceBoundAggregationStageDescriptor,
 };
 
+/// Descriptor for the `$countNodes` stage.
+///
+/// This stage expects the dstage definition to be an empty document, e.g. `$countNodes: {}`.
 pub struct CountNodesDescriptor;
 
 impl AggregationStageDescriptor for CountNodesDescriptor {
