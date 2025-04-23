@@ -1,21 +1,20 @@
 // TODO: break up sdk into sub-modules.
 
+use std::borrow::Cow;
 use std::ffi::{c_int, CStr};
 use std::ptr::NonNull;
 use std::sync::OnceLock;
 
-use crate::{AggregationStage, GetNextResult, PluginAggregationStage, VecByteBuf};
-
 use bson::{
-    doc, to_raw_document_buf, to_vec, Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf,
+    doc, to_raw_document_buf, to_vec, Bson, Document, RawBsonRef, RawDocument, RawDocumentBuf, Uuid,
 };
 use plugin_api_bindgen::{
     MongoExtensionAggregationStage, MongoExtensionAggregationStageDescriptor,
     MongoExtensionAggregationStageDescriptorVTable, MongoExtensionAggregationStageType,
-    MongoExtensionBoundAggregationStageDescriptor,
+    MongoExtensionAggregationStageVTable, MongoExtensionBoundAggregationStageDescriptor,
     MongoExtensionBoundAggregationStageDescriptorVTable, MongoExtensionByteBuf,
-    MongoExtensionByteView, MongoExtensionError, MongoExtensionErrorVTable,
-    MongoExtensionHostServices, MongoExtensionPortal,
+    MongoExtensionByteBufVTable, MongoExtensionByteView, MongoExtensionError,
+    MongoExtensionErrorVTable, MongoExtensionHostServices, MongoExtensionPortal,
 };
 use serde::{Deserialize, Serialize};
 
@@ -227,6 +226,52 @@ impl Drop for HostError {
     }
 }
 
+// TODO: structs like this that are cast to an extension type should have a lint that errors if
+// they are not #[repr(C)]. When using the rust ABI they may be reordered(!) which is problematic
+// given the C bindings expect vtable access.
+#[repr(C)]
+struct VecByteBuf {
+    vtable: &'static MongoExtensionByteBufVTable,
+    buf: Vec<u8>,
+}
+
+impl VecByteBuf {
+    const VTABLE: MongoExtensionByteBufVTable = MongoExtensionByteBufVTable {
+        drop: Some(VecByteBuf::drop),
+        get: Some(VecByteBuf::get),
+    };
+
+    pub fn from_string(s: String) -> Box<Self> {
+        Box::new(Self {
+            vtable: &Self::VTABLE,
+            buf: s.into(),
+        })
+    }
+
+    pub fn from_vec(v: Vec<u8>) -> Box<Self> {
+        Box::new(Self {
+            vtable: &Self::VTABLE,
+            buf: v,
+        })
+    }
+
+    pub fn into_byte_buf(self: Box<Self>) -> *mut MongoExtensionByteBuf {
+        Box::into_raw(self) as *mut MongoExtensionByteBuf
+    }
+
+    unsafe extern "C-unwind" fn drop(buf: *mut MongoExtensionByteBuf) {
+        let _ = Box::from_raw(buf as *mut VecByteBuf);
+    }
+
+    unsafe extern "C-unwind" fn get(buf: *const MongoExtensionByteBuf) -> MongoExtensionByteView {
+        let bytes = (buf as *const VecByteBuf).as_ref().unwrap().buf.as_slice();
+        MongoExtensionByteView {
+            data: bytes.as_ptr(),
+            len: bytes.len(),
+        }
+    }
+}
+
 pub mod stage_constraints {
     use serde::{Deserialize, Serialize};
 
@@ -285,7 +330,32 @@ pub struct AggregationStageProperties {
     pub stream_type: stage_constraints::StreamType,
     pub position: stage_constraints::PositionRequirement,
     pub host_type: stage_constraints::HostTypeRequirement,
-    pub can_run_on_shards_pipeline: bool
+    pub can_run_on_shards_pipeline: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregationStageContext {
+    // NB: this may contain a raw ObjectId so it probably shouldn't be a String.
+    // This isn't an issue in the C++ code base because std::string can be an arbitrary byte buffer
+    // and doesn't have to contain readable text in any character set.
+    #[serde(rename = "$db")]
+    pub db: String,
+    pub collection: Option<String>,
+    #[serde(rename = "collectionUUID")]
+    pub collection_uuid: Option<Uuid>,
+    pub in_router: bool,
+    // TODO remove mongotHost in favor of extension-specific config
+    pub mongot_host: Option<String>,
+}
+
+impl TryFrom<&RawDocument> for AggregationStageContext {
+    type Error = Error;
+
+    fn try_from(value: &RawDocument) -> Result<AggregationStageContext, Self::Error> {
+        bson::from_slice(value.as_bytes())
+            .map_err(|e| Self::Error::with_source(1, "Could not parse AggregationStageContext", e))
+    }
 }
 
 /// Parent trait for an aggregation stage descriptor.
@@ -348,7 +418,7 @@ pub trait SourceBoundAggregationStageDescriptor {
     /// Associated type for the execution object.
     ///
     /// This object will be wrapped so that it can be used by the extension host.
-    type Executor: AggregationStage + Sized;
+    type Executor: AggregationStageExecutor + Sized;
 
     /// Return a pipeline fragment used to merge the output of this stage in a sharded query.
     ///
@@ -367,7 +437,7 @@ pub trait TransformBoundAggregationStageDescriptor {
     /// Associated type for the execution object.
     ///
     /// This object will be wrapped so that it can be used by the extension host.
-    type Executor: AggregationStage + Sized;
+    type Executor: AggregationStageExecutor + Sized;
 
     /// Return a pipeline fragment used to merge the output of this stage in a sharded query.
     ///
@@ -382,6 +452,22 @@ pub trait TransformBoundAggregationStageDescriptor {
         &self,
         source: HostAggregationStageExecutor,
     ) -> Result<Self::Executor, Error>;
+}
+
+// TODO handle unknown codes as another state.
+#[derive(Debug)]
+pub enum GetNextResult<'a> {
+    Advanced(Cow<'a, RawDocument>),
+    PauseExecution,
+    EOF,
+}
+
+/// A stage executor is created from a bound stage descriptor and yields a stream of documents
+/// back to the caller in a pipeline. The stage may have its own source, forming a pipeline.
+pub trait AggregationStageExecutor {
+    /// Get the next result from this stage.
+    /// This may contain a document or another stream marker, including EOF.
+    fn get_next(&mut self) -> Result<GetNextResult<'_>, Error>;
 }
 
 /// Bindings for `MongoExtensionPortal`.
@@ -832,7 +918,8 @@ impl<D: SourceBoundAggregationStageDescriptor + Sized>
             .create_executor_internal(HostAggregationStageExecutor::from_raw(source))
         {
             Ok(e) => {
-                *executor = Box::new(PluginAggregationStage::new(e)).into_raw_interface();
+                *executor =
+                    Box::new(ExtensionAggregationStageExecutor::new(e)).into_raw_interface();
                 0
             }
             Err(e) => {
@@ -911,7 +998,8 @@ impl<D: TransformBoundAggregationStageDescriptor + Sized>
             .create_executor_internal(HostAggregationStageExecutor::from_raw(source))
         {
             Ok(e) => {
-                *executor = Box::new(PluginAggregationStage::new(e)).into_raw_interface();
+                *executor =
+                    Box::new(ExtensionAggregationStageExecutor::new(e)).into_raw_interface();
                 0
             }
             Err(e) => {
@@ -935,6 +1023,77 @@ impl<D: TransformBoundAggregationStageDescriptor + Sized>
     }
 }
 
+#[repr(C)]
+struct ExtensionAggregationStageExecutor<S: AggregationStageExecutor> {
+    vtable: &'static MongoExtensionAggregationStageVTable,
+    stage_impl: S,
+    // This is a place to put errors or other things that might otherwise leak.
+    buf: Vec<u8>,
+}
+
+impl<S: AggregationStageExecutor> ExtensionAggregationStageExecutor<S> {
+    const VTABLE: MongoExtensionAggregationStageVTable = MongoExtensionAggregationStageVTable {
+        drop: Some(Self::drop),
+        getNext: Some(Self::get_next),
+    };
+
+    pub fn new(stage: S) -> Self {
+        Self {
+            vtable: &Self::VTABLE,
+            stage_impl: stage,
+            buf: vec![],
+        }
+    }
+
+    pub fn into_raw_interface(self: Box<Self>) -> *mut MongoExtensionAggregationStage {
+        Box::into_raw(self) as *mut MongoExtensionAggregationStage
+    }
+
+    unsafe extern "C-unwind" fn get_next(
+        stage: *mut MongoExtensionAggregationStage,
+        code: *mut c_int,
+        doc: *mut MongoExtensionByteView,
+    ) -> *mut MongoExtensionError {
+        let rust_stage = (stage as *mut ExtensionAggregationStageExecutor<S>)
+            .as_mut()
+            .expect("non-null stage pointer");
+        *doc = MongoExtensionByteView {
+            data: std::ptr::null(),
+            len: 0,
+        };
+        match rust_stage.stage_impl.get_next() {
+            Ok(GetNextResult::EOF) => {
+                *code = plugin_api_bindgen::MongoExtensionGetNextResultCode_kEOF;
+                std::ptr::null_mut()
+            }
+            Ok(GetNextResult::PauseExecution) => {
+                *code = plugin_api_bindgen::MongoExtensionGetNextResultCode_kPauseExecution;
+                std::ptr::null_mut()
+            }
+            Ok(GetNextResult::Advanced(raw_doc)) => {
+                let doc_bytes = match raw_doc {
+                    Cow::Owned(rdoc_buf) => {
+                        rust_stage.buf = rdoc_buf.into_bytes();
+                        rust_stage.buf.as_slice()
+                    }
+                    Cow::Borrowed(rdoc) => rdoc.as_bytes(),
+                };
+                *doc = MongoExtensionByteView {
+                    data: doc_bytes.as_ptr(),
+                    len: doc_bytes.len(),
+                };
+                *code = plugin_api_bindgen::MongoExtensionGetNextResultCode_kAdvanced;
+                std::ptr::null_mut()
+            }
+            Err(e) => e.into_raw_interface(),
+        }
+    }
+
+    unsafe extern "C-unwind" fn drop(stage: *mut MongoExtensionAggregationStage) {
+        let _ = Box::from_raw(stage as *mut ExtensionAggregationStageExecutor<S>);
+    }
+}
+
 /// Interface to an stage owned by the host, used by transform stages.
 pub struct HostAggregationStageExecutor(NonNull<MongoExtensionAggregationStage>);
 
@@ -944,7 +1103,7 @@ impl HostAggregationStageExecutor {
     }
 }
 
-impl AggregationStage for HostAggregationStageExecutor {
+impl AggregationStageExecutor for HostAggregationStageExecutor {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         let mut code = 0i32;
         let mut doc = MongoExtensionByteView {

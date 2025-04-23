@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use bson::{doc, to_raw_document_buf, from_document};
-use bson::{Bson, Document, RawBsonRef, RawDocument};
 use bson::oid::ObjectId;
+use bson::{doc, from_document, to_raw_document_buf};
+use bson::{Bson, Document, RawBsonRef, RawDocument};
 use tokio::select;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, watch};
@@ -14,14 +14,13 @@ use tonic::{Status, Streaming};
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotClientState,
-    MongotCursorBatch, SearchCommand, ResultType, MongotResult,
+    MongotCursorBatch, MongotResult, ResultType, SearchCommand,
 };
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, Error, SourceAggregationStageDescriptor,
-    SourceBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageContext, AggregationStageDescriptor,
+    AggregationStageExecutor, AggregationStageProperties, DesugarAggregationStageDescriptor, Error,
+    GetNextResult, SourceAggregationStageDescriptor, SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, AggregationStageContext, GetNextResult};
 
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
@@ -44,7 +43,7 @@ impl AggregationStageDescriptor for InternalPluginSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
-            can_run_on_shards_pipeline: true
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -84,8 +83,8 @@ impl InternalPluginSearchBoundDescriptor {
                 ));
             }
         }
-            .to_document()
-            .unwrap();
+        .to_document()
+        .unwrap();
 
         let context = AggregationStageContext::try_from(context)?;
         if context.collection.is_none() {
@@ -178,7 +177,7 @@ impl InternalPluginSearch {
     }
 }
 
-impl AggregationStage for InternalPluginSearch {
+impl AggregationStageExecutor for InternalPluginSearch {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.descriptor.context.collection_uuid.is_none() {
             return Err(Error::new(
@@ -227,7 +226,7 @@ impl InternalPluginSearch {
             .descriptor
             .query
             .get("lookup_token")
-            .map(|bson| bson.as_object_id().unwrap().clone());
+            .map(|bson| bson.as_object_id().unwrap());
 
         // execute the initial request to fetch first batch and obtain the cursor id
         sender
@@ -270,7 +269,7 @@ impl InternalPluginSearch {
                 self.result_tx.clone(),
                 self.descriptor.stored_source,
             )
-                .await
+            .await
         } else {
             0
         };
@@ -334,16 +333,19 @@ impl InternalPluginSearch {
 
         // initial intermediate query
         if let Some(cursors) = batch.cursors {
-            let results = cursors.iter()
+            let results = cursors
+                .iter()
                 .find(|batch| {
-                    batch.cursor.as_ref()
+                    batch
+                        .cursor
+                        .as_ref()
                         .and_then(|cursor| cursor.r#type.as_ref())
-                        .map_or(false, |cursor_type| *cursor_type == ResultType::Results)
+                        .is_some_and(|cursor_type| *cursor_type == ResultType::Results)
                 })
                 .unwrap();
 
             let cursor = results.cursor.as_ref().unwrap();
-            if cursor.next_batch.len() > 0 {
+            if !cursor.next_batch.is_empty() {
                 panic!("Initial response with a lookup token should never return results");
             }
 
@@ -386,7 +388,7 @@ impl AggregationStageDescriptor for PluginSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
-            can_run_on_shards_pipeline: true
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -407,7 +409,9 @@ impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
                     "$pluginSearch stage definition must contain a document.",
                 ))
             }
-        }.to_document().unwrap();
+        }
+        .to_document()
+        .unwrap();
 
         let lookup_token = ObjectId::new();
         let stage_and_token = doc! {"definition": query.clone(), "lookup_token": lookup_token};
@@ -427,15 +431,13 @@ impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
             return Ok(primary_pipeline);
         }
 
-        Ok(vec![
-            doc! {"$betaMultiStream": doc! {
-                "primary": primary_pipeline,
-                "secondary": [
-                    doc! {"$_internalPluginMeta": stage_and_token.clone()}
-                ],
-                // TODO switch to setVar when meta merging logic is implemented
-                "finishMethod": "cursor",
-            }}
-        ])
+        Ok(vec![doc! {"$betaMultiStream": doc! {
+            "primary": primary_pipeline,
+            "secondary": [
+                doc! {"$_internalPluginMeta": stage_and_token.clone()}
+            ],
+            // TODO switch to setVar when meta merging logic is implemented
+            "finishMethod": "cursor",
+        }}])
     }
 }

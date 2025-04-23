@@ -1,10 +1,10 @@
 use bson::{RawBsonRef, RawDocument, RawDocumentBuf};
 
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties, Error,
-    SourceAggregationStageDescriptor, SourceBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
+    AggregationStageProperties, Error, GetNextResult, SourceAggregationStageDescriptor,
+    SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, GetNextResult};
 
 pub struct EchoOxideDescriptor;
 
@@ -18,7 +18,7 @@ impl AggregationStageDescriptor for EchoOxideDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::LocalOnly,
-            can_run_on_shards_pipeline: false
+            can_run_on_shards_pipeline: false,
         }
     }
 }
@@ -56,7 +56,7 @@ impl SourceBoundAggregationStageDescriptor for EchoOxideBoundDescriptor {
 
 pub struct EchoOxideExecutor(Option<RawDocumentBuf>);
 
-impl AggregationStage for EchoOxideExecutor {
+impl AggregationStageExecutor for EchoOxideExecutor {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         Ok(if let Some(doc) = self.0.take() {
             GetNextResult::Advanced(doc.into())

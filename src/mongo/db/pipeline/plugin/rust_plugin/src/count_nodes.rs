@@ -1,17 +1,16 @@
 /**
- * The $countNodes stage will generate a single document with the count of how many data-bearing 
- * nodes were involved in executing this query. This is used as a toy example for testing 
+ * The $countNodes stage will generate a single document with the count of how many data-bearing
+ * nodes were involved in executing this query. This is used as a toy example for testing
  * $betaMultiStream, where the secondary stream is expected to produce a single document to populate
  * the $$SEARCH_META variable.
  */
-
-use bson::{doc, to_raw_document_buf, RawBsonRef, RawDocument, Document, Bson::Null};
+use bson::{doc, to_raw_document_buf, Bson::Null, Document, RawBsonRef, RawDocument};
 
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties, Error,
-    SourceAggregationStageDescriptor, SourceBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
+    AggregationStageProperties, Error, GetNextResult, SourceAggregationStageDescriptor,
+    SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, GetNextResult};
 
 pub struct CountNodesDescriptor;
 
@@ -25,7 +24,7 @@ impl AggregationStageDescriptor for CountNodesDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::None,
-            can_run_on_shards_pipeline: true
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -49,7 +48,10 @@ impl SourceAggregationStageDescriptor for CountNodesDescriptor {
         };
         match document.is_empty() {
             true => Ok(CountNodesBoundDescriptor),
-            false => Err(Error::new(1, "$countNodes stage definition must be an empty document."))
+            false => Err(Error::new(
+                1,
+                "$countNodes stage definition must be an empty document.",
+            )),
         }
     }
 }
@@ -62,7 +64,7 @@ impl SourceBoundAggregationStageDescriptor for CountNodesBoundDescriptor {
     fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
         Ok(vec![
             doc! {"$group": {"_id": Null, "count": {"$sum": "$count"}}},
-            doc! {"$project": {"_id": 0}}
+            doc! {"$project": {"_id": 0}},
         ])
     }
 
@@ -73,12 +75,12 @@ impl SourceBoundAggregationStageDescriptor for CountNodesBoundDescriptor {
 
 pub struct CountNodesExecutor(bool);
 
-impl AggregationStage for CountNodesExecutor {
+impl AggregationStageExecutor for CountNodesExecutor {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         // On the first call, returns {count: 1}; on the second call, returns EOF.
         Ok(if self.0 {
             self.0 = false;
-            GetNextResult::Advanced(to_raw_document_buf(&doc!{"count": 1}).unwrap().into())
+            GetNextResult::Advanced(to_raw_document_buf(&doc! {"count": 1}).unwrap().into())
         } else {
             GetNextResult::EOF
         })

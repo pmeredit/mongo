@@ -3,16 +3,17 @@ use std::sync::Arc;
 
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
-    MongotClientState, MongotCursorBatch, VectorSearchCommand, MongotResult
+    MongotClientState, MongotCursorBatch, MongotResult, VectorSearchCommand,
 };
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, Error, SourceAggregationStageDescriptor,
-    SourceBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageContext, AggregationStageDescriptor,
+    AggregationStageExecutor, AggregationStageProperties, DesugarAggregationStageDescriptor, Error,
+    GetNextResult, SourceAggregationStageDescriptor, SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, AggregationStageContext, GetNextResult};
 
-use bson::{doc, from_document, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument};
+use bson::{
+    doc, from_document, to_raw_document_buf, Document, RawArrayBuf, RawBsonRef, RawDocument,
+};
 use tonic::transport::Channel;
 use tonic::{Request, Response};
 
@@ -28,7 +29,7 @@ impl AggregationStageDescriptor for InternalPluginVectorSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
-            can_run_on_shards_pipeline: true
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -178,7 +179,7 @@ impl InternalPluginVectorSearch {
     }
 }
 
-impl AggregationStage for InternalPluginVectorSearch {
+impl AggregationStageExecutor for InternalPluginVectorSearch {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.descriptor.context.collection_uuid.is_none() {
             return Err(Error::new(
@@ -287,7 +288,7 @@ impl AggregationStageDescriptor for PluginVectorSearchDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
-            can_run_on_shards_pipeline: true
+            can_run_on_shards_pipeline: true,
         }
     }
 }

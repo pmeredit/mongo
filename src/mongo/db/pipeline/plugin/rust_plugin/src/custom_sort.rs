@@ -1,9 +1,8 @@
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties, Error,
-    HostAggregationStageExecutor, TransformAggregationStageDescriptor,
-    TransformBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
+    AggregationStageProperties, Error, GetNextResult, HostAggregationStageExecutor,
+    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, GetNextResult};
 use bson::{doc, to_raw_document_buf};
 use bson::{Document, RawBsonRef, RawDocument};
 use std::collections::VecDeque;
@@ -20,7 +19,7 @@ impl AggregationStageDescriptor for PluginSortDescriptor {
             stream_type: stage_constraints::StreamType::Blocking,
             position: stage_constraints::PositionRequirement::None,
             host_type: stage_constraints::HostTypeRequirement::None,
-            can_run_on_shards_pipeline: true
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -85,7 +84,7 @@ impl PluginSort {
 /**
  * $pluginSort accepts one field by which to sort the document; the field values must be numeric.
  */
-impl AggregationStage for PluginSort {
+impl AggregationStageExecutor for PluginSort {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.docs.is_none() {
             Self::populate_and_sort_documents(self)?;

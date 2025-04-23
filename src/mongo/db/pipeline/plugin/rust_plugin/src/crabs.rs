@@ -1,10 +1,10 @@
 use crate::echo::EchoOxideDescriptor;
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, Error, HostAggregationStageExecutor,
-    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
+    AggregationStageProperties, DesugarAggregationStageDescriptor, Error, GetNextResult,
+    HostAggregationStageExecutor, TransformAggregationStageDescriptor,
+    TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, GetNextResult};
 
 use bson::{doc, to_raw_document_buf, Document, RawBsonRef, RawDocument};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -26,7 +26,7 @@ impl AggregationStageDescriptor for AddSomeCrabsDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::None,
             host_type: stage_constraints::HostTypeRequirement::None,
-            can_run_on_shards_pipeline: true
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -86,7 +86,7 @@ impl AddSomeCrabs {
     }
 }
 
-impl AggregationStage for AddSomeCrabs {
+impl AggregationStageExecutor for AddSomeCrabs {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         match self.source.get_next()? {
             GetNextResult::Advanced(input_doc) => {

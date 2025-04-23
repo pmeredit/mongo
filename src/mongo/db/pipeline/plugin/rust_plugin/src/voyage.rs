@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties, Error,
-    HostAggregationStageExecutor, TransformAggregationStageDescriptor,
-    TransformBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
+    AggregationStageProperties, Error, GetNextResult, HostAggregationStageExecutor,
+    TransformAggregationStageDescriptor, TransformBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, GetNextResult, LazyRuntime};
+use crate::LazyRuntime;
 
 static VOYAGE_API_URL: &str = "https://api.voyageai.com/v1/rerank";
 static VOYAGE_SCORE_FIELD: &str = "$voyageRerankScore";
@@ -54,7 +54,7 @@ impl AggregationStageDescriptor for VoyageRerankDescriptor {
             stream_type: stage_constraints::StreamType::Blocking,
             position: stage_constraints::PositionRequirement::None,
             host_type: stage_constraints::HostTypeRequirement::Router,
-            can_run_on_shards_pipeline: false
+            can_run_on_shards_pipeline: false,
         }
     }
 }
@@ -153,20 +153,7 @@ pub struct VoyageRerank {
     documents: Option<VecDeque<Document>>,
 }
 
-impl VoyageRerank {
-    fn with_descriptor(
-        descriptor: VoyageRerankBoundDescriptor,
-        source: HostAggregationStageExecutor,
-    ) -> Self {
-        Self {
-            descriptor,
-            source,
-            documents: None,
-        }
-    }
-}
-
-impl AggregationStage for VoyageRerank {
+impl AggregationStageExecutor for VoyageRerank {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.documents.is_none() {
             let accumulated = Self::accumulate_documents(self)?;
@@ -190,6 +177,17 @@ impl AggregationStage for VoyageRerank {
 }
 
 impl VoyageRerank {
+    fn with_descriptor(
+        descriptor: VoyageRerankBoundDescriptor,
+        source: HostAggregationStageExecutor,
+    ) -> Self {
+        Self {
+            descriptor,
+            source,
+            documents: None,
+        }
+    }
+
     fn accumulate_documents(&mut self) -> Result<Vec<Document>, Error> {
         let mut accumulated: Vec<Document> = Vec::new();
 

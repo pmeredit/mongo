@@ -13,14 +13,13 @@ use tonic::{Status, Streaming};
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotClientState,
-    MongotCursorBatch, SearchCommand, ResultType,
+    MongotCursorBatch, ResultType, SearchCommand,
 };
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageProperties,
-    DesugarAggregationStageDescriptor, SourceAggregationStageDescriptor,
-    SourceBoundAggregationStageDescriptor,
+    stage_constraints, AggregationStageContext, AggregationStageDescriptor,
+    AggregationStageExecutor, AggregationStageProperties, DesugarAggregationStageDescriptor, Error,
+    GetNextResult, SourceAggregationStageDescriptor, SourceBoundAggregationStageDescriptor,
 };
-use crate::{AggregationStage, AggregationStageContext, Error, GetNextResult};
 
 // roughly two 16 MB batches of id+score payload
 static CHANNEL_BUFFER_SIZE: usize = 1_000_000;
@@ -43,6 +42,7 @@ impl AggregationStageDescriptor for InternalPluginMetaDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -80,7 +80,9 @@ impl InternalPluginMetaBoundDescriptor {
                     "$_internalPluginMeta stage definition must contain a document.".to_string(),
                 ));
             }
-        }.to_document().unwrap();
+        }
+        .to_document()
+        .unwrap();
 
         let context = AggregationStageContext::try_from(context)?;
         if context.collection.is_none() {
@@ -170,7 +172,7 @@ impl InternalPluginMeta {
     }
 }
 
-impl AggregationStage for InternalPluginMeta {
+impl AggregationStageExecutor for InternalPluginMeta {
     fn get_next(&mut self) -> Result<GetNextResult<'_>, Error> {
         if self.descriptor.context.collection_uuid.is_none() {
             return Err(Error::new(
@@ -219,12 +221,21 @@ impl InternalPluginMeta {
                     .context
                     .collection_uuid
                     .expect("verified collection UUID present at initialization"),
-                query: self.descriptor.query.get("definition").and_then(Bson::as_document).cloned().unwrap(),
+                query: self
+                    .descriptor
+                    .query
+                    .get("definition")
+                    .and_then(Bson::as_document)
+                    .cloned()
+                    .unwrap(),
                 // small batch_size is for test purposes, this allows us to send getMores
                 cursor_options: Some(CursorOptions {
                     batch_size: 5,
-                    lookup_token: self.descriptor.query.get("lookup_token")
-                        .map(|bson| bson.as_object_id().unwrap().clone()),
+                    lookup_token: self
+                        .descriptor
+                        .query
+                        .get("lookup_token")
+                        .map(|bson| bson.as_object_id().unwrap()),
                 }),
                 intermediate: Some(1), // meta query is always intermediate
             }))
@@ -236,10 +247,7 @@ impl InternalPluginMeta {
         let mut inbound_stream: Streaming<MongotCursorBatch> = response.into_inner();
 
         let cursor_id: u64 = if let Some(received) = inbound_stream.next().await {
-            InternalPluginMeta::flush_batch_into_channel(
-                received,
-                self.result_tx.clone(),
-            ).await
+            InternalPluginMeta::flush_batch_into_channel(received, self.result_tx.clone()).await
         } else {
             0
         };
@@ -301,16 +309,19 @@ impl InternalPluginMeta {
 
         // initial intermediate query
         if let Some(cursors) = batch.cursors {
-            let meta = cursors.iter()
+            let meta = cursors
+                .iter()
                 .find(|batch| {
-                    batch.cursor.as_ref()
+                    batch
+                        .cursor
+                        .as_ref()
                         .and_then(|cursor| cursor.r#type.as_ref())
-                        .map_or(false, |cursor_type| *cursor_type == ResultType::Meta)
+                        .is_some_and(|cursor_type| *cursor_type == ResultType::Meta)
                 })
                 .unwrap();
 
             let cursor = meta.cursor.as_ref().unwrap();
-            if cursor.next_batch.len() > 0 {
+            if !cursor.next_batch.is_empty() {
                 panic!("Initial response with a lookup token should never return results");
             }
 
@@ -348,6 +359,7 @@ impl AggregationStageDescriptor for PluginMetaDescriptor {
             stream_type: stage_constraints::StreamType::Streaming,
             position: stage_constraints::PositionRequirement::First,
             host_type: stage_constraints::HostTypeRequirement::AnyShard,
+            can_run_on_shards_pipeline: true,
         }
     }
 }
@@ -366,13 +378,12 @@ impl DesugarAggregationStageDescriptor for PluginMetaDescriptor {
                     "$_internalPluginMeta stage definition must contain a document.".to_string(),
                 ));
             }
-        }.to_document().unwrap();
+        }
+        .to_document()
+        .unwrap();
 
         // if query contains facets or counts, run this stage
-        if let Some(search) = stage
-            .get("definition")
-            .unwrap()
-            .as_document() {
+        if let Some(search) = stage.get("definition").unwrap().as_document() {
             if search.get("facet").is_some() || search.get("count").is_some() {
                 return Ok(vec![doc! {"$_internalPluginMeta": stage}]);
             }
