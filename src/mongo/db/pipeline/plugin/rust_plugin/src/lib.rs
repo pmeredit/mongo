@@ -32,7 +32,7 @@ use std::sync::Arc;
 use plugin_api_bindgen::MongoExtensionPortal;
 
 use crate::count_nodes::CountNodesDescriptor;
-use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor};
+use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor, HelloWorldWithFiveCrabsDescriptor};
 use crate::custom_sort::PluginSortDescriptor;
 use crate::echo::EchoOxideDescriptor;
 use crate::meta::{InternalPluginMetaDescriptor, PluginMetaDescriptor};
@@ -102,6 +102,7 @@ pub unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoEx
     sdk_portal.register_source_aggregation_stage(CountNodesDescriptor);
     sdk_portal.register_transform_aggregation_stage(AddSomeCrabsDescriptor);
     sdk_portal.register_desugar_aggregation_stage(EchoWithSomeCrabsDescriptor);
+    sdk_portal.register_desugar_aggregation_stage(HelloWorldWithFiveCrabsDescriptor);
     sdk_portal.register_transform_aggregation_stage(PluginSortDescriptor);
     sdk_portal.register_desugar_aggregation_stage(PluginSearchDescriptor);
     sdk_portal.register_source_aggregation_stage(InternalPluginSearchDescriptor::new(Arc::clone(

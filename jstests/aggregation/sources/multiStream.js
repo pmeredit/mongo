@@ -21,10 +21,6 @@ coll.drop();
  * "non-sharded" cases.
  */
 
-// jsTestLog("BUERGER");
-// const res = assert.commandWorked(db.runCommand({aggregate: coll.getName(), pipeline: [{$countNodes: {}}], cursor: {}}));
-// jsTestLog(res);
-
 if (FixtureHelpers.isMongos(db)) {
     // Test $betaMultiStream on a sharded cluster, assuming there are 2 shards (as in
     // sharded_collections_jscore_passthrough).
@@ -44,7 +40,8 @@ if (FixtureHelpers.isMongos(db)) {
             cursor: {}
         }));
 
-        // This only passes if there are exactly 2 shards in the configuration for $countNodes behavior.
+        // This only passes if there are exactly 2 shards in the configuration for $countNodes
+        // behavior.
         assert.eq(res.cursor.firstBatch, [
             {a: 1, meta: {count: 2}},
             {a: 1, meta: {count: 2}},
@@ -104,10 +101,7 @@ if (FixtureHelpers.isMongos(db)) {
             cursor: {}
         }));
 
-        assert.eq(res.cursor.firstBatch, [
-            {a: 1, meta: {count: 1}},
-            {a: 2, meta: {count: 1}},
-            {a: 3, meta: {count: 1}}
-        ]);
+        assert.eq(res.cursor.firstBatch,
+                  [{a: 1, meta: {count: 1}}, {a: 2, meta: {count: 1}}, {a: 3, meta: {count: 1}}]);
     }
 }

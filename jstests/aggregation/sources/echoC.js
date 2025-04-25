@@ -13,3 +13,5 @@ assert.eq(coll.aggregate([{$echoWithSomeCrabs: {document: input, numCrabs: 3}}])
               "c": "C!",
               "someCrabs": "🦀🦀🦀",
           }]);
+assert.eq(coll.aggregate([{$helloWorldWithFiveCrabs: {}}]).toArray(),
+          [{"hello": "world", "someCrabs": "🦀🦀🦀🦀🦀"}]);

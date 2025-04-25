@@ -159,6 +159,41 @@ struct EchoWithSomeCrabsStageDefinition {
     num_crabs: usize,
 }
 
+/// Implements the `$helloWorldWithFiveCrabs` de-sugared stage, to show the correctness of 
+/// recurisve de-sugaring stages.
+///
+/// The stage definition is of the form:
+/// ```
+/// $helloWorldWithFiveCrabs: {}
+/// ```
+///
+/// This will de-sugar into an `{$echoWithSomeCrabs: {document: {"hello": "world"}, numCrabs: 5}}` 
+/// stage.
+pub struct HelloWorldWithFiveCrabsDescriptor;
+impl AggregationStageDescriptor for HelloWorldWithFiveCrabsDescriptor {
+    fn name() -> &'static str {
+        "$helloWorldWithFiveCrabs"
+    }
+
+    fn properties(&self) -> AggregationStageProperties {
+        EchoWithSomeCrabsDescriptor.properties()
+    }
+}
+impl DesugarAggregationStageDescriptor for HelloWorldWithFiveCrabsDescriptor {
+    fn desugar(
+        &self,
+        _stage_definition: RawBsonRef<'_>,
+        _context: &RawDocument,
+    ) -> Result<Vec<Document>, Error> {
+        Ok(vec![doc! {
+            "$echoWithSomeCrabs": {
+                "document": { "hello": "world" },
+                "numCrabs": 5
+            }
+        }])
+    }
+}
+
 fn numeric_to_usize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<usize, D::Error> {
     let value = f64::deserialize(deserializer)?;
     if value >= 0.0 && value.fract() == 0.0 && value < usize::MAX as f64 {
