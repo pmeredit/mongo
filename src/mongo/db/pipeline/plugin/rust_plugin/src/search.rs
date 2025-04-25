@@ -26,7 +26,7 @@ use tonic::{Status, Streaming};
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
     CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotClientState,
-    MongotCursorBatch, MongotResult, ResultType, SearchCommand,
+    MongotCursorBatch, MongotResult, ResultType, SearchCommand, MetadataMode
 };
 use crate::sdk::{
     stage_constraints, AggregationStageContext, AggregationStageDescriptor,
@@ -244,6 +244,27 @@ impl InternalPluginSearch {
         // mongot expects all requests within stage execution
         // to be sent via a single bidirectional stream
         let (sender, receiver) = mpsc::channel(1);
+
+        let is_sharded = self
+            .descriptor
+            .context
+            .sharded_query;
+
+        let is_collector = self
+            .descriptor
+            .query
+            .get("definition")
+            .unwrap()
+            .as_document()
+            .map_or(false, |search| search.get("facet").is_some() || search.get("count").is_some());
+
+        let intermediate = if is_collector { Some(1) } else { None };
+        let metadata = if is_collector  {
+            if is_sharded { MetadataMode::ALL } else { MetadataMode::ACCUMULATED }
+        } else {
+            MetadataMode::NONE
+        };
+
         let lookup_token = self
             .descriptor
             .query
@@ -275,8 +296,9 @@ impl InternalPluginSearch {
                 cursor_options: Some(CursorOptions {
                     batch_size: 5,
                     lookup_token,
+                    metadata,
                 }),
-                intermediate: Some(1), // TODO disable if not sharded
+                intermediate,
             }))
             .await
             .unwrap();
@@ -320,7 +342,7 @@ impl InternalPluginSearch {
                         let request = SearchCommand::GetMore(GetMoreSearchCommand {
                             cursor_id,
                             // small batch_size is for test purposes, this allows us to send many getMores
-                            cursor_options: Some(CursorOptions { batch_size: 5, lookup_token: None }),
+                            cursor_options: Some(CursorOptions { batch_size: 5, lookup_token: None, metadata: MetadataMode::NONE }),
                         });
 
                         if let Err(err) = sender.send(request).await {
@@ -459,7 +481,9 @@ impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
         let stage_and_token = doc! {"definition": query.clone(), "lookup_token": lookup_token};
 
         let primary_pipeline = if query.get_bool("returnStoredSource").unwrap_or(false) {
-            vec![doc! { "$_internalPluginSearch": stage_and_token.clone() }]
+            vec![doc! { "$_internalPluginSearch": stage_and_token.clone() },
+                 doc! { "$sort": {"score": {"$meta": "searchScore"}}},
+            ]
         } else {
             vec![
                 doc! { "$_internalPluginSearch": stage_and_token.clone() },
@@ -471,7 +495,7 @@ impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
         Ok(vec![doc! {"$betaMultiStream": doc! {
             "primary": primary_pipeline,
             "secondary": [
-                doc! {"$_internalPluginMeta": stage_and_token.clone()}
+                doc! {"$_internalPluginMeta": stage_and_token.clone()},
             ],
             "finishMethod": "setVar",
         }}])

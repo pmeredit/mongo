@@ -129,6 +129,22 @@ pub struct CursorOptions {
     // to mongot. This ensures that lucene query is executed only once, allowing mongot cursors
     // to be reused for fetching documents and metadata in separate mongod stages.
     pub lookup_token: Option<ObjectId>,
+     // This flag is potentially a future replacement of the intermediate flag. It signals mongot to
+     // always deliver metadata in a separate cursor (even on non-sharded when meta is accumulated 
+     // into one doc), because that's the conventient way for extensions to set $$SEARCH_META
+    pub metadata: MetadataMode,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub enum MetadataMode {
+    // No metadata is expected, mongot should return only documents
+    NONE,
+    // All metadata should be returned via a separate cursor, accumulation should happen on mongod
+    // side (used in sharded setup)
+    ALL,
+    // Metadata should be accumulated and returned as a separate cursor. That cursor must return
+    // only one document.
+    ACCUMULATED
 }
 
 #[derive(Debug)]

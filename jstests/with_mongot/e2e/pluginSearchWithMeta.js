@@ -47,6 +47,9 @@ const stringFacetResult = assert.commandWorked(db.runCommand({
                         "path": "genres"
                     }
                 }
+            },
+            "count": {
+              "type": "total"
             }
         }
     },
@@ -97,6 +100,9 @@ assert.eq(stringFacetResult.cursor.firstBatch, [
                 boundaries: [0, 10, 20]
               }
             }
+          },
+          count: {
+            type: "total"
           }
         }
       },
@@ -106,7 +112,7 @@ assert.eq(stringFacetResult.cursor.firstBatch, [
     ],
     cursor: {}
   }));
-  
+
   assert.eq(numberFacetResult.cursor.firstBatch, [
     {
       _id: 0,
@@ -149,6 +155,9 @@ assert.eq(stringFacetResult.cursor.firstBatch, [
                 ]
               }
             }
+          },
+          count: {
+            type: "total"
           }
         }
       },
@@ -158,7 +167,7 @@ assert.eq(stringFacetResult.cursor.firstBatch, [
     ],
     cursor: {}
   }));
-  
+
   assert.eq(dateFacetResult.cursor.firstBatch, [
     {
       _id: 0,

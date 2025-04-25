@@ -386,6 +386,9 @@ pub struct AggregationStageContext {
     /// Address of `mongot` for search requests.
     // TODO remove mongotHost in favor of extension-specific config
     pub mongot_host: Option<String>,
+    /// If true, this stage is being executed in scope of a sharded query. Note that this flag is
+    /// always `false` on router, so cannot rely on it in [`getMergingStages`] and [`desugar`]
+    pub sharded_query: bool,
 }
 
 impl TryFrom<&RawDocument> for AggregationStageContext {

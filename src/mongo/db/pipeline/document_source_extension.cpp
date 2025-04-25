@@ -62,7 +62,9 @@ BSONObj createContext(const ExpressionContext& ctx) {
         (*ctx.getUUID()).appendToBuilder(&b, "collectionUUID");
     }
     b.append("inRouter", ctx.getInRouter());
+    b.append("shardedQuery", ctx.getNeedsMerge());
     b.append("mongotHost", globalMongotParams.host);
+
     return b.obj();
 }
 

@@ -24,7 +24,7 @@ use tonic::{Status, Streaming};
 
 use crate::command_service::command_service_client::CommandServiceClient;
 use crate::mongot_client::{
-    CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MongotClientState,
+    CursorOptions, GetMoreSearchCommand, InitialSearchCommand, MetadataMode, MongotClientState,
     MongotCursorBatch, ResultType, SearchCommand,
 };
 use crate::sdk::{
@@ -231,6 +231,35 @@ impl InternalPluginMeta {
         // to be sent via a single bidirectional stream
         let (sender, receiver) = mpsc::channel(1);
 
+        let is_sharded = self.descriptor.context.sharded_query;
+
+        let is_collector = self
+            .descriptor
+            .query
+            .get("definition")
+            .unwrap()
+            .as_document()
+            .map_or(false, |search| {
+                search.get("facet").is_some() || search.get("count").is_some()
+            });
+
+        let intermediate = if is_collector { Some(1) } else { None };
+        let metadata = if is_collector {
+            if is_sharded {
+                MetadataMode::ALL
+            } else {
+                MetadataMode::ACCUMULATED
+            }
+        } else {
+            MetadataMode::NONE
+        };
+
+        let lookup_token = self
+            .descriptor
+            .query
+            .get("lookup_token")
+            .map(|bson| bson.as_object_id().unwrap());
+
         // execute the initial request to fetch first batch and obtain the cursor id
         sender
             .send(SearchCommand::Initial(InitialSearchCommand {
@@ -256,13 +285,10 @@ impl InternalPluginMeta {
                 // small batch_size is for test purposes, this allows us to send getMores
                 cursor_options: Some(CursorOptions {
                     batch_size: 5,
-                    lookup_token: self
-                        .descriptor
-                        .query
-                        .get("lookup_token")
-                        .map(|bson| bson.as_object_id().unwrap()),
+                    lookup_token,
+                    metadata,
                 }),
-                intermediate: Some(1), // meta query is always intermediate
+                intermediate,
             }))
             .await
             .unwrap();
@@ -300,7 +326,7 @@ impl InternalPluginMeta {
                         let request = SearchCommand::GetMore(GetMoreSearchCommand {
                             cursor_id,
                             // small batch_size is for test purposes, this allows us to send many getMores
-                            cursor_options: Some(CursorOptions { batch_size: 5, lookup_token: None }),
+                            cursor_options: Some(CursorOptions { batch_size: 5, lookup_token: None, metadata: MetadataMode::NONE }),
                         });
 
                         if let Err(err) = sender.send(request).await {
