@@ -159,7 +159,8 @@ impl SourceBoundAggregationStageDescriptor for InternalPluginVectorSearchBoundDe
 
     fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
         Ok(vec![
-            doc! {"$sort": {"score": {"$meta": "vectorSearchScore"}}},
+            // we apply limit on router to ensure that mongod doesn't output more docs than expected
+            doc! {"$limit": self.limit},
         ])
     }
 
@@ -343,9 +344,17 @@ impl DesugarAggregationStageDescriptor for PluginVectorSearchDescriptor {
         .to_document()
         .unwrap();
 
-        Ok(vec![
-            doc! {"$_internalPluginVectorSearch": query},
-            doc! {"$_internalSearchIdLookup": doc!{}},
-        ])
+        // $betaMultiStream is used to ensure mongod pushes down stages to shards
+        // correctly without needsSplit/canMovePast flags
+        Ok(vec![doc! {"$betaMultiStream": doc! {
+                "primary": vec![
+                    doc! {"$_internalPluginVectorSearch": query},
+                    doc! {"$_internalSearchIdLookup": doc!{}},
+                    doc! { "$sort": {"score": {"$meta": "vectorSearchScore"}}},
+                ],
+                // TODO replace $countNodes with an empty pipeline once $betaMultiStream supports that
+                "secondary": [{"$countNodes": {}}],
+                "finishMethod": "setVar",
+        }}])
     }
 }

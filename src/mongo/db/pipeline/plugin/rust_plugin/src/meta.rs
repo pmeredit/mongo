@@ -422,7 +422,8 @@ impl DesugarAggregationStageDescriptor for PluginMetaDescriptor {
         stage_definition: RawBsonRef<'_>,
         _context: &RawDocument,
     ) -> Result<Vec<Document>, Error> {
-        let stage = match stage_definition {
+
+        let query = match stage_definition {
             RawBsonRef::Document(doc) => doc.to_owned(),
             _ => {
                 return Err(Error::new(
@@ -434,15 +435,16 @@ impl DesugarAggregationStageDescriptor for PluginMetaDescriptor {
         .to_document()
         .unwrap();
 
-        // if query contains facets or counts, run this stage
-        if let Some(search) = stage.get("definition").unwrap().as_document() {
+        // if it's a collector query, run the meta stage
+        if let Some(search) = query.get("definition").unwrap().as_document() {
             if search.get("facet").is_some() || search.get("count").is_some() {
-                return Ok(vec![doc! {"$_internalPluginMeta": stage}]);
+                return Ok(vec![doc! {"$_internalPluginMeta": query}]);
             }
         }
 
         // otherwise, erase itself as operator queries do not output metadata
-        Ok(vec![])
+        // TODO replace $countNodes with an empty pipeline once $betaMultiStream supports that
+        Ok(vec![doc! {"$countNodes": {}}])
     }
 }
 

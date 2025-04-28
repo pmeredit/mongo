@@ -138,7 +138,7 @@ impl SourceBoundAggregationStageDescriptor for InternalPluginSearchBoundDescript
     type Executor = InternalPluginSearch;
 
     fn get_merging_stages(&self) -> Result<Vec<Document>, Error> {
-        Ok(vec![doc! {"$sort": {"score": {"$meta": "searchScore"}}}])
+        Ok(vec![])
     }
 
     fn create_executor(&self) -> Result<Self::Executor, Error> {
@@ -457,8 +457,6 @@ impl AggregationStageDescriptor for PluginSearchDescriptor {
     }
 }
 
-// TODO add a sharded flag in AggregationStageContext to determine if we need to
-// run intermediate queries or not (for now, always run them)
 impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
     fn desugar(
         &self,
@@ -495,7 +493,7 @@ impl DesugarAggregationStageDescriptor for PluginSearchDescriptor {
         Ok(vec![doc! {"$betaMultiStream": doc! {
             "primary": primary_pipeline,
             "secondary": [
-                doc! {"$_internalPluginMeta": stage_and_token.clone()},
+                doc! {"$pluginMeta": stage_and_token.clone()},
             ],
             "finishMethod": "setVar",
         }}])
