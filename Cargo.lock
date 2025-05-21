@@ -282,6 +282,7 @@ dependencies = [
  "once_cell",
  "reqwest",
  "serde",
+ "simsimd",
  "tokio",
  "tonic",
  "tonic-build",
@@ -1446,6 +1447,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9e9e0b4211b72e7b8b6e85c807d36c212bdb33ea8587f7569562a84df5465b1"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "simsimd"
+version = "6.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30b9b5af1b80c358ab866f72281d55059d0e24e007acadad7ebc6e9a55db089e"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

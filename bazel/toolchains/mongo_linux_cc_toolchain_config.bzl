@@ -310,9 +310,8 @@ def _impl(ctx):
             flag_set(
                 actions = all_compile_actions,
                 flag_groups = [flag_group(flags = [
-                    "-isystem{}".format(include)
-                    for include in ctx.attr.includes
-                ])],
+                    "-isystem", include
+                ]) for include in ctx.attr.includes],
             ),
         ] if ctx.attr.includes != None and len(ctx.attr.includes) > 0 else [],
     )
@@ -324,9 +323,8 @@ def _impl(ctx):
             flag_set(
                 actions = all_compile_actions + all_link_actions,
                 flag_groups = [flag_group(flags = [
-                    "-B{}".format(bin_dir)
-                    for bin_dir in ctx.attr.bin_dirs
-                ])],
+                    "-B", bin_dir
+                ]) for bin_dir in ctx.attr.bin_dirs]
             ),
         ] if ctx.attr.bin_dirs != None and len(ctx.attr.bin_dirs) > 0 else [],
     )

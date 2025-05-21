@@ -1,5 +1,5 @@
 {
-  "checksum": "29392989cc8c81533ae9920623e9be1784ff684f04d26773d52e1e1b69ba4893",
+  "checksum": "64116e483214c7814a2f187c13369b54050d5342aa060082c60e55673ca3a149",
   "crates": {
     "addr2line 0.24.2": {
       "name": "addr2line",
@@ -1684,6 +1684,10 @@
             {
               "id": "serde 1.0.217",
               "target": "serde"
+            },
+            {
+              "id": "simsimd 6.4.4",
+              "target": "simsimd"
             },
             {
               "id": "tokio 1.43.0",
@@ -9196,6 +9200,85 @@
       ],
       "license_file": "LICENSE-APACHE"
     },
+    "simsimd 6.4.4": {
+      "name": "simsimd",
+      "version": "6.4.4",
+      "package_url": "https://github.com/ashvardanian/SimSIMD",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/simsimd/6.4.4/download",
+          "sha256": "30b9b5af1b80c358ab866f72281d55059d0e24e007acadad7ebc6e9a55db089e"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "simsimd",
+            "crate_root": "rust/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        },
+        {
+          "BuildScript": {
+            "crate_name": "build_script_build",
+            "crate_root": "build.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "simsimd",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "simsimd 6.4.4",
+              "target": "build_script_build"
+            }
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "6.4.4"
+      },
+      "build_script_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "compile_data_glob_excludes": [
+          "**/*.rs"
+        ],
+        "data_glob": [
+          "**"
+        ],
+        "deps": {
+          "common": [
+            {
+              "id": "cc 1.2.16",
+              "target": "cc"
+            }
+          ],
+          "selects": {}
+        }
+      },
+      "license": "Apache-2.0",
+      "license_ids": [
+        "Apache-2.0"
+      ],
+      "license_file": null
+    },
     "slab 0.4.9": {
       "name": "slab",
       "version": "0.4.9",
@@ -14633,6 +14716,7 @@
     "once_cell 1.20.3",
     "reqwest 0.11.27",
     "serde 1.0.217",
+    "simsimd 6.4.4",
     "tokio 1.43.0",
     "tonic 0.12.3",
     "tonic-build 0.12.3"
