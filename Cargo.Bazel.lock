@@ -1,5 +1,5 @@
 {
-  "checksum": "42aa5c8361b719f9f119d60b68f838f1202ea8167ba6321103ca59d16d36d305",
+  "checksum": "b80e12c5ecebbc59853783f11ddfa4dceb55b6c75027501bf8c65b918e24e2bc",
   "crates": {
     "Inflector 0.11.4": {
       "name": "Inflector",
@@ -463,7 +463,7 @@
         "Git": {
           "remote": "ssh://git@github.com/pmeredit/babelfish.git",
           "commitish": {
-            "Rev": "06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+            "Rev": "3f9d015b86d7a242260a0554f5d44d67669e997e"
           },
           "strip_prefix": "ast"
         }
@@ -1005,7 +1005,7 @@
         "Git": {
           "remote": "ssh://git@github.com/pmeredit/babelfish.git",
           "commitish": {
-            "Rev": "06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+            "Rev": "3f9d015b86d7a242260a0554f5d44d67669e997e"
           },
           "strip_prefix": "babelfish"
         }
@@ -6567,7 +6567,7 @@
         "Git": {
           "remote": "ssh://git@github.com/pmeredit/babelfish.git",
           "commitish": {
-            "Rev": "06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+            "Rev": "3f9d015b86d7a242260a0554f5d44d67669e997e"
           },
           "strip_prefix": "mongosql-datastructures"
         }
@@ -9753,7 +9753,7 @@
         "Git": {
           "remote": "ssh://git@github.com/pmeredit/babelfish.git",
           "commitish": {
-            "Rev": "06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+            "Rev": "3f9d015b86d7a242260a0554f5d44d67669e997e"
           },
           "strip_prefix": "schema"
         }
@@ -13695,7 +13695,7 @@
         "Git": {
           "remote": "ssh://git@github.com/pmeredit/babelfish.git",
           "commitish": {
-            "Rev": "06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+            "Rev": "3f9d015b86d7a242260a0554f5d44d67669e997e"
           },
           "strip_prefix": "visitgen"
         }

@@ -69,7 +69,7 @@ checksum = "6b964d184e89d9b6b67dd2715bc8e74cf3107fb2b529990c90cf517326150bf4"
 [[package]]
 name = "ast"
 version = "0.0.0"
-source = "git+ssh://git@github.com/pmeredit/babelfish.git#06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+source = "git+ssh://git@github.com/pmeredit/babelfish.git#3f9d015b86d7a242260a0554f5d44d67669e997e"
 dependencies = [
  "bson",
  "linked-hash-map",
@@ -174,7 +174,7 @@ dependencies = [
 [[package]]
 name = "babelfish"
 version = "0.1.0"
-source = "git+ssh://git@github.com/pmeredit/babelfish.git#06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+source = "git+ssh://git@github.com/pmeredit/babelfish.git#3f9d015b86d7a242260a0554f5d44d67669e997e"
 dependencies = [
  "ast",
  "linked-hash-map",
@@ -1073,7 +1073,7 @@ dependencies = [
 [[package]]
 name = "mongosql-datastructures"
 version = "0.1.0"
-source = "git+ssh://git@github.com/pmeredit/babelfish.git#06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+source = "git+ssh://git@github.com/pmeredit/babelfish.git#3f9d015b86d7a242260a0554f5d44d67669e997e"
 dependencies = [
  "linked-hash-map",
  "thiserror",
@@ -1536,7 +1536,7 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.0.0"
-source = "git+ssh://git@github.com/pmeredit/babelfish.git#06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+source = "git+ssh://git@github.com/pmeredit/babelfish.git#3f9d015b86d7a242260a0554f5d44d67669e997e"
 dependencies = [
  "ast",
  "base64 0.22.1",
@@ -2162,7 +2162,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "visitgen"
 version = "0.1.0"
-source = "git+ssh://git@github.com/pmeredit/babelfish.git#06cf30b82a3aa9e490e2f997db44a0be0a0d6677"
+source = "git+ssh://git@github.com/pmeredit/babelfish.git#3f9d015b86d7a242260a0554f5d44d67669e997e"
 dependencies = [
  "lazy_static",
  "proc-macro2",
