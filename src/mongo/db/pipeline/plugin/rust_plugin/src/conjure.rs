@@ -16,18 +16,18 @@ use babelfish::*;
 use bson::{doc, to_raw_document_buf, Document, Bson, RawBsonRef, RawDocument};
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Implements the `$echoWithSomeConjure` de-sugared stage.
+/// Implements the `$conjure` desugaring stage.
 ///
 /// The stage definition is of the form:
 /// ```
-/// $echoWithSomeConjure: {
-///   document: <bson doc>
-///   numConjure: <non-negative number>
+/// $conjure: {
+///   ["string", ...],
 /// }
 /// ```
 ///
-/// This will de-sugar into an `$echoOxide, $conjure` sequence, although the latter may be
-/// omitted if `numConjure: 0`.
+/// Where each string is an Entity prefiex field or Entity.*
+/// This will desugar to the correct sequence of lookups and unwinds based on the ERD in
+/// assets/new_erd.json.
 pub struct ConjureDescriptor;
 
 impl AggregationStageDescriptor for ConjureDescriptor {
