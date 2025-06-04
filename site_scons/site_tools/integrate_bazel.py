@@ -32,7 +32,7 @@ from SCons.Script import ARGUMENTS
 from bazel.wrapper_hook.developer_bes_keywords import write_workstation_bazelrc
 from buildscripts.install_bazel import install_bazel
 from buildscripts.util.read_config import read_config_file
-from evergreen.api import RetryingEvergreenApi
+##from evergreen.api import RetryingEvergreenApi
 
 # Disable retries locally
 _LOCAL_MAX_RETRY_ATTEMPTS = 1

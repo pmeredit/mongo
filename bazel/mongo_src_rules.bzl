@@ -1410,8 +1410,8 @@ RE_ENABLE_DISABLED_3RD_PARTY_WARNINGS_FEATURES = select({
 MONGO_GLOBAL_INCLUDE_DIRECTORIES = [
     "-Isrc",
     "-I$(GENDIR)/src",
-    "-I$(GENDIR)/src/mongo/db/modules/enterprise/src",
-    "-Isrc/mongo/db/modules/enterprise/src",
+    # "-I$(GENDIR)/src/mongo/db/modules/enterprise/src",
+    #"-Isrc/mongo/db/modules/enterprise/src",
     "-Isrc/third_party/valgrind/include",
 ]
 
@@ -2416,8 +2416,8 @@ def idl_generator_impl(ctx):
     ] + dep_depsets + py_depsets)
 
     include_directives = ["--include", "src"]
-    if "src/mongo/db/modules/enterprise/src" in ctx.attr.src.files.to_list()[0].path:
-        include_directives += ["--include", "src/mongo/db/modules/enterprise/src"]
+    #if "src/mongo/db/modules/enterprise/src" in ctx.attr.src.files.to_list()[0].path:
+        #    include_directives += ["--include", "src/mongo/db/modules/enterprise/src"]
 
     ctx.actions.run(
         executable = python.interpreter.path,

@@ -296,7 +296,7 @@ mongo_cc_library(
         "//src/mongo/transport:transport_layer_common",
     ] + select({
         "//bazel/config:enterprise_feature_audit_enabled": [
-            "//src/mongo/db/modules/enterprise/src/audit:audit_mongos",
+            #"//src/mongo/db/modules/enterprise/src/audit:audit_mongos",
         ],
         "//conditions:default": [],
     }),

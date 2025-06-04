@@ -240,7 +240,7 @@ common:opt --//bazel/config:debug_symbols=True
 common:opt --//bazel/config:separate_debug=False
 common:opt --//bazel/config:compiler_type=gcc
 common:opt --//bazel/config:linkstatic=True
-common:opt --//bazel/config:build_enterprise=True
+common:opt --//bazel/config:build_enterprise=False
 common:opt --//bazel/config:release=False
 common:opt --//bazel/config:skip_archive=True
 common:opt --//bazel/config:allocator=auto
@@ -372,6 +372,7 @@ common:local --grpc_keepalive_time=0s
 common:local --legacy_important_outputs
 common:local --jobs=auto
 common:local --local_resources=cpu=HOST_CPUS
+common:local --//bazel/config:build_enterprise=False
 
 # Disable remote execution but keep remote cache enabled
 --config=no-remote-exec

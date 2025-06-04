@@ -427,8 +427,8 @@ mongo_cc_library(
         "shell_utils",
     ] + select({
         "//bazel/config:enterprise_feature_fle_and_js_engine_enabled": [
-            "//src/mongo/db/modules/enterprise/src/fips:fips_mode_client",
-            "//src/mongo/db/modules/enterprise/src/fle/shell:implicit_encrypted_dbclient",
+            #"//src/mongo/db/modules/enterprise/src/fips:fips_mode_client",
+            #"//src/mongo/db/modules/enterprise/src/fle/shell:implicit_encrypted_dbclient",
         ],
         "//conditions:default": [],
     }) + select({

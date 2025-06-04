@@ -824,7 +824,9 @@ mongo_cc_library(
         "//src/mongo/util:progress_meter",
         "//src/mongo/util:summation",
     ] + select({
-        "//bazel/config:build_enterprise_enabled": ["//src/mongo/db/modules/enterprise/src/streams/util:streams_util"],
+        "//bazel/config:build_enterprise_enabled": [
+            #"//src/mongo/db/modules/enterprise/src/streams/util:streams_util"
+        ],
         "//conditions:default": [],
     }),
     deps = [
@@ -1625,9 +1627,9 @@ mongo_cc_library(
         "//src/mongo/util/net:ssl_manager",
     ] + select({
         "//bazel/config:enterprise_feature_live_import_enabled": [
-            "//src/mongo/db/modules/enterprise/src/live_import/commands:export_collection_command",
-            "//src/mongo/db/modules/enterprise/src/live_import/commands:import_collection_command",
-            "//src/mongo/db/modules/enterprise/src/live_import/commands:vote_commit_import_collection_command",
+           # "//src/mongo/db/modules/enterprise/src/live_import/commands:export_collection_command",
+           # "//src/mongo/db/modules/enterprise/src/live_import/commands:import_collection_command",
+           # "//src/mongo/db/modules/enterprise/src/live_import/commands:vote_commit_import_collection_command",
         ],
         "//conditions:default": [],
     }),

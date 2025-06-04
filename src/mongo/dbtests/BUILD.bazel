@@ -77,7 +77,7 @@ mongo_cc_library(
     name = "deps_shim",
     deps = select({
         "//bazel/config:enterprise_feature_ldap_and_wiredtiger_enabled": [
-            "//src/mongo/db/modules/enterprise/src/inmemory:storage_inmemory",
+            #"//src/mongo/db/modules/enterprise/src/inmemory:storage_inmemory",
         ],
         "//conditions:default": [],
     }) + select({

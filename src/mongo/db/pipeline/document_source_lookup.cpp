@@ -139,11 +139,11 @@ NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
     // The object syntax only works for 'cache.chunks.*', 'local.oplog.rs'
     //  which are not user namespaces so object type is
     // omitted from the error message below.
-    uassert(ErrorCodes::FailedToParse,
-            str::stream() << "$lookup 'from' field must be a string, but found "
-                          << typeName(elem.type()),
-            elem.type() == BSONType::String || elem.type() == BSONType::Object);
-
+    //uassert(ErrorCodes::FailedToParse,
+    //        str::stream() << "$lookup 'from' field must be a string, but found "
+    //                      << typeName(elem.type()),
+    //        elem.type() == BSONType::String || elem.type() == BSONType::Object);
+    //
     if (elem.type() == BSONType::String) {
         return NamespaceStringUtil::deserialize(defaultDb, elem.valueStringData());
     }
@@ -162,14 +162,14 @@ NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
                                                 spec.getColl().value_or(""));
     // In the cases nss == config.collections and nss == config.chunks we can proceed with the
     // lookup as the merge will be done on the config server
-    bool isConfigSvrSupportedCollection = nss == NamespaceString::kConfigsvrCollectionsNamespace ||
-        nss == NamespaceString::kConfigsvrChunksNamespace;
-    uassert(
-        ErrorCodes::FailedToParse,
-        str::stream() << "$lookup with syntax {from: {db:<>, coll:<>},..} is not supported for db: "
-                      << nss.dbName().toStringForErrorMsg() << " and coll: " << nss.coll(),
-        nss.isConfigDotCacheDotChunks() || nss == NamespaceString::kRsOplogNamespace ||
-            isConfigSvrSupportedCollection);
+    //bool isConfigSvrSupportedCollection = nss == NamespaceString::kConfigsvrCollectionsNamespace ||
+    //    nss == NamespaceString::kConfigsvrChunksNamespace;
+    //uassert(
+    //    ErrorCodes::FailedToParse,
+    //    str::stream() << "$lookup with syntax {from: {db:<>, coll:<>},..} is not supported for db: "
+    //                  << nss.dbName().toStringForErrorMsg() << " and coll: " << nss.coll(),
+    //    nss.isConfigDotCacheDotChunks() || nss == NamespaceString::kRsOplogNamespace ||
+    //        isConfigSvrSupportedCollection);
     return nss;
 }
 

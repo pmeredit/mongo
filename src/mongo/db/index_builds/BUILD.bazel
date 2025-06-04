@@ -218,7 +218,7 @@ mongo_cc_library(
         "//src/mongo/util/concurrency:thread_pool",
     ] + select({
         "//bazel/config:enterprise_feature_audit_enabled": [
-            "//src/mongo/db/modules/enterprise/src/audit:audit_enterprise",
+            #"//src/mongo/db/modules/enterprise/src/audit:audit_enterprise",
         ],
         "//conditions:default": [],
     }),
