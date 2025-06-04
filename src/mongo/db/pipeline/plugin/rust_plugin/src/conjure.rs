@@ -5,16 +5,13 @@
 
 use crate::echo::EchoOxideDescriptor;
 use crate::sdk::{
-    stage_constraints, AggregationStageDescriptor, AggregationStageExecutor,
-    AggregationStageProperties, DesugarAggregationStageDescriptor, Error, GetNextResult,
-    HostAggregationStageExecutor, TransformAggregationStageDescriptor,
-    TransformBoundAggregationStageDescriptor,
+    AggregationStageDescriptor, AggregationStageProperties, DesugarAggregationStageDescriptor, Error,
 };
 
 use ast::definitions::{Pipeline, Stage};
 use babelfish::*;
-use bson::{doc, to_raw_document_buf, Document, Bson, RawBsonRef, RawDocument};
-use serde::{Deserialize, Deserializer, Serialize};
+use bson::{doc, Document, RawBsonRef, RawDocument};
+use serde::{Deserialize, Serialize};
 
 /// Implements the `$conjure` desugaring stage.
 ///
