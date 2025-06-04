@@ -285,6 +285,11 @@ crates_repository(
             branch = "master",
             package = "babelfish",
         ),
+        "ast": crate.spec(
+            git = "ssh://git@github.com/pmeredit/babelfish.git",
+            branch = "master",
+            package = "ast",
+        ),
     },
     render_config = render_config(default_package_name = ""),
 )

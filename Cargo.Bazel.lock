@@ -1,5 +1,5 @@
 {
-  "checksum": "863147e0f7dde866d027c8caa5b1e17ffb664fd2615e0a3aed940406dfe22521",
+  "checksum": "42aa5c8361b719f9f119d60b68f838f1202ea8167ba6321103ca59d16d36d305",
   "crates": {
     "Inflector 0.11.4": {
       "name": "Inflector",
@@ -2126,6 +2126,10 @@
         ],
         "deps": {
           "common": [
+            {
+              "id": "ast 0.0.0",
+              "target": "ast"
+            },
             {
               "id": "babelfish 0.1.0",
               "target": "babelfish"
@@ -17052,6 +17056,7 @@
     ]
   },
   "direct_deps": [
+    "ast 0.0.0",
     "babelfish 0.1.0",
     "bson 2.13.0",
     "bytes 1.10.0",

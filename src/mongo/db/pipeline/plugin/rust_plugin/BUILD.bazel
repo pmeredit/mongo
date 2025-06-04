@@ -19,6 +19,7 @@ rust_library(
         "@plugin_crates//:tokio",
         "@plugin_crates//:tonic",
         "@plugin_crates//:babelfish",
+        "@plugin_crates//:ast",
     ],
 )
 
