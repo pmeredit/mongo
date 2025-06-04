@@ -11,8 +11,10 @@ use crate::sdk::{
     TransformBoundAggregationStageDescriptor,
 };
 
+use babelfish::*;
 use bson::{doc, to_raw_document_buf, Document, RawBsonRef, RawDocument};
 use serde::{Deserialize, Deserializer, Serialize};
+use linked_hash_map::LinkedHashMap;
 
 /// Descriptor for the `$addSomeCrabs` transform stage.
 ///
@@ -68,7 +70,9 @@ impl TransformBoundAggregationStageDescriptor for AddSomeCrabsBoundDescriptor {
 
 pub struct AddSomeCrabs {
     crabs: String,
+    other: String,
     source: HostAggregationStageExecutor,
+    pointless_map: LinkedHashMap<String, String>,
 }
 
 impl AddSomeCrabs {
@@ -87,6 +91,8 @@ impl AddSomeCrabs {
     fn with_crabs(num_crabs: usize, source: HostAggregationStageExecutor) -> Self {
         Self {
             crabs: String::from_iter(std::iter::repeat('🦀').take(num_crabs)),
+            other: String::from_iter(std::iter::repeat('*').take(num_crabs)),
+            pointless_map: LinkedHashMap::new(),
             source,
         }
     }
@@ -98,6 +104,7 @@ impl AggregationStageExecutor for AddSomeCrabs {
             GetNextResult::Advanced(input_doc) => {
                 let mut doc = Document::try_from(input_doc.as_ref()).unwrap();
                 doc.insert("someCrabs", self.crabs.clone());
+                doc.insert("other", self.other.clone());
                 Ok(GetNextResult::Advanced(
                     to_raw_document_buf(&doc).unwrap().into(),
                 ))

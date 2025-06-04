@@ -18,6 +18,7 @@
 pub mod command_service;
 pub mod count_nodes;
 pub mod crabs;
+pub mod conjure;
 pub mod custom_sort;
 pub mod echo;
 pub mod meta;
@@ -33,6 +34,7 @@ use plugin_api_bindgen::MongoExtensionPortal;
 
 use crate::count_nodes::CountNodesDescriptor;
 use crate::crabs::{AddSomeCrabsDescriptor, EchoWithSomeCrabsDescriptor, HelloWorldWithFiveCrabsDescriptor};
+use crate::conjure::ConjureDescriptor;
 use crate::custom_sort::PluginSortDescriptor;
 use crate::echo::EchoOxideDescriptor;
 use crate::meta::{InternalPluginMetaDescriptor, PluginMetaDescriptor};
@@ -101,6 +103,7 @@ pub unsafe extern "C-unwind" fn initialize_rust_plugins(portal_ptr: *mut MongoEx
     sdk_portal.register_source_aggregation_stage(EchoOxideDescriptor);
     sdk_portal.register_source_aggregation_stage(CountNodesDescriptor);
     sdk_portal.register_transform_aggregation_stage(AddSomeCrabsDescriptor);
+    sdk_portal.register_desugar_aggregation_stage(ConjureDescriptor);
     sdk_portal.register_desugar_aggregation_stage(EchoWithSomeCrabsDescriptor);
     sdk_portal.register_desugar_aggregation_stage(HelloWorldWithFiveCrabsDescriptor);
     sdk_portal.register_transform_aggregation_stage(PluginSortDescriptor);

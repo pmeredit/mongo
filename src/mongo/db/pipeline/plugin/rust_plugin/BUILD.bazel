@@ -10,6 +10,7 @@ rust_library(
     ]),
     deps = [
         "//src/mongo/db/pipeline/plugin:plugin_api_bindgen",
+        "@plugin_crates//:linked-hash-map",
         "@plugin_crates//:bson",
         "@plugin_crates//:bytes",
         "@plugin_crates//:once_cell",
@@ -17,6 +18,7 @@ rust_library(
         "@plugin_crates//:serde",
         "@plugin_crates//:tokio",
         "@plugin_crates//:tonic",
+        "@plugin_crates//:babelfish",
     ],
 )
 

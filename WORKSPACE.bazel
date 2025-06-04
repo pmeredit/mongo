@@ -277,6 +277,14 @@ crates_repository(
         "simsimd": crate.spec(
             version = "6.4.4",
         ),
+        "linked-hash-map": crate.spec(
+            version = "0.5.6",
+        ),
+        "babelfish": crate.spec(
+            git = "ssh://git@github.com/pmeredit/babelfish.git",
+            branch = "master",
+            package = "babelfish",
+        ),
     },
     render_config = render_config(default_package_name = ""),
 )
