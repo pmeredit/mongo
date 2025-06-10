@@ -464,7 +464,6 @@ std::unique_ptr<DocumentSourceLookUp::LiteParsed> DocumentSourceLookUp::LitePars
         // assume we are not in a router for lite parsing
         fromNss = parseLookupFromAndResolveNamespace(fromElement, nss.dbName(), false);
     }
-    if (fromNss.
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << "invalid $lookup namespace: " << fromNss.toStringForErrorMsg(),
             fromNss.isValid());
@@ -1503,8 +1502,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceLookUp::createFromBson(
         if (argName == kFromField) {
             fromNs = parseLookupFromAndResolveNamespace(argument,
                                                         pExpCtx->getNamespaceString().dbName(),
-                                                        pExpCtx->getInRouter(),
-                                                        );
+                                                        pExpCtx->getInRouter());
             continue;
         }
 
