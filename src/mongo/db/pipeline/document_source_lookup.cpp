@@ -130,20 +130,12 @@ void lookupPipeValidator(const Pipeline& pipeline) {
     });
 }
 
-// Parses $lookup 'from' field. The 'from' field must be a string or one of the following
-// exceptions:
-// {from: {db: "config", coll: "cache.chunks.*"}, ...} or
-// {from: {db: "local", coll: "oplog.rs"}, ...}
+// Parses $lookup 'from' field. The 'from' field must be a string or 
+// {from: {db: "db", coll: "coll"}, ...} 
+// when not running in a mongos router.
 NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
-                                                   const DatabaseName& defaultDb) {
-    // The object syntax only works for 'cache.chunks.*', 'local.oplog.rs'
-    //  which are not user namespaces so object type is
-    // omitted from the error message below.
-    //uassert(ErrorCodes::FailedToParse,
-    //        str::stream() << "$lookup 'from' field must be a string, but found "
-    //                      << typeName(elem.type()),
-    //        elem.type() == BSONType::String || elem.type() == BSONType::Object);
-    //
+                                                   const DatabaseName& defaultDb,
+                                                   const bool inRouter) {
     if (elem.type() == BSONType::String) {
         return NamespaceStringUtil::deserialize(defaultDb, elem.valueStringData());
     }
@@ -160,16 +152,12 @@ NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
         elem.embeddedObject());
     auto nss = NamespaceStringUtil::deserialize(spec.getDb().value_or(DatabaseName()),
                                                 spec.getColl().value_or(""));
-    // In the cases nss == config.collections and nss == config.chunks we can proceed with the
-    // lookup as the merge will be done on the config server
-    //bool isConfigSvrSupportedCollection = nss == NamespaceString::kConfigsvrCollectionsNamespace ||
-    //    nss == NamespaceString::kConfigsvrChunksNamespace;
-    //uassert(
-    //    ErrorCodes::FailedToParse,
-    //    str::stream() << "$lookup with syntax {from: {db:<>, coll:<>},..} is not supported for db: "
-    //                  << nss.dbName().toStringForErrorMsg() << " and coll: " << nss.coll(),
-    //    nss.isConfigDotCacheDotChunks() || nss == NamespaceString::kRsOplogNamespace ||
-    //        isConfigSvrSupportedCollection);
+    uassert(
+        ErrorCodes::FailedToParse,
+        str::stream() << "$lookup with syntax {from: {db:<>, coll:<>},..} is not supported for db: "
+                      << nss.dbName().toStringForErrorMsg() << " and coll: " << nss.coll()
+                      << " when running in a mongos router",
+        !inRouter);
     return nss;
 }
 
@@ -473,8 +461,10 @@ std::unique_ptr<DocumentSourceLookUp::LiteParsed> DocumentSourceLookUp::LitePars
         validateLookupCollectionlessPipeline(pipelineElem);
         fromNss = NamespaceString::makeCollectionlessAggregateNSS(nss.dbName());
     } else {
-        fromNss = parseLookupFromAndResolveNamespace(fromElement, nss.dbName());
+        // assume we are not in a router for lite parsing
+        fromNss = parseLookupFromAndResolveNamespace(fromElement, nss.dbName(), false);
     }
+    if (fromNss.
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << "invalid $lookup namespace: " << fromNss.toStringForErrorMsg(),
             fromNss.isValid());
@@ -491,7 +481,7 @@ std::unique_ptr<DocumentSourceLookUp::LiteParsed> DocumentSourceLookUp::LitePars
 }
 
 PrivilegeVector DocumentSourceLookUp::LiteParsed::requiredPrivileges(
-    bool isMongos, bool bypassDocumentValidation) const {
+    bool inRouter, bool bypassDocumentValidation) const {
     PrivilegeVector requiredPrivileges;
     invariant(_pipelines.size() <= 1);
     invariant(_foreignNss);
@@ -508,7 +498,7 @@ PrivilegeVector DocumentSourceLookUp::LiteParsed::requiredPrivileges(
     if (!_pipelines.empty()) {
         const LiteParsedPipeline& pipeline = _pipelines[0];
         Privilege::addPrivilegesToPrivilegeVector(
-            &requiredPrivileges, pipeline.requiredPrivileges(isMongos, bypassDocumentValidation));
+            &requiredPrivileges, pipeline.requiredPrivileges(inRouter, bypassDocumentValidation));
     }
 
     return requiredPrivileges;
@@ -1512,7 +1502,9 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceLookUp::createFromBson(
 
         if (argName == kFromField) {
             fromNs = parseLookupFromAndResolveNamespace(argument,
-                                                        pExpCtx->getNamespaceString().dbName());
+                                                        pExpCtx->getNamespaceString().dbName(),
+                                                        pExpCtx->getInRouter(),
+                                                        );
             continue;
         }
 
