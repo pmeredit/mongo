@@ -240,7 +240,14 @@ std::unique_ptr<DocumentSourceUnionWith::LiteParsed> DocumentSourceUnionWith::Li
         auto unionWithSpec =
             UnionWithSpec::parse(IDLParserContext(kStageName), spec.embeddedObject());
         if (unionWithSpec.getColl()) {
-            unionNss = NamespaceStringUtil::deserialize(nss.dbName(), *unionWithSpec.getColl());
+            if (unionWithSpec.getDb()) {
+                const auto tenantId = nss.dbName().tenantId();
+                auto dbName = DatabaseNameUtil::deserialize(
+                    tenantId, *unionWithSpec.getDb(), SerializationContext::stateDefault());
+                unionNss = NamespaceStringUtil::deserialize(dbName, *unionWithSpec.getColl());
+            } else {
+                unionNss = NamespaceStringUtil::deserialize(nss.dbName(), *unionWithSpec.getColl());
+            }
         } else {
             // If no collection specified, it must have $documents as first field in pipeline.
             validateUnionWithCollectionlessPipeline(unionWithSpec.getPipeline());
@@ -300,8 +307,16 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceUnionWith::createFromBson(
         auto unionWithSpec =
             UnionWithSpec::parse(IDLParserContext(kStageName), elem.embeddedObject());
         if (unionWithSpec.getColl()) {
-            unionNss = NamespaceStringUtil::deserialize(expCtx->getNamespaceString().dbName(),
+            if (unionWithSpec.getDb()) {
+                const auto tenantId = expCtx->getNamespaceString().dbName().tenantId();
+                auto dbName = DatabaseNameUtil::deserialize(
+                    tenantId, *unionWithSpec.getDb(), SerializationContext::stateDefault());
+                unionNss = NamespaceStringUtil::deserialize(dbName, *unionWithSpec.getColl());
+            } else {
+                // If no database specified, use the same database as the current namespace.
+                unionNss = NamespaceStringUtil::deserialize(expCtx->getNamespaceString().dbName(),
                                                         *unionWithSpec.getColl());
+            }
         } else {
             // if no collection specified, it must have $documents as first field in pipeline
             validateUnionWithCollectionlessPipeline(unionWithSpec.getPipeline());
