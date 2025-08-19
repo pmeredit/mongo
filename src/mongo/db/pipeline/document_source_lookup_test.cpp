@@ -1800,14 +1800,14 @@ TEST_F(DocumentSourceLookUpServerlessTest,
 
     auto stageSpec = BSON(
         "$lookup" << BSON(
-            "from" << BSON("db" << "db"
+            "from" << BSON("db" << "config"
                                 << "coll"
-                                << "coll")
+                                << "cache.chunks.test.foo")
                    << "pipeline"
                    << BSON_ARRAY(BSON("$lookup" << BSON(
-                                          "from" << BSON("db" << "db2"
+                                          "from" << BSON("db" << "local"
                                                               << "coll"
-                                                              << "coll2")
+                                                              << "oplog.rs")
                                                  << "as"
                                                  << "lookup2"
                                                  << "pipeline"
@@ -1828,10 +1828,10 @@ TEST_F(DocumentSourceLookUpServerlessTest,
 
         ASSERT_EQ(1ul,
                   namespaceSet.count(NamespaceString::createNamespaceString_forTest(
-                      boost::none, "db", "coll")));
+                      boost::none, "config", "cache.chunks.test.foo")));
         ASSERT_EQ(1ul,
                   namespaceSet.count(NamespaceString::createNamespaceString_forTest(
-                      boost::none, "db2", "coll2")));
+                      boost::none, "local", "oplog.rs")));
         ASSERT_EQ(2ul, namespaceSet.size());
     }
 }
