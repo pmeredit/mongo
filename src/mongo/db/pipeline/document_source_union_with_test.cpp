@@ -196,15 +196,16 @@ TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithPipeline) {
     ASSERT(unionWith->getSourceName() == DocumentSourceUnionWith::kStageName);
 }
 
-TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithExplicitDBAndPipeline) {
+TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithCrossDBAndPipeline) {
     auto expCtx = getExpCtx();
-    NamespaceString nsToUnionWith = NamespaceString::createNamespaceString_forTest(
-        expCtx->getNamespaceString().dbName(), "coll");
+    NamespaceString nsToUnionWith = NamespaceString::createNamespaceString_forTest(boost::none,
+            "crossDB",
+            "coll");
     expCtx->setResolvedNamespaces(
         ResolvedNamespaceMap{{nsToUnionWith, {nsToUnionWith, std::vector<BSONObj>()}}});
     auto bson =
         BSON("$unionWith" << BSON(
-                 "db" << nsToUnionWith.dbName().toString_forTest()
+                 "db" << "crossDB" 
                  << "coll" << nsToUnionWith.coll() << "pipeline"
                         << BSON_ARRAY(BSON("$addFields" << BSON("a" << BSON("$const" << 3))))));
     auto unionWith = DocumentSourceUnionWith::createFromBson(bson.firstElement(), expCtx);
@@ -227,28 +228,6 @@ TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithoutPipeline) {
     auto bson = BSON("$unionWith" << nsToUnionWith.coll());
     auto desugaredBson =
         BSON("$unionWith" << BSON("coll" << nsToUnionWith.coll() << "pipeline" << BSONArray()));
-    auto unionWith = DocumentSourceUnionWith::createFromBson(bson.firstElement(), expCtx);
-    ASSERT(unionWith->getSourceName() == DocumentSourceUnionWith::kStageName);
-    std::vector<Value> serializedArray;
-    unionWith->serializeToArray(serializedArray);
-    auto serializedBson = serializedArray[0].getDocument().toBson();
-    ASSERT_BSONOBJ_EQ(serializedBson, desugaredBson);
-    unionWith = DocumentSourceUnionWith::createFromBson(serializedBson.firstElement(), expCtx);
-    ASSERT(unionWith != nullptr);
-    ASSERT(unionWith->getSourceName() == DocumentSourceUnionWith::kStageName);
-}
-
-TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithExplicitDBWithoutPipeline) {
-    auto expCtx = getExpCtx();
-    NamespaceString nsToUnionWith = NamespaceString::createNamespaceString_forTest(
-        expCtx->getNamespaceString().dbName(), "coll");
-    expCtx->setResolvedNamespaces(
-        ResolvedNamespaceMap{{nsToUnionWith, {nsToUnionWith, std::vector<BSONObj>()}}});
-    auto bson = BSON("$unionWith" << nsToUnionWith.coll());
-    auto desugaredBson =
-        BSON("$unionWith" << BSON(
-                    "db" << nsToUnionWith.dbName().toString_forTest() 
-                    << "coll" << nsToUnionWith.coll() << "pipeline" << BSONArray()));
     auto unionWith = DocumentSourceUnionWith::createFromBson(bson.firstElement(), expCtx);
     ASSERT(unionWith->getSourceName() == DocumentSourceUnionWith::kStageName);
     std::vector<Value> serializedArray;
