@@ -96,18 +96,13 @@ BSONObj buildEqualityOrQuery(const std::string& fieldName, const BSONArray& valu
     return orBuilder.obj();
 }
 
-// Parses $lookup 'from' field. The 'from' field must be a string or one of the following
-// exceptions:
-// {from: {db: "config", coll: "cache.chunks.*"}, ...} or
-// {from: {db: "local", coll: "oplog.rs"}, ...}
+// Parses $lookup 'from' field. The 'from' field must be a string object with the following syntax
+// {from: {db: "dbName", coll: "collName"}, ...}
 NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
                                                    const DatabaseName& defaultDb,
                                                    bool allowGenericForeignDbLookup) {
-    // The object syntax only works for 'cache.chunks.*', 'local.oplog.rs'
-    //  which are not user namespaces so object type is
-    // omitted from the error message below.
     uassert(ErrorCodes::FailedToParse,
-            str::stream() << "$lookup 'from' field must be a string, but found "
+            str::stream() << "$lookup 'from' field must be a string or object, but found "
                           << typeName(elem.type()),
             elem.type() == BSONType::string || elem.type() == BSONType::object);
 
@@ -115,7 +110,6 @@ NamespaceString parseLookupFromAndResolveNamespace(const BSONElement& elem,
         return NamespaceStringUtil::deserialize(defaultDb, elem.valueStringData());
     }
 
-    // Valdate the db and coll names.
     const auto tenantId = defaultDb.tenantId();
     const auto vts = tenantId
         ? boost::make_optional(auth::ValidatedTenancyScopeFactory::create(

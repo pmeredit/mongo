@@ -1763,13 +1763,13 @@ TEST_F(
 
     auto stageSpec = BSON(
         "$lookup" << BSON(
-            "from" << BSON("db" << "db"
+            "from" << BSON("db" << "config"
                                 << "coll"
-                                << "coll")
+                                << "cache.chunks.test.foo")
                    << "pipeline"
                    << BSON_ARRAY(BSON("$lookup" << BSON(
-                                          "from" << BSON("db" << "db2"
-                                                              << "coll2"
+                                          "from" << BSON("db" << "local"
+                                                              << "coll"
                                                               << "oplog.rs")
                                                  << "as"
                                                  << "lookup2"
@@ -1806,8 +1806,8 @@ TEST_F(DocumentSourceLookUpServerlessTest,
                    << "pipeline"
                    << BSON_ARRAY(BSON("$lookup" << BSON(
                                           "from" << BSON("db" << "db2"
-                                                              << "coll2"
-                                                              << "oplog.rs")
+                                                              << "coll"
+                                                              << "coll2")
                                                  << "as"
                                                  << "lookup2"
                                                  << "pipeline"

@@ -196,7 +196,30 @@ TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithPipeline) {
     ASSERT(unionWith->getSourceName() == DocumentSourceUnionWith::kStageName);
 }
 
-TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithCrossDBAndPipeline) {
+TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithForeignDB) {
+    auto expCtx = getExpCtx();
+    NamespaceString nsToUnionWith = NamespaceString::createNamespaceString_forTest(boost::none,
+            "crossDB",
+            "coll");
+    expCtx->setResolvedNamespaces(
+        ResolvedNamespaceMap{{nsToUnionWith, {nsToUnionWith, std::vector<BSONObj>()}}});
+    auto bson =
+        BSON("$unionWith" << BSON(
+                 "db" << "crossDB" 
+                 << "coll" << nsToUnionWith.coll()
+                 << "pipeline" << BSONArray()));
+    auto unionWith = DocumentSourceUnionWith::createFromBson(bson.firstElement(), expCtx);
+    ASSERT(unionWith->getSourceName() == DocumentSourceUnionWith::kStageName);
+    std::vector<Value> serializedArray;
+    unionWith->serializeToArray(serializedArray);
+    auto serializedBson = serializedArray[0].getDocument().toBson();
+    ASSERT_BSONOBJ_EQ(serializedBson, bson);
+    unionWith = DocumentSourceUnionWith::createFromBson(serializedBson.firstElement(), expCtx);
+    ASSERT(unionWith != nullptr);
+    ASSERT(unionWith->getSourceName() == DocumentSourceUnionWith::kStageName);
+}
+
+TEST_F(DocumentSourceUnionWithTest, SerializeAndParseWithForeignDBAndPipeline) {
     auto expCtx = getExpCtx();
     NamespaceString nsToUnionWith = NamespaceString::createNamespaceString_forTest(boost::none,
             "crossDB",
