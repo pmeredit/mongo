@@ -5,9 +5,12 @@ import {ShardingTest} from "jstests/libs/shardingtest.js";
 
 const st = new ShardingTest({shards: 2, mongos: 1});
 const testName = "lookup_sharded";
+const foreignName = "foreign_db";
 
 const mongosDB = st.s0.getDB(testName);
+const foreignDB = st.s0.getDB(foreignName);
 assert.commandWorked(mongosDB.dropDatabase());
+assert.commandWorked(foreignDB.dropDatabase());
 
 // Ensure the primary shard for the test db is shard0.
 assert.commandWorked(st.s.adminCommand({enableSharding: testName, primaryShard: st.shard0.name}));
@@ -553,14 +556,26 @@ if (explain.hasOwnProperty("shards")) {
 st.shardColl(mongosDB.lookup, {_id: 1}, {_id: 0}, {_id: 1}, mongosDB.getName());
 runTest(mongosDB.lookUp, mongosDB.from, mongosDB.thirdColl, mongosDB.fourthColl);
 
+// rerun sharded local and unsharded foreign with cross db foreign collection
+foreignDB.from.drop();
+foreignDB.thirdColl.drop();
+foreignDB.fourthColl.drop();
+runTest(mongosDB.lookUp, foreignDB.from, mongosDB.thirdColl, mongosDB.fourthColl);
+assert(mongosDB.lookup.drop());
+
 //
 // Test unsharded local collection and sharded foreign collection.
 //
 assert(mongosDB.lookup.drop());
 
+
 // Shard the foreign collection on _id.
 st.shardColl(mongosDB.from, {_id: 1}, {_id: 0}, {_id: 1}, mongosDB.getName());
 runTest(mongosDB.lookUp, mongosDB.from, mongosDB.thirdColl, mongosDB.fourthColl);
+
+// Shard the cross db foreign collection on _id.
+st.shardColl(foreignDB.from, {_id: 1}, {_id: 0}, {_id: 1}, foreignDB.getName());
+runTest(mongosDB.lookUp, foreignDB.from, mongosDB.thirdColl, mongosDB.fourthColl);
 
 //
 // Test sharded local and foreign collections.
@@ -569,6 +584,9 @@ runTest(mongosDB.lookUp, mongosDB.from, mongosDB.thirdColl, mongosDB.fourthColl)
 // Shard the local collection on _id.
 st.shardColl(mongosDB.lookup, {_id: 1}, {_id: 0}, {_id: 1}, mongosDB.getName());
 runTest(mongosDB.lookUp, mongosDB.from, mongosDB.thirdColl, mongosDB.fourthColl);
+
+// rereun with crossDB foreign collection
+runTest(mongosDB.lookUp, foreignDB.from, mongosDB.thirdColl, mongosDB.fourthColl);
 
 // Test that a $lookup from an unsharded collection followed by a $merge to a sharded collection
 // is allowed.
