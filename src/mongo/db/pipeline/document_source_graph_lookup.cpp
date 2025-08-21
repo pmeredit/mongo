@@ -90,11 +90,34 @@ namespace {
 NamespaceString parseGraphLookupFromAndResolveNamespace(const BSONElement& elem,
                                                         const DatabaseName& defaultDb) {
     uassert(ErrorCodes::FailedToParse,
-            str::stream() << "$graphLookup 'from' field must be a string, but found "
+            str::stream() << "$graphLookup 'from' field must be a string or object, but found "
                           << typeName(elem.type()),
-            elem.type() == BSONType::string);
+            elem.type() == BSONType::string || elem.type() == BSONType::object);
 
-    NamespaceString fromNss(NamespaceStringUtil::deserialize(defaultDb, elem.valueStringData()));
+    NamespaceString fromNss;
+    if (elem.type() == BSONType::object) {
+        // If the 'from' field is an object, it must contain a 'db' and 'coll' field.
+        uassert(ErrorCodes::FailedToParse,
+                str::stream() << "$graphLookup 'from' field must be an object with 'db' and "
+                                 "'coll' fields, but found "
+                              << elem.Obj(),
+                elem.Obj().hasField("db") && elem.Obj().hasField("coll"));
+
+        const auto tenantId = defaultDb.tenantId();
+        const auto vts = tenantId
+            ? boost::make_optional(auth::ValidatedTenancyScopeFactory::create(
+              *tenantId, auth::ValidatedTenancyScopeFactory::TrustedForInnerOpMsgRequestTag{}))
+            : boost::none;
+        auto spec = NamespaceSpec::parse(
+             IDLParserContext{
+                elem.fieldNameStringData(), vts, tenantId, SerializationContext::stateDefault()},
+        elem.embeddedObject());
+        fromNss = NamespaceStringUtil::deserialize(spec.getDb().value_or(DatabaseName()),
+                                                spec.getColl().value_or(""));
+
+    } else {
+        fromNss = NamespaceStringUtil::deserialize(defaultDb, elem.valueStringData());
+    }
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << "invalid $graphLookup namespace: " << fromNss.toStringForErrorMsg(),
             fromNss.isValid());
@@ -961,7 +984,14 @@ intrusive_ptr<DocumentSource> DocumentSourceGraphLookUp::createFromBson(
             continue;
         }
 
-        if (argName == "from" || argName == "as" || argName == "connectFromField" ||
+        if (argName == "from") {
+            // from must be a string or object.
+            uassert(40103,
+                    str::stream() << "expected string or object as argument for " << argName
+                                  << ", found: " << typeName(argument.type()),
+                    argument.type() == BSONType::string || argument.type() == BSONType::object);
+
+        } else if (argName == "as" || argName == "connectFromField" ||
             argName == "depthField" || argName == "connectToField") {
             // All remaining arguments to $graphLookup are expected to be strings.
             uassert(40103,
